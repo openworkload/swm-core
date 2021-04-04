@@ -1,0 +1,36 @@
+#!/bin/bash
+
+ME=$( readlink -f "$0" )
+DIR=$( dirname "$ME" )
+ROOT_DIR=$( dirname "$( dirname "$ME" )" )
+
+## Export variables
+source ${ROOT_DIR}/scripts/swm.env 1>/dev/null
+
+if [ -e ${ROOT_DIR}/releases/start_erl.data ]; then
+  START_ERL=`cat ${ROOT_DIR}/releases/start_erl.data`
+  ERTS_VSN=${START_ERL% *}
+  ESCRIPT=${ROOT_DIR}/erts-${ERTS_VSN}/bin/escript
+else # run from sources
+  ESCRIPT=escript
+fi
+
+SWMCTL=${DIR}/ctl.escript
+MAX_HISTORY=1000
+PROMPT_COLOR=Red
+WRAPPER=rlwrap
+USER_CONF_DIR=$HOME/.config/swm
+COMPL_FILE=${USER_CONF_DIR}/ctl_completions
+WRAPPER_ARGS="-p$PROMPT_COLOR --ansi-colour-aware -f $COMPL_FILE --always-readline --remember --histsize $MAX_HISTORY"
+
+if [ ! -e ${USER_CONF_DIR} ]; then
+  mkdir -p ${USER_CONF_DIR};
+fi
+touch $COMPL_FILE
+command -v $WRAPPER >/dev/null || echo "$WRAPPER not found in $PATH"
+
+if [ $# -eq "0" ]; then
+  $WRAPPER $WRAPPER_ARGS $ESCRIPT $SWMCTL $@
+else
+  $ESCRIPT $SWMCTL $@
+fi

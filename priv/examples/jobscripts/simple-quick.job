@@ -1,0 +1,6 @@
+#!/bin/sh
+
+#SWM name Quick Job
+#SWM comment This is a simplest example of a job script
+
+echo "Hello from simple job $SWM_JOBID"

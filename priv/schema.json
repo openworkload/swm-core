@@ -1,0 +1,1033 @@
+{
+  "global": {
+    "name": {
+      "type": "atom()"
+    },
+    "value": {
+      "type": "string()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "executable": {
+    "name": {
+      "type": "string()"
+    },
+    "path": {
+      "default": "",
+      "type": "string()"
+    },
+    "user": {
+      "default": "",
+      "type": "user_id()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "malfunction": {
+    "id": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "name": {
+      "type": "binary()"
+    },
+    "failures": {
+      "default": [],
+      "type": "[{atom(), any()}]"
+
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "table": {
+    "name": {
+      "type": "binary()"
+    },
+    "fields": {
+      "default": [],
+      "type": "[any()]"
+
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "hook": {
+    "id": {
+      "type": "hook_id()"
+    },
+    "name": {
+      "default": "",
+      "type": "string()"
+    },
+    "event": {
+      "type": "atom()"
+    },
+    "state": {
+      "default": "enabled",
+      "type": "atom()"
+    },
+    "executable": {
+      "type": "#executable{}"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "grid": {
+    "id": {
+      "default": 0,
+      "type": "grid_id()"
+    },
+    "name": {
+      "default": "",
+      "type": "string()"
+    },
+    "state": {
+      "default": "down",
+      "type": "atom()"
+    },
+    "manager": {
+      "default": "",
+      "type": "string()"
+    },
+    "clusters": {
+      "default": [],
+      "type": "[cluster_id()]"
+    },
+    "hooks": {
+      "default": [],
+      "type": "[hook_id()]"
+    },
+    "scheduler": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "resources": {
+      "default": [],
+      "type": "[#resource{}]"
+    },
+    "properties": {
+      "default": [],
+      "type": "[{atom(), any()}]"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "cluster": {
+    "id": {
+      "type": "cluster_id()"
+    },
+    "name": {
+      "default": "",
+      "type": "string()"
+    },
+    "state": {
+      "default": "down",
+      "type": "atom()"
+    },
+    "manager": {
+      "default": "",
+      "type": "string()"
+    },
+    "partitions": {
+      "default": [],
+      "type": "[partition_id()]"
+    },
+    "hooks": {
+      "default": [],
+      "type": "[hook_id()]"
+    },
+    "scheduler": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "resources": {
+      "default": [],
+      "type": "[#resource{}]"
+    },
+    "properties": {
+      "default": [],
+      "type": "[{atom(), any()}]"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "partition": {
+    "id": {
+      "type": "partition_id()"
+    },
+    "name": {
+      "default": "",
+      "type": "string()"
+    },
+    "state": {
+      "default": "down",
+      "type": "atom()"
+    },
+    "manager": {
+      "default": "",
+      "type": "string()"
+    },
+    "nodes": {
+      "default": [],
+      "type": "[node_id()]"
+    },
+    "partitions": {
+      "default": [],
+      "type": "[partition_id()]"
+    },
+    "hooks": {
+      "default": [],
+      "type": "[hook_id()]"
+    },
+    "scheduler": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "jobs_per_node": {
+      "default": 1,
+      "type": "pos_integer()"
+    },
+    "resources": {
+      "default": [],
+      "type": "[#resource{}]"
+    },
+    "properties": {
+      "default": [],
+      "type": "[{atom(), any()}]"
+    },
+    "subdivision": {
+      "default": "grid",
+      "type": "atom()"
+    },
+    "subdivision_id": {
+      "default": "",
+      "type": "string()"
+    },
+    "created": {
+      "default": "",
+      "type": "string()"
+    },
+    "updated": {
+      "default": "",
+      "type": "string()"
+    },
+    "external_id": {
+      "default": "",
+      "type": "string()"
+    },
+    "addresses": {
+      "default": "#{}",
+      "type": "map()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "node": {
+    "id": {
+      "default": 0,
+      "type": "node_id()"
+    },
+    "name": {
+      "default": "",
+      "type": "string()"
+    },
+    "host": {
+      "default": "",
+      "type": "string()"
+    },
+    "api_port": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "parent": {
+      "default": "",
+      "type": "string()"
+    },
+    "state_power": {
+      "default": "down",
+      "type": "atom()"
+    },
+    "state_alloc": {
+      "default": "stopped",
+      "type": "atom()"
+    },
+    "roles": {
+      "default": [],
+      "type": "[pos_integer()]"
+    },
+    "resources": {
+      "default": [],
+      "type": "[#resource{}]"
+    },
+    "properties": {
+      "default": [],
+      "type": "[{atom(), any()}]"
+    },
+    "subdivision": {
+      "default": "grid",
+      "type": "atom()"
+    },
+    "subdivision_id": {
+      "default": "",
+      "type": "string()"
+    },
+    "malfunctions": {
+      "default": [],
+      "type": "[pos_integer()]"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "remote_id": {
+      "default": "",
+      "type": "remote_id()"
+    },
+    "is_template": {
+      "default": "false",
+      "type": "atom()"
+    },
+    "gateway": {
+      "default": "",
+      "type": "string()"
+    },
+    "prices": {
+      "default": "#{}",
+      "type": "map()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "resource": {
+    "name": {
+      "type": "string()"
+    },
+    "count": {
+      "default": 1,
+      "type": "pos_integer()"
+    },
+    "hooks": {
+      "default": [],
+      "type": "[hook_id()]"
+    },
+    "properties": {
+      "default": [],
+      "type": "[{atom(), any()}]"
+    },
+    "prices": {
+      "default": "#{}",
+      "type": "map()"
+    },
+    "usage_time": {
+      "default": 1,
+      "type": "pos_integer()"
+    },
+    "resources": {
+      "default": [],
+      "type": "[#resource{}]"
+    }
+  },
+
+  "service": {
+    "id": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "name": {
+      "type": "string()"
+    },
+    "modules": {
+      "default": [],
+      "type": "[string()]"
+    },
+    "tables": {
+      "default": [],
+      "type": "[atom()]"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "role": {
+    "id": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "name": {
+      "type": "string()"
+    },
+    "services": {
+      "default": [],
+      "type": "[pos_integer()]"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "job": {
+    "id": {
+      "type": "string()"
+    },
+    "name": {
+      "default": "",
+      "type": "string()"
+    },
+    "cluster_id": {
+      "default": 0,
+      "type": "cluster_id()"
+    },
+    "nodes": {
+      "default": [],
+      "type": "[node_id()]"
+    },
+    "state": {
+      "default": "Q",
+      "type": "string()"
+    },
+    "job_class": {
+      "default": [],
+      "type": "[atom()]"
+    },
+    "start_time": {
+      "default": "",
+      "type": "string()"
+    },
+    "submit_time": {
+      "default": "",
+      "type": "string()"
+    },
+    "end_time": {
+      "default": "",
+      "type": "string()"
+    },
+    "duration": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "job_stdin": {
+      "default": "",
+      "type": "string()"
+    },
+    "job_stdout": {
+      "default": "",
+      "type": "string()"
+    },
+    "job_stderr": {
+      "default": "",
+      "type": "string()"
+    },
+    "input_files": {
+      "default": [],
+      "type": "[string()]"
+    },
+    "output_files": {
+      "default": [],
+      "type": "[string()]"
+    },
+    "workdir": {
+      "default": "",
+      "type": "string()"
+    },
+    "user_id": {
+      "default": "",
+      "type": "user_id()"
+    },
+    "hooks": {
+      "default": [],
+      "type": "[hook_id()]"
+    },
+    "env": {
+      "default": [],
+      "type": "[{string(), string()}]"
+    },
+    "deps": {
+      "default": [],
+      "type": "[{atom(), string()}]"
+    },
+    "steps": {
+      "default": [],
+      "type": "[string()]"
+    },
+    "projects": {
+      "default": [],
+      "type": "[pos_integer()]"
+    },
+    "account_id": {
+      "default": "",
+      "type": "account_id()"
+    },
+    "gang_id": {
+      "default": "",
+      "type": "string()"
+    },
+    "task_id": {
+      "default": "",
+      "type": "string()"
+    },
+    "script": {
+      "default": "",
+      "type": "binary()"
+    },
+    "request": {
+      "default": [],
+      "type": "[#resource{}]"
+    },
+    "resources": {
+      "default": [],
+      "type": "[#resource{}]"
+    },
+    "container": {
+      "default": "",
+      "type": "string()"
+    },
+    "relocatable": {
+      "default": "false",
+      "type": "atom()"
+    },
+    "exitcode": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "signal": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "priority": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "process": {
+    "pid": {
+      "default": -1,
+      "type": "integer()"
+    },
+    "state": {
+      "default": "unknown",
+      "type": "string()"
+    },
+    "exitcode": {
+      "default": -1,
+      "type": "integer()"
+    },
+    "signal": {
+      "default": -1,
+      "type": "integer()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    }
+  },
+
+  "project": {
+    "id": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "name": {
+      "type": "string()"
+    },
+    "acl": {
+      "default": "all",
+      "type": "string()"
+    },
+    "hooks": {
+      "default": [],
+      "type": "[hook_id()]"
+    },
+    "priority": {
+      "default": 0,
+      "type": "integer()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "group": {
+    "id": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "name": {
+      "type": "string()"
+    },
+    "acl": {
+      "default": "all",
+      "type": "string()"
+    },
+    "priority": {
+      "default": 0,
+      "type": "integer()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "user": {
+    "id": {
+      "type": "user_id()"
+    },
+    "name": {
+      "type": "string()"
+    },
+    "acl": {
+      "default": "",
+      "type": "string()"
+    },
+    "groups": {
+      "default": [],
+      "type": "[pos_integer()]"
+    },
+    "projects": {
+      "default": [],
+      "type": "[pos_integer()]"
+    },
+    "priority": {
+      "default": 0,
+      "type": "integer()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "queue": {
+    "id": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "name": {
+      "type": "string()"
+    },
+    "state": {
+      "default": "stopped",
+      "type": "atom()"
+    },
+    "jobs": {
+      "default": [],
+      "type": "[string()]"
+    },
+    "nodes": {
+      "default": [],
+      "type": "[node_id()]"
+    },
+    "users": {
+      "default": [],
+      "type": "[user_id()]"
+    },
+    "admins": {
+      "default": [],
+      "type": "[user_id()]"
+    },
+    "hooks": {
+      "default": [],
+      "type": "[hook_id()]"
+    },
+    "priority": {
+      "default": 0,
+      "type": "integer()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "scheduler": {
+    "id": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "name": {
+      "type": "string()"
+    },
+    "state": {
+      "default": "enabled",
+      "type": "atom()"
+    },
+    "start_time": {
+      "default": "",
+      "type": "string()"
+    },
+    "stop_time": {
+      "default": "",
+      "type": "string()"
+    },
+    "run_interval": {
+      "default": 30000,
+      "type": "pos_integer()"
+    },
+    "path": {
+      "type": "#executable{}"
+    },
+    "family": {
+      "default": "fcfs",
+      "type": "string()"
+    },
+    "version": {
+      "default": "",
+      "type": "string()"
+    },
+    "cu": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "timetable": {
+    "start_time": {
+      "type": "pos_integer()"
+    },
+    "job_id": {
+      "type": "string()"
+    },
+    "job_nodes": {
+      "default": [],
+      "type": "[node_id()]"
+    }
+  },
+
+  "subscriber": {
+    "ref": {
+      "type": "{atom(), atom()}"
+    },
+    "event": {
+      "default": "any_event",
+      "type": "atom()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "image": {
+    "name": {
+      "type": "string()"
+    },
+    "id": {
+      "type": "string()"
+    },
+    "tags": {
+      "default": [],
+      "type": "[string()]"
+    },
+    "size": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "kind": {
+      "type": "atom()"
+    },
+    "status": {
+      "type": "string()"
+    },
+    "created": {
+      "default": "",
+      "type": "string()"
+    },
+    "updated": {
+      "default": "",
+      "type": "string()"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "credential": {
+    "id": {
+      "type": "credential_id()"
+    },
+    "remote_id": {
+      "type": "remote_id()"
+    },
+    "tenant_name": {
+      "type": "string()"
+    },
+    "tenant_domain_name": {
+      "type": "string()"
+    },
+    "username": {
+      "type": "string()"
+    },
+    "password": {
+      "type": "string()"
+    },
+    "key_name": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "remote": {
+    "id": {
+      "type": "remote_id()"
+    },
+    "account_id": {
+      "type": "account_id()"
+    },
+    "name": {
+      "type": "atom()"
+    },
+    "kind": {
+      "default": "local",
+      "type": "atom()"
+    },
+    "server": {
+      "type": "string()"
+    },
+    "port": {
+      "default": 8444,
+      "type": "pos_integer()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "account": {
+    "id": {
+      "type": "account_id()"
+    },
+    "name": {
+      "type": "atom()"
+    },
+    "price_list": {
+      "default": "",
+      "type": "string()"
+    },
+    "users": {
+      "default": [],
+      "type": "[user_id()]"
+    },
+    "admins": {
+      "default": [],
+      "type": "[user_id()]"
+    },
+    "comment": {
+      "default": "",
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "metric": {
+    "name": {
+      "type": "atom()"
+    },
+    "value_integer": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "value_float64": {
+      "default": 0.0,
+      "type": "float()"
+    }
+  },
+
+  "scheduler_result": {
+    "timetable": {
+      "default": [],
+      "type": "[#timetable{}]"
+    },
+    "metrics": {
+      "default": [],
+      "type": "[#metric{}]"
+    },
+    "request_id": {
+      "type": "string()"
+    },
+    "status": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "astro_time": {
+      "default": 0,
+      "type": "float()"
+    },
+    "idle_time": {
+      "default": 0,
+      "type": "float()"
+    },
+    "work_time": {
+      "default": 0,
+      "type": "float()"
+    }
+  },
+
+  "boot_info": {
+    "node_host": {
+      "type": "string()"
+    },
+    "node_port": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "parent_host": {
+      "type": "string()"
+    },
+    "parent_port": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  },
+
+  "test": {
+    "id": {
+      "default": 1,
+      "type": "pos_integer()"
+    },
+    "name": {
+      "default": "dev0",
+      "type": "string()"
+    },
+    "state": {
+      "default": "enabled",
+      "type": "atom()"
+    },
+    "state8": {
+      "default": "enabled",
+      "type": "atom()"
+    },
+    "start_time3": {
+      "default": "30 22:14:53",
+      "type": "string()"
+    },
+    "stop_time": {
+      "default": [],
+      "type": "[string()]"
+    },
+    "hooks": {
+      "type": "[{hook_id(), #resource{}, #user{}}]"
+    },
+    "comment": {
+      "type": "string()"
+    },
+    "revision": {
+      "default": 0,
+      "type": "pos_integer()"
+    }
+  }
+}
+

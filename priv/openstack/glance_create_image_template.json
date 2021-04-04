@@ -1,0 +1,6 @@
+{
+    "name": "{{ image_name }}",
+    "disk_format": "raw",
+    "container_format": "bare",
+    "visibility": "private"
+}

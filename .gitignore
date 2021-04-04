@@ -1,0 +1,15 @@
+*.pyc
+*.o
+*.so
+*.beam
+*.plt
+*.vim
+*.swp
+*.log
+.eunit
+erl_crash.dump
+config/vm.args
+config/sys.config
+ebin
+tags
+_build

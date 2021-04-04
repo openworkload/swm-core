@@ -1,0 +1,21 @@
+#!/bin/bash
+
+ME=$( readlink -f "$0" )
+DIR=$( dirname "$ME" )
+ROOT_DIR=$( dirname "$( dirname "$ME" )" )
+
+## Export variables
+source ${ROOT_DIR}/scripts/swm.env
+
+if [ -e ${ROOT_DIR}/releases/start_erl.data ]; then
+  START_ERL=`cat ${ROOT_DIR}/releases/start_erl.data`
+  ERTS_VSN=${START_ERL% *}
+  ESCRIPT=${ROOT_DIR}/erts-${ERTS_VSN}/bin/escript
+else # run from sources
+  ESCRIPT=escript
+fi
+
+SWMCREATECERT=${DIR}/create-cert.escript
+
+$ESCRIPT $SWMCREATECERT $@
+

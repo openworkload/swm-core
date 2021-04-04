@@ -1,0 +1,17 @@
+[Unit]
+Description=Sky Workload Manager
+After=network.target remote-fs.target
+Requires=network.target remote-fs.target
+
+[Service]
+Type=forking
+TimeoutStartSec=0
+Restart=always
+RestartSec=5
+EnvironmentFile=/etc/swm.conf
+Environment=HOME=/root
+ExecStart=/bin/bash -c 'source {ENV} && {SCRIPT} start'
+ExecStop={SCRIPT} stop
+
+[Install]
+WantedBy=multi-user.target

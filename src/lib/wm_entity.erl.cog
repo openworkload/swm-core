@@ -1,0 +1,219 @@
+-module(wm_entity).
+-behaviour(json_rec_model).
+
+-include_lib("wm_entity.hrl").
+-include("wm_log.hrl").
+
+-export([ new/1,
+          rec/1,
+          pretty/1,
+          get_attr/2,
+          get_type/2,
+          set_attr/2,
+          get_names/1,
+          get_fields/1,
+          extract_json_field_info/1,
+          get_incomparible_fields/1,
+          descriptions_to_recs/1
+        ]).
+
+% https://www.python.org/about/success/cog
+%[[[cog
+%  import json, collections
+%  json_data=open('./priv/schema.json')
+%  data = json.load(json_data, object_pairs_hook=collections.OrderedDict)
+%
+%  all_names = []
+%  for x,y in data.items():
+%    all_names.append(x)
+%  cog.outl('-define(ENTITIES, [' +
+%           ',\n                   '.join(all_names) + ']).')
+%  cog.outl('-compile({parse_transform, exprecs}).')
+%  cog.outl('-export_records(?ENTITIES).')
+%  cog.outl('')
+%
+%  for x,y in data.items():
+%    cog.outl("new(<<\"" + x + "\">>) -> '#new-" + x + "'();")
+%    cog.outl("new(" + x + ") -> '#new-" + x + "'();")
+%  cog.outl("new(_) -> undefined.")
+%  cog.outl("")
+%  for x,y in data.items():
+%    cog.outl("rec(#" + x + "{}) -> true;")
+%  cog.outl('rec(_) -> false.')
+%  cog.outl('')
+%
+%  def record(r):
+%    if '#' in r:
+%      r = r.replace('#', '')
+%      r = r.replace('{}', '')
+%      r = '{record, ' + r + '}'
+%    return r
+%
+%  types = {
+%       "atom()": "atom",
+%       "any()": "any",
+%       "string()": "string",
+%       "binary()": "binary",
+%       "integer()": "integer",
+%       "map()": "map",
+%       "pos_integer()": "integer",
+%
+%       "credential_id()": "string",
+%       "remote_id()": "string",
+%       "account_id()": "string",
+%       "session_id()": "string",
+%       "user_id()": "string",
+%       "grid_id()": "string",
+%       "cluster_id()": "string",
+%       "partition_id()": "string",
+%       "node_id()": "string",
+%       "hook_id()": "string"
+%  }
+%
+%  rlist = []
+%  withids = []
+%  for x,y in data.items():
+%    tmp = ''
+%    tmp += 'get_type(' + x + ', Attr) when is_atom(Attr) ->\n'
+%    tmp += '  case Attr of\n'
+%    plist = []
+%    for z,k in y.items():
+%      if z == 'id':
+%        withids.append(x)
+%      if k["type"] in types.keys():
+%        type_str = types[k["type"]]
+%      else:
+%        if '[' in k["type"]:
+%          s = k["type"][k["type"].find('[') + 1 : k["type"].find(']')]
+%          if s in types.keys():
+%            s = types[s]
+%          s = record(s)
+%          s = '{list, ' + s.replace('()', '') + '}'
+%        type_str = s
+%      plist.append("    " + z + " -> " + type_str)
+%    tmp += ';\n'.join(plist) + '\n'
+%    tmp += '  end'
+%    rlist.append(tmp)
+%  cog.out(';\n'.join(rlist))
+%  cog.outl('.')
+%  cog.outl('')
+%
+%  cog.outl('get_names(all) -> ?ENTITIES;')
+%  cog.outl('get_names(local) -> [job, session];')
+%  cog.outl('get_names(local_bag) -> [subscriber, timetable];')
+%  cog.outl('get_names(non_replicable) -> [schema, subscriber, timetable, job, session];')
+%  cog.outl('get_names(with_ids) ->')
+%  cog.outl('  [' + ', '.join(withids) + '].')
+%  cog.outl('')
+%
+%]]]
+%[[[end]]]
+
+%% @doc get all record field names
+get_fields(Rec) ->
+  '#info-'(Rec).
+
+%% @doc get an attribute by name
+get_attr(Attr, Rec) when is_atom(Attr) ->
+  '#get-'(Attr, Rec).
+
+%% @doc set an attribute by name
+set_attr({Attr, Value}, Rec) when is_atom(Attr) ->
+  '#set-'([{Attr,Value}], Rec);
+
+set_attr(Xs, Rec) when is_list(Xs) ->
+  lists:foldl(fun({Attr, Value}, Acc) -> set_attr({Attr, Value}, Acc) end, Rec, Xs).
+
+pretty(Recs) when is_list(Recs) ->
+  lists:map(fun(R) -> pretty(R) end, Recs);
+pretty(Rec) ->
+  RF = fun(R,L) when R == element(1, Rec) ->
+         Flds = '#info-'(R),
+         true = (L == length(Flds)),
+         Flds
+       end,
+  [io_lib_pretty:print(Rec, RF),"\n"].
+
+decode_json_default(<<>>, _) ->
+  "";
+decode_json_default(X, atom) when is_binary(X) ->
+  binary_to_atom(X, utf8);
+decode_json_default(X, any) when is_binary(X) ->
+  binary_to_atom(X, utf8);
+decode_json_default(X, string) when is_binary(X) ->
+  binary:bin_to_list(X);
+decode_json_default(_, {record,R}) ->
+  wm_entity:new(R);
+decode_json_default(X, {list,T}) when is_list(X)->
+  [decode_json_default(E,T) || E <- X];
+decode_json_default(X, _) ->
+  X.
+
+decode_json_type(<<" ",X/binary>>) ->
+  decode_json_type(X);
+decode_json_type(<<"{",X/binary>>) ->
+  Skip = byte_size(X) - 1,
+  <<Y:Skip/binary, "}">> = X,
+  BinList = binary:split(Y, [<<",">>], [global]),
+  AtomList = lists:map(fun(Item) -> decode_json_type(Item) end, BinList),
+  list_to_tuple(AtomList);
+decode_json_type(<<"#",X/binary>>) ->
+  {record, decode_json_type(X)};
+decode_json_type(<<"[",X/binary>>) ->
+  Skip = byte_size(X) - 1,
+  <<Y:Skip/binary, "]">> = X,
+  {list, decode_json_type(Y)};
+decode_json_type(X) ->
+  Skip = byte_size(X) - 2,
+  case X of
+    <<Y:Skip/binary, "()">> ->
+      binary_to_atom(Y, utf8);
+    <<Y:Skip/binary, "{}">> ->
+      binary_to_atom(Y, utf8);
+    Y ->
+      binary_to_atom(Y, utf8)
+  end.
+
+extract_json_field_info({NameBin, {struct, [{<<"type">>, TypeBin}]}}) ->
+  extract_json_field_info({NameBin, {struct, [{<<"default">>, []},
+                                              {<<"type">>, TypeBin}]}});
+extract_json_field_info({NameBin, {struct, [{<<"default">>, DefaultBin},
+                                            {<<"type">>, TypeBin}]}}) ->
+  Name = binary_to_atom(NameBin, utf8),
+  Type = decode_json_type(TypeBin),
+  Default = decode_json_default(DefaultBin, Type),
+  ?LOG_DEBUG("Extract JSON field info: name=~p; default=~p; type=~p",
+              [Name, Default, Type]),
+  {Name, Default, Type}.
+
+%% @doc The function returns table of properties that can be different on
+%% different nodes and this is expected, so we treat such entities as identical
+get_incomparible_fields(node) ->
+  [state_power, state_alloc, revision];
+get_incomparible_fields(_) ->
+  [].
+
+descriptions_to_recs(Ds) ->
+  descriptions_to_recs(Ds, []).
+
+descriptions_to_recs([], Recs) ->
+  Recs;
+descriptions_to_recs([{Name, AttrPairs}|T], Recs) ->
+  Rec1 = ?MODULE:new(Name),
+  Rec2 = description_to_entity(AttrPairs, Rec1),
+  descriptions_to_recs(T, [Rec2|Recs]).
+
+description_to_entity([], Rec) ->
+  Rec;
+description_to_entity([{resources,ResDescList}|T], Rec) when is_list(ResDescList) ->
+  F = fun({resource, ResAttrs}) when is_list(ResAttrs) ->
+        ResRec = ?MODULE:new(resource),
+        description_to_entity(ResAttrs, ResRec)
+      end,
+  ResRecs = lists:map(F, ResDescList),
+  Rec2 = ?MODULE:set_attr({resources, ResRecs}, Rec),
+  description_to_entity(T, Rec2);
+description_to_entity([AttrPair|T], Rec) ->
+  Rec2 = ?MODULE:set_attr(AttrPair, Rec),
+  description_to_entity(T, Rec2).
+

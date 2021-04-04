@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+circle {
+  stroke: black;
+  stroke-width: 1.0px;
+}
+
+text {
+  fill: gray;
+  font: 10px sans-serif;
+  pointer-events: none;
+}
+
+path.link {
+  fill: #000;
+  stroke: red;
+  stroke-width: 2px;
+}
+
+path.relation {
+  stroke: #E0E0E0;
+  stroke-width: 1.0px;
+}
+
+
+button {
+    position: absolute;
+    width: 110px;
+    height: 25px;
+}
+button#play {
+    margin-top: 0px;
+}
+button#stop {
+    margin-top: 28px;
+}
+
+</style>
+<body>
+
+<p>
+  <label>Metric:</label> <input type="text" value="msg_route" style="width: 90px" id="metricname"/>
+  <label>Since:</label> <input type="text" value="" style="width: 200px" id="since"/>
+  <label>To:</label> <input type="text" value="" style="width: 200px" id="to"/><br>
+</p>
+<p>
+  <button id='play' title='Run'>Play</button>
+  <button id='stop' title='Stop'>Stop</button>
+</p>
+
+<script src="//d3js.org/d3.v3.min.js"></script>
+<script src="js/connections.js"></script>
+

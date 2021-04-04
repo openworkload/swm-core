@@ -1,0 +1,53 @@
+%%
+%% Main data structures
+%%
+
+-type grid_id()         :: string().
+-type cluster_id()      :: string().
+-type partition_id()    :: string().
+-type node_id()         :: string().
+-type credential_id()   :: string().
+-type remote_id()       :: string().
+-type account_id()      :: string().
+-type session_id()      :: string().
+-type user_id()         :: string().
+-type hook_id()         :: string().
+
+%[[[cog
+%  import json, collections
+%  ordered_records = ['executable', 'hook', 'resource']
+%  json_data=open('./priv/schema.json')
+%  data = json.load(json_data, object_pairs_hook=collections.OrderedDict)
+%
+%  def out_record(x,y):
+%    props = []
+%    cog.outl("-record (" + x + ", {")
+%    for z,k in y.items():
+%      if type(k['type']) is list:
+%        t = '[' + str(k['type'][0]) + ']'
+%      else:
+%        t = str(k['type'])
+%      if u'default' in k.keys():
+%        default = str(k['default'])
+%        if not default:
+%          default = '""'
+%        elif t.strip() == "string()":
+%          default = '"' + default + '"'
+%        p = "           " + z + " = " + default + " :: " + t
+%      else:
+%        p = "           " + z + " :: " + t
+%      props.append(p)
+%    cog.outl(',\n'.join(props))
+%    cog.outl("    }).")
+%
+%  for o in ordered_records:
+%    if o in data.keys():
+%      out_record(o, data[o])
+%      del data[o]
+%
+%  for x,y in data.items():
+%    out_record(x,y)
+%
+%]]]
+%[[[end]]]
+

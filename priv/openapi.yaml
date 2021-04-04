@@ -1,0 +1,125 @@
+openapi: 3.0.3
+info:
+  description: SkyPort server
+  version: 1.0.0
+  title: OpenAPI SkyPort
+  license:
+    name: BSD 3-Clause License
+
+paths:
+  /user/job:
+    post:
+      summary: Submit a new job
+      description: 'A new job is submitted with a specific job script'
+      responses:
+        '200':
+          description: successful operation of job submission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobToSubmit'
+        '405':
+          description: Invalid input
+
+    get:
+      summary: List all jobs
+      description: >-
+        Returns list of job object
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Job'
+
+  '/user/job/{jobId}':
+    get:
+      summary: Find job by ID
+      description: Returns a single job information
+      parameters:
+        - name: jobId
+          in: path
+          description: ID of job to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          description: Invalid job ID supplied
+        '404':
+          description: Job not found
+      security:
+        - api_key: []
+
+    delete:
+      summary: Cancels a job
+      description: 'Cancels execution or pending of a job by job ID'
+      parameters:
+        - name: api_key
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          description: Job id to cancel
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '400':
+          description: Invalid job ID
+
+externalDocs:
+  description: Find out more about SkyPort
+  url: 'http://skyworkflows.com'
+
+components:
+  schemas:
+
+    JobToSubmit:
+      title: a submitting Job
+      description: A new job specification to submit
+      type: object
+      properties:
+        name:
+          type: string
+          description: Job name
+        script:
+          type: string
+          description: Content of job script
+        nodes_number:
+          type: integer
+          format: int64
+          description: Requested number of nodes
+
+    Job:
+      title: a Job
+      description: A job information that is known to SkyPort
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Job ID
+        name:
+          type: string
+          description: Job name
+        state:
+          type: string
+          description: Current job state
+          enum:
+            - R
+            - Q
+            - F

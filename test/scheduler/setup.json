@@ -1,0 +1,185 @@
+{
+  "job": [
+    {
+      "id": "1",
+      "cluster_id": 1,
+      "state": "Q",
+      "request": {
+          "resource": {"name": "node", "count": 1}
+      }
+    },
+    {
+      "id": "2",
+      "cluster_id": 1,
+      "state": "Q",
+      "duration": 120,
+      "request": {
+          "resource": {"name": "node", "count": 2},
+          "resource": {"name": "mem", "count": 8000000000}
+      }
+    }
+  ],
+
+  "cluster": [
+    {
+      "id": 1,
+      "state": "up",
+      "scheduler": 1,
+      "manager": "chead1"
+    }
+  ],
+
+  "partition": [
+    {
+      "id": 1,
+      "state": "up",
+      "jobs_per_node": 1,
+      "manager": "phead1"
+    },
+    {
+      "id": 2,
+      "state": "up",
+      "jobs_per_node": 2,
+      "manager": "phead1"
+    }
+  ],
+
+  "node": [
+    {
+      "id": 1,
+      "state_power": "up",
+      "state_alloc": "udle",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 32},
+          "resource": {"name": "mem", "count": 64000000000}
+      }
+    },
+    {
+      "id": 2,
+      "state_power": "up",
+      "state_alloc": "idle",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 32},
+          "resource": {"name": "mem", "count": 512000000000}
+      }
+    },
+    {
+      "id": 3,
+      "state_power": "up",
+      "state_alloc": "idle",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 0},
+          "resource": {"name": "mem", "count": 512000000000}
+      }
+    },
+    {
+      "id": 4,
+      "state_power": "up",
+      "state_alloc": "idle",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 64},
+          "resource": {"name": "mem", "count": 0}
+      }
+    },
+    {
+      "id": 5,
+      "state_power": "up",
+      "state_alloc": "idle",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 1}
+      }
+    },
+    {
+      "id": 6,
+      "state_power": "up",
+      "state_alloc": "busy",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 128},
+          "resource": {"name": "mem", "count": 512000000000}
+      }
+    },
+    {
+      "id": 7,
+      "state_power": "down",
+      "state_alloc": "offline",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 128},
+          "resource": {"name": "mem", "count": 512000000000}
+      }
+    },
+    {
+      "id": 8,
+      "state_power": "down",
+      "state_alloc": "idle",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 128},
+          "resource": {"name": "mem", "count": 512000000000}
+      }
+    },
+
+    {
+      "id": 11,
+      "state_power": "up",
+      "state_alloc": "idle",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 128},
+          "resource": {"name": "mem", "count": 512000000000}
+      }
+    },
+    {
+      "id": 12,
+      "state_power": "up",
+      "state_alloc": "idle",
+      "parent": "phead1",
+      "resources": {
+          "resource": {"name": "cpu", "count": 128},
+          "resource": {"name": "mem", "count": 512000000000}
+      }
+    }
+  ],
+
+  "rh": [
+    {
+      "cluster": 1,
+      "sub": [
+        {
+          "partition": 1,
+          "sub": [
+            {"node": 1},
+            {"node": 2},
+            {"node": 3},
+            {"node": 4},
+            {"node": 5},
+            {"node": 6},
+            {"node": 7},
+            {"node": 8}
+          ]
+        },
+        {
+          "partition": 2,
+          "sub": [
+            {"node": 11},
+            {"node": 12}
+          ]
+        }
+      ]
+    }
+  ],
+
+  "scheduler": [
+    {
+      "id": 1,
+      "name": "fcfs",
+      "state": "up"
+    }
+  ]
+}

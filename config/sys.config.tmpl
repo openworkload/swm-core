@@ -1,0 +1,24 @@
+[
+    {kernel, [
+        {inet_dist_listen_min, 50000},
+        {inet_dist_listen_max, 50256},
+
+        {inet_default_connect_options, [
+            {nodelay, true}
+        ]}
+    ]},
+
+    {mnesia, [
+        {dir, "${SWM_MNESIA_DIR}"}
+    ]},
+
+    %% SASL config
+    {sasl, [
+        {sasl_error_logger, {file, "${SWM_LOG_DIR}/sasl.log"}},
+        {errlog_type, error},
+        {error_logger_mf_dir, "${SWM_LOG_DIR}/sasl"},
+        {error_logger_mf_maxbytes, 10485760},
+        {error_logger_mf_maxfiles, 5}
+    ]}
+].
+

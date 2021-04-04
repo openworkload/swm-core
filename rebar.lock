@@ -1,0 +1,32 @@
+{"1.1.0",
+[{<<"bear">>,{pkg,<<"bear">>,<<"0.8.5">>},1},
+ {<<"cowboy">>,{pkg,<<"cowboy">>,<<"2.1.0">>},0},
+ {<<"cowlib">>,{pkg,<<"cowlib">>,<<"2.0.1">>},1},
+ {<<"folsom">>,{pkg,<<"folsom">>,<<"0.8.5">>},0},
+ {<<"gun">>,{pkg,<<"gun">>,<<"2.0.0-rc.1">>},0},
+ {<<"json_rec">>,
+  {git,"https://github.com/justinkirby/json_rec.git",
+       {ref,"8c72324e0f6fca8534ca733f8af03d4808f7e3be"}},
+  0},
+ {<<"jsx">>,{pkg,<<"jsx">>,<<"2.8.3">>},0},
+ {<<"jwalk">>,{pkg,<<"jwalk">>,<<"1.1.3">>},0},
+ {<<"meck">>,{pkg,<<"meck">>,<<"0.8.12">>},0},
+ {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"3.1.0">>},0},
+ {<<"ranch">>,{pkg,<<"ranch">>,<<"1.4.0">>},1},
+ {<<"recon">>,{pkg,<<"recon">>,<<"2.3.2">>},0},
+ {<<"sync">>,{pkg,<<"sync">>,<<"0.1.3">>},0}]}.
+[
+{pkg_hash,[
+ {<<"bear">>, <<"E95FCA1627CD9E15BAF93CE0A52AFF16917BAF325F0EE65B88CD715376CD2344">>},
+ {<<"cowboy">>, <<"69F9DB3B23C24AB6B3A169A6357130C16B39CDA1A1F8C582F818883EE552589D">>},
+ {<<"cowlib">>, <<"4DFFFB1DB296EAB9F2E8B95EE3017007F674BC920CE30AEB5A53BBDA82FC38C0">>},
+ {<<"folsom">>, <<"94A027B56FE84FEED264F9B33CB4C6AC9A801FAD84B87DBDA0836CE83C3B8D69">>},
+ {<<"gun">>, <<"B87D81DAD83F41FA3F2CBF1A923EAE44C5CE559A7006728D47888C3E7EB7A6CE">>},
+ {<<"jsx">>, <<"A05252D381885240744D955FBE3CF810504EB2567164824E19303EA59EEF62CF">>},
+ {<<"jwalk">>, <<"46A562C2F7DB24EB96F041E760024B5F287A8E3F5073CD2AA9870D529ED7666F">>},
+ {<<"meck">>, <<"1F7B1A9F5D12C511848FEC26BBEFD09A21E1432EADB8982D9A8ACEB9891A3CF2">>},
+ {<<"parse_trans">>, <<"1BAD3B959941CC53FFD6F4769A5D2666F9CDF179B2D62826636497D3FBAD9EC0">>},
+ {<<"ranch">>, <<"10272F95DA79340FA7E8774BA7930B901713D272905D0012B06CA6D994F8826B">>},
+ {<<"recon">>, <<"4444C879BE323B1B133EEC5241CB84BD3821EA194C740D75617E106BE4744318">>},
+ {<<"sync">>, <<"C5785FE1311542B76355F403B8E0B35E30DBBEE1F5E89968748CEA4D0A20D289">>}]}
+].

@@ -1,0 +1,69 @@
+## Name of the node
+-name ${SWM_SNAME}
+
+## Cookie for distributed erlang
+-setcookie ${SWM_COOKIE}
+
+## Heartbeat management; auto-restarts VM if it dies or becomes unresponsive
+## (Disabled by default..use with caution!)
+##-heart
+
+## Enable kernel poll and a few async threads
++K true
++A 32
+
+## Distribution buffer busy limit (dist_buf_busy_limit)
++zdbbl 8192
+
+## Sets mapping for warning messages
++W w
+
+## When N1 connects to node N2 (which is already connected to N3), the global name servers
+## on the nodes N1 and N3 ensure that also N1 and N3 are connected.
+## Don't maintain a fully connected network
+-connect_all false
+
+## Hidden nodes always establish hidden connections to all other nodes except for nodes
+## in the same global group. Hidden connections are not published on any of the connected nodes
+-hidden
+
+## Use TLS for erlang distribution
+-proto_dist inet_tls
+
+-ssl_dist_opt server_cacertfile             ${SWM_SPOOL}/secure/cluster/cert.pem
+-ssl_dist_opt server_certfile               ${SWM_SPOOL}/secure/node/cert.pem
+-ssl_dist_opt server_keyfile                ${SWM_SPOOL}/secure/node/key.pem
+##-ssl_dist_opt server_depth                1
+##-ssl_dist_opt server_verify               verify_peer
+##-ssl_dist_opt server_fail_if_no_peer_cert true
+
+-ssl_dist_opt client_cacertfile             ${SWM_SPOOL}/secure/cluster/cert.pem
+-ssl_dist_opt client_certfile               ${SWM_SPOOL}/secure/node/cert.pem
+-ssl_dist_opt client_keyfile                ${SWM_SPOOL}/secure/node/key.pem
+##-ssl_dist_opt client_depth                1
+##-ssl_dist_opt client_verify               verify_peer
+##-ssl_dist_opt client_fail_if_no_peer_cert true
+
+## Use ssh for starting a slave node on a remote host
+-rsh ssh
+
+## Increase number of concurrent ports/sockets
+##-env ERL_MAX_PORTS 4096
+
+## Tweak GC to run more often
+##-env ERL_FULLSWEEP_AFTER 10
+
+## Application libraries
+-env ERL_LIBS           ${SWM_ROOT}
+
+## File where crash dump to be written
+-env ERL_CRASH_DUMP     ${SWM_ROOT}/erl_crash.dump
+
+-env SWM_ROOT           ${SWM_ROOT}
+-env SWM_SPOOL          ${SWM_SPOOL}
+
+-env SWM_SNAME          ${SWM_SNAME}
+-env SWM_PARENT_SNAME   ${SWM_PARENT_SNAME}
+
+-env SWM_API_PORT       ${SWM_API_PORT}
+

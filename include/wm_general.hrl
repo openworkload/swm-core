@@ -1,0 +1,1 @@
+-define(NETWORK_LATENCY_MCS, 1000).

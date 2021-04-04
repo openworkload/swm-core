@@ -1,0 +1,45 @@
+##############################################################################
+# This is a configuration file that defines default parameters for SWM setup #
+# utility. Any of the parameters can be set as environment variable before   #
+# the setup utility is called. If no environment variables are defined and   #
+# no parameters are set in this configuration file then the setup utility    #
+# will ask for the parameters interactively.                                 #
+##############################################################################
+
+# A base directory for version directories are located
+#SWM_ROOT = "/opt/swm"
+
+# The daemons spool directory path. It requires rw access permission for root.
+#SWM_SPOOL = "/opt/swm/spool"
+
+# A TCP/IP port that will be used to access SWM API.
+#SWM_API_PORT = 10001
+
+# A grid manager vnode name. If {HOSTNAME} is specified, then it will be
+# replaced to the hostname of the host where the setup script is executed.
+#SWM_SNAME = ghead@{HOSTNAME}
+
+# A grid manager host name. If {HOSTNAME} is specified, then it will be
+# replaced to the hostname of the host where the setup script is executed.
+SWM_HOST = {HOSTNAME}
+
+# When a new CA or a certificate is generated the unit name is required.
+SWM_UNIT_NAME = "Development Department"
+
+# When a new CA or a certificate is generated the organization name is required.
+SWM_ORG_NAME = "Organization"
+
+# When a new CA or a certificate is generated the locality name is required.
+SWM_LOCALITY = "EN"
+
+# When a new CA or a certificate is generated the country name is required.
+SWM_COUNTRY = "US"
+
+# Administrator user name
+SWM_ADMIN_USER = "{USER}"
+
+# When a new CA or a certificate is generated the email is required.
+# If {USER} is used in the email, then it will be replaced to the particular
+# user who the certificate is created for. In case if CA, cluster or node
+# certificate is generated, then {USER} is always replaced to root.
+SWM_ADMIN_EMAIL = "{USER}@localhost"
