@@ -4,7 +4,10 @@
 
 -include("../lib/wm_log.hrl").
 
-%TODO When DB does not exist we need to define default global values in a file
+%TODO: When DB does not exist we need to define default global values in a file
+%TODO: Implement batch JSON-RPC calls
+%TODO: Return JSON-RPC errors
+
 -define(DEFAULT_CERT_DIR, "/opt/swm/spool/secure/node/").
 
 %% ============================================================================
