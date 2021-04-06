@@ -2,9 +2,9 @@
 # This Dockerfile can be used to prepare a Docker image that contains #
 # everything required for SWM build (including Erlang).               #
 # Example:                                                            #
-# cd ~/projects/swm/priv/build                                        #
+# cd ~/projects/swm-core/priv/build                                   #
 # docker build -t swm-build:22.3 .                                    #
-# cd ~projects/swm                                                    #
+# cd ~projects/swm-core                                               #
 # docker run -v `pwd`:/tmp/swm -ti swm-build:22.3 \                   #
 #  /bin/bash -c "make && make release"                                #
 #######################################################################
@@ -100,4 +100,3 @@ RUN git clone https://github.com/google/googletest &&\
     make install
 
 WORKDIR /tmp/swm
-

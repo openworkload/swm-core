@@ -880,9 +880,7 @@ extract_json_field_info({NameBin, {struct, [{<<"default">>, DefaultBin}, {<<"typ
     Name = binary_to_atom(NameBin, utf8),
     Type = decode_json_type(TypeBin),
     Default = decode_json_default(DefaultBin, Type),
-    ?LOG_DEBUG("Extract JSON field info: name=~p; default=~p; "
-               "type=~p",
-               [Name, Default, Type]),
+    ?LOG_DEBUG("Extract JSON field info: name=~p; default=~p; type=~p", [Name, Default, Type]),
     {Name, Default, Type}.
 
 %% @doc The function returns table of properties that can be different on

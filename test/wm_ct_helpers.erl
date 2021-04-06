@@ -47,7 +47,7 @@ kill_gate_system_process() ->
     SysPid =
         string:trim(
             os:cmd("cat /var/tmp/swm-cloud-gate.pid")),
-    Command = io_lib:format("kill -15 ~p", [SysPid]),
+    Command = io_lib:format("kill -2 ~p", [SysPid]),
     os:cmd(Command).
 
 -spec get_fsm_state_name(pid()) -> {ok, atom()}.

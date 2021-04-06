@@ -137,6 +137,7 @@ list_partitions(_Config) ->
     Result = wm_utils:await(list_partitions, Ref, 2000),
     ?assertMatch({list_partitions, Ref, _}, Result),
     {_, _, Partitions} = Result,
+    ct:print("Partitions: ~p", [Partitions]),
     ?assertEqual(2, length(Partitions)),
     Part1 = lists:nth(1, Partitions),
     Part2 = lists:nth(2, Partitions),
@@ -176,7 +177,7 @@ create_partition(_Config) ->
           key_name => "key1",
           count => 1},
     {ok, Ref1} = wm_gate:create_partition(self(), get_remote(), get_creds(), Options),
-    ?assertMatch({create_partition, Ref1, a}, wm_utils:await(create_partition, Ref1, 2000)).
+    ?assertMatch({create_partition, Ref1, _}, wm_utils:await(create_partition, Ref1, 2000)).
 
 -spec delete_partition(list()) -> atom().
 delete_partition(_Config) ->
