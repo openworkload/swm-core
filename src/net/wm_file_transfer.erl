@@ -69,7 +69,6 @@ start_link(Args) ->
 %% @end
 -spec copy(atom(), string(), pos_integer(), file:filename() | [file:filename()], file:filename(), #{}) -> {ok, list()}.
 copy(CallbackModule, Node, Priority, Source, Destination, Opts) ->
-    %FIXME: either remove or export the function
     {ok, _Ref} = gen_server:call(?MODULE, {enqueue, CallbackModule, Node, Priority, Source, Destination, Opts}).
 
 -spec upload(atom(), string(), pos_integer(), file:filename() | [file:filename()], file:filename(), #{}) ->
