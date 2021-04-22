@@ -177,12 +177,12 @@ create_partition(_Config) ->
           key_name => "key1",
           count => 1},
     {ok, Ref1} = wm_gate:create_partition(self(), get_remote(), get_creds(), Options),
-    ?assertMatch({create_partition, Ref1, _}, wm_utils:await(create_partition, Ref1, 2000)).
+    ?assertMatch({partition_created, Ref1, _}, wm_utils:await(partition_created, Ref1, 2000)).
 
 -spec delete_partition(list()) -> atom().
 delete_partition(_Config) ->
     {ok, Ref1} = wm_gate:delete_partition(self(), get_remote(), get_creds(), "s2"),
-    ?assertMatch({delete_partition, Ref1, "Deletion started"}, wm_utils:await(delete_partition, Ref1, 2000)).
+    ?assertMatch({partition_deleted, Ref1, "Deletion started"}, wm_utils:await(partition_deleted, Ref1, 2000)).
 
 -spec partition_exists(list()) -> atom().
 partition_exists(_Config) ->

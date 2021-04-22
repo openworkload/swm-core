@@ -86,12 +86,12 @@ init(Args) ->
 
 handle_call({create_partition, CallbackModule, Remote, Creds, Options}, From, MState = #mstate{spool = Spool}) ->
     handle_http_call(fun() -> do_partition_create(Remote, Creds, Spool, Options) end,
-                     create_partition,
+                     partition_created,
                      CallbackModule,
                      MState);
 handle_call({delete_partition, CallbackModule, PartExtId, Remote, Creds}, From, MState = #mstate{spool = Spool}) ->
     handle_http_call(fun() -> do_partition_delete(Remote, Creds, PartExtId, Spool) end,
-                     delete_partition,
+                     partition_deleted,
                      CallbackModule,
                      MState);
 handle_call({partition_exists, CallbackModule, PartExtId, Remote, Creds}, From, MState = #mstate{spool = Spool}) ->
