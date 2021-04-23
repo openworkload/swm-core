@@ -218,13 +218,20 @@ downloading_done(Config) ->
 part_destraction_in_progress(Config) ->
     Pid = proplists:get_value(virtres_pid, Config),
     WaitRef = proplists:get_value(wait_ref, Config),
+    PartExtId = proplists:get_value(part_ext_id, Config),
 
-    ok = gen_fsm:send_event(Pid, {delete_in_progress, WaitRef, ok}),
+    ok = gen_fsm:send_event(Pid, {delete_in_progress, WaitRef, PartExtId}),
     ?assertEqual(destroying, gen_fsm:sync_send_all_state_event(Pid, get_current_state)).
 
 -spec deactivate(list()) -> atom().
 deactivate(Config) ->
-    todo.
+    Pid = proplists:get_value(virtres_pid, Config),
+    WaitRef = proplists:get_value(wait_ref, Config),
+    PartExtId = proplists:get_value(part_ext_id, Config),
+
+    ?assertEqual(true, is_process_alive(Pid)),
+    ok = gen_fsm:send_event(Pid, {partition_deleted, WaitRef, PartExtId}),
+    ?assert(lists:any(fun(_) -> timer:sleep(500), not is_process_alive(Pid) end, lists:seq(1, 10))).
 
 -spec part_exists_detete(list()) -> atom().
 part_exists_detete(_Config) ->
