@@ -1,8 +1,8 @@
 -module(wm_virtres_handler).
 
--export([check_if_partition_created/2, request_partition_existence/2, is_job_partition_ready/1, update_job/2,
-         start_uploading/2, start_downloading/2, delete_partition/2, spawn_partition/2, add_entities_to_conf/4,
-         wait_for_wm_resources_readiness/0, remove_relocation_entities/1]).
+-export([get_remote/1, check_if_partition_created/2, request_partition_existence/2, is_job_partition_ready/1,
+         update_job/2, start_uploading/2, start_downloading/2, delete_partition/2, spawn_partition/2,
+         add_entities_to_conf/4, wait_for_wm_resources_readiness/0, remove_relocation_entities/1]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
@@ -13,6 +13,13 @@
 %% ============================================================================
 %% Module API
 %% ============================================================================
+
+-spec get_remote(string()) -> {ok, #remote{}}.
+get_remote(JobId) ->
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    AccountID = wm_entity:get_attr(account_id, Job),
+    ?LOG_INFO("Validate partition (job: ~p, account: ~p)", [JobId, AccountID]),
+    wm_conf:select(remote, {account_id, AccountID}).
 
 -spec remove_relocation_entities(string()) -> atom().
 remove_relocation_entities(JobId) ->

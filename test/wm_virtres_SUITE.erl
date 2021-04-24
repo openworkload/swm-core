@@ -1,10 +1,10 @@
 -module(wm_virtres_SUITE).
 
--export([suite/0, all/0, groups/0, init_per_group/2, end_per_group/2]).
--export([add_wm_conf_mocks/0]). % for debug
+-export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1, init_per_group/2, end_per_group/2]).
 -export([activate/1, part_absent_create/1, part_creation_in_progress/1, part_creation_done/1,
          uploading_is_about_to_start/1, uploading_started/1, uploading_done/1, downloading_started/1,
-         downloading_done/1, part_exists_detete/1, part_destraction_in_progress/1, deactivate/1]).
+         downloading_done/1, part_destraction_in_progress/1, deactivate/1]).
+-export([part_exists_detete/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -38,26 +38,27 @@ groups() ->
        downloading_done,
        part_destraction_in_progress,
        deactivate]},
-     {delete_partition, [], [activate, part_exists_detete]}].
+     {delete_partition, [], [activate, part_exists_detete, deactivate]}].
 
--spec init_per_group(atom(), list()) -> list() | {skip, term()}.
+-spec init_per_suite(list()) -> list() | {skip, any()}.
+init_per_suite(Config) ->
+    meck:new(wm_virtres_handler, [no_link]),
+    Config.
+
+-spec end_per_suite(list()) -> term() | {save_config, any()}.
+end_per_suite(Config) ->
+    ok.
+
+-spec init_per_group(atom(), list()) -> list() | {skip, list()}.
 init_per_group(create_partition, Config) ->
     init_test_group(create, Config);
-init_per_group(delete_partition, _) ->
-    {skip, "Not implemented"}.
-
-  %init_test_group(destroy, Config).
+init_per_group(delete_partition, Config) ->
+    init_test_group(destroy, Config).
 
 -spec end_per_group(atom(), list()) -> list().
 end_per_group(_, Config) ->
-    ok = application:stop(gun),
-    wm_ct_helpers:kill_gate_system_process(),
     erlang:exit(
         proplists:get_value(virtres_pid, Config), kill),
-    erlang:exit(
-        proplists:get_value(gate_pid, Config), kill),
-    erlang:exit(
-        proplists:get_value(gate_runner_pid, Config), kill),
     Config.
 
 %% ============================================================================
@@ -66,40 +67,22 @@ end_per_group(_, Config) ->
 
 -spec init_test_group(atom(), list()) -> list().
 init_test_group(Action, Config) ->
-    {ok, GateRunnerPid} = wm_ct_helpers:run_gate_system_process(),
-    {ok, _} = application:ensure_all_started(gun),
-    {ok, GatePid} = wm_gate:start([{spool, "/opt/swm/spool/"}]),
     JobId = wm_utils:uuid(v4),
     WaitRef = wm_utils:uuid(v4),
     PartExtId = wm_utils:uuid(v4),
     PartMgrNodeId = wm_utils:uuid(v4),
     TemplateNode = wm_entity:set_attr([{name, "cloud1-flavor1"}, {is_template, true}], wm_entity:new(node)),
-    add_wm_conf_mocks(),
-    meck:new(wm_virtres_handler, [no_link]),
+
+    Remote = wm_entity:set_attr([{id, wm_utils:uuid(v4)}], wm_entity:new(remote)),
+    meck:expect(wm_virtres_handler, get_remote, fun(X) when X == JobId -> {ok, Remote} end),
+
     {ok, VirtResPid} = wm_virtres:start([{extra, {Action, JobId, TemplateNode}}, {task_id, wm_utils:uuid(v4)}]),
     [{part_ext_id, PartExtId},
      {wait_ref, WaitRef},
      {job_id, JobId},
      {part_mgr_node_id, PartMgrNodeId},
-     {gate_runner_pid, GateRunnerPid},
-     {gate_pid, GatePid},
      {virtres_pid, VirtResPid}]
     ++ Config.
-
--spec add_wm_conf_mocks() -> atom().
-add_wm_conf_mocks() ->
-    meck:new(wm_conf, [no_link]),
-    Select =
-        fun (job, {id, JOB_ID}) ->
-                {ok, wm_entity:set_attr([{account_id, "123"}, {id, JOB_ID}], wm_entity:new(job))};
-            (remote, {account_id, ACC_ID}) ->
-                {ok, wm_entity:set_attr([{id, wm_utils:uuid(v4)}, {account_id, ACC_ID}], wm_entity:new(remote))};
-            (credential, {remote_id, REMOTE_ID}) ->
-                {ok, wm_entity:set_attr([{id, wm_utils:uuid(v4)}, {remote_id, REMOTE_ID}], wm_entity:new(credential))};
-            (_, _) ->
-                {error, not_found_ct}
-        end,
-    meck:expect(wm_conf, select, Select).
 
 %% ============================================================================
 %% Tests
@@ -229,10 +212,18 @@ deactivate(Config) ->
     WaitRef = proplists:get_value(wait_ref, Config),
     PartExtId = proplists:get_value(part_ext_id, Config),
 
-    ?assertEqual(true, is_process_alive(Pid)),
+    ?assert(is_process_alive(Pid)),
     ok = gen_fsm:send_event(Pid, {partition_deleted, WaitRef, PartExtId}),
-    ?assert(lists:any(fun(_) -> timer:sleep(500), not is_process_alive(Pid) end, lists:seq(1, 10))).
+    ?assert(lists:any(fun(_) ->
+                         timer:sleep(500),
+                         not is_process_alive(Pid)
+                      end,
+                      lists:seq(1, 10))).
 
 -spec part_exists_detete(list()) -> atom().
-part_exists_detete(_Config) ->
-    todo.
+part_exists_detete(Config) ->
+    Pid = proplists:get_value(virtres_pid, Config),
+    WaitRef = proplists:get_value(wait_ref, Config),
+
+    ok = gen_fsm:send_event(Pid, {partition_exists, WaitRef, true}),
+    ?assertEqual(destroying, gen_fsm:sync_send_all_state_event(Pid, get_current_state)).

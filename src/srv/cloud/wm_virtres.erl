@@ -70,7 +70,7 @@ init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     JobId = MState#mstate.job_id,
-    case get_remote(JobId) of
+    case wm_virtres_handler:get_remote(JobId) of
         {ok, Remote} ->
             ?LOG_INFO("Virtual resources manager has been started, remote: ~p", [wm_entity:get_attr(name, Remote)]),
             wm_factory:notify_initiated(virtres, MState#mstate.task_id),
@@ -251,13 +251,6 @@ destroying({Ref, Status}, MState) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
-
--spec get_remote(string()) -> {ok, #remote{}}.
-get_remote(JobId) ->
-    {ok, Job} = wm_conf:select(job, {id, JobId}),
-    AccountID = wm_entity:get_attr(account_id, Job),
-    ?LOG_INFO("Validate partition (job: ~p, account: ~p)", [JobId, AccountID]),
-    wm_conf:select(remote, {account_id, AccountID}).
 
 handle_remote_failure(#mstate{job_id = JobId, task_id = TaskId} = MState) ->
     ?LOG_INFO("Force state ~p for job ~p [~p]", [?JOB_STATE_QUEUED, JobId, TaskId]),
