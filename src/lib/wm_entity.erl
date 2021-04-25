@@ -477,9 +477,9 @@ get_type(test, Attr) when is_atom(Attr) ->
   end.
 
 get_names(all) -> ?ENTITIES;
-get_names(local) -> [job, session];
+get_names(local) -> [job];
 get_names(local_bag) -> [subscriber, timetable];
-get_names(non_replicable) -> [schema, subscriber, timetable, job, session];
+get_names(non_replicable) -> [schema, subscriber, timetable, job];
 get_names(with_ids) ->
   [malfunction, hook, grid, cluster, partition, node, service, role, job, project, group, user, queue, scheduler, image, credential, remote, account, test].
 

@@ -61,7 +61,6 @@
 %       "credential_id()": "string",
 %       "remote_id()": "string",
 %       "account_id()": "string",
-%       "session_id()": "string",
 %       "user_id()": "string",
 %       "grid_id()": "string",
 %       "cluster_id()": "string",
@@ -99,9 +98,9 @@
 %  cog.outl('')
 %
 %  cog.outl('get_names(all) -> ?ENTITIES;')
-%  cog.outl('get_names(local) -> [job, session];')
+%  cog.outl('get_names(local) -> [job];')
 %  cog.outl('get_names(local_bag) -> [subscriber, timetable];')
-%  cog.outl('get_names(non_replicable) -> [schema, subscriber, timetable, job, session];')
+%  cog.outl('get_names(non_replicable) -> [schema, subscriber, timetable, job];')
 %  cog.outl('get_names(with_ids) ->')
 %  cog.outl('  [' + ', '.join(withids) + '].')
 %  cog.outl('')

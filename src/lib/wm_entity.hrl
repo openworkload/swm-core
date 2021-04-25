@@ -9,7 +9,6 @@
 -type credential_id()   :: string().
 -type remote_id()       :: string().
 -type account_id()      :: string().
--type session_id()      :: string().
 -type user_id()         :: string().
 -type hook_id()         :: string().
 
