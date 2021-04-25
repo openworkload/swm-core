@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, start/1]).
+-export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([create_partition/4, delete_partition/4, partition_exists/4, get_partition/4, list_partitions/3]).
 -export([list_images/3, get_image/4]).
@@ -20,10 +20,6 @@
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
-
--spec start([term()]) -> {ok, pid()} | ignore | {error, term()}.
-start(Args) ->
-    gen_server:start({local, ?MODULE}, ?MODULE, Args, []).
 
 -spec create_partition(atom() | pid(), #remote{}, #credential{}, map()) -> {ok, string()}.
 create_partition(CallbackModule, Remote, Creds, Options) ->

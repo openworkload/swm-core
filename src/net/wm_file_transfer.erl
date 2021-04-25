@@ -41,7 +41,7 @@
 %% Module API
 %% ============================================================================
 
--spec start_link([term()]) -> {ok, pid()}.
+-spec start_link([term()]) -> {ok, pid()} | ignore | {error, term()}.
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
@@ -83,7 +83,7 @@ download(CallbackModule, Node, Priority, Source, Destination, Opts) ->
 
 -spec discontinue(atom(), list(), boolean()) -> {ok, list()}.
 discontinue(CallbackModule, Ref, CleanDest) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {discontinue, CallbackModule, Ref, CleanDest}).
+    {ok, _Ref} = gen_server:call(?MODULE, {discontinue, CallbackModule, Ref, CleanDest}, 20000).
 
 -spec get_transfers() -> {ok, [list()]}.
 get_transfers() ->
@@ -111,8 +111,7 @@ create_symlink(ServerRef, Src, Dst) ->
     case wm_utils:protected_call(ServerRef, {create_symlink, Src, Dst}) of
         ok ->
             ok;
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, {Src, Dst}, wm_posix_utils:errno(Reason)};
         {error, {Src, Dst}, PosixReason} = Error ->
             Error
@@ -131,8 +130,7 @@ open_file(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {open_file, File}) of
         {ok, Fd} ->
             {ok, Fd};
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -159,8 +157,7 @@ delete_file(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {delete_file, File}) of
         ok ->
             ok;
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -183,8 +180,7 @@ create_directory(ServerRef, File) ->
             ok;
         exist ->
             exist;
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -203,8 +199,7 @@ list_directory(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {list_directory, File}) of
         {ok, Xs} ->
             {ok, Xs};
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -216,8 +211,7 @@ delete_directory(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(Connection
     case wm_ssh_sftp_ext:command(ConnectionRef, {delete_directory, File}) of
         ok ->
             ok;
-        {error,
-         Reason} -> %% ssh_connection subsystem error -> {error, Reason}
+        {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -226,8 +220,7 @@ delete_directory(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {delete_directory, File}) of
         ok ->
             ok;
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -251,8 +244,7 @@ get_file_info(ServerRef, File) ->
             {ok,
              Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid),
                             uid = wm_utils:to_integer(Info#file_info.uid)}};
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -277,8 +269,7 @@ set_file_info(ServerRef, File, Info) ->
     case wm_utils:protected_call(ServerRef, {set_file_info, File, Info}) of
         ok ->
             ok;
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -290,8 +281,7 @@ file_size(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) an
     case wm_ssh_sftp_ext:command(ConnectionRef, {file_size, File}) of
         {ok, Bytes} ->
             {ok, Bytes};
-        {error,
-         Reason} -> %% ssh_connection subsystem error -> {error, Reason}
+        {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, _Code, Msg} = Error ->
             %% TODO: investigate why file size can produce {error, 47, "Operation not permitted (POSIX.1-2001)."}
@@ -303,8 +293,7 @@ file_size(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {file_size, File}) of
         {ok, Bytes} ->
             {ok, Bytes};
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -316,8 +305,7 @@ md5sum(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andal
     case wm_ssh_sftp_ext:command(ConnectionRef, {md5sum, File}) of
         {ok, Hash} ->
             {ok, Hash};
-        {error,
-         Reason} -> %% ssh_connection subsystem error -> {error, Reason}
+        {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -340,8 +328,7 @@ md5sum(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {md5sum, File}) of
         yield ->
             F();
-        {error,
-         Reason} -> %% gen_server exception -> {error, Reason}
+        {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
         {error, File, PosixReason} = Error ->
             Error
@@ -385,8 +372,8 @@ handle_call({md5sum, File}, From, MState) ->
                             yield ->
                                 FromPid ! yield,
                                 Receive();
-                            Result ->
-                                FromPid ! Result
+                            {ok, Result} ->
+                                FromPid ! {ok, Result}
                         after 30000 ->
                             %% silently timeout
                             %% let final receiver decide to do

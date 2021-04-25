@@ -57,8 +57,7 @@ init_per_group(delete_partition, Config) ->
 
 -spec end_per_group(atom(), list()) -> list().
 end_per_group(_, Config) ->
-    erlang:exit(
-        proplists:get_value(virtres_pid, Config), kill),
+    erlang:exit(proplists:get_value(virtres_pid, Config), kill),
     Config.
 
 %% ============================================================================

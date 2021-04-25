@@ -7,7 +7,7 @@
          get_short_name/1, get_address/1, get_job_user/1, is_module_loaded/1, encode_to_binary/1, decode_from_binary/1,
          get_calling_module_name/0, map_to_list/1, terminate_msg/2, match_floats/3, read_file/2, read_stdin/0,
          make_jobs_c_decodable/1, make_nodes_c_decodable/1, is_manager/1, has_role/2, get_behaviour/1, cast/2,
-         await/3]).
+         await/3, await/2]).
 -export([do/2, itr/2]).
 -export([host_port_uri/1, path_query_uri/1]).
 -export([named_substitution/2]).
@@ -670,7 +670,7 @@ cast(Process, Msg) ->
             ok
     end.
 
-%% @doc Waits for a message from reference for Ms number of milliseconds
+%% @doc Waits for a labeled message from reference for Ms number of milliseconds
 -spec await(pid() | atom(), atom(), integer()) -> atom().
 await(Ref, Label, Ms) ->
     receive
@@ -680,4 +680,17 @@ await(Ref, Label, Ms) ->
             Otherwise
     after Ms ->
         timeout
+    end.
+
+%% @doc Waits for a message from reference for Ms number of milliseconds
+-spec await(pid() | atom(), integer()) -> term().
+await(Ref, Ms) ->
+    receive
+        {Ref, ok} ->
+            ok;
+        Otherwise ->
+            Otherwise
+    after
+        Ms ->
+            timeout
     end.

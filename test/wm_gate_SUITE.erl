@@ -9,6 +9,8 @@
 
 -include("../src/lib/wm_entity.hrl").
 
+-define(SWM_SPOOL, "/opt/swm/spool/").
+
 %% ============================================================================
 %% Common test callbacks
 %% ============================================================================
@@ -39,18 +41,17 @@ init_per_suite(Config) ->
 end_per_suite(Config) ->
     ok = application:stop(gun),
     wm_ct_helpers:kill_gate_system_process(),
-    erlang:exit(
-        proplists:get_value(gate_runner_pid, Config), kill),
+    erlang:exit(proplists:get_value(gate_runner_pid, Config), kill),
     Config.
 
-init_per_testcase(_, _Config) ->
-    {ok, GatePid} = wm_gate:start_link([{spool, "/opt/swm/spool/"}]),
-    ct:print("Gate has been started: ~p", [GatePid]),
-    _Config.
+init_per_testcase(_, Config) ->
+    {ok, Pid} = wm_gate:start_link([{spool, ?SWM_SPOOL}]),
+    ct:print("Gate has been started: ~p", [Pid]),
+    [{wm_gate_pid, Pid} | Config].
 
-end_per_testcase(_, _Config) ->
-    %TODO terminate wm_gate
-    _Config.
+end_per_testcase(_, Config) ->
+    %erlang:exit(proplists:get_value(wm_gate_pid, Config), kill),
+    Config.
 
 %% ============================================================================
 %% Helpers

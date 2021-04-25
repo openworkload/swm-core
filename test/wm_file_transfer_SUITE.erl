@@ -1,11 +1,13 @@
 -module(wm_file_transfer_SUITE).
 
--export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
+-export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1]).
 -export([transfer_empty/1, transfer_dir/1, transfer_file/1, transfer_long_dir_file/1, transfer_with_discontinue/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/file.hrl").
+
+-define(SWM_SPOOL, "/opt/swm/spool/").
 
 suite() ->
     [{timetrap, {seconds, 260}}].
@@ -17,17 +19,22 @@ groups() ->
     [{common, [], [transfer_empty, transfer_dir, transfer_file, transfer_long_dir_file, transfer_with_discontinue]}].
 
 init_per_suite(Config) ->
-    Result = application:ensure_all_started(swm),
-    ct:print("Application swm has been started: ~p", [Result]),
-    Config.
+    ResultSsh = application:start(ssh),
+    ct:print("Application ssh has been started: ~p", [ResultSsh]),
+
+    meck:new(wm_conf, [no_link]),
+    meck:expect(wm_conf, g, fun(_, {X, _}) -> X end),
+
+    true = os:putenv("SWM_SPOOL", ?SWM_SPOOL),
+    true = os:putenv("SWM_VERSION", "1"),
+
+    {ok, Pid} = gen_server:start({local, wm_file_transfer}, wm_file_transfer, [{spool, ?SWM_SPOOL}], []),
+    ct:print("wm_file_transfer started: ~p", [Pid]),
+    [{pid, Pid}] ++ Config.
 
 end_per_suite(Config) ->
-    Config.
-
-init_per_testcase(_, Config) ->
-    Config.
-
-end_per_testcase(_, Config) ->
+    ok = application:stop(ssh),
+    erlang:exit(proplists:get_value(pid, Config), kill),
     Config.
 
 transfer_empty(Config) ->
@@ -323,6 +330,7 @@ transfer_with_discontinue(Config) ->
     %%----------------------------------
     %% UPLOAD
     %%----------------------------------
+    %TODO: test downloading discontinue
     SrcDir = (create_directory(Src, [create_directory(rand(), [create_file(rand(), 100)])]))(BaseDir),
     DstDir = (create_directory(Dst, []))(BaseDir),
     {ok, Ref3} = wm_file_transfer:upload(self(), "localhost", 1, SrcDir ++ "/", DstDir, #{via => ssh}),
