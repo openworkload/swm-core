@@ -76,7 +76,7 @@ test_unit:		##@TESTS Run unit erlang tests
 			$(REBAR) eunit skip_deps=true
 
 test_ct:		##@TESTS Run common erlang tests
-			$(REBAR) ct --suite=test
+			$(REBAR) ct --dir test
 
 ftest:		##@TESTS Run functional tests
 			scripts/swm.env
