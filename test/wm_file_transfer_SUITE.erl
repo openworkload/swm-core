@@ -34,7 +34,8 @@ init_per_suite(Config) ->
 
 end_per_suite(Config) ->
     ok = application:stop(ssh),
-    erlang:exit(proplists:get_value(pid, Config), kill),
+    erlang:exit(
+        proplists:get_value(pid, Config), kill),
     Config.
 
 transfer_empty(Config) ->

@@ -97,13 +97,10 @@ handle_cast({event, job_finished, {JobID, _, _, _}}, #mstate{relocations = Reloc
     %% TODO: remove relocation also on job cancel command
     case maps:take(JobID, Relocations) of
         error ->
-            ?LOG_DEBUG("Received job_finished, but not found "
-                       "in relocations"),
+            ?LOG_DEBUG("Received job_finished, but not found in relocations"),
             {noreply, MState};
         {RelocationID, NewRelocations} ->
-            ?LOG_DEBUG("Received job_finished => remove relocation "
-                       "info ~p",
-                       [RelocationID]),
+            ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationID]),
             wm_compute:set_nodes_alloc_state(remote, drained, JobID),
             ok = wm_factory:send_event_locally(job_finished, virtres, RelocationID),
             {noreply, MState#mstate{relocations = NewRelocations}}
@@ -154,13 +151,13 @@ match_resource(JobResource, [_NodeResource | NodeResources]) ->
 select_remote_site(_, []) ->
     {error, not_found};
 select_remote_site(Job, Nodes) ->
-    AccoundId = wm_entity:get_attr(account_id, Job),
+    AccountId = wm_entity:get_attr(account_id, Job),
     Files = wm_entity:get_attr(input_files, Job),
     Data = cumulative_files_size(Files),
     PricesNorm =
         norming(lists:map(fun(Node) ->
                              case wm_accounting:node_prices(Node) of
-                                 #{AccoundId := Price} ->
+                                 #{AccountId := Price} ->
                                      Price;
                                  #{} ->
                                      0
@@ -177,7 +174,7 @@ select_remote_site(Job, Nodes) ->
 -spec cumulative_files_size([nonempty_string()]) -> number().
 cumulative_files_size([]) ->
     1;
-cumulative_files_size([File | _] = Files) when is_list(File) ->
+cumulative_files_size(Files) when is_list(Files) ->
     lists:sum(
         lists:map(fun(File) ->
                      case wm_file_utils:get_size(File) of
@@ -193,9 +190,9 @@ cumulative_files_size([File | _] = Files) when is_list(File) ->
 -spec network_latency(#node{}) -> number().
 network_latency(Node) ->
     Resources = wm_entity:get_attr(resources, Node),
-    lists:foldl(fun (Resource = #resource{name = "network_latency"}, Acc) ->
+    lists:foldl(fun (Resource = #resource{name = "network_latency"}, _Acc) ->
                         wm_entity:get_attr(count, Resource);
-                    (Resource, Acc) ->
+                    (_Resource, Acc) ->
                         Acc
                 end,
                 ?NETWORK_LATENCY_MCS,
@@ -272,9 +269,7 @@ start_jobs_relocation(MState = #mstate{relocations = Relocations}) ->
                             false ->
                                 Jobs
                         end,
-                    ?LOG_INFO("Try to relocate ~p jobs (out of queued "
-                              "~p jobs)",
-                              [JobsToRelocate, JobsNum]),
+                    ?LOG_INFO("Try to relocate ~p jobs (out of queued ~p jobs)", [JobsToRelocate, JobsNum]),
                     NewRelocations = lists:foldl(F, Relocations, JobsToRelocate),
                     MState#mstate{relocations = NewRelocations};
                 false ->
@@ -307,16 +302,12 @@ do_cancel_relocation(Job, MState = #mstate{relocations = Relocations, cancellati
     JobID = wm_entity:get_attr(id, Job),
     case maps:get(JobID, Relocations, not_found) of
         not_found ->
-            ?LOG_DEBUG("No relocation is running => destroy "
-                       "related resources: ~p",
-                       [JobID]),
+            ?LOG_DEBUG("No relocation is running => destroy related resources: ~p", [JobID]),
             {ok, TaskID} = wm_factory:new(virtres, {destroy, JobID, undefined}, []),
             remove_relocation_entities(Job),
             MState#mstate{cancellations = maps:put(JobID, TaskID, Cancellations)};
         RelocationID ->
-            ?LOG_DEBUG("Relocation is running => destroy its "
-                       "resources: ~p",
-                       [JobID]),
+            ?LOG_DEBUG("Relocation is running => destroy its resources: ~p", [JobID]),
             ok = wm_factory:send_event_locally(destroy, virtres, RelocationID),
             remove_relocation_entities(Job),
             MState#mstate{relocations = maps:remove(RelocationID, Relocations)}
@@ -333,9 +324,7 @@ delete_resources([#resource{name = "partition",
     JobID = wm_entity:get_attr(id, Job),
     case lists:keyfind(id, 1, Props) of
         false ->
-            ?LOG_DEBUG("Partition resource does not have id "
-                       "property: ~p [job=~p]",
-                       [Props, JobID]),
+            ?LOG_DEBUG("Partition resource does not have id property: ~p [job=~p]", [Props, JobID]),
             Cnt;
         {id, PartID} ->
             ?LOG_DEBUG("Delete partition entity ~p [job=~p]", [PartID, JobID]),
@@ -348,9 +337,7 @@ delete_resources([#resource{name = "node", properties = Props} | T], Job, Cnt) -
     JobID = wm_entity:get_attr(id, Job),
     case lists:keyfind(id, 1, Props) of
         false ->
-            ?LOG_DEBUG("Node resource does not have id property: "
-                       "~p [job=~p]",
-                       [Props, JobID]),
+            ?LOG_DEBUG("Node resource does not have id property: ~p [job=~p]", [Props, JobID]),
             Cnt;
         {id, NodeID} ->
             ?LOG_DEBUG("Delete node entity ~p [job=~p]", [NodeID, JobID]),

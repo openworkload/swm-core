@@ -41,7 +41,8 @@ init_per_suite(Config) ->
 end_per_suite(Config) ->
     ok = application:stop(gun),
     wm_ct_helpers:kill_gate_system_process(),
-    erlang:exit(proplists:get_value(gate_runner_pid, Config), kill),
+    erlang:exit(
+        proplists:get_value(gate_runner_pid, Config), kill),
     Config.
 
 init_per_testcase(_, Config) ->

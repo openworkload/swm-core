@@ -11,6 +11,7 @@
 -type account_id()      :: string().
 -type user_id()         :: string().
 -type hook_id()         :: string().
+-type job_id()          :: string().
 
 %[[[cog
 %  import json, collections

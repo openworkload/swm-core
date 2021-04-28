@@ -64,25 +64,29 @@ fill_image_params([_ | T], Image) ->
 %%
 %% Parse flavors
 %%
--spec parse_flavors(binary(), string()) -> {ok, [#node{}]} | {error, any()}.
-parse_flavors(Bin, AccountId) ->
+-spec parse_flavors(binary(), #remote{}) -> {ok, [#node{}]} | {error, any()}.
+parse_flavors(Bin, Remote) ->
     JsonStr = binary_to_list(Bin),
     case wm_json:decode(JsonStr) of
         {struct, [{<<"flavors">>, List}]} ->
-            {ok, get_flavor_nodes_from_json(List, AccountId, [])};
+            AccountId = wm_entity:get_attr(account_id, Remote),
+            RemoteId = wm_entity:get_attr(id, Remote),
+            {ok, get_flavor_nodes_from_json(List, AccountId, RemoteId, [])};
         Error ->
             {error, Error}
     end.
 
--spec get_flavor_nodes_from_json(list(), string(), [#image{}]) -> [#image{}].
-get_flavor_nodes_from_json([], _, Nodes) ->
+-spec get_flavor_nodes_from_json(list(), account_id(), remote_id(), [#node{}]) -> [#node{}].
+get_flavor_nodes_from_json([], _, _, Nodes) ->
     lists:reverse(Nodes);
-get_flavor_nodes_from_json([{struct, FlavorParams} | T], AccountId, Nodes) ->
-    EmptyNode = wm_entity:set_attr([{is_template, true}, {comment, "Cloud templated node"}], wm_entity:new(node)),
+get_flavor_nodes_from_json([{struct, FlavorParams} | T], AccountId, RemoteId, Nodes) ->
+    EmptyNode =
+        wm_entity:set_attr([{is_template, true}, {remote_id, RemoteId}, {comment, "Cloud templated node"}],
+                           wm_entity:new(node)),
     NewNode = fill_flavor_node_params(FlavorParams, EmptyNode, AccountId),
-    get_flavor_nodes_from_json(T, AccountId, [NewNode | Nodes]).
+    get_flavor_nodes_from_json(T, AccountId, RemoteId, [NewNode | Nodes]).
 
--spec fill_flavor_node_params([{binary(), binary()}], #node{}, string()) -> #node{}.
+-spec fill_flavor_node_params([{binary(), binary()}], #node{}, account_id()) -> #node{}.
 fill_flavor_node_params([], Node, _) ->
     wm_entity:set_attr({resources,
                         lists:reverse(

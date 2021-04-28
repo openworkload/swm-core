@@ -318,8 +318,7 @@ fetch_flavors(Remote, Creds, Spool) ->
     Result =
         case wait_response_boby(ConnPid, StreamRef) of
             {ok, BinBody} ->
-                AccountId = wm_entity:get_attr(account_id, Remote),
-                wm_gate_parsers:parse_flavors(BinBody, AccountId);
+                wm_gate_parsers:parse_flavors(BinBody, Remote);
             {error, Error} ->
                 {error, Error}
         end,

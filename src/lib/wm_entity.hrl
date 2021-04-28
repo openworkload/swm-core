@@ -11,6 +11,7 @@
 -type account_id()      :: string().
 -type user_id()         :: string().
 -type hook_id()         :: string().
+-type job_id()          :: string().
 
 -record (executable, {
            name :: string(),
@@ -168,7 +169,7 @@
            request = [] :: [#resource{}],
            resources = [] :: [#resource{}],
            container = "" :: string(),
-           relocatable = false :: atom(),
+           relocatable = true :: atom(),
            exitcode = 0 :: pos_integer(),
            signal = 0 :: pos_integer(),
            priority = 0 :: pos_integer(),
