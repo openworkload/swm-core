@@ -8,6 +8,7 @@
 -define(API_VERSION, "1").
 -define(HTTP_CODE_OK, 200).
 -define(HTTP_CODE_BAD_REQUEST, 400).
+-define(HTTP_CODE_NOT_FOUND, 404).
 -define(HTTP_CODE_INTERNAL_ERROR, 500).
 
 -record(mstate, {}).
@@ -118,8 +119,6 @@ get_jobs_info(_) ->
 submit_job(Req) ->
     ?LOG_DEBUG("Handle job submission REST API request"),
     case cowboy_req:match_qs([{path, [], undefined}], Req) of
-        %#{path := undefined} ->
-        %{"Undefined job script path", ?HTTP_CODE_BAD_REQUEST};
         #{path := Path} ->
             CertBin = maps:get(cert, Req, undefined),
             case get_username_from_cert(CertBin) of
@@ -137,9 +136,9 @@ do_submit(Username, Path) ->
             Args = {submit, JobScriptContent, JobScriptAbsPath, Username},
             {string, Result} = gen_server:call(wm_user, Args),
             {Result, ?HTTP_CODE_OK};
-        {error, Error} ->
-            ?LOG_ERROR("Could not read job script: ~p", [Path]),
-            {Error, ?HTTP_CODE_INTERNAL_ERROR}
+        {error, noent} ->
+            ?LOG_ERROR("No such jobscript file: ~p", [Path]),
+            {error, ?HTTP_CODE_NOT_FOUND}
     end.
 
 get_username_from_cert(CertBin) ->

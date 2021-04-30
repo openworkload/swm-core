@@ -77,7 +77,7 @@ init(Args) ->
     wm_conf:set_node_state(power, up, node()),
     add_parent_to_pinger(MState2),
     check_required_mode(),
-    set_default_nodes_states(MState2),
+    set_default_nodes_states(),
     ?LOG_DEBUG("Core state: ~p", [MState2]),
     start_heavy_works(Args, MState2).
 
@@ -293,16 +293,21 @@ handle_event(OtherType, EventData, MState) ->
     ?LOG_DEBUG("Received unknown event: ~p data=~p", [OtherType, EventData]),
     MState.
 
-set_default_nodes_states(MState) ->
+set_default_nodes_states() ->
     ?LOG_INFO("Set default node states"),
     NodesUp = wm_conf:get_nodes_with_state({state_power, up}),
     NodesDown = wm_conf:get_nodes_with_state({state_power, down}),
     L = length(NodesUp) + length(NodesDown),
     ?LOG_DEBUG("Set default node states for ~p nodes", [L]),
     F3 = fun(Node) ->
-            Name = wm_utils:node_to_fullname(Node),
-            wm_conf:set_node_state(power, down, Name),
-            wm_conf:set_node_state(alloc, stopped, Name)
+            case wm_entity:get_attr(is_template, Node) of
+                false ->
+                    Name = wm_utils:node_to_fullname(Node),
+                    wm_conf:set_node_state(power, down, Name),
+                    wm_conf:set_node_state(alloc, stopped, Name);
+                true ->
+                    ok
+            end
          end,
     [F3(X) || X <- NodesDown ++ NodesUp].
 
@@ -608,8 +613,7 @@ fill_pstack(#mstate{} = MState) ->
 start_heavy_works(Args, MState) ->
     case wm_state:get_current() of
         maint ->
-            ?LOG_INFO("Don't load node services (maint mode "
-                      "has been enabled)"),
+            ?LOG_INFO("Don't load node services (maint mode has been enabled)"),
             MState2 = start_modules([wm_admin], Args, 0, MState),
             wm_works:enable(),
             {ok, MState2};

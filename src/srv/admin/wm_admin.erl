@@ -313,29 +313,33 @@ new_defaults(node, Defaults, Rec0) ->
         end,
     wm_entity:set_attr({api_port, Port}, Rec1).
 
-%FIXME TabBin is atom now
-process_create(TabBin, Name, []) ->
+process_create(user, Name, [ID]) ->
+    User1 = wm_entity:set_attr([{id, ID}, {name, Name}], wm_entity:new(user)),
+    User2 = new_defaults(user, maps:new(), User1),
+    Account = wm_entity:set_attr([{id, wm_utils:uuid(v4)}, {name, Name}, {admins, [ID]}], wm_entity:new(account)),
+    wm_conf:update([User2, Account]),
+    ?LOG_DEBUG("Created user ~p and account for it", [Name]),
+    {string, ID};
+process_create(Tab, Name, []) ->
     ID = wm_utils:uuid(v4),
-    process_create(TabBin, Name, [ID]);
-process_create(TabBin, Name, [ID]) ->
-    ?LOG_DEBUG("Create ~p ~p (ID=~p)", [TabBin, Name, ID]),
-    Rec1 = wm_entity:new(TabBin),
-    Rec2 = wm_entity:set_attr({id, ID}, Rec1),
-    Rec3 = wm_entity:set_attr({name, Name}, Rec2),
-    Rec4 = new_defaults(TabBin, maps:new(), Rec3),
-    wm_conf:update([Rec4]),
-    ?LOG_DEBUG("Created record: ~p", [Rec4]),
+    process_create(Tab, Name, [ID]);
+process_create(Tab, Name, [ID]) ->
+    ?LOG_DEBUG("Create ~p ~p (ID=~p)", [Tab, Name, ID]),
+    Rec1 = wm_entity:set_attr([{id, ID}, {name, Name}], wm_entity:new(Tab)),
+    Rec2 = new_defaults(Tab, maps:new(), Rec1),
+    wm_conf:update([Rec2]),
+    ?LOG_DEBUG("Created record: ~p", [Rec2]),
     {string, ID}.
 
-process_clone(TabBin, From, To, Args) ->
-    ?LOG_DEBUG("Clone ~p ~p -> ~p (args=~p)", [TabBin, From, To, Args]),
-    Tab = list_to_existing_atom(binary_to_list(TabBin)),
+process_clone(Tab, From, To, Args) ->
+    ?LOG_DEBUG("Clone ~p ~p -> ~p (args=~p)", [Tab, From, To, Args]),
+    Tab = list_to_existing_atom(binary_to_list(Tab)),
     case wm_conf:select(Tab, {name, From}) of
         {ok, Rec1} ->
             ID = wm_utils:uuid(v4),
             Rec2 = wm_entity:set_attr({id, ID}, Rec1),
             Rec3 = wm_entity:set_attr({name, To}, Rec2),
-            Rec4 = new_defaults(TabBin, maps:new(), Rec3),
+            Rec4 = new_defaults(Tab, maps:new(), Rec3),
             wm_conf:update([Rec4]),
             {string, ID};
         {error, not_found} ->

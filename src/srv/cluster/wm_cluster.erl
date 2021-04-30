@@ -44,8 +44,7 @@ code_change(_OldVsn, MState, _Extra) ->
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
-    ?LOG_INFO("Cluster management service has been "
-              "started"),
+    ?LOG_INFO("Cluster management service has been started"),
     {ok, MState}.
 
 parse_args([], MState) ->

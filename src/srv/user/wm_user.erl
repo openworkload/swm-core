@@ -94,8 +94,7 @@ handle_request(submit, Args, MState) ->
             JID = wm_utils:uuid(v4),
             Cluster = wm_topology:get_subdiv(cluster),
             Job1 = wm_jobscript:parse(JobScriptContent),
-            Job2 = set_defaults(Job1),
-            Job3 =
+            Job2 =
                 wm_entity:set_attr([{cluster_id, wm_entity:get_attr(id, Cluster)},
                                     {state, ?JOB_STATE_QUEUED},
                                     {script, Filename}, % TODO use jobscript content?
@@ -105,7 +104,8 @@ handle_request(submit, Args, MState) ->
                                     {job_stderr, JID ++ ".err"},
                                     {submit_time, wm_utils:now_iso8601(without_ms)},
                                     {duration, 3600}],
-                                   Job2),
+                                   Job1),
+            Job3 = set_defaults(Job2),
             Job4 = ensure_request(Job3),
             1 = wm_conf:update(Job4),
             {{string, JID}, MState}
@@ -149,7 +149,6 @@ handle_request(show, Args, MState) ->
     {Entities, MState}.
 
 ensure_request(Job) ->
-    %TODO use nested resources like node->cpus
     case wm_entity:get_attr(request, Job) of
         [] ->
             ResNode1 = wm_entity:new(resource),
@@ -182,5 +181,10 @@ set_defaults(#job{workdir = [], script = Script} = Job) ->
     Dir = filename:absname(
               filename:dirname(Script)),
     set_defaults(wm_entity:set_attr({workdir, Dir}, Job));
+set_defaults(#job{account_id = [], user_id = UserId} = Job) ->
+    % If account is not specified by user during job submission then use the user's main account
+    {ok, Account} = wm_conf:select(account, {admins, [UserId]}),
+    AccountId = wm_entity:get_attr(id, Account),
+    set_defaults(wm_entity:set_attr({account_id, AccountId}, Job));
 set_defaults(Job) ->
     Job.

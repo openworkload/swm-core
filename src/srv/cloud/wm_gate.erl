@@ -80,17 +80,17 @@ init(Args) ->
     MState = parse_args(Args, #mstate{}),
     {ok, MState}.
 
-handle_call({create_partition, CallbackModule, Remote, Creds, Options}, From, MState = #mstate{spool = Spool}) ->
+handle_call({create_partition, CallbackModule, Remote, Creds, Options}, _, MState = #mstate{spool = Spool}) ->
     handle_http_call(fun() -> do_partition_create(Remote, Creds, Spool, Options) end,
                      partition_created,
                      CallbackModule,
                      MState);
-handle_call({delete_partition, CallbackModule, PartExtId, Remote, Creds}, From, MState = #mstate{spool = Spool}) ->
+handle_call({delete_partition, CallbackModule, PartExtId, Remote, Creds}, _, MState = #mstate{spool = Spool}) ->
     handle_http_call(fun() -> do_partition_delete(Remote, Creds, PartExtId, Spool) end,
                      partition_deleted,
                      CallbackModule,
                      MState);
-handle_call({partition_exists, CallbackModule, PartExtId, Remote, Creds}, From, MState = #mstate{spool = Spool}) ->
+handle_call({partition_exists, CallbackModule, PartExtId, Remote, Creds}, _, MState = #mstate{spool = Spool}) ->
     handle_http_call(fun() ->
                         case fetch_partition(Remote, Creds, PartExtId, Spool) of
                             {ok, _} ->
@@ -128,14 +128,10 @@ handle_info({'EXIT', From, normal}, MState = #mstate{children = Children}) ->
 handle_info({'EXIT', From, Reason}, MState = #mstate{children = Children}) ->
     case maps:get(From, Children, undefined) of
         undefined ->
-            ?LOG_INFO("Got orphaned EXIT message from ~p with "
-                      "reason ~p",
-                      [From, Reason]),
+            ?LOG_INFO("Got orphaned EXIT message from ~p with reason ~p", [From, Reason]),
             {noreply, MState};
         {CallbackModule, Ref} ->
-            ?LOG_INFO("Got EXIT message from ~p with reason "
-                      "~p, propagate notification to ~p with "
-                      "ref ~p",
+            ?LOG_INFO("Received EXIT from ~p with reason ~p, propagate notification to ~p with ref ~p",
                       [From, Reason, CallbackModule, Ref]),
             ok = wm_utils:cast(CallbackModule, {Ref, 'EXIT', Reason}),
             {noreply, MState#mstate{children = maps:remove(From, Children)}}
@@ -181,27 +177,27 @@ open_connection(Remote, Spool) ->
     Key = wm_conf:g(node_key, {DefaultKey, string}),
     Server = wm_entity:get_attr(server, Remote),
     Port = wm_entity:get_attr(port, Remote),
+    ConnOpts =
+        #{transport => tls,
+          protocols => [http],
+          tls_opts => [{cacertfile, CA}, {keyfile, Key}]},
     ConnPid =
-        case gun:open(Server,
-                      Port,
-                      #{transport => tls,
-                        protocols => [http],
-                        tls_opts => [{cacertfile, CA}, {keyfile, Key}]})
-        of
+        case gun:open(Server, Port, ConnOpts) of
             {ok, Pid} ->
-                io:format("Opened connection to ~p:~p, pid=~p~n", [Server, Port, Pid]),
+                ?LOG_DEBUG("Opened connection to ~p:~p, pid=~p", [Server, Port, Pid]),
                 Pid;
             OpenError ->
-                io:format("Connection opening error: ~p~n", [OpenError]),
-                halt(1)
+                Msg = io_lib:format("Connection opening error: ~p", [OpenError]),
+                ?LOG_WARN(Msg),
+                exit(Msg)
         end,
     case gun:await_up(ConnPid) of
         {ok, Protocol} ->
-            io:format("Connection is UP, protocol: ~p~n", [Protocol]),
+            ?LOG_DEBUG("Connection is UP, protocol: ~p", [Protocol]),
             ConnPid;
-        AwaitUpError ->
-            io:format("Await up error: ~p~n", [AwaitUpError]),
-            halt(1)
+        {error, Error} ->
+            ?LOG_WARN(io_lib:format("Awaiting of connection ~p failed: ~p", [ConnPid, Error])),
+            exit(Error)
     end.
 
 -spec close_connection(pid()) -> ok.
@@ -214,14 +210,14 @@ wait_response_boby(ConnPid, StreamRef) ->
         {response, nofin, 200, _} ->
             case gun:await_body(ConnPid, StreamRef) of
                 {ok, Body} ->
-                    io:format("Response body: ~p~n", [Body]),
+                    ?LOG_DEBUG("Response body: ~p", [Body]),
                     {ok, Body};
                 ResponseError ->
-                    io:format("Response error: ~p~n", [ResponseError]),
+                    ?LOG_WARN("Response error: ~p", [ResponseError]),
                     {error, ResponseError}
             end;
         AwaitError ->
-            io:format("Await error: ~p~n", [AwaitError]),
+            ?LOG_WARN("Await error: ~p", [AwaitError]),
             {error, AwaitError}
     end.
 
@@ -240,10 +236,6 @@ handle_http_call(Func, Label, CallbackModule, MState = #mstate{children = Childr
                                  ok = wm_utils:cast(CallbackModule, Reply)
                               end),
     {reply, {ok, Ref}, MState#mstate{children = Children#{Pid => {CallbackModule, Ref}}}}.
-
-do_partition_info_poll(Remote, Options, #mstate{spool = Spool} = MState) ->
-    %%TODO
-    ok.
 
 -spec do_partition_create(#remote{}, #credential{}, string(), map()) -> {ok, string(), string()} | {error, string()}.
 do_partition_create(Remote, Creds, Spool, Options) ->
@@ -313,6 +305,7 @@ fetch_image(Remote, Creds, ImageID, Spool) ->
 
 -spec fetch_flavors(#remote{}, #credential{}, string()) -> {ok, [#image{}]} | {error, string()}.
 fetch_flavors(Remote, Creds, Spool) ->
+    ?LOG_DEBUG("Fetch flavors from ~p", [wm_entity:get_attr(name, Remote)]),
     ConnPid = open_connection(Remote, Spool),
     StreamRef = gun:get(ConnPid, get_address("flavors", Remote), get_auth_headers(Creds)),
     Result =

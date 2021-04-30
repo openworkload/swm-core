@@ -398,12 +398,12 @@ handle_cast({event, need_tabs_update, Data}, MState) ->
     {noreply, MState};
 handle_cast({set_state, state_power, down, Node}, MState) ->
     ?LOG_DEBUG("Set node ~p power/alloc states to down/stopped", [Node]),
-    do_set_state(state_power, down, Node),
-    do_set_state(state_alloc, stopped, Node),
+    %do_set_state(state_power, down, Node),
+    %do_set_state(state_alloc, stopped, Node),
     {noreply, MState};
 handle_cast({set_state, Type, State, Node}, MState) ->
     ?LOG_DEBUG("Set node ~p ~p state to ~p", [Node, Type, State]),
-    do_set_state(Type, State, Node),
+    %do_set_state(Type, State, Node),
     {noreply, MState};
 handle_cast({propagate, Nodes}, MState) when is_list(Nodes) ->
     ?LOG_DEBUG("Propagate config to nodes ~p", [wm_utils:join_atoms(Nodes, ",")]),

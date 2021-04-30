@@ -80,8 +80,12 @@ parse_flavors(Bin, Remote) ->
 get_flavor_nodes_from_json([], _, _, Nodes) ->
     lists:reverse(Nodes);
 get_flavor_nodes_from_json([{struct, FlavorParams} | T], AccountId, RemoteId, Nodes) ->
+    NodeId = wm_utils:uuid(v4),
     EmptyNode =
-        wm_entity:set_attr([{is_template, true}, {remote_id, RemoteId}, {comment, "Cloud templated node"}],
+        wm_entity:set_attr([{id, NodeId},
+                            {is_template, true},
+                            {remote_id, RemoteId},
+                            {comment, "Cloud templated node"}],
                            wm_entity:new(node)),
     NewNode = fill_flavor_node_params(FlavorParams, EmptyNode, AccountId),
     get_flavor_nodes_from_json(T, AccountId, RemoteId, [NewNode | Nodes]).

@@ -286,9 +286,7 @@ try_relocate_one_job(Job) ->
         {ok, TemplateNode} ->
             JobID = wm_entity:get_attr(id, Job),
             TemplateName = wm_entity:get_attr(name, TemplateNode),
-            ?LOG_INFO("Found suited remote site for job ~p "
-                      "(~p)",
-                      [JobID, TemplateName]),
+            ?LOG_INFO("Found suited remote site for job ~p (~p)", [JobID, TemplateName]),
             1 =
                 wm_conf:update(
                     wm_entity:set_attr({state, ?JOB_STATE_WAITING}, Job)),

@@ -531,9 +531,13 @@ timestamp(X) ->
 
 -spec read_file(io:device(), list()) -> {atom(), binary() | list()}.
 read_file(File, Opts) ->
-    {ok, Device} = file:open(File, [read]),
-    ok = io:setopts(Device, Opts),
-    read_bin_blocks_from_file(File, Device, <<>>).
+    case file:open(File, [read]) of
+        {ok, Device} ->
+            ok = io:setopts(Device, Opts),
+            read_bin_blocks_from_file(File, Device, <<>>);
+        Error ->
+            Error
+    end.
 
 -spec read_stdin() -> {ok, binary()} | {error, string()}.
 read_stdin() ->
