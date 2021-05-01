@@ -88,13 +88,13 @@ handle_cast({Ref, 'EXIT', Msg}, MState = #mstate{refs_in_process = Refs}) ->
             ?LOG_WARN("Could not list flavors for remote ~p: ~p", [RemoteId, Msg]),
             {noreply, MState#mstate{refs_in_process = maps:remove(Ref, Refs)}}
     end;
-handle_cast({error, Ref, {error, timeout}}, MState = #mstate{refs_in_process = Refs}) ->
+handle_cast({error, Ref, Error}, MState = #mstate{refs_in_process = Refs}) ->
     case maps:get(Ref, Refs, undefined) of
         undefined ->
-            ?LOG_WARN("Gate timeout: got orphaned error with reference ~p", [Ref]),
+            ?LOG_WARN("Orphaned gate error with reference ~p: ~p", [Ref, Error]),
             {noreply, MState};
         RemoteId ->
-            ?LOG_WARN("Gate timeout for remote ~p", [RemoteId]),
+            ?LOG_WARN("Gate error for remote ~p: ~p", [RemoteId, Error]),
             {noreply, MState#mstate{refs_in_process = maps:remove(Ref, Refs)}}
     end.
 
