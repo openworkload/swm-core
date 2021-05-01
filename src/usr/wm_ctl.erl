@@ -748,10 +748,14 @@ consult(File) ->
             FQDN = wm_utils:get_my_fqdn(),
             Spool = os:getenv("SWM_SPOOL"),
             Root = os:getenv("SWM_ROOT"),
+            User = os:getenv("SWM_ADMIN_USER"),
+            UserId = os:getenv("SWM_ADMIN_ID"),
             S2 = re:replace(S1, "_HOSTNAME_", FQDN, [global, {return, list}]),
             S3 = re:replace(S2, "_SWM_SPOOL_", Spool, [global, {return, list}]),
             S4 = re:replace(S3, "_SWM_ROOT_", Root, [global, {return, list}]),
-            {ok, Tokens, _} = erl_scan:string(S4),
+            S5 = re:replace(S4, "_USER_NAME_", User, [global, {return, list}]),
+            S6 = re:replace(S5, "_SWM_USER_ID_", UserId, [global, {return, list}]),
+            {ok, Tokens, _} = erl_scan:string(S6),
             {ok, Terms} = erl_parse:parse_term(Tokens),
             Terms;
         {error, {Line, Mod, Term}} ->

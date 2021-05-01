@@ -109,8 +109,10 @@ delete_partition(PartId, Remote) ->
 -spec spawn_partition(string(), #remote{}) -> {ok, string()} | {error, any()}.
 spawn_partition(JobId, Remote) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
+    PartName = get_partition_name(JobId),
     Options =
-        #{image_name => "cirros",
+        #{name => PartName,
+          image_name => "cirros",
           flavor_name => "m1.micro",
           partition_name => get_partition_name(JobId),
           node_count => get_requested_nodes_number(Job)},

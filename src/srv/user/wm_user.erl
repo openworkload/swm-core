@@ -85,9 +85,7 @@ handle_request(submit, Args, MState) ->
     case wm_conf:select(user, {name, Username}) of
         {error, not_found} ->
             ?LOG_ERROR("User ~p not found, job submission failed", [Username]),
-            R = io_lib:format("User ~p is not registred in the workload "
-                              "manager",
-                              [Username]),
+            R = io_lib:format("User ~p is not registred in the workload manager", [Username]),
             {{string, [R]}, MState};
         {ok, User} ->
             % TODO verify user credentials using provided certificate

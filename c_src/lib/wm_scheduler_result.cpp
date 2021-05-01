@@ -1,15 +1,16 @@
 
 
-#include "wm_scheduler_result.h"
-
 #include "wm_entity_utils.h"
-#include "wm_metric.h"
-#include "wm_timetable.h"
 
 #include <iostream>
 
+#include "wm_scheduler_result.h"
+
 #include <erl_interface.h>
 #include <ei.h>
+
+#include "wm_metric.h"
+#include "wm_timetable.h"
 
 using namespace swm;
 

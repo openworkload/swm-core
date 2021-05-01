@@ -194,8 +194,9 @@ creating({partition_created, Ref, NewPartExtId},
      MState#mstate{wait_ref = undefined,
                    rediness_timer = Timer,
                    part_mgr_id = PartMgrNodeId}};
-creating({error, Ref, Error}, #mstate{} = MState) ->
-    ?LOG_DEBUG("Partition creation failed: ~s", [Error]),
+creating({error, Ref, Error}, #mstate{job_id = JobId} = MState) ->
+    ?LOG_DEBUG("Partition creation failed: ~p", [Error]),
+    wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
     handle_remote_failure(MState).
 
 uploading({Ref, ok}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->

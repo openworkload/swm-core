@@ -146,9 +146,7 @@ get_username_from_cert(CertBin) ->
     UserID = wm_cert:get_uid(Cert),
     case wm_conf:select(user, {id, UserID}) of
         {error, not_found} ->
-            R = io_lib:format("User with ID=~p is not registred in "
-                              "the workload manager",
-                              [UserID]),
+            R = io_lib:format("User with ID=~p is not registred in the workload manager", [UserID]),
             {error, R};
         {ok, User} ->
             {ok, wm_entity:get_attr(name, User)}

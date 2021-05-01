@@ -316,9 +316,17 @@ new_defaults(node, Defaults, Rec0) ->
 process_create(user, Name, [ID]) ->
     User1 = wm_entity:set_attr([{id, ID}, {name, Name}], wm_entity:new(user)),
     User2 = new_defaults(user, maps:new(), User1),
-    Account = wm_entity:set_attr([{id, wm_utils:uuid(v4)}, {name, Name}, {admins, [ID]}], wm_entity:new(account)),
-    wm_conf:update([User2, Account]),
-    ?LOG_DEBUG("Created user ~p and account for it", [Name]),
+    case wm_conf:select(account, {name, Name}) of
+        {error, not_found} ->
+            ?LOG_DEBUG("Created default account for user ~p", [Name]),
+            Account =
+                wm_entity:set_attr([{id, wm_utils:uuid(v4)}, {name, Name}, {admins, [ID]}], wm_entity:new(account)),
+            wm_conf:update([Account]);
+        _ ->
+            ?LOG_DEBUG("Default account for user ~p already exists", [Name])
+    end,
+    ?LOG_DEBUG("Created user ~p", [Name]),
+    wm_conf:update([User2]),
     {string, ID};
 process_create(Tab, Name, []) ->
     ID = wm_utils:uuid(v4),
