@@ -201,10 +201,10 @@ fill_partition_params([{<<"status">>, Value} | T], Part) ->
         end,
     NewPart = wm_entity:set_attr([{state, State}], Part),
     fill_partition_params(T, NewPart);
-fill_partition_params([{<<"created">>, Value} | T], Part) ->
+fill_partition_params([{<<"created">>, Value} | T], Part) when Value =/= null ->
     NewPart = wm_entity:set_attr([{created, binary_to_list(Value)}], Part),
     fill_partition_params(T, NewPart);
-fill_partition_params([{<<"updated">>, Value} | T], Part) ->
+fill_partition_params([{<<"updated">>, Value} | T], Part) when Value =/= null ->
     NewPart = wm_entity:set_attr([{updated, binary_to_list(Value)}], Part),
     fill_partition_params(T, NewPart);
 fill_partition_params([{<<"description">>, Value} | T], Part) ->

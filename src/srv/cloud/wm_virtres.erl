@@ -19,6 +19,7 @@
          task_id = undefined :: integer(),
          part_mgr_id = undefined :: string(),
          rediness_timer = undefined :: reference(),
+         part_check_timer = undefined :: reference(),
          upload_ref = undefined :: reference(),
          download_ref = undefined :: reference(),
          action = create :: atom()}).
@@ -86,9 +87,7 @@ handle_sync_event(get_current_state, _From, State, MState) ->
 handle_event(job_finished, running, #mstate{job_id = JobId, part_mgr_id = PartMgrNodeId} = MState) ->
     ?LOG_DEBUG("Job has finished => start data downloading: ~p", [JobId]),
     {ok, Ref, Files} = wm_virtres_handler:start_downloading(PartMgrNodeId, JobId),
-    ?LOG_INFO("Downloading has been started [jobid=~p, "
-              "ref=~p]: ~p",
-              [JobId, Ref, Files]),
+    ?LOG_INFO("Downloading has been started [jobid=~p, ref=~p]: ~p", [JobId, Ref, Files]),
     {next_state, downloading, MState#mstate{download_ref = Ref}};
 handle_event(destroy,
              running,
@@ -113,12 +112,22 @@ handle_info(readiness_check, StateName, MState = #mstate{rediness_timer = OldTRe
             Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
             {next_state, StateName, MState#mstate{rediness_timer = Timer}};
         true ->
-            ?LOG_DEBUG("All nodes are UP (job ~p) => upload " "data", [JobId]),
+            ?LOG_DEBUG("All nodes are UP (job ~p) => upload data", [JobId]),
             wm_virtres_handler:update_job([{state, ?JOB_STATE_TRANSFERRING}], MState#mstate.job_id),
             {ok, Ref} = wm_virtres_handler:start_uploading(MState#mstate.part_mgr_id, JobId),
             ?LOG_INFO("Uploading has started [~p]", [Ref]),
             {next_state, uploading, MState#mstate{upload_ref = Ref}}
     end;
+handle_info(part_fetch,
+            StateName,
+            MState =
+                #mstate{part_check_timer = OldTRef,
+                        job_id = JobId,
+                        remote = Remote}) ->
+    ?LOG_DEBUG("Partition creation check (job=~p, state=~p)", [JobId, StateName]),
+    catch timer:cancel(OldTRef),
+    {ok, WaitRef} = wm_virtres_handler:request_partition(JobId, Remote),
+    {next_state, StateName, MState#mstate{wait_ref = WaitRef}};
 handle_info(_Info, StateName, MState) ->
     {next_state, StateName, MState}.
 
@@ -158,7 +167,8 @@ validating({partition_exists, Ref, true},
                    wait_ref = Ref,
                    job_id = JobId} =
                MState) ->
-    {ok, WaitRef} = wm_virtres_handler:check_if_partition_created(JobId, Remote),
+    ?LOG_INFO("Remote partition exits => reuse for job ~p", [JobId]),
+    {ok, WaitRef} = wm_virtres_handler:request_partition(JobId, Remote),
     {next_state, creating, MState#mstate{wait_ref = WaitRef}};
 validating({partition_exists, Ref, false},
            #mstate{action = destroy,
@@ -178,22 +188,37 @@ validating({partition_exists, Ref, true},
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}}.
 
-creating({create_in_progress, Ref, _}, #mstate{wait_ref = Ref} = MState) ->
-    ?LOG_DEBUG("Partition creation is in progress [~p]", [Ref]),
-    {next_state, creating, MState};
-creating({partition_created, Ref, NewPartExtId},
+creating({partition_spawned, Ref, NewPartExtId},
          #mstate{job_id = JobId,
                  wait_ref = Ref,
                  template_node = TplNode,
                  remote = Remote} =
              MState) ->
-    {ok, PartMgrNodeId} = wm_virtres_handler:add_entities_to_conf(JobId, NewPartExtId, TplNode, Remote),
-    Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
-    {next_state,
-     creating,
-     MState#mstate{wait_ref = undefined,
-                   rediness_timer = Timer,
-                   part_mgr_id = PartMgrNodeId}};
+    ?LOG_INFO("Partition spawned => check status: ~p, job ~p", [NewPartExtId, JobId]),
+    {ok, WaitRef} = wm_virtres_handler:request_partition(JobId, Remote),
+    {next_state, creating, MState#mstate{wait_ref = WaitRef}};
+creating({partition_fetched, Ref, Partition},
+         #mstate{job_id = JobId,
+                 wait_ref = Ref,
+                 template_node = TplNode,
+                 remote = Remote} =
+             MState) ->
+    case wm_entity:get_attr(state, Partition) of
+        up ->
+            {ok, PartMgrNodeId} = wm_virtres_handler:add_entities_to_conf(JobId, Partition, TplNode, Remote),
+            Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
+            MState2 =
+                MState#mstate{wait_ref = undefined,
+                              job_id = JobId,
+                              rediness_timer = Timer,
+                              part_mgr_id = PartMgrNodeId},
+            {next_state, creating, MState2};
+        Other ->
+            ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p", [Other]),
+            Timer = wm_virtres_handler:wait_for_partition_fetch(),
+            {ok, WaitRef} = wm_virtres_handler:request_partition(JobId, Remote),
+            {next_state, creating, MState#mstate{part_check_timer = Timer, wait_ref = WaitRef}}
+    end;
 creating({error, Ref, Error}, #mstate{job_id = JobId} = MState) ->
     ?LOG_DEBUG("Partition creation failed: ~p", [Error]),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),

@@ -163,11 +163,11 @@ get_partition(_Config) ->
                                master_public_ip => "172.28.128.154"}},
                             {comment, "Test stack 2"}],
                            wm_entity:new(partition)),
-    ?assertEqual({get_partition, Ref1, ExpectedPartition}, wm_utils:await(get_partition, Ref1, 2000)),
+    ?assertEqual({partition_fetched, Ref1, ExpectedPartition}, wm_utils:await(partition_fetched, Ref1, 2000)),
     {ok, Ref2} = wm_gate:get_partition(self(), get_remote(), get_creds(), "foo"),
-    ?assertMatch({error, Ref2, _}, wm_utils:await(get_partition, Ref2, 2000)),
+    ?assertMatch({error, Ref2, _}, wm_utils:await(partition_fetched, Ref2, 2000)),
     {ok, Ref3} = wm_gate:get_partition(self(), get_remote(), get_creds(), ""),
-    ?assertMatch({error, Ref3, _}, wm_utils:await(get_partition, Ref3, 2000)).
+    ?assertMatch({error, Ref3, _}, wm_utils:await(partition_fetched, Ref3, 2000)).
 
 -spec create_partition(list()) -> atom().
 create_partition(_Config) ->
@@ -179,7 +179,7 @@ create_partition(_Config) ->
           key_name => "key1",
           count => 1},
     {ok, Ref1} = wm_gate:create_partition(self(), get_remote(), get_creds(), Options),
-    ?assertMatch({partition_created, Ref1, _}, wm_utils:await(partition_created, Ref1, 2000)).
+    ?assertMatch({partition_spawned, Ref1, _}, wm_utils:await(partition_spawned, Ref1, 2000)).
 
 -spec delete_partition(list()) -> atom().
 delete_partition(_Config) ->

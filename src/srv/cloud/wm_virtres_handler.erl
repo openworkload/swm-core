@@ -1,14 +1,15 @@
 -module(wm_virtres_handler).
 
--export([get_remote/1, check_if_partition_created/2, request_partition_existence/2, is_job_partition_ready/1,
-         update_job/2, start_uploading/2, start_downloading/2, delete_partition/2, spawn_partition/2,
-         add_entities_to_conf/4, wait_for_wm_resources_readiness/0, remove_relocation_entities/1]).
+-export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/2,
+         start_uploading/2, start_downloading/2, delete_partition/2, spawn_partition/2, add_entities_to_conf/4,
+         wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0, remove_relocation_entities/1]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 
 -define(DEFAULT_CLOUD_NODE_API_PORT, 10001).
 -define(REDINESS_CHECK_PERIOD, 10000).
+-define(PARTITION_FETCH_PERIOD, 10000).
 
 %% ============================================================================
 %% Module API
@@ -26,16 +27,20 @@ remove_relocation_entities(JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     ok = wm_relocator:remove_relocation_entities(Job).
 
+-spec wait_for_partition_fetch() -> reference().
+wait_for_partition_fetch() ->
+    wm_utils:wake_up_after(?PARTITION_FETCH_PERIOD, part_fetch).
+
 -spec wait_for_wm_resources_readiness() -> reference().
 wait_for_wm_resources_readiness() ->
     wm_utils:wake_up_after(?REDINESS_CHECK_PERIOD, readiness_check).
 
--spec check_if_partition_created(string(), #remote{}) -> {atom(), string()}.
-check_if_partition_created(JobId, Remote) ->
-    ?LOG_INFO("Validate remote partition (job: ~p)", [JobId]),
+-spec request_partition(string(), #remote{}) -> {atom(), string()}.
+request_partition(JobId, Remote) ->
+    ?LOG_INFO("Fetch and wait for remote partition (job: ~p)", [JobId]),
     PartName = get_partition_name(JobId),
     {ok, Creds} = get_credentials(Remote),
-    wm_gate:partition_exists(self(), Remote, Creds, PartName).
+    wm_gate:get_partition(self(), Remote, Creds, PartName).
 
 -spec request_partition_existence(string(), #remote{}) -> {atom(), string()}.
 request_partition_existence(JobId, Remote) ->
@@ -53,7 +58,7 @@ is_job_partition_ready(JobId) ->
            {ok, Node} = wm_conf:select(node, {id, NodeID}),
            idle =/= wm_entity:get_attr(state_alloc, Node)
         end,
-    lists:any(NotReady, NodeIds).
+    not lists:any(NotReady, NodeIds).
 
 -spec update_job(list(), string()) -> 1.
 update_job(NewParams, JobId) ->
@@ -119,12 +124,17 @@ spawn_partition(JobId, Remote) ->
     {ok, Creds} = get_credentials(Remote),
     wm_gate:create_partition(self(), Remote, Creds, Options).
 
--spec add_entities_to_conf(string(), string(), #node{}, #remote{}) -> {atom(), string()}.
-add_entities_to_conf(JobId, PartExtId, TplNode, Remote) ->
-    PartName = get_partition_name(JobId),
-    {ok, PubPartMgrIp, PriPartMgrIp, NodeIps} = wm_gate:get_partition_ips(PartName, Remote),
-    PartID = wm_utils:uuid(v4),
+-spec add_entities_to_conf(string(), #partition{}, #node{}, #remote{}) -> {atom(), string()}.
+add_entities_to_conf(JobId, Partition, TplNode, Remote) ->
+    ?LOG_INFO("Remote partition [job ~p]: ~p", [JobId, Partition]),
+    1 = wm_conf:update(Partition),
+    Addresses = wm_entity:get_attr(addresses, Partition),
+    NodeIps = maps:get(compute_instances_ips, Addresses, []),
+    PubPartMgrIp = maps:get(master_public_ip, Addresses, ""),
+    PriPartMgrIp = maps:get(master_private_ip, Addresses, ""),
+    PartID = wm_entity:get_attr(id, Partition),
     PartMgrName = get_partition_manager_name(JobId),
+
     case clone_nodes(PartID, PartMgrName, NodeIps, JobId, TplNode) of
         [] ->
             {error, "Could not clone nodes for job " ++ JobId};
@@ -132,11 +142,8 @@ add_entities_to_conf(JobId, PartExtId, TplNode, Remote) ->
             ComputeNodeIds = [wm_entity:get_attr(id, X) || X <- ComputeNodes],
             PartMgrNode = create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode),
             NewNodes = [PartMgrNode | ComputeNodes],
-            Partition = create_part_entity(PartID, PartExtId, ComputeNodeIds, JobId, PartMgrNode),
             wm_conf:update(NewNodes),
-            1 = wm_conf:update(Partition),
             ?LOG_INFO("Remote nodes [job ~p]: ~p", [JobId, NewNodes]),
-            ?LOG_INFO("Remote partition [job ~p]: ~p", [JobId, Partition]),
             PartMgrNodeId = wm_entity:get_attr(id, PartMgrNode),
             JobRss = get_allocated_resources(PartID, [PartMgrNodeId | ComputeNodeIds]),
             ?LOG_DEBUG("New job resources [job ~p]: ~p", [JobId, JobRss]),

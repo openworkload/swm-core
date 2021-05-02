@@ -30,8 +30,8 @@ delete_partition(CallbackModule, Remote, Creds, PartExtId) ->
     {ok, _Ref} = gen_server:call(?MODULE, {delete_partition, CallbackModule, PartExtId, Remote, Creds}).
 
 -spec partition_exists(atom() | pid(), #remote{}, #credential{}, string()) -> {ok, string()}.
-partition_exists(CallbackModule, Remote, Creds, PartExtId) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {partition_exists, CallbackModule, PartExtId, Remote, Creds}).
+partition_exists(CallbackModule, Remote, Creds, PartExtIdOrName) ->
+    {ok, _Ref} = gen_server:call(?MODULE, {partition_exists, CallbackModule, PartExtIdOrName, Remote, Creds}).
 
 -spec get_partition(atom() | pid(), #remote{}, #credential{}, string()) -> {ok, string()}.
 get_partition(CallbackModule, Remote, Creds, PartExtId) ->
@@ -82,7 +82,7 @@ init(Args) ->
 
 handle_call({create_partition, CallbackModule, Remote, Creds, Options}, _, MState = #mstate{spool = Spool}) ->
     handle_http_call(fun() -> do_partition_create(Remote, Creds, Spool, Options) end,
-                     partition_created,
+                     partition_spawned,
                      CallbackModule,
                      MState);
 handle_call({delete_partition, CallbackModule, PartExtId, Remote, Creds}, _, MState = #mstate{spool = Spool}) ->
@@ -90,9 +90,9 @@ handle_call({delete_partition, CallbackModule, PartExtId, Remote, Creds}, _, MSt
                      partition_deleted,
                      CallbackModule,
                      MState);
-handle_call({partition_exists, CallbackModule, PartExtId, Remote, Creds}, _, MState = #mstate{spool = Spool}) ->
+handle_call({partition_exists, CallbackModule, PartExtIdOrName, Remote, Creds}, _, MState = #mstate{spool = Spool}) ->
     handle_http_call(fun() ->
-                        case fetch_partition(Remote, Creds, PartExtId, Spool) of
+                        case fetch_partition(Remote, Creds, PartExtIdOrName, Spool) of
                             {ok, _} ->
                                 {ok, true};
                             _ ->
@@ -112,7 +112,7 @@ handle_call({list_partitions, CallbackModule, Remote, Creds}, _, MState = #mstat
     handle_http_call(fun() -> fetch_partitions(Remote, Creds, Spool) end, list_partitions, CallbackModule, MState);
 handle_call({get_partition, CallbackModule, PartExtId, Remote, Creds}, _, MState = #mstate{spool = Spool}) ->
     handle_http_call(fun() -> fetch_partition(Remote, Creds, PartExtId, Spool) end,
-                     get_partition,
+                     partition_fetched,
                      CallbackModule,
                      MState);
 handle_call(Msg, From, MState) ->
@@ -333,9 +333,9 @@ fetch_partitions(Remote, Creds, Spool) ->
     Result.
 
 -spec fetch_partition(#remote{}, #credential{}, string(), string()) -> {ok, [#partition{}]} | {error, string()}.
-fetch_partition(Remote, Creds, PartExtId, Spool) ->
+fetch_partition(Remote, Creds, PartExtIdOrName, Spool) ->
     ConnPid = open_connection(Remote, Spool),
-    StreamRef = gun:get(ConnPid, get_address("partitions/" ++ PartExtId, Remote), get_auth_headers(Creds)),
+    StreamRef = gun:get(ConnPid, get_address("partitions/" ++ PartExtIdOrName, Remote), get_auth_headers(Creds)),
     Result =
         case wait_response_boby(ConnPid, StreamRef) of
             {ok, BinBody} ->

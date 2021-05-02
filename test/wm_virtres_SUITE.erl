@@ -1,7 +1,7 @@
 -module(wm_virtres_SUITE).
 
 -export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1, init_per_group/2, end_per_group/2]).
--export([activate/1, part_absent_create/1, part_creation_in_progress/1, part_creation_done/1,
+-export([activate/1, part_absent_create/1, part_spawned/1, part_fetched_not_up/1, part_fetched_up/1,
          uploading_is_about_to_start/1, uploading_started/1, uploading_done/1, downloading_started/1,
          downloading_done/1, part_destraction_in_progress/1, deactivate/1]).
 -export([part_exists_detete/1]).
@@ -29,8 +29,9 @@ groups() ->
       [],
       [activate,
        part_absent_create,
-       part_creation_in_progress,
-       part_creation_done,
+       part_spawned,
+       part_fetched_not_up,
+       part_fetched_up,
        uploading_is_about_to_start,
        uploading_started,
        uploading_done,
@@ -109,26 +110,41 @@ part_absent_create(Config) ->
     ok = gen_fsm:send_event(Pid, {partition_exists, WaitRef, false}),
     ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)).
 
--spec part_creation_in_progress(list()) -> atom().
-part_creation_in_progress(Config) ->
+-spec part_spawned(list()) -> atom().
+part_spawned(Config) ->
     Pid = proplists:get_value(virtres_pid, Config),
-    WaitRef = proplists:get_value(wait_ref, Config),
     PartExtId = proplists:get_value(part_ext_id, Config),
+    JobId = proplists:get_value(job_id, Config),
+    WaitRef = proplists:get_value(wait_ref, Config),
 
-    ok = gen_fsm:send_event(Pid, {create_in_progress, WaitRef, PartExtId}),
+    meck:expect(wm_virtres_handler, request_partition, fun(X, _) when X == JobId -> {ok, WaitRef} end),
+
+    ok = gen_fsm:send_event(Pid, {partition_spawned, WaitRef, PartExtId}),
     ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)).
 
--spec part_creation_done(list()) -> atom().
-part_creation_done(Config) ->
+-spec part_fetched_not_up(list()) -> atom().
+part_fetched_not_up(Config) ->
+    Pid = proplists:get_value(virtres_pid, Config),
+    WaitRef = proplists:get_value(wait_ref, Config),
+    Part = wm_entity:set_attr([{state, creating}, {name, "Foo"}, {id, wm_utils:uuid(v4)}], wm_entity:new(partition)),
+
+    meck:expect(wm_virtres_handler, wait_for_partition_fetch, fun() -> erlang:make_ref() end),
+
+    ok = gen_fsm:send_event(Pid, {partition_fetched, WaitRef, Part}),
+    ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)).
+
+-spec part_fetched_up(list()) -> atom().
+part_fetched_up(Config) ->
     Pid = proplists:get_value(virtres_pid, Config),
     PartExtId = proplists:get_value(part_ext_id, Config),
     PartMgrNodeId = proplists:get_value(part_mgr_node_id, Config),
     WaitRef = proplists:get_value(wait_ref, Config),
+    Part = wm_entity:set_attr([{state, up}, {name, "Foo"}, {id, wm_utils:uuid(v4)}], wm_entity:new(partition)),
 
-    meck:expect(wm_virtres_handler, add_entities_to_conf, fun(_, _, _, _) -> {ok, PartMgrNodeId} end),
+    meck:expect(wm_virtres_handler, add_entities_to_conf, fun(_, X, _, _) when X == Part -> {ok, PartMgrNodeId} end),
     meck:expect(wm_virtres_handler, wait_for_wm_resources_readiness, fun() -> erlang:make_ref() end),
 
-    ok = gen_fsm:send_event(Pid, {partition_created, WaitRef, PartExtId}),
+    ok = gen_fsm:send_event(Pid, {partition_fetched, WaitRef, Part}),
     ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)).
 
 -spec uploading_is_about_to_start(list()) -> atom().
