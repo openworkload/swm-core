@@ -92,16 +92,16 @@ handle_call({cancel_relocation, Job}, _, MState = #mstate{}) ->
 handle_call(_, _, #mstate{} = MState) ->
     {reply, {error, not_handled}, MState}.
 
-handle_cast({event, job_finished, {JobID, _, _, _}}, #mstate{relocations = Relocations} = MState) ->
-    ?LOG_DEBUG("Job finished event received for job ~p", [JobID]),
+handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{relocations = Relocations} = MState) ->
+    ?LOG_DEBUG("Job finished event received for job ~p", [JobId]),
     %% TODO: remove relocation also on job cancel command
-    case maps:take(JobID, Relocations) of
+    case maps:take(JobId, Relocations) of
         error ->
             ?LOG_DEBUG("Received job_finished, but not found in relocations"),
             {noreply, MState};
         {RelocationID, NewRelocations} ->
             ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationID]),
-            wm_compute:set_nodes_alloc_state(remote, drained, JobID),
+            wm_compute:set_nodes_alloc_state(remote, drained, JobId),
             ok = wm_factory:send_event_locally(job_finished, virtres, RelocationID),
             {noreply, MState#mstate{relocations = NewRelocations}}
     end;
@@ -224,15 +224,15 @@ schedule_relocation() ->
 
 start_jobs_relocation(MState = #mstate{relocations = Relocations}) ->
     F = fun(Job, Map) ->
-           JobID = wm_entity:get_attr(id, Job),
-           case maps:get(JobID, Map, not_found) of
+           JobId = wm_entity:get_attr(id, Job),
+           case maps:get(JobId, Map, not_found) of
                not_found ->
                    case wm_entity:get_attr(relocatable, Job) of
                        true ->
                            case try_relocate_one_job(Job) of
                                {ok, RelocationID} ->
-                                   ?LOG_DEBUG("New virtres has been spawned: ~p", [RelocationID]),
-                                   maps:put(JobID, RelocationID, Map);
+                                   ?LOG_DEBUG("Virtres has been spawned for job ~p (~p)", [JobId, RelocationID]),
+                                   maps:put(JobId, RelocationID, Map);
                                _ ->
                                    Map
                            end;
@@ -240,15 +240,12 @@ start_jobs_relocation(MState = #mstate{relocations = Relocations}) ->
                            Map
                    end;
                FoundRecolcationId ->
-                   ?LOG_DEBUG("Job ~p has already been relocating (~p)", [JobID, FoundRecolcationId]),
+                   ?LOG_DEBUG("Job ~p has already been relocating (~p)", [JobId, FoundRecolcationId]),
                    Map
            end
         end,
     GetQueuedNoNodes =
-        fun (#job{state = ?JOB_STATE_QUEUED,
-                  nodes = [],
-                  revision = R})
-                when R > 0 ->
+        fun (#job{state = ?JOB_STATE_QUEUED, revision = R}) when R > 0 ->
                 true;
             (_) ->
                 false
@@ -282,30 +279,30 @@ start_jobs_relocation(MState = #mstate{relocations = Relocations}) ->
     end.
 
 try_relocate_one_job(Job) ->
+    JobId = wm_entity:get_attr(id, Job),
     case select_remote_site(Job) of
         {ok, TemplateNode} ->
-            JobID = wm_entity:get_attr(id, Job),
             TemplateName = wm_entity:get_attr(name, TemplateNode),
-            ?LOG_INFO("Found suited remote site for job ~p (~p)", [JobID, TemplateName]),
+            ?LOG_INFO("Found suited remote site for job ~p (~p)", [JobId, TemplateName]),
             1 =
                 wm_conf:update(
                     wm_entity:set_attr({state, ?JOB_STATE_WAITING}, Job)),
-            wm_factory:new(virtres, {create, JobID, TemplateNode}, []);
+            wm_factory:new(virtres, {create, JobId, TemplateNode}, []);
         {error, not_found} ->
-            ?LOG_DEBUG("No suited remote site found for job ~p", [wm_entity:get_attr(id, Job)]),
+            ?LOG_DEBUG("No suited remote site found for job ~p", [JobId]),
             {error, not_found}
     end.
 
 do_cancel_relocation(Job, MState = #mstate{relocations = Relocations, cancellations = Cancellations}) ->
-    JobID = wm_entity:get_attr(id, Job),
-    case maps:get(JobID, Relocations, not_found) of
+    JobId = wm_entity:get_attr(id, Job),
+    case maps:get(JobId, Relocations, not_found) of
         not_found ->
-            ?LOG_DEBUG("No relocation is running => destroy related resources: ~p", [JobID]),
-            {ok, TaskID} = wm_factory:new(virtres, {destroy, JobID, undefined}, []),
+            ?LOG_DEBUG("No relocation is running => destroy related resources: ~p", [JobId]),
+            {ok, TaskID} = wm_factory:new(virtres, {destroy, JobId, undefined}, []),
             remove_relocation_entities(Job),
-            MState#mstate{cancellations = maps:put(JobID, TaskID, Cancellations)};
+            MState#mstate{cancellations = maps:put(JobId, TaskID, Cancellations)};
         RelocationID ->
-            ?LOG_DEBUG("Relocation is running => destroy its resources: ~p", [JobID]),
+            ?LOG_DEBUG("Relocation is running => destroy its resources: ~p", [JobId]),
             ok = wm_factory:send_event_locally(destroy, virtres, RelocationID),
             remove_relocation_entities(Job),
             MState#mstate{relocations = maps:remove(RelocationID, Relocations)}
@@ -319,26 +316,26 @@ delete_resources([#resource{name = "partition",
                   | T],
                  Job,
                  Cnt) ->
-    JobID = wm_entity:get_attr(id, Job),
+    JobId = wm_entity:get_attr(id, Job),
     case lists:keyfind(id, 1, Props) of
         false ->
-            ?LOG_DEBUG("Partition resource does not have id property: ~p [job=~p]", [Props, JobID]),
+            ?LOG_DEBUG("Partition resource does not have id property: ~p [job=~p]", [Props, JobId]),
             Cnt;
         {id, PartID} ->
-            ?LOG_DEBUG("Delete partition entity ~p [job=~p]", [PartID, JobID]),
+            ?LOG_DEBUG("Delete partition entity ~p [job=~p]", [PartID, JobId]),
             ok = wm_conf:delete(partition, PartID),
             RssCnt = delete_resources(Rss, Job, 0),
             delete_part_id_from_cluster(Job, PartID),
             delete_resources(T, Job, Cnt + RssCnt + 1)
     end;
 delete_resources([#resource{name = "node", properties = Props} | T], Job, Cnt) ->
-    JobID = wm_entity:get_attr(id, Job),
+    JobId = wm_entity:get_attr(id, Job),
     case lists:keyfind(id, 1, Props) of
         false ->
-            ?LOG_DEBUG("Node resource does not have id property: ~p [job=~p]", [Props, JobID]),
+            ?LOG_DEBUG("Node resource does not have id property: ~p [job=~p]", [Props, JobId]),
             Cnt;
         {id, NodeID} ->
-            ?LOG_DEBUG("Delete node entity ~p [job=~p]", [NodeID, JobID]),
+            ?LOG_DEBUG("Delete node entity ~p [job=~p]", [NodeID, JobId]),
             ok = wm_conf:delete(node, NodeID),
             delete_resources(T, Job, Cnt + 1)
     end.

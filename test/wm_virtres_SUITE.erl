@@ -141,7 +141,7 @@ part_fetched_up(Config) ->
     WaitRef = proplists:get_value(wait_ref, Config),
     Part = wm_entity:set_attr([{state, up}, {name, "Foo"}, {id, wm_utils:uuid(v4)}], wm_entity:new(partition)),
 
-    meck:expect(wm_virtres_handler, add_entities_to_conf, fun(_, X, _, _) when X == Part -> {ok, PartMgrNodeId} end),
+    meck:expect(wm_virtres_handler, ensure_entities_created, fun(_, X, _) when X == Part -> {ok, PartMgrNodeId} end),
     meck:expect(wm_virtres_handler, wait_for_wm_resources_readiness, fun() -> erlang:make_ref() end),
 
     ok = gen_fsm:send_event(Pid, {partition_fetched, WaitRef, Part}),

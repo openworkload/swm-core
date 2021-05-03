@@ -1,8 +1,8 @@
 -module(wm_virtres_handler).
 
 -export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/2,
-         start_uploading/2, start_downloading/2, delete_partition/2, spawn_partition/2, add_entities_to_conf/4,
-         wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0, remove_relocation_entities/1]).
+         start_uploading/2, start_downloading/2, delete_partition/2, spawn_partition/2, wait_for_partition_fetch/0,
+         wait_for_wm_resources_readiness/0, remove_relocation_entities/1, ensure_entities_created/3]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
@@ -124,8 +124,17 @@ spawn_partition(JobId, Remote) ->
     {ok, Creds} = get_credentials(Remote),
     wm_gate:create_partition(self(), Remote, Creds, Options).
 
--spec add_entities_to_conf(string(), #partition{}, #node{}, #remote{}) -> {atom(), string()}.
-add_entities_to_conf(JobId, Partition, TplNode, Remote) ->
+-spec ensure_entities_created(string(), #partition{}, #node{}) -> {atom(), string()}.
+ensure_entities_created(JobId, Partition, TplNode) ->
+    remove_relocation_entities(JobId),
+    create_relocation_entities(JobId, Partition, TplNode).
+
+%% ============================================================================
+%% Implementation functions
+%% ============================================================================
+
+-spec create_relocation_entities(string(), #partition{}, #node{}) -> {atom(), string()}.
+create_relocation_entities(JobId, Partition, TplNode) ->
     ?LOG_INFO("Remote partition [job ~p]: ~p", [JobId, Partition]),
     1 = wm_conf:update(Partition),
     Addresses = wm_entity:get_attr(addresses, Partition),
@@ -151,10 +160,6 @@ add_entities_to_conf(JobId, Partition, TplNode, Remote) ->
             wm_topology:reload(),
             {ok, PartMgrNodeId}
     end.
-
-%% ============================================================================
-%% Implementation functions
-%% ============================================================================
 
 -spec get_partition_name(string()) -> string().
 get_partition_name(JobId) ->
@@ -251,8 +256,7 @@ clone_nodes(PartID, ParentName, NodeIps, JobId, TplNode) ->
     RemoteID = wm_entity:get_attr(remote_id, TplNode),
     ApiPort = get_cloud_node_api_port(),
     JobRes =
-        wm_entity:set_attr([{name,
-                             "job"}, % special resource to pin node to job
+        wm_entity:set_attr([{name, "job"}, % special resource to pin node to job
                             {count, 1},
                             {properties, [{id, JobId}]}],
                            wm_entity:new(resource)),

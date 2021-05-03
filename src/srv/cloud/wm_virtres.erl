@@ -205,7 +205,7 @@ creating({partition_fetched, Ref, Partition},
              MState) ->
     case wm_entity:get_attr(state, Partition) of
         up ->
-            {ok, PartMgrNodeId} = wm_virtres_handler:add_entities_to_conf(JobId, Partition, TplNode, Remote),
+            {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
             Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
             MState2 =
                 MState#mstate{wait_ref = undefined,
