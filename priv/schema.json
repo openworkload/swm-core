@@ -794,6 +794,19 @@
     }
   },
 
+  "relocation": {
+    "id": {
+      "type": "relocation_id()"
+    },
+    "job_id": {
+      "type": "job_id()"
+    },
+    "cancaled": {
+      "default": "false",
+      "type": "atom()"
+    }
+  },
+
   "subscriber": {
     "ref": {
       "type": "{atom(), atom()}"

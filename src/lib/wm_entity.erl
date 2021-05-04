@@ -12,8 +12,8 @@
 % https://www.python.org/about/success/cog
 -define(ENTITIES,
         [global, executable, malfunction, table, hook, grid, cluster, partition, node, resource, service, role, job,
-         process, project, group, user, queue, scheduler, timetable, subscriber, image, credential, remote, account,
-         metric, scheduler_result, boot_info, test]).
+         process, project, group, user, queue, scheduler, timetable, relocation, subscriber, image, credential, remote,
+         account, metric, scheduler_result, boot_info, test]).
 
 -compile({parse_transform, exprecs}).
 
@@ -99,6 +99,10 @@ new(<<"timetable">>) ->
     '#new-timetable'();
 new(timetable) ->
     '#new-timetable'();
+new(<<"relocation">>) ->
+    '#new-relocation'();
+new(relocation) ->
+    '#new-relocation'();
 new(<<"subscriber">>) ->
     '#new-subscriber'();
 new(subscriber) ->
@@ -177,6 +181,8 @@ rec(#queue{}) ->
 rec(#scheduler{}) ->
     true;
 rec(#timetable{}) ->
+    true;
+rec(#relocation{}) ->
     true;
 rec(#subscriber{}) ->
     true;
@@ -637,6 +643,15 @@ get_type(timetable, Attr) when is_atom(Attr) ->
         job_nodes ->
             {list, string}
     end;
+get_type(relocation, Attr) when is_atom(Attr) ->
+    case Attr of
+        id ->
+            {list, string};
+        job_id ->
+            {list, string};
+        cancaled ->
+            atom
+    end;
 get_type(subscriber, Attr) when is_atom(Attr) ->
     case Attr of
         ref ->
@@ -804,6 +819,7 @@ get_names(with_ids) ->
      user,
      queue,
      scheduler,
+     relocation,
      image,
      credential,
      remote,

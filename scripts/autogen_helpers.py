@@ -26,6 +26,8 @@ types = {
      "cluster_id()": "std::string",
      "partition_id()": "std::string",
      "node_id()": "std::string",
+     "job_id()": "std::string",
+     "relocation_id()": "std::uint64_t",
      "hook_id()": "std::string"
 }
 
@@ -49,6 +51,8 @@ type_suffix = {
      "cluster_id()": "str",
      "partition_id()": "str",
      "node_id()": "str",
+     "job_id()": "str",
+     "relocation_id()": "uint64_t",
      "hook_id()": "str"
 }
 
@@ -72,6 +76,8 @@ printer = {
      "cluster_id()": "%s",
      "partition_id()": "%s",
      "node_id()": "%s",
+     "job_id()": "%s",
+     "relocation_id()": "%ld",
      "hook_id()": "%s"
 }
 

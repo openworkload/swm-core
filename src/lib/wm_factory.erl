@@ -17,8 +17,7 @@
          subscribers = maps:new(),
          sups = maps:new(),
          mods = maps:new(),
-         reqs =
-             maps:new(),   % requests came before module initalized
+         reqs = maps:new(),   % requests came before module initalized
          status = maps:new(), % modules with finished init()
          nodes = maps:new()}).   % nodes per distributed task
 
@@ -40,7 +39,7 @@ start_link(Args) ->
         end,
     gen_server:start_link({local, RegName}, ?MODULE, Args, []).
 
--spec new(atom(), [term()], [atom()]) -> integer().
+-spec new(atom(), [term()], [atom()]) -> {ok, integer()}.
 new(Type, ExtraData, Nodes) ->
     Msg = {new, ExtraData, Nodes},
     wm_utils:protected_call(get_factory_name(Type), Msg, timeout).
@@ -231,8 +230,7 @@ start_module(TASK_ID, ExtraData, Nodes, MState) ->
                            status = SMap,
                            nodes = NMap}};
         {error, {shutdown, Error}} ->
-            ?LOG_ERROR("Cannot start module ~p (id=~p, nodes=~p): ~p",
-                       [MState#mstate.module, TASK_ID, AddrList, Error]),
+            ?LOG_ERROR("Cannot start ~p (id=~p, nodes=~p): ~p", [MState#mstate.module, TASK_ID, AddrList, Error]),
             {TASK_ID, MState}
     end.
 
@@ -311,6 +309,7 @@ terminate_task(TASK_ID, MState) ->
                           subscribers = Sbrs}
     end.
 
+-spec get_factory_name(atom()) -> atom().
 get_factory_name(Type) ->
     NameStr = atom_to_list(?MODULE) ++ "_" ++ atom_to_list(Type),
     list_to_existing_atom(NameStr).

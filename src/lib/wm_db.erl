@@ -8,7 +8,7 @@
          ensure_running/0, get_all/1, get_all/2, get_one/3, get_one_2keys/3, get_many/3, get_less_equal/3,
          update_exist/4, update/1, upgrade_schema/1, clear_table/1, force_load_tables/0, table_exists/1,
          get_all_tab_names/0, propagate_tables/2, propagate_tables/3, delete_by_key/2, delete/1, get_hashes/1,
-         compare_hashes/2, get_tables_meta/1, create_the_rest_tables/0, get_global/3, get_address/1]).
+         compare_hashes/2, get_tables_meta/1, create_the_rest_tables/0, get_global/3, get_address/1, get_size/1]).
 -export([get_many_pred/2]).
 -export([with_transaction/1]).
 
@@ -31,6 +31,12 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
+% @doc Return amount of records in the table
+-spec get_size(atom()) -> pos_integer().
+get_size(Tab) ->
+    mnesia:table_info(size).
+
+-spec is_running() -> true | false.
 is_running() ->
     mnesia:system_info(is_running).
 

@@ -12,6 +12,7 @@
 -type user_id() :: string().
 -type hook_id() :: string().
 -type job_id() :: string().
+-type relocation_id() :: integer().
 
 -record(executable,
         {name :: string(),
@@ -188,6 +189,7 @@
          comment = "" :: string(),
          revision = 0 :: pos_integer()}).
 -record(timetable, {start_time :: pos_integer(), job_id :: string(), job_nodes = [] :: [node_id()]}).
+-record(relocation, {id :: relocation_id(), job_id :: job_id(), cancaled = false :: atom()}).
 -record(subscriber, {ref :: {atom(), atom()}, event = any_event :: atom(), revision = 0 :: pos_integer()}).
 -record(image,
         {name :: string(),

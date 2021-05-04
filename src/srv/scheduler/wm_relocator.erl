@@ -16,7 +16,7 @@
 -define(DEFAULT_RELOCATION_INTERVAL, 20000).
 -define(MAX_RELOCATIONS, 1).
 
--record(mstate, {relocations = #{} :: map(), cancellations = #{} :: map()}).
+-record(mstate, {}).
 
 %% ============================================================================
 %% Module API
@@ -28,7 +28,7 @@ start_link(Args) ->
 
 -spec get_suited_template_nodes(#job{}) -> [#node{}].
 get_suited_template_nodes(Job) ->
-    GetTemplates = fun(Job) -> wm_entity:get_attr(is_template, Job) == true end,
+    GetTemplates = fun(X) -> wm_entity:get_attr(is_template, X) == true end,
     case wm_conf:select(node, GetTemplates) of
         {error, not_found} ->
             [];
@@ -83,35 +83,29 @@ init(_) ->
     ?LOG_INFO("Relocator module has been started"),
     MState = #mstate{},
     wm_event:subscribe(job_finished, node(), ?MODULE),
-    schedule_relocation(),
+    schedule_new_relocations(),
     {ok, MState}.
 
 handle_call({cancel_relocation, Job}, _, MState = #mstate{}) ->
-    NewMState = do_cancel_relocation(Job, MState),
-    {reply, ok, NewMState};
-handle_call(_, _, #mstate{} = MState) ->
-    {reply, {error, not_handled}, MState}.
+    {reply, do_cancel_relocation(Job), MState}.
 
-handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{relocations = Relocations} = MState) ->
+handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job finished event received for job ~p", [JobId]),
-    %% TODO: remove relocation also on job cancel command
-    case maps:take(JobId, Relocations) of
-        error ->
-            ?LOG_DEBUG("Received job_finished, but not found in relocations"),
-            {noreply, MState};
-        {RelocationID, NewRelocations} ->
-            ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationID]),
-            wm_compute:set_nodes_alloc_state(remote, drained, JobId),
-            ok = wm_factory:send_event_locally(job_finished, virtres, RelocationID),
-            {noreply, MState#mstate{relocations = NewRelocations}}
-    end;
+    %% TODO: remove relocatMState = ion also on job cancel command
+    {ok, Relocation} = wm_conf:select(relocation, {job_id, JobId}),
+    RelocationId = wm_entity:get_attr(id, Relocation),
+    ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationId]),
+    wm_conf:delete(Relocation),
+    wm_compute:set_nodes_alloc_state(remote, drained, JobId),
+    ok = wm_factory:send_event_locally(job_finished, virtres, RelocationId),
+    {noreply, MState};
 handle_cast(_, #mstate{} = MState) ->
     {noreply, MState}.
 
 handle_info(relocate_jobs, #mstate{} = MState) ->
-    MState2 = start_jobs_relocation(MState),
-    schedule_relocation(),
-    {noreply, MState2};
+    start_new_relocations(),
+    schedule_new_relocations(),
+    {noreply, MState};
 handle_info(_, #mstate{} = MState) ->
     {noreply, MState}.
 
@@ -217,31 +211,35 @@ node_weight(Price, NetworkLatency, Data) ->
     K = koef(Data),
     1 / (K * Price + (1 - K) * NetworkLatency).
 
--spec schedule_relocation() -> reference().
-schedule_relocation() ->
+-spec schedule_new_relocations() -> reference().
+schedule_new_relocations() ->
     Ms = wm_conf:g(relocation_interval, {?DEFAULT_RELOCATION_INTERVAL, integer}),
     wm_utils:wake_up_after(Ms, relocate_jobs).
 
-start_jobs_relocation(MState = #mstate{relocations = Relocations}) ->
-    F = fun(Job, Map) ->
+-spec start_new_relocations() -> ok.
+start_new_relocations() ->
+    F = fun(Job, Accum) ->
            JobId = wm_entity:get_attr(id, Job),
-           case maps:get(JobId, Map, not_found) of
-               not_found ->
+           case wm_conf:select(relocation, {job_id, JobId}) of
+               {error, not_found} ->
                    case wm_entity:get_attr(relocatable, Job) of
                        true ->
-                           case try_relocate_one_job(Job) of
-                               {ok, RelocationID} ->
-                                   ?LOG_DEBUG("Virtres has been spawned for job ~p (~p)", [JobId, RelocationID]),
-                                   maps:put(JobId, RelocationID, Map);
+                           case spawn_virtres(Job) of
+                               {ok, RelocationId} ->
+                                   ?LOG_DEBUG("Virtres has been spawned for job ~p (~p)", [JobId, RelocationId]),
+                                   Relocation =
+                                       wm_entity:set_attr([{id, RelocationId}, {job_id, JobId}],
+                                                          wm_entity:new(relocation)),
+                                   [Relocation | Accum];
                                _ ->
-                                   Map
+                                   Accum
                            end;
                        _ ->
-                           Map
+                           Accum
                    end;
-               FoundRecolcationId ->
-                   ?LOG_DEBUG("Job ~p has already been relocating (~p)", [JobId, FoundRecolcationId]),
-                   Map
+               FoundRecolcation ->
+                   FoundRelocationId = wm_entity:get_attr(id, FoundRecolcation),
+                   ?LOG_DEBUG("Job ~p has already been relocating (~p)", [JobId, FoundRelocationId])
            end
         end,
     GetQueuedNoNodes =
@@ -252,7 +250,7 @@ start_jobs_relocation(MState = #mstate{relocations = Relocations}) ->
         end,
     case wm_conf:select(job, GetQueuedNoNodes) of
         {ok, Jobs} ->
-            RelocationsNum = maps:size(Relocations),
+            RelocationsNum = wm_conf:get_size(relocation),
             Max = wm_conf:g(max_relocations, {?MAX_RELOCATIONS, integer}),
             case RelocationsNum < Max of
                 true ->
@@ -267,18 +265,19 @@ start_jobs_relocation(MState = #mstate{relocations = Relocations}) ->
                                 Jobs
                         end,
                     ?LOG_INFO("Try to relocate ~p jobs (out of queued ~p jobs)", [JobsToRelocate, JobsNum]),
-                    NewRelocations = lists:foldl(F, Relocations, JobsToRelocate),
-                    MState#mstate{relocations = NewRelocations};
+                    Relocations = lists:foldl(F, [], JobsToRelocate),
+                    wm_conf:update(Relocations);
                 false ->
-                    ?LOG_DEBUG("Too many relocations (~p) when max=~p", [RelocationsNum, Max]),
-                    MState
+                    ?LOG_DEBUG("Too many relocations (~p) when max=~p", [RelocationsNum, Max])
             end;
         {error, not_found} ->
-            ?LOG_DEBUG("No queued jobs found => nothing to relocate"),
-            MState
-    end.
+            ?LOG_DEBUG("No queued jobs found => nothing to relocate")
+    end,
+    ok.
 
-try_relocate_one_job(Job) ->
+% @doc Start relocation returning relocation ID which is a hash of the nodes involved into the relocation
+-spec spawn_virtres(#job{}) -> integer() | {error, not_found}.
+spawn_virtres(Job) ->
     JobId = wm_entity:get_attr(id, Job),
     case select_remote_site(Job) of
         {ok, TemplateNode} ->
@@ -293,21 +292,26 @@ try_relocate_one_job(Job) ->
             {error, not_found}
     end.
 
-do_cancel_relocation(Job, MState = #mstate{relocations = Relocations, cancellations = Cancellations}) ->
+-spec do_cancel_relocation(#job{}) -> atom().
+do_cancel_relocation(Job) ->
     JobId = wm_entity:get_attr(id, Job),
-    case maps:get(JobId, Relocations, not_found) of
-        not_found ->
+    case wm_conf:select(relocation, {job_id, JobId}) of
+        {error, not_found} ->
             ?LOG_DEBUG("No relocation is running => destroy related resources: ~p", [JobId]),
-            {ok, TaskID} = wm_factory:new(virtres, {destroy, JobId, undefined}, []),
+            {ok, TaskId} = wm_factory:new(virtres, {destroy, JobId, undefined}, []),
+            RelocationDestraction =
+                wm_entity:set_attr([{id, TaskId}, {job_id, JobId}, {cancaled, true}], wm_entity:new(relocation)),
             remove_relocation_entities(Job),
-            MState#mstate{cancellations = maps:put(JobId, TaskID, Cancellations)};
-        RelocationID ->
-            ?LOG_DEBUG("Relocation is running => destroy its resources: ~p", [JobId]),
-            ok = wm_factory:send_event_locally(destroy, virtres, RelocationID),
+            wm_conf:update(RelocationDestraction);
+        {ok, Relocation} ->
+            ?LOG_DEBUG("Relocation is running => destroy its resources (job: ~p)", [JobId]),
+            RelocationId = wm_entity:get_attr(id, Relocation),
+            ok = wm_factory:send_event_locally(destroy, virtres, RelocationId),
             remove_relocation_entities(Job),
-            MState#mstate{relocations = maps:remove(RelocationID, Relocations)}
+            wm_conf:delete(Relocation)
     end.
 
+-spec delete_resources([#resource{}], #job{}, pos_integer()) -> pos_integer().
 delete_resources([], _, Cnt) ->
     Cnt;
 delete_resources([#resource{name = "partition",
@@ -340,6 +344,7 @@ delete_resources([#resource{name = "node", properties = Props} | T], Job, Cnt) -
             delete_resources(T, Job, Cnt + 1)
     end.
 
+-spec delete_part_id_from_cluster(#job{}, partition_id()) -> pos_integer().
 delete_part_id_from_cluster(Job, PartID) ->
     ClusterID = wm_entity:get_attr(cluster_id, Job),
     {ok, Cluster1} = wm_conf:select(cluster, {id, ClusterID}),

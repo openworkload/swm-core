@@ -7,7 +7,7 @@
 -export([g/2, set_global/2, select/2, select_node/1, select_many/3, ensure_boot_info_deleted/0, get_nodes_with_state/1,
          update/1, update/3, import/2, delete/1, delete/2, propagate_config/1, propagate_config/2, pull_async/1,
          set_node_state/3, set_nodes_state/3, get_my_address/0, get_my_relative_address/1, get_relative_address/2,
-         is_my_address/1]).
+         is_my_address/1, get_size/1]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -39,6 +39,11 @@ g(Name, {Default, ConvertTo}) ->
 %% @doc Set global parameter value
 set_global(Name, Value) ->
     do_set_global(Name, Value).
+
+% @doc Return amount of records in the table
+-spec get_size(atom()) -> pos_integer().
+get_size(Tab) ->
+    wm_db:get_size(Tab).
 
 %% @doc Select one, several or all (IDs=all) entities from db.
 -spec select(atom(), tuple() | term() | fun((term) -> boolean())) -> {ok, term()} | {error, not_found} | [].
