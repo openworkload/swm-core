@@ -26,7 +26,7 @@ HELP_FUN = \
     print "\n"; }
 
 
-all: gen compile porter
+all: gen compile porter format
 
 help:		## Show this help
 			@perl -e '$(HELP_FUN)' $(MAKEFILE_LIST)
