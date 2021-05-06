@@ -87,9 +87,7 @@ handle_cast({call_asap, Module, Message}, MState) ->
                    true ->
                        lists:split(P, MState2#mstate.tasks)
                 end,
-            ?LOG_DEBUG("Tasks to execute now: ~p, remaining "
-                       "tasks: ~p",
-                       [Tasks, T]),
+            ?LOG_DEBUG("Tasks to execute now: ~p, remaining tasks: ~w", [Tasks, T]),
             %% TODO: Don't remove task from module state, until ?MODULE received
             %% {'EXIT', Pid, normal} message. In case {'EXIT', Pid, Reason} received re-enqueue task.
             F = fun({TaskModule, TaskMessage}) ->

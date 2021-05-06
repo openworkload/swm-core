@@ -155,10 +155,9 @@ validating({partition_exists, Ref, false},
            #mstate{action = create,
                    job_id = JobId,
                    wait_ref = Ref,
-                   template_node = TplNode,
                    remote = Remote} =
                MState) ->
-    ?LOG_INFO("Spawn a new partition (template: ~p)", [wm_entity:get_attr(name, TplNode)]),
+    ?LOG_INFO("Spawn a new partition for job ~p", [JobId]),
     {ok, WaitRef} = wm_virtres_handler:spawn_partition(JobId, Remote),
     {next_state, creating, MState#mstate{wait_ref = WaitRef}};
 validating({partition_exists, Ref, true},
@@ -168,8 +167,8 @@ validating({partition_exists, Ref, true},
                    job_id = JobId} =
                MState) ->
     ?LOG_INFO("Remote partition exits => reuse for job ~p", [JobId]),
-    {ok, WaitRef} = wm_virtres_handler:request_partition(JobId, Remote),
-    {next_state, creating, MState#mstate{wait_ref = WaitRef}};
+    Timer = wm_virtres_handler:wait_for_partition_fetch(),
+    {next_state, creating, MState#mstate{part_check_timer = Timer}};
 validating({partition_exists, Ref, false},
            #mstate{action = destroy,
                    wait_ref = Ref,
@@ -188,15 +187,10 @@ validating({partition_exists, Ref, true},
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}}.
 
-creating({partition_spawned, Ref, NewPartExtId},
-         #mstate{job_id = JobId,
-                 wait_ref = Ref,
-                 template_node = TplNode,
-                 remote = Remote} =
-             MState) ->
+creating({partition_spawned, Ref, NewPartExtId}, #mstate{job_id = JobId, wait_ref = Ref} = MState) ->
     ?LOG_INFO("Partition spawned => check status: ~p, job ~p", [NewPartExtId, JobId]),
-    {ok, WaitRef} = wm_virtres_handler:request_partition(JobId, Remote),
-    {next_state, creating, MState#mstate{wait_ref = WaitRef}};
+    Timer = wm_virtres_handler:wait_for_partition_fetch(),
+    {next_state, creating, MState#mstate{part_check_timer = Timer}};
 creating({partition_fetched, Ref, Partition},
          #mstate{job_id = JobId,
                  wait_ref = Ref,
@@ -216,10 +210,9 @@ creating({partition_fetched, Ref, Partition},
         Other ->
             ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p", [Other]),
             Timer = wm_virtres_handler:wait_for_partition_fetch(),
-            {ok, WaitRef} = wm_virtres_handler:request_partition(JobId, Remote),
-            {next_state, creating, MState#mstate{part_check_timer = Timer, wait_ref = WaitRef}}
+            {next_state, creating, MState#mstate{part_check_timer = Timer}}
     end;
-creating({error, Ref, Error}, #mstate{job_id = JobId} = MState) ->
+creating({error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Partition creation failed: ~p", [Error]),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
     handle_remote_failure(MState).
@@ -278,12 +271,14 @@ destroying({Ref, Status}, MState) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec handle_remote_failure(#mstate{}) -> {atom(), atom(), #mstate{}}.
 handle_remote_failure(#mstate{job_id = JobId, task_id = TaskId} = MState) ->
     ?LOG_INFO("Force state ~p for job ~p [~p]", [?JOB_STATE_QUEUED, JobId, TaskId]),
     wm_virtres_handler:update_job({state, ?JOB_STATE_QUEUED}, MState#mstate.job_id),
     %TODO Try to delete resource several, but limited number of times
     {stop, normal, MState}.
 
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{extra, {Action, JobId, Node}} | T], MState) ->

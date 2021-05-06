@@ -649,7 +649,9 @@ get_type(relocation, Attr) when is_atom(Attr) ->
             {list, string};
         job_id ->
             {list, string};
-        cancaled ->
+        template_node_id ->
+            string;
+        canceled ->
             atom
     end;
 get_type(subscriber, Attr) when is_atom(Attr) ->

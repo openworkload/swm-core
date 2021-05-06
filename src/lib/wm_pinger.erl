@@ -8,8 +8,8 @@
 
 -include("wm_log.hrl").
 
--define(DEFAULT_PING_PERIOD, 10).
--define(DEFAULT_PINGER_PERIOD, 5).
+-define(DEFAULT_PING_PERIOD, 15).
+-define(DEFAULT_PINGER_PERIOD, 15).
 -define(MICROSECONDS_IN_SECOND, 1000).
 
 -record(mstate, {nodes = #{}, answers = #{}}).

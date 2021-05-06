@@ -14,7 +14,9 @@
 -export([priv/0, priv/1]).
 -export([to_float/1, to_string/1, to_binary/1, to_integer/1]).
 -export([localtime/0, now_iso8601/1, timestamp/0, timestamp/1]).
+-export([get_cloud_node_name/2, get_requested_nodes_number/1]).
 
+-include("wm_entity.hrl").
 -include("wm_log.hrl").
 
 -define(CALL_TIMEOUT, 10000).
@@ -602,13 +604,13 @@ make_nodes_c_decodable([Node | T], Result) ->
     make_nodes_c_decodable(T, [Node2 | Result]).
 
 %% @doc Returns true if self node is a manager one
--spec is_manager(tuple()) -> true | false.
+-spec is_manager(#node{}) -> true | false.
 is_manager(Node) ->
     MgrRoles = ["grid", "cluster", "partition"],
     lists:any(fun(Role) -> has_role(Role, Node) end, MgrRoles).
 
 %% @doc Returns true if node record has role assigned
--spec has_role(string(), tuple()) -> true | false.
+-spec has_role(string(), #node{}) -> true | false.
 has_role(RoleName, Node) ->
     RoleIDs = wm_entity:get_attr(roles, Node),
     Roles = wm_conf:select(role, RoleIDs),
@@ -697,3 +699,19 @@ await(Ref, Ms) ->
     after Ms ->
         timeout
     end.
+
+-spec get_cloud_node_name(job_id(), integer()) -> string().
+get_cloud_node_name(JobId, Index) ->
+    "swm-" ++ string:slice(JobId, 0, 8) ++ "-node" ++ integer_to_list(Index).
+
+-spec get_requested_nodes_number(#job{}) -> integer().
+get_requested_nodes_number(Job) ->
+    F = fun(Resource, Accum) ->
+           case wm_entity:get_attr(name, Resource) of
+               "node" ->
+                   Accum + wm_entity:get_attr(count, Resource);
+               _ ->
+                   Accum
+           end
+        end,
+    lists:foldl(F, 0, wm_entity:get_attr(request, Job)).

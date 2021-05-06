@@ -34,7 +34,7 @@ start_link(Args) ->
 % @doc Return amount of records in the table
 -spec get_size(atom()) -> pos_integer().
 get_size(Tab) ->
-    mnesia:table_info(size).
+    mnesia:table_info(Tab, size).
 
 -spec is_running() -> true | false.
 is_running() ->

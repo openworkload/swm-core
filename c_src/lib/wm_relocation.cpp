@@ -31,8 +31,13 @@ SwmRelocation::SwmRelocation(ETERM *term) {
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_atom(term, 4, cancaled)) {
+  if(eterm_to_str(term, 4, template_node_id)) {
     std::cerr << "Could not initialize relocation paremeter at position 4" << std::endl;
+    erl_print_term(stderr, term);
+    return;
+  }
+  if(eterm_to_atom(term, 5, canceled)) {
+    std::cerr << "Could not initialize relocation paremeter at position 5" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
@@ -48,8 +53,12 @@ void SwmRelocation::set_job_id(const std::string &new_val) {
   job_id = new_val;
 }
 
-void SwmRelocation::set_cancaled(const std::string &new_val) {
-  cancaled = new_val;
+void SwmRelocation::set_template_node_id(const std::string &new_val) {
+  template_node_id = new_val;
+}
+
+void SwmRelocation::set_canceled(const std::string &new_val) {
+  canceled = new_val;
 }
 
 std::uint64_t SwmRelocation::get_id() const {
@@ -60,8 +69,12 @@ std::string SwmRelocation::get_job_id() const {
   return job_id;
 }
 
-std::string SwmRelocation::get_cancaled() const {
-  return cancaled;
+std::string SwmRelocation::get_template_node_id() const {
+  return template_node_id;
+}
+
+std::string SwmRelocation::get_canceled() const {
+  return canceled;
 }
 
 
@@ -94,7 +107,8 @@ int swm::eterm_to_relocation(ETERM* eterm, SwmRelocation &obj) {
 void SwmRelocation::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << id << separator;
     std::cerr << prefix << job_id << separator;
-    std::cerr << prefix << cancaled << separator;
+    std::cerr << prefix << template_node_id << separator;
+    std::cerr << prefix << canceled << separator;
   std::cerr << std::endl;
 }
 

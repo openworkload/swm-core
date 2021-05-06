@@ -189,7 +189,8 @@
          comment = "" :: string(),
          revision = 0 :: pos_integer()}).
 -record(timetable, {start_time :: pos_integer(), job_id :: string(), job_nodes = [] :: [node_id()]}).
--record(relocation, {id :: relocation_id(), job_id :: job_id(), cancaled = false :: atom()}).
+-record(relocation,
+        {id :: relocation_id(), job_id :: job_id(), template_node_id :: node_id(), canceled = false :: atom()}).
 -record(subscriber, {ref :: {atom(), atom()}, event = any_event :: atom(), revision = 0 :: pos_integer()}).
 -record(image,
         {name :: string(),

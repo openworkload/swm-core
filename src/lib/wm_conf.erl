@@ -12,7 +12,7 @@
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
 
--define(DEFAULT_SYCN_INTERVAL, 10000).
+-define(DEFAULT_SYCN_INTERVAL, 60000).
 -define(DEFAULT_PULL_TIMEOUT, 10000).
 
 -record(mstate, {spool = "" :: string(), default_port = unknown :: integer(), sync = false :: atom()}).
@@ -539,7 +539,7 @@ do_set_global(Name, Value) ->
 
 schedule_sync_check() ->
     N = ?MODULE:g(sync_interval, {?DEFAULT_SYCN_INTERVAL, integer}),
-    ?LOG_DEBUG("Schedule new sync check in ~p seconds", [N]),
+    ?LOG_DEBUG("Schedule new sync check in ~p ms", [N]),
     wm_utils:wake_up_after(N, sync_check).
 
 do_get_my_address() ->

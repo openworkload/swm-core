@@ -43,6 +43,7 @@ get_suited_template_nodes(Job, Nodes) ->
 -spec select_remote_site(#job{}) -> {ok, #node{}} | {error, not_found}.
 select_remote_site(Job) ->
     Nodes = get_suited_template_nodes(Job),
+    ?LOG_DEBUG("Suited template nodes number for job ~p: ~p", [wm_entity:get_attr(id, Job), length(Nodes)]),
     select_remote_site(Job, Nodes).
 
 -spec cancel_relocation(#job{}) -> {ok, list()}.
@@ -91,7 +92,6 @@ handle_call({cancel_relocation, Job}, _, MState = #mstate{}) ->
 
 handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job finished event received for job ~p", [JobId]),
-    %% TODO: remove relocatMState = ion also on job cancel command
     {ok, Relocation} = wm_conf:select(relocation, {job_id, JobId}),
     RelocationId = wm_entity:get_attr(id, Relocation),
     ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationId]),
@@ -103,7 +103,7 @@ handle_cast(_, #mstate{} = MState) ->
     {noreply, MState}.
 
 handle_info(relocate_jobs, #mstate{} = MState) ->
-    start_new_relocations(),
+    start_relocations(),
     schedule_new_relocations(),
     {noreply, MState};
 handle_info(_, #mstate{} = MState) ->
@@ -216,39 +216,79 @@ schedule_new_relocations() ->
     Ms = wm_conf:g(relocation_interval, {?DEFAULT_RELOCATION_INTERVAL, integer}),
     wm_utils:wake_up_after(Ms, relocate_jobs).
 
--spec start_new_relocations() -> ok.
-start_new_relocations() ->
-    F = fun(Job, Accum) ->
-           JobId = wm_entity:get_attr(id, Job),
-           case wm_conf:select(relocation, {job_id, JobId}) of
-               {error, not_found} ->
-                   case wm_entity:get_attr(relocatable, Job) of
-                       true ->
-                           case spawn_virtres(Job) of
-                               {ok, RelocationId} ->
-                                   ?LOG_DEBUG("Virtres has been spawned for job ~p (~p)", [JobId, RelocationId]),
-                                   Relocation =
-                                       wm_entity:set_attr([{id, RelocationId}, {job_id, JobId}],
-                                                          wm_entity:new(relocation)),
-                                   [Relocation | Accum];
-                               _ ->
-                                   Accum
-                           end;
-                       _ ->
-                           Accum
-                   end;
-               FoundRecolcation ->
-                   FoundRelocationId = wm_entity:get_attr(id, FoundRecolcation),
-                   ?LOG_DEBUG("Job ~p has already been relocating (~p)", [JobId, FoundRelocationId])
-           end
+-spec start_relocations() -> ok.
+start_relocations() ->
+    restart_stopped_virtres_processes(),
+    start_new_virtres_processes().
+
+-spec spawn_virtres_if_needed(#job{}, [#relocation{}]) -> [#relocation{}].
+spawn_virtres_if_needed(Job, Relocations) ->
+    JobId = wm_entity:get_attr(id, Job),
+    case wm_conf:select(relocation, {job_id, JobId}) of
+        {error, not_found} ->
+            case spawn_virtres(Job) of
+                {ok, RelocationId, TemplateNodeId} ->
+                    ?LOG_DEBUG("Virtres has been spawned for job ~p (~p)", [JobId, RelocationId]),
+                    Relocation =
+                        wm_entity:set_attr([{id, RelocationId}, {job_id, JobId}, {template_node_id, TemplateNodeId}],
+                                           wm_entity:new(relocation)),
+                    [Relocation | Relocations];
+                _ ->
+                    Relocations
+            end;
+        {ok, FoundRelocation} ->
+            FoundRelocationId = wm_entity:get_attr(id, FoundRelocation),
+            case wm_factory:is_running(virtres, FoundRelocationId) of
+                false ->
+                    ?LOG_DEBUG("Virtres is not running got job ~p (~p) => respawn", [FoundRelocationId, JobId]),
+                    {ok, NewRelocationId} = respawn_virtres(Job, FoundRelocation),
+                    ?LOG_DEBUG("Relocation ID is updated for job ~p: ~p", [JobId, NewRelocationId]),
+                    wm_conf:delete(FoundRelocation),
+                    1 =
+                        wm_conf:update(
+                            wm_entity:set_attr({id, NewRelocationId}, FoundRelocation));
+                _ ->
+                    ok
+            end,
+            ?LOG_DEBUG("Job ~p has already been relocating (~p)", [JobId, FoundRelocationId]),
+            Relocations
+    end.
+
+-spec restart_stopped_virtres_processes() -> ok.
+restart_stopped_virtres_processes() ->
+    ?LOG_DEBUG("Restart stopped virtres processes"),
+    Filter =
+        fun (#job{state = S,
+                  relocatable = true,
+                  revision = R})
+                when R > 0 ->
+                lists:member(S, [?JOB_STATE_QUEUED, ?JOB_STATE_WAITING, ?JOB_STATE_RUNNING, ?JOB_STATE_TRANSFERRING]);
+            (_) ->
+                false
         end,
-    GetQueuedNoNodes =
-        fun (#job{state = ?JOB_STATE_QUEUED, revision = R}) when R > 0 ->
+    case wm_conf:select(job, Filter) of
+        {error, not_found} ->
+            ok;
+        {ok, Jobs} when is_list(Jobs) ->
+            Relocations = lists:foldl(fun spawn_virtres_if_needed/2, [], Jobs),
+            N = wm_conf:update(Relocations),
+            ?LOG_DEBUG("Restarted ~p virtres processes", [N])
+    end.
+
+-spec start_new_virtres_processes() -> ok.
+start_new_virtres_processes() ->
+    ?LOG_DEBUG("Start new virtres processes"),
+    Filter =
+        fun (#job{state = ?JOB_STATE_QUEUED,
+                  nodes = [],
+                  relocatable = true,
+                  revision = R})
+                when R > 0 ->
                 true;
             (_) ->
                 false
         end,
-    case wm_conf:select(job, GetQueuedNoNodes) of
+    case wm_conf:select(job, Filter) of
         {ok, Jobs} ->
             RelocationsNum = wm_conf:get_size(relocation),
             Max = wm_conf:g(max_relocations, {?MAX_RELOCATIONS, integer}),
@@ -265,7 +305,7 @@ start_new_relocations() ->
                                 Jobs
                         end,
                     ?LOG_INFO("Try to relocate ~p jobs (out of queued ~p jobs)", [JobsToRelocate, JobsNum]),
-                    Relocations = lists:foldl(F, [], JobsToRelocate),
+                    Relocations = lists:foldl(fun spawn_virtres_if_needed/2, [], JobsToRelocate),
                     wm_conf:update(Relocations);
                 false ->
                     ?LOG_DEBUG("Too many relocations (~p) when max=~p", [RelocationsNum, Max])
@@ -275,8 +315,19 @@ start_new_relocations() ->
     end,
     ok.
 
-% @doc Start relocation returning relocation ID which is a hash of the nodes involved into the relocation
--spec spawn_virtres(#job{}) -> integer() | {error, not_found}.
+% @doc Restart job relocation process that was started in the past but stopped by some reason
+-spec respawn_virtres(#job{}, #relocation{}) -> integer() | {error, not_found}.
+respawn_virtres(Job, Relocation) ->
+    JobId = wm_entity:get_attr(id, Job),
+    TemplateNodeId = wm_entity:get_attr(template_node_id, Relocation),
+    {ok, TemplateNode} = wm_conf:select(node, {id, TemplateNodeId}),
+    1 =
+        wm_conf:update(
+            wm_entity:set_attr({state, ?JOB_STATE_WAITING}, Job)),
+    wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)).
+
+% @doc Start relocation returning relocation ID which, is a hash of the nodes involved into the relocation
+-spec spawn_virtres(#job{}) -> {ok, integer(), node_id()} | {error, not_found}.
 spawn_virtres(Job) ->
     JobId = wm_entity:get_attr(id, Job),
     case select_remote_site(Job) of
@@ -286,11 +337,18 @@ spawn_virtres(Job) ->
             1 =
                 wm_conf:update(
                     wm_entity:set_attr({state, ?JOB_STATE_WAITING}, Job)),
-            wm_factory:new(virtres, {create, JobId, TemplateNode}, []);
+            {ok, TaskId} = wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)),
+            {ok, TaskId, wm_entity:get_attr(id, TemplateNode)};
         {error, not_found} ->
             ?LOG_DEBUG("No suited remote site found for job ~p", [JobId]),
             {error, not_found}
     end.
+
+-spec predict_job_node_names(#job{}) -> [string()].
+predict_job_node_names(Job) ->
+    Seq = lists:seq(0, wm_utils:get_requested_nodes_number(Job) - 1),
+    JobId = wm_entity:get_attr(id, Job),
+    [wm_utils:get_cloud_node_name(JobId, SeqNum) || SeqNum <- Seq].
 
 -spec do_cancel_relocation(#job{}) -> atom().
 do_cancel_relocation(Job) ->

@@ -139,7 +139,7 @@ get_port_opts(Args, Envs, PortOpts) ->
 do_run(Args, Envs, PortOpts, MState) ->
     Executable = MState#mstate.exec,
     Opts = get_port_opts(Args, Envs, PortOpts),
-    ?LOG_DEBUG("Spawn system process: ~p, opts=~p", [Executable, Opts]),
+    ?LOG_DEBUG("Spawn system process: ~p, opts=~w", [Executable, Opts]),
     try
         case open_port({spawn, Executable}, Opts) of
             Port when is_port(Port) ->

@@ -22,7 +22,7 @@ get_remote(JobId) ->
     ?LOG_INFO("Validate partition (job: ~p, account: ~p)", [JobId, AccountID]),
     wm_conf:select(remote, {account_id, AccountID}).
 
--spec remove_relocation_entities(string()) -> atom().
+-spec remove_relocation_entities(job_id()) -> atom().
 remove_relocation_entities(JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     ok = wm_relocator:remove_relocation_entities(Job).
@@ -35,21 +35,21 @@ wait_for_partition_fetch() ->
 wait_for_wm_resources_readiness() ->
     wm_utils:wake_up_after(?REDINESS_CHECK_PERIOD, readiness_check).
 
--spec request_partition(string(), #remote{}) -> {atom(), string()}.
+-spec request_partition(job_id(), #remote{}) -> {atom(), string()}.
 request_partition(JobId, Remote) ->
     ?LOG_INFO("Fetch and wait for remote partition (job: ~p)", [JobId]),
     PartName = get_partition_name(JobId),
     {ok, Creds} = get_credentials(Remote),
     wm_gate:get_partition(self(), Remote, Creds, PartName).
 
--spec request_partition_existence(string(), #remote{}) -> {atom(), string()}.
+-spec request_partition_existence(job_id(), #remote{}) -> {atom(), string()}.
 request_partition_existence(JobId, Remote) ->
     ?LOG_INFO("Request partition existence (job: ~p)", [JobId]),
     PartName = get_partition_name(JobId),
     {ok, Creds} = get_credentials(Remote),
     wm_gate:partition_exists(self(), Remote, Creds, PartName).
 
--spec is_job_partition_ready(string()) -> true | false.
+-spec is_job_partition_ready(job_id()) -> true | false.
 is_job_partition_ready(JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     NodeIds = wm_entity:get_attr(nodes, Job),
@@ -60,13 +60,13 @@ is_job_partition_ready(JobId) ->
         end,
     not lists:any(NotReady, NodeIds).
 
--spec update_job(list(), string()) -> 1.
+-spec update_job(list(), job_id()) -> 1.
 update_job(NewParams, JobId) ->
     {ok, Job1} = wm_conf:select(job, {id, JobId}),
     Job2 = wm_entity:set_attr(NewParams, Job1),
     1 = wm_conf:update(Job2).
 
--spec start_uploading(string(), string()) -> {ok, string()}.
+-spec start_uploading(node_id(), job_id()) -> {ok, string()}.
 start_uploading(PartMgrNodeID, JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     Priority = wm_entity:get_attr(priority, Job),
@@ -82,7 +82,7 @@ start_uploading(PartMgrNodeID, JobId) ->
     % TODO copy files to their own dirs, not in workdir, unless the full path is not set
     wm_file_transfer:upload(self(), ToAddr, Priority, Files, WorkDir, #{via => ssh}).
 
--spec start_downloading(string(), string()) -> {ok, reference(), list()}.
+-spec start_downloading(node_id(), job_id()) -> {ok, reference(), [string()]}.
 start_downloading(PartMgrNodeID, JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     Priority = wm_entity:get_attr(priority, Job),
@@ -100,7 +100,7 @@ start_downloading(PartMgrNodeID, JobId) ->
     {ok, Ref} = wm_file_transfer:download(self(), FromAddr, Priority, Files, WorkDir, #{via => ssh}),
     {ok, Ref, Files}.
 
--spec delete_partition(string(), #remote{}) -> {ok, string()} | {error, atom()}.
+-spec delete_partition(partition_id(), #remote{}) -> {ok, string()} | {error, atom()}.
 delete_partition(PartId, Remote) ->
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
@@ -111,7 +111,7 @@ delete_partition(PartId, Remote) ->
             {error, Error}
     end.
 
--spec spawn_partition(string(), #remote{}) -> {ok, string()} | {error, any()}.
+-spec spawn_partition(job_id(), #remote{}) -> {ok, string()} | {error, any()}.
 spawn_partition(JobId, Remote) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     PartName = get_partition_name(JobId),
@@ -120,11 +120,11 @@ spawn_partition(JobId, Remote) ->
           image_name => "cirros",
           flavor_name => "m1.micro",
           partition_name => get_partition_name(JobId),
-          node_count => get_requested_nodes_number(Job)},
+          node_count => integer_to_binary(wm_utils:get_requested_nodes_number(Job))},
     {ok, Creds} = get_credentials(Remote),
     wm_gate:create_partition(self(), Remote, Creds, Options).
 
--spec ensure_entities_created(string(), #partition{}, #node{}) -> {atom(), string()}.
+-spec ensure_entities_created(job_id(), #partition{}, #node{}) -> {atom(), string()}.
 ensure_entities_created(JobId, Partition, TplNode) ->
     remove_relocation_entities(JobId),
     create_relocation_entities(JobId, Partition, TplNode).
@@ -133,7 +133,7 @@ ensure_entities_created(JobId, Partition, TplNode) ->
 %% Implementation functions
 %% ============================================================================
 
--spec create_relocation_entities(string(), #partition{}, #node{}) -> {atom(), string()}.
+-spec create_relocation_entities(job_id(), #partition{}, #node{}) -> {atom(), string()}.
 create_relocation_entities(JobId, Partition, TplNode) ->
     ?LOG_INFO("Remote partition [job ~p]: ~p", [JobId, Partition]),
     1 = wm_conf:update(Partition),
@@ -144,7 +144,7 @@ create_relocation_entities(JobId, Partition, TplNode) ->
     PartID = wm_entity:get_attr(id, Partition),
     PartMgrName = get_partition_manager_name(JobId),
 
-    case clone_nodes(PartID, PartMgrName, NodeIps, JobId, TplNode) of
+    case ensure_nodes_cloned(PartID, PartMgrName, NodeIps, JobId, TplNode) of
         [] ->
             {error, "Could not clone nodes for job " ++ JobId};
         ComputeNodes ->
@@ -161,7 +161,7 @@ create_relocation_entities(JobId, Partition, TplNode) ->
             {ok, PartMgrNodeId}
     end.
 
--spec get_partition_name(string()) -> string().
+-spec get_partition_name(job_id()) -> string().
 get_partition_name(JobId) ->
     "swm-" ++ string:slice(JobId, 0, 8).
 
@@ -170,20 +170,7 @@ get_credentials(Remote) ->
     RemoteID = wm_entity:get_attr(id, Remote),
     wm_conf:select(credential, {remote_id, RemoteID}).
 
--spec get_requested_nodes_number(#job{}) -> binary().
-get_requested_nodes_number(Job) ->
-    F = fun(Resource, Acc) ->
-           case wm_entity:get_attr(name, Resource) of
-               "node" ->
-                   Acc + wm_entity:get_attr(count, Resource);
-               _ ->
-                   Acc
-           end
-        end,
-    Result = lists:foldl(F, 0, wm_entity:get_attr(request, Job)),
-    integer_to_binary(Result).
-
--spec get_allocated_resources(string(), list()) -> [#resource{}].
+-spec get_allocated_resources(partition_id(), [node_id()]) -> [#resource{}].
 get_allocated_resources(PartID, NodeIds) ->
     GetNodeRes =
         fun(NodeID) ->
@@ -195,33 +182,8 @@ get_allocated_resources(PartID, NodeIds) ->
                            wm_entity:new(resource)),
     [PartRes].
 
--spec create_part_entity(string(), string(), list(), string(), #node{}) -> #partition{}.
-create_part_entity(PartID, PartExtId, NodeIds, JobId, PartMgrNode) ->
-    NameStr = wm_entity:get_attr(name, PartMgrNode),
-    HostStr = wm_entity:get_attr(host, PartMgrNode),
-    PartMgrId = wm_entity:get_attr(id, PartMgrNode),
-    Cluster = wm_topology:get_subdiv(),
-    Part1 = wm_entity:new(partition),
-    Part2 =
-        wm_entity:set_attr([{id, PartID},
-                            {external_id, PartExtId},
-                            {state, up},
-                            {subdivision, cluster},
-                            {subdivision_id, wm_entity:get_attr(id, Cluster)},
-                            {name, wm_virtres_handlers:get_partition_name(JobId)},
-                            {manager, NameStr ++ "@" ++ HostStr},
-                            {nodes, [PartMgrId | NodeIds]},
-                            {comment, "Cloud partition for job " ++ JobId}],
-                           Part1),
-    Cluster1 = wm_topology:get_subdiv(cluster),
-    OldPartIDs = wm_entity:get_attr(partitions, Cluster1),
-    Cluster2 = wm_entity:set_attr({partitions, [PartID | OldPartIDs]}, Cluster1),
-    1 = wm_conf:update(Part2),
-    1 = wm_conf:update(Cluster2),
-    Part2.
-
--spec create_partition_manager_node(string(), string(), string(), string(), #node{}) -> #node{}.
-create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode) ->
+-spec create_partition_manager_node(partition_id(), job_id(), string(), string(), #node{}) -> #node{}.
+create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode) when TplNode =/= undefined ->
     RemoteID = wm_entity:get_attr(remote_id, TplNode),
     NodeName = get_partition_manager_name(JobId),
     ApiPort = get_cloud_node_api_port(),
@@ -240,19 +202,15 @@ create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode
                         {comment, "Cloud partition manager node for job " ++ JobId}],
                        wm_entity:new(node)).
 
--spec get_partition_manager_name(string()) -> string().
+-spec get_partition_manager_name(job_id()) -> string().
 get_partition_manager_name(JobId) ->
     "swm-" ++ string:slice(JobId, 0, 8) ++ "-phead".
 
--spec get_compute_node_name(string(), integer()) -> string().
-get_compute_node_name(JobId, Index) ->
-    "swm-" ++ string:slice(JobId, 0, 8) ++ "-node" ++ integer_to_list(Index).
-
--spec clone_nodes(string(), string(), list(), string(), #node{}) -> list().
-clone_nodes(_, _, [], _, _) ->
+-spec ensure_nodes_cloned(partition_id(), string(), [string()], job_id(), #node{}) -> list().
+ensure_nodes_cloned(_, _, [], _, _) ->
     ?LOG_ERROR("Could not clone nodes, because there are no IPs"),
     [];
-clone_nodes(PartID, ParentName, NodeIps, JobId, TplNode) ->
+ensure_nodes_cloned(PartID, ParentName, NodeIps, JobId, TplNode) when TplNode =/= undefined ->
     RemoteID = wm_entity:get_attr(remote_id, TplNode),
     ApiPort = get_cloud_node_api_port(),
     JobRes =
@@ -264,7 +222,7 @@ clone_nodes(PartID, ParentName, NodeIps, JobId, TplNode) ->
     NewNode =
         fun({SeqNum, IP}) ->
            wm_entity:set_attr([{id, wm_utils:uuid(v4)},
-                               {name, get_compute_node_name(JobId, SeqNum)},
+                               {name, wm_utils:get_cloud_node_name(JobId, SeqNum)},
                                {host, IP},
                                {api_port, ApiPort},
                                {roles, [get_role_id("compute")]},

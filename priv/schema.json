@@ -801,7 +801,10 @@
     "job_id": {
       "type": "job_id()"
     },
-    "cancaled": {
+    "template_node_id": {
+      "type": "node_id()"
+    },
+    "canceled": {
       "default": "false",
       "type": "atom()"
     }

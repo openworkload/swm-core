@@ -4,7 +4,7 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([new/3, send_confirm/5, send_event_locally/3, notify_initiated/2, subscribe/3]).
+-export([new/3, send_confirm/5, send_event_locally/3, notify_initiated/2, subscribe/3, is_running/2]).
 
 -include("wm_log.hrl").
 
@@ -39,6 +39,10 @@ start_link(Args) ->
         end,
     gen_server:start_link({local, RegName}, ?MODULE, Args, []).
 
+-spec is_running(atom(), integer()) -> true | false.
+is_running(Type, ModuleTaskId) ->
+    wm_utils:protected_call(get_factory_name(Type), {is_running, ModuleTaskId}, timeout).
+
 -spec new(atom(), [term()], [atom()]) -> {ok, integer()}.
 new(Type, ExtraData, Nodes) ->
     Msg = {new, ExtraData, Nodes},
@@ -46,101 +50,108 @@ new(Type, ExtraData, Nodes) ->
 
 %% @doc send locally waiting until the module receives it
 -spec send_confirm(atom(), atom(), integer(), term(), [atom()]) -> term().
-send_confirm(Type, AllState, TASK_ID, Msg, Nodes) ->
-    Request = {send_confirm, AllState, TASK_ID, Msg, Nodes},
+send_confirm(Type, AllState, ModuleTaskId, Msg, Nodes) ->
+    Request = {send_confirm, AllState, ModuleTaskId, Msg, Nodes},
     wm_utils:cast(get_factory_name(Type), Request).
 
 -spec send_event_locally(term(), atom(), integer()) -> ok.
-send_event_locally(Msg, Type, TASK_ID) ->
+send_event_locally(Msg, Type, ModuleTaskId) ->
     Factory = get_factory_name(Type),
-    ?LOG_DEBUG("Send locally: ~p, ~p, ~p", [Msg, TASK_ID, Factory]),
-    wm_utils:cast(Factory, {send_event_locally, Msg, TASK_ID}).
+    ?LOG_DEBUG("Send locally: ~p, ~p, ~p", [Msg, ModuleTaskId, Factory]),
+    wm_utils:cast(Factory, {send_event_locally, Msg, ModuleTaskId}).
 
 -spec notify_initiated(atom(), integer()) -> ok.
-notify_initiated(Type, TASK_ID) ->
+notify_initiated(Type, ModuleTaskId) ->
     Factory = get_factory_name(Type),
-    ?LOG_DEBUG("Notified: init(...) has finished from "
-               "~p, ~p",
-               [TASK_ID, Factory]),
-    wm_utils:cast(Factory, {initiated, TASK_ID}).
+    ?LOG_DEBUG("Notified: init(...) has finished from ~p, ~p", [ModuleTaskId, Factory]),
+    wm_utils:cast(Factory, {initiated, ModuleTaskId}).
 
 -spec subscribe(atom(), integer(), atom()) -> ok.
-subscribe(Type, TASK_ID, EventType) ->
+subscribe(Type, ModuleTaskId, EventType) ->
     Factory = get_factory_name(Type),
-    ?LOG_DEBUG("Subscribe ~p (factory: ~p) to ~p", [TASK_ID, Factory, EventType]),
-    wm_utils:cast(Factory, {subscribe, TASK_ID, EventType}).
+    ?LOG_DEBUG("Subscribe ~p (factory: ~p) to ~p", [ModuleTaskId, Factory, EventType]),
+    wm_utils:cast(Factory, {subscribe, ModuleTaskId, EventType}).
 
 %% ============================================================================
 %% Server callbacks
 %% ============================================================================
 
+handle_call({is_running, ModuleTaskId}, _, MState) ->
+    Result =
+        case maps:get(ModuleTaskId, MState#mstate.sups, not_found) of
+            not_found ->
+                false;
+            _ ->
+                true
+        end,
+    {reply, Result, MState};
 handle_call({new, ExtraData, Nodes}, _, MState) ->
     ?LOG_DEBUG("Recieved call to create new module"),
-    {TASK_ID, MState2} = start_module(not_exists, ExtraData, Nodes, MState),
-    send_event_to_module(one_state, TASK_ID, activate, MState2),
-    {reply, {ok, TASK_ID}, MState2}.
+    {ModuleTaskId, MState2} = start_module(not_exists, ExtraData, Nodes, MState),
+    send_event_to_module(one_state, ModuleTaskId, activate, MState2),
+    {reply, {ok, ModuleTaskId}, MState2}.
 
-handle_cast({get_task_nodes, TASK_ID, RequestorAddr}, MState) ->
-    ?LOG_DEBUG("Requested nodes for distributed task ~p", [TASK_ID]),
-    Nodes = get_nodes(TASK_ID, MState),
-    wm_api:cast_self({task_nodes, TASK_ID, Nodes}, [RequestorAddr]),
+handle_cast({get_task_nodes, ModuleTaskId, RequestorAddr}, MState) ->
+    ?LOG_DEBUG("Requested nodes for distributed task ~p", [ModuleTaskId]),
+    Nodes = get_nodes(ModuleTaskId, MState),
+    wm_api:cast_self({task_nodes, ModuleTaskId, Nodes}, [RequestorAddr]),
     {noreply, MState};
-handle_cast({task_nodes, TASK_ID, []}, MState) ->
-    ?LOG_DEBUG("No nodes for the task ~p have been found", [TASK_ID]),
+handle_cast({task_nodes, ModuleTaskId, []}, MState) ->
+    ?LOG_DEBUG("No nodes for the task ~p have been found", [ModuleTaskId]),
     {noreply, MState};
-handle_cast({task_nodes, TASK_ID, Nodes}, MState) ->
-    ?LOG_DEBUG("Nodes for the task ~p have been found: ~p", [TASK_ID, Nodes]),
-    {TASK_ID, MState2} = start_module(TASK_ID, [], Nodes, MState),
+handle_cast({task_nodes, ModuleTaskId, Nodes}, MState) ->
+    ?LOG_DEBUG("Nodes for the task ~p have been found: ~p", [ModuleTaskId, Nodes]),
+    {ModuleTaskId, MState2} = start_module(ModuleTaskId, [], Nodes, MState),
     {noreply, MState2};
-handle_cast({send_confirm, AllState, TASK_ID, Msg, Nodes}, MState) ->
-    do_send_confirm(AllState, TASK_ID, Msg, Nodes),
+handle_cast({send_confirm, AllState, ModuleTaskId, Msg, Nodes}, MState) ->
+    do_send_confirm(AllState, ModuleTaskId, Msg, Nodes),
     {noreply, MState};
-handle_cast({subscribe, TASK_ID, EventType}, MState) ->
+handle_cast({subscribe, ModuleTaskId, EventType}, MState) ->
     wm_event:subscribe_async(EventType, node(), MState#mstate.regname),
     SsMap =
-        case maps:is_key(TASK_ID, MState#mstate.subscribers) of
+        case maps:is_key(ModuleTaskId, MState#mstate.subscribers) of
             true ->
-                Set1 = maps:get(TASK_ID, MState#mstate.subscribers),
+                Set1 = maps:get(ModuleTaskId, MState#mstate.subscribers),
                 Set2 = sets:add_element(EventType, Set1),
-                maps:update(TASK_ID, Set2, MState#mstate.subscribers);
+                maps:update(ModuleTaskId, Set2, MState#mstate.subscribers);
             false ->
-                maps:put(TASK_ID, sets:new(), MState#mstate.subscribers)
+                maps:put(ModuleTaskId, sets:new(), MState#mstate.subscribers)
         end,
     {noreply, MState#mstate{subscribers = SsMap}};
 handle_cast({event, EventType, EventData}, MState) ->
     ?LOG_DEBUG("Event recevied: ~p, ~p}", [EventType, EventData]),
     {noreply, handle_event(EventType, EventData, MState)};
-handle_cast({send_event, AllState, From, TASK_ID, Msg}, MState) ->
-    ?LOG_DEBUG("Received send event cast, task=~p, msg=~P", [TASK_ID, Msg, 10]),
-    handle_send_event(AllState, From, TASK_ID, Msg, MState);
-handle_cast({check_event_handling, AllState, From, TASK_ID, Msg}, #mstate{reqs = ReqMap} = MState) ->
-    ReqList = maps:get(TASK_ID, ReqMap, []),
-    case lists:any(fun(X) -> X =:= TASK_ID end, ReqList) of
+handle_cast({send_event, AllState, From, ModuleTaskId, Msg}, MState) ->
+    ?LOG_DEBUG("Received send event cast, task=~p, msg=~P", [ModuleTaskId, Msg, 10]),
+    handle_send_event(AllState, From, ModuleTaskId, Msg, MState);
+handle_cast({check_event_handling, AllState, From, ModuleTaskId, Msg}, #mstate{reqs = ReqMap} = MState) ->
+    ReqList = maps:get(ModuleTaskId, ReqMap, []),
+    case lists:any(fun(X) -> X =:= ModuleTaskId end, ReqList) of
         true ->
-            handle_send_event(AllState, From, TASK_ID, Msg, MState);
+            handle_send_event(AllState, From, ModuleTaskId, Msg, MState);
         _ ->
             ok
     end,
     {noreply, MState};
-handle_cast({send_event_locally, Msg, TASK_ID}, MState) ->
-    MState2 = send_event_to_module(all_state, TASK_ID, Msg, MState),
+handle_cast({send_event_locally, Msg, ModuleTaskId}, MState) ->
+    MState2 = send_event_to_module(all_state, ModuleTaskId, Msg, MState),
     {noreply, MState2};
-handle_cast({initiated, TASK_ID}, MState) ->
-    Pid = maps:get(TASK_ID, MState#mstate.mods),
-    MState2 = set_ready(TASK_ID, MState),
+handle_cast({initiated, ModuleTaskId}, MState) ->
+    Pid = maps:get(ModuleTaskId, MState#mstate.mods),
+    MState2 = set_ready(ModuleTaskId, MState),
     case MState2#mstate.activate_passive of
         true ->
             apply(MState#mstate.module, activate, [Pid]);
         _ ->
             ok
     end,
-    MState3 = release_requested(TASK_ID, MState2),
+    MState3 = release_requested(ModuleTaskId, MState2),
     {noreply, MState3};
 handle_cast(_Msg, MState) ->
     {noreply, MState}.
 
-handle_info({send_event, AllState, From, TASK_ID, Msg}, MState) ->
-    handle_send_event(AllState, From, TASK_ID, Msg, MState);
+handle_info({send_event, AllState, From, ModuleTaskId, Msg}, MState) ->
+    handle_send_event(AllState, From, ModuleTaskId, Msg, MState);
 handle_info(_Info, MState) ->
     {noreply, MState}.
 
@@ -181,23 +192,23 @@ subscribe(MState) ->
     wm_event:subscribe(DoneEvent, node(), MState#mstate.regname),
     MState#mstate{done_event = DoneEvent}.
 
-handle_event(Event, {TASK_ID, Extra}, MState) when Event == MState#mstate.done_event ->
-    ?LOG_DEBUG("Task ~p has finished (Extra=~p)", [TASK_ID, Extra]),
+handle_event(Event, {ModuleTaskId, Extra}, MState) when Event == MState#mstate.done_event ->
+    ?LOG_DEBUG("Task ~p has finished (Extra=~p)", [ModuleTaskId, Extra]),
     Me = node(),
     case Extra of
         {node, Me} ->
-            Nodes = get_nodes(TASK_ID, MState),
-            wm_event:announce_nodes(Nodes, Event, {TASK_ID, Extra});
+            Nodes = get_nodes(ModuleTaskId, MState),
+            wm_event:announce_nodes(Nodes, Event, {ModuleTaskId, Extra});
         _ ->
             ok
     end,
-    terminate_task(TASK_ID, MState);
-handle_event(Event, {TASK_ID, EventData}, MState) ->
-    case maps:get(TASK_ID, MState#mstate.subscribers, []) of
+    terminate_task(ModuleTaskId, MState);
+handle_event(Event, {ModuleTaskId, EventData}, MState) ->
+    case maps:get(ModuleTaskId, MState#mstate.subscribers, []) of
         SubscribedEvents ->
-            case sets:is_element(TASK_ID, SubscribedEvents) of
+            case sets:is_element(ModuleTaskId, SubscribedEvents) of
                 true ->
-                    send_event_to_module(one_state, TASK_ID, {Event, EventData}, MState);
+                    send_event_to_module(one_state, ModuleTaskId, {Event, EventData}, MState);
                 fasle ->
                     MState
             end
@@ -207,67 +218,67 @@ calc_id(Nodes) ->
     erlang:phash2({lists:sort(Nodes), wm_utils:timestamp(microsecond)}).
 
 start_module(not_exists, ExtraData, Nodes, MState) ->
-    TASK_ID = calc_id(Nodes),
+    ModuleTaskId = calc_id(Nodes),
     AddrList = [wm_utils:get_address(X) || X <- Nodes],
-    start_module(TASK_ID, ExtraData, AddrList, MState);
-start_module(TASK_ID, ExtraData, Nodes, MState) ->
-    ?LOG_DEBUG("Start module ~p for task ~p (~p)", [?MODULE, TASK_ID, Nodes]),
+    start_module(ModuleTaskId, ExtraData, AddrList, MState);
+start_module(ModuleTaskId, ExtraData, Nodes, MState) ->
+    ?LOG_DEBUG("Start module ~p for task ~p (~p)", [?MODULE, ModuleTaskId, Nodes]),
     Module = MState#mstate.module,
     AddrList = [wm_utils:get_address(X) || X <- Nodes],
-    ?LOG_DEBUG("Start ~p for ~p nodes, ~p", [Module, length(AddrList) + 1, TASK_ID]),
-    Args = [{extra, ExtraData}, {nodes, AddrList}, {task_id, TASK_ID}, {root, MState#mstate.root}],
+    ?LOG_DEBUG("Start ~p for ~p nodes, ~p", [Module, length(AddrList) + 1, ModuleTaskId]),
+    Args = [{extra, ExtraData}, {nodes, AddrList}, {task_id, ModuleTaskId}, {root, MState#mstate.root}],
     case wm_sup:start_link({[Module], Args}) of
         {ok, SupPid} ->
             ModPid = wm_sup:get_child_pid(SupPid),
             ?LOG_DEBUG("Supervisor ~p for ~p (~p) started", [SupPid, Module, ModPid]),
-            Sups = maps:put(TASK_ID, SupPid, MState#mstate.sups),
-            Mods = maps:put(TASK_ID, ModPid, MState#mstate.mods),
-            SMap = maps:put(TASK_ID, not_ready, MState#mstate.status),
-            NMap = maps:put(TASK_ID, AddrList, MState#mstate.nodes),
-            {TASK_ID,
+            Sups = maps:put(ModuleTaskId, SupPid, MState#mstate.sups),
+            Mods = maps:put(ModuleTaskId, ModPid, MState#mstate.mods),
+            SMap = maps:put(ModuleTaskId, not_ready, MState#mstate.status),
+            NMap = maps:put(ModuleTaskId, AddrList, MState#mstate.nodes),
+            {ModuleTaskId,
              MState#mstate{sups = Sups,
                            mods = Mods,
                            status = SMap,
                            nodes = NMap}};
         {error, {shutdown, Error}} ->
-            ?LOG_ERROR("Cannot start ~p (id=~p, nodes=~p): ~p", [MState#mstate.module, TASK_ID, AddrList, Error]),
-            {TASK_ID, MState}
+            ?LOG_ERROR("Cannot start ~p (id=~p, nodes=~p): ~p", [MState#mstate.module, ModuleTaskId, AddrList, Error]),
+            {ModuleTaskId, MState}
     end.
 
-do_send_confirm(AllState, TASK_ID, Msg, Nodes) ->
-    ?LOG_DEBUG("Send ~P to ~p (~p)", [Msg, 10, Nodes, TASK_ID]),
+do_send_confirm(AllState, ModuleTaskId, Msg, Nodes) ->
+    ?LOG_DEBUG("Send ~P to ~p (~p)", [Msg, 10, Nodes, ModuleTaskId]),
     MyAddr = wm_conf:get_my_relative_address(hd(Nodes)),
-    NewMsg = {send_event, AllState, MyAddr, TASK_ID, Msg},
+    NewMsg = {send_event, AllState, MyAddr, ModuleTaskId, Msg},
     wm_api:cast_self_confirm(NewMsg, Nodes).
 
-get_status(TASK_ID, MState) ->
-    maps:get(TASK_ID, MState#mstate.status, not_ready).
+get_status(ModuleTaskId, MState) ->
+    maps:get(ModuleTaskId, MState#mstate.status, not_ready).
 
-get_nodes(TASK_ID, MState) ->
-    maps:get(TASK_ID, MState#mstate.nodes, []).
+get_nodes(ModuleTaskId, MState) ->
+    maps:get(ModuleTaskId, MState#mstate.nodes, []).
 
-set_ready(TASK_ID, MState) ->
-    Status = maps:put(TASK_ID, ready, MState#mstate.status),
+set_ready(ModuleTaskId, MState) ->
+    Status = maps:put(ModuleTaskId, ready, MState#mstate.status),
     MState#mstate{status = Status}.
 
-queue_request(AllState, TASK_ID, Msg, MState) ->
-    ?LOG_DEBUG("Queue request ~P (~p, ~p)", [Msg, 10, TASK_ID, AllState]),
-    ReqsList = [{AllState, Msg} | maps:get(TASK_ID, MState#mstate.reqs, [])],
-    ReqsMap = maps:put(TASK_ID, ReqsList, MState#mstate.reqs),
+queue_request(AllState, ModuleTaskId, Msg, MState) ->
+    ?LOG_DEBUG("Queue request ~P (~p, ~p)", [Msg, 10, ModuleTaskId, AllState]),
+    ReqsList = [{AllState, Msg} | maps:get(ModuleTaskId, MState#mstate.reqs, [])],
+    ReqsMap = maps:put(ModuleTaskId, ReqsList, MState#mstate.reqs),
     MState#mstate{reqs = ReqsMap}.
 
-release_requested(TASK_ID, MState) ->
-    F = fun({AllState, Msg}) -> send_event_to_module(AllState, TASK_ID, Msg, MState) end,
-    [F(X) || X <- maps:get(TASK_ID, MState#mstate.reqs, [])],
-    Reqs = maps:put(TASK_ID, [], MState#mstate.reqs),
+release_requested(ModuleTaskId, MState) ->
+    F = fun({AllState, Msg}) -> send_event_to_module(AllState, ModuleTaskId, Msg, MState) end,
+    [F(X) || X <- maps:get(ModuleTaskId, MState#mstate.reqs, [])],
+    Reqs = maps:put(ModuleTaskId, [], MState#mstate.reqs),
     MState#mstate{reqs = Reqs}.
 
-send_event_to_module(AllState, TASK_ID, Msg, MState) ->
-    case maps:get(TASK_ID, MState#mstate.mods, not_found) of
+send_event_to_module(AllState, ModuleTaskId, Msg, MState) ->
+    case maps:get(ModuleTaskId, MState#mstate.mods, not_found) of
         not_found ->
-            ?LOG_DEBUG("Cannot send event, no such task id: ~p", [TASK_ID]);
+            ?LOG_DEBUG("Cannot send event, no such task id: ~p", [ModuleTaskId]);
         Pid ->
-            ?LOG_DEBUG("Send event to ~p: ~P (~p, ~p)", [MState#mstate.module, Msg, 10, Pid, TASK_ID]),
+            ?LOG_DEBUG("Send event to ~p: ~P (~p, ~p)", [MState#mstate.module, Msg, 10, Pid, ModuleTaskId]),
             case AllState of
                 one_state ->
                     gen_fsm:send_event(Pid, Msg);
@@ -277,30 +288,30 @@ send_event_to_module(AllState, TASK_ID, Msg, MState) ->
     end,
     MState.
 
-request_nodes_async(TASK_ID, From) ->
-    ?LOG_DEBUG("Request nodes for task ~p from ~p", [TASK_ID, From]),
+request_nodes_async(ModuleTaskId, From) ->
+    ?LOG_DEBUG("Request nodes for task ~p from ~p", [ModuleTaskId, From]),
     MyAddr = wm_conf:get_my_relative_address(From),
-    ok = wm_api:cast_self({get_task_nodes, TASK_ID, MyAddr}, [From]).
+    ok = wm_api:cast_self({get_task_nodes, ModuleTaskId, MyAddr}, [From]).
 
-terminate_task(TASK_ID, MState) ->
-    case maps:get(TASK_ID, MState#mstate.sups, not_found) of
+terminate_task(ModuleTaskId, MState) ->
+    case maps:get(ModuleTaskId, MState#mstate.sups, not_found) of
         not_found ->
             MState;
         Sup ->
-            ?LOG_DEBUG("Shutdown module ~p (~p)", [MState#mstate.module, TASK_ID]),
+            ?LOG_DEBUG("Shutdown module ~p (~p)", [MState#mstate.module, ModuleTaskId]),
             exit(Sup, shutdown),
             Sbrs =
-                case maps:is_key(TASK_ID, MState#mstate.subscribers) of
+                case maps:is_key(ModuleTaskId, MState#mstate.subscribers) of
                     true ->
-                        maps:remove(TASK_ID, MState#mstate.subscribers);
+                        maps:remove(ModuleTaskId, MState#mstate.subscribers);
                     false ->
                         MState#mstate.subscribers
                 end,
-            Sups = maps:remove(TASK_ID, MState#mstate.sups),
-            Mods = maps:remove(TASK_ID, MState#mstate.mods),
-            Reqs = maps:remove(TASK_ID, MState#mstate.reqs),
-            SMap = maps:remove(TASK_ID, MState#mstate.status),
-            NMap = maps:remove(TASK_ID, MState#mstate.nodes),
+            Sups = maps:remove(ModuleTaskId, MState#mstate.sups),
+            Mods = maps:remove(ModuleTaskId, MState#mstate.mods),
+            Reqs = maps:remove(ModuleTaskId, MState#mstate.reqs),
+            SMap = maps:remove(ModuleTaskId, MState#mstate.status),
+            NMap = maps:remove(ModuleTaskId, MState#mstate.nodes),
             MState#mstate{sups = Sups,
                           mods = Mods,
                           reqs = Reqs,
@@ -314,14 +325,14 @@ get_factory_name(Type) ->
     NameStr = atom_to_list(?MODULE) ++ "_" ++ atom_to_list(Type),
     list_to_existing_atom(NameStr).
 
-handle_send_event(AllState, From, TASK_ID, Msg, MState) ->
-    ?LOG_DEBUG("Handle send event: a=~p f=~p id=~p", [AllState, From, TASK_ID]),
-    case get_status(TASK_ID, MState) of
+handle_send_event(AllState, From, ModuleTaskId, Msg, MState) ->
+    ?LOG_DEBUG("Handle send event: a=~p f=~p id=~p", [AllState, From, ModuleTaskId]),
+    case get_status(ModuleTaskId, MState) of
         ready ->
-            {noreply, send_event_to_module(AllState, TASK_ID, Msg, MState)};
+            {noreply, send_event_to_module(AllState, ModuleTaskId, Msg, MState)};
         not_ready ->
-            Check = {check_event_handling, AllState, From, TASK_ID, Msg},
+            Check = {check_event_handling, AllState, From, ModuleTaskId, Msg},
             wm_utils:wake_up_after(?REPEAT_CALL_INTERVAL, Check),
-            request_nodes_async(TASK_ID, From),
-            {noreply, queue_request(AllState, TASK_ID, Msg, MState)}
+            request_nodes_async(ModuleTaskId, From),
+            {noreply, queue_request(AllState, ModuleTaskId, Msg, MState)}
     end.

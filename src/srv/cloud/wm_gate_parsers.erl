@@ -165,7 +165,8 @@ parse_partitions(Bin) ->
 
 -spec get_one_partition_from_json(list()) -> #partition{}.
 get_one_partition_from_json(PartParams) ->
-    fill_partition_params(PartParams, wm_entity:new(partition)).
+    EmptyPart = wm_entity:set_attr([{id, wm_utils:uuid(v4)}], wm_entity:new(partition)),
+    fill_partition_params(PartParams, EmptyPart).
 
 -spec get_partitions_from_json(list(), [#partition{}]) -> [#partition{}].
 get_partitions_from_json([], Parts) ->
@@ -207,23 +208,29 @@ fill_partition_params([{<<"created">>, Value} | T], Part) when Value =/= null ->
 fill_partition_params([{<<"updated">>, Value} | T], Part) when Value =/= null ->
     NewPart = wm_entity:set_attr([{updated, binary_to_list(Value)}], Part),
     fill_partition_params(T, NewPart);
-fill_partition_params([{<<"description">>, Value} | T], Part) ->
+fill_partition_params([{<<"description">>, Value} | T], Part) when Value =/= null ->
     NewPart = wm_entity:set_attr([{comment, binary_to_list(Value)}], Part),
     fill_partition_params(T, NewPart);
-fill_partition_params([{<<"master_public_ip">>, Value} | T], Part) ->
+fill_partition_params([{<<"master_public_ip">>, Value} | T], Part) when Value =/= null ->
     Addresses1 = wm_entity:get_attr(addresses, Part),
     Addresses2 = maps:put(master_public_ip, binary_to_list(Value), Addresses1),
     NewPart = wm_entity:set_attr([{addresses, Addresses2}], Part),
     fill_partition_params(T, NewPart);
-fill_partition_params([{<<"master_private_ip">>, Value} | T], Part) ->
+fill_partition_params([{<<"master_private_ip">>, Value} | T], Part) when Value =/= null ->
     Addresses1 = wm_entity:get_attr(addresses, Part),
     Addresses2 = maps:put(master_private_ip, binary_to_list(Value), Addresses1),
     NewPart = wm_entity:set_attr([{addresses, Addresses2}], Part),
     fill_partition_params(T, NewPart);
-fill_partition_params([{<<"compute_instances_ips">>, Values} | T], Part) ->
+fill_partition_params([{<<"compute_instances_ips">>, Values} | T], Part) when Values =/= null ->
     Addresses1 = wm_entity:get_attr(addresses, Part),
     IPsOld = maps:get(compute_instances_ips, Addresses1, []),
-    IPsNew = lists:map(fun(X) -> binary_to_list(X) end, Values),
+    IPsNew =
+        lists:map(fun (X) when X =/= null ->
+                          binary_to_list(X);
+                      (Y) ->
+                          Y
+                  end,
+                  Values),
     Addresses2 = maps:put(compute_instances_ips, IPsNew ++ IPsOld, Addresses1),
     NewPart = wm_entity:set_attr([{addresses, Addresses2}], Part),
     fill_partition_params(T, NewPart);
