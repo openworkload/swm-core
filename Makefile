@@ -58,7 +58,9 @@ release:	##@SWM Build release tar.gz package
 			# temporary workaround.
 			cp -rf priv _build/default/rel/swm/
 			sed -i'' 's/SWM_VERSION=.*/SWM_VERSION=$(VERSION)/' _build/default/rel/swm/scripts/swm.env
-			cd  _build/default/rel/swm && rm -f swm-$(VERSION).tar.gz; tar --transform 's,^\.,$(VERSION),' -czf swm-$(VERSION).tar.gz ./*
+			mkdir -p _build/packages
+			rm -f _build/packages/swm-$(VERSION).tar.gz
+			tar --transform 's,^\.,$(VERSION),' -czf _build/packages/swm-$(VERSION).tar.gz _build/default/rel/swm/*
 
 run-ghead: gen compile porter	##@RUN Run grid head node (1st hier level)
 			scripts/run-in-shell.sh -g

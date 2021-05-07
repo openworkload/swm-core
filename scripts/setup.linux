@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
 #
-# Copyright (c) 2016-2018 Sky Workflows. All Rights Reserved.
-#
-# This software is the confidential and proprietary information of
-# Sky Workflows ("Confidential Information"). You shall not
-# disclose such Confidential Information and shall use it only in
-# accordance with the terms of the license agreement you entered into
-# with Sky Workflows or its subsidiaries.
-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
-
-# NOTE: When we run setup.linux then there is no generated sys.config, but only the template.
-# Thus the service stopage (in case it was started before) ends with the error "Invalid node name".
+#
+# NOTE: When we run setup.linux then there is no generated sys.config, but only a template of it.
+# Thus the service stoppage (in case it was started before) ends with the error "Invalid node name".
 # Also the stoppage will fail because old and new cookies may differ. Perhaps we need to consider
-# using a single erlang-node name and using a hash of the node name?
+# using a single erlang-node name and using a hash of the node name.
 
 
 import argparse
@@ -30,39 +22,30 @@ import uuid
 from subprocess import Popen
 from subprocess import PIPE
 
-
-product = "swm"
-erts="9.1" # Erlang 20.1
-
-services_dir = "/lib/systemd/system"
-log_file = "/tmp/swm-setup.log"
-log = logging.getLogger("cm-scale")
-
-
-def swm_version_dir():
-    me = os.path.abspath(__file__)
-    return os.path.dirname(os.path.dirname(me))
-
-SWM_VERSION_DIR = swm_version_dir()
+PRODUCT = "swm"
+SERVICES_DIR = "/lib/systemd/system"
+LOG_FILE = "/tmp/swm-setup.log"
+LOG = logging.getLogger("cm-scale")
+SWM_VERSION_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def setup_logger(opts):
-    global log
-    for hdlr in log.handlers[:]:
-        log.removeHandler(hdlr)
-    fh = logging.FileHandler(log_file)
+    global LOG
+    for hdlr in LOG.handlers[:]:
+        LOG.removeHandler(hdlr)
+    fh = logging.FileHandler(LOG_FILE)
     fmr = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
     fh.setFormatter(fmr)
-    log.addHandler(fh)
+    LOG.addHandler(fh)
 
     if opts.get("DEBUG", False):
-        log.setLevel(logging.DEBUG)
+        LOG.setLevel(logging.DEBUG)
     else:
-        log.setLevel(logging.INFO)
+        LOG.setLevel(logging.INFO)
 
     ch = logging.StreamHandler(sys.stdout)
     ch.setFormatter(fmr)
-    log.addHandler(ch)
+    LOG.addHandler(ch)
 
 
 def run(exe, args, env, exit_on_fail = True, verbose = True):
@@ -70,7 +53,7 @@ def run(exe, args, env, exit_on_fail = True, verbose = True):
         return list(filter(None, x.decode("utf-8", "strict").split("\n")))
 
     cmdline = exe + ' ' + ' '.join(args)
-    log.info("Run " + "'" + cmdline + "'")
+    LOG.info("Run " + "'" + cmdline + "'")
     filename = os.path.basename(exe)
 
     try:
@@ -82,29 +65,29 @@ def run(exe, args, env, exit_on_fail = True, verbose = True):
 
         if verbose:
             for line in stdout:
-                log.info("     " + filename + " stdout: " + str(line))
+                LOG.info("     " + filename + " stdout: " + str(line))
             for line in stderr:
-                log.info("     " + filename + " stderr: " + str(line))
+                LOG.info("     " + filename + " stderr: " + str(line))
 
         if pipe.wait() != 0:
             if exit_on_fail:
-                log.error("     " + filename + " exit code: " + str(pipe.returncode))
+                LOG.error("     " + filename + " exit code: " + str(pipe.returncode))
                 sys.exit(1)
         else:
-            log.info("     " + filename + " exit code: " + str(pipe.returncode))
+            LOG.info("     " + filename + " exit code: " + str(pipe.returncode))
     except Exception as e:
-        log.error("     " + filename + " execution: " + e)
+        LOG.error("     " + filename + " execution: " + e)
         sys.exit(1)
     return (stdout, stderr)
 
 
 def  write_file(filepath, content):
     try:
-        log.info("Write %s" % filepath)
+        LOG.info("Write %s" % filepath)
         with open(filepath, "w", encoding='utf-8') as fh:
             fh.write(content)
     except Exception as e:
-        log.error("Could not write %s: %s" % (filepath, e))
+        LOG.error("Could not write %s: %s" % (filepath, e))
         sys.exit(1)
 
 
@@ -129,17 +112,17 @@ def question(msg, default, ispath=True):
 def make_dirs(dir):
     if not os.path.exists(dir):
         try:
-            log.info("Making dir: " + dir)
+            LOG.info("Making dir: " + dir)
             os.makedirs(dir, 0o700)
         except OSError as e:
-            log.error("could not create %s: %s" % (dir, e))
+            LOG.error("could not create %s: %s" % (dir, e))
             sys.exit(1)
 
 
 def backup(opts):
     dir = opts["SWM_SPOOL"]
     if os.path.isdir(dir):
-        log.info("Backuping " + dir)
+        LOG.info("Backuping " + dir)
         shutil.move(dir, dir + datetime.datetime.now().isoformat())
 
 
@@ -152,31 +135,32 @@ def generate_configs(opts):
 
 
 def generate_service_file(opts):
+    if opts["NO_SERVICE"]:
+        return
     if opts.get("TESTING", False):
-        log.info("Service file will not be installed")
+        LOG.info("Service file will not be installed")
         return
     tmplfp = os.path.join(opts["SWM_PRIV_DIR"], "setup", "systemd-service.linux")
-    log.info("service template file: %s" % tmplfp)
+    LOG.info("service template file: %s" % tmplfp)
     try:
         with open(tmplfp, "r") as f:
             lines = f.readlines()
             template = ''.join(lines)
     except OSError as e:
-        log.error("Could not read %s: %s" % (tmplfp, e))
+        LOG.error("Could not read %s: %s" % (tmplfp, e))
         sys.exit(1)
-    script = os.path.join(SWM_VERSION_DIR, "bin", product)
+    script = os.path.join(SWM_VERSION_DIR, "bin", PRODUCT)
     env = os.path.join(SWM_VERSION_DIR, "scripts", "swm.env")
-    log.info("init script path: %s" % script)
+    LOG.info("init script path: %s" % script)
     template = template.replace("{SCRIPT}", script)
     template = template.replace("{ENV}", env)
-    service_fp = os.path.join(services_dir, product + ".service")
+    service_fp = os.path.join(SERVICES_DIR, PRODUCT + ".service")
     write_file(service_fp, template)
 
 
 def env(opts):
-    command = ['bash', '-c', 'source {env}'.\
-               format(env=os.path.join(SWM_VERSION_DIR, "scripts", "swm.env"))]
-    log.info("Run '%s'" % ' '.join(command))
+    command = ['bash', '-c', 'source {env}'.format(env=os.path.join(SWM_VERSION_DIR, "scripts", "swm.env"))]
+    LOG.info("Run '%s'" % ' '.join(command))
 
     envs = os.environ
     for (key,val) in opts.items():
@@ -195,7 +179,7 @@ def get_div_arg(opts):
     div_arg = "-x"
     if opts["DIVISION"] == "grid":
         div_arg = "-g"
-    elif opts["DIVISION"] == "cluster" and not opts["SWM_SKY_PORT"]:
+    elif opts["DIVISION"] == "cluster" and not opts.get("SWM_SKY_PORT", None):
         div_arg = "-c"
     return div_arg
 
@@ -208,10 +192,8 @@ def spawn_vnode(opts):
         script = os.path.join(SWM_VERSION_DIR, "scripts", "run-in-shell.sh")
     else:
         args = ["start"]
-        script = os.path.join(SWM_VERSION_DIR, "bin", product)
-        opts["SWM_MNESIA_DIR"] = os.path.join(opts["SWM_SPOOL"],
-                                              opts["SWM_SNAME"] + "@" + opts["SWM_HOST"],
-                                              "confdb")
+        script = os.path.join(SWM_VERSION_DIR, "bin", PRODUCT)
+        opts["SWM_MNESIA_DIR"] = os.path.join(opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb")
 
     os.environ["SWM_MODE"] = "MAINT"
     envs = os.environ
@@ -220,7 +202,7 @@ def spawn_vnode(opts):
             envs[key] = val
     for key,val in envs.items():
         if key.startswith("SWM"):
-            log.info("export %s=%s" % (key, val))
+            LOG.info("export %s=%s" % (key, val))
 
     run(script, args, envs)
 
@@ -282,7 +264,7 @@ def run_ctl(args, opts):
 
 def load_db_configs(opts):
     if opts["DIVISION"] not in ["grid", "cluster"]:
-        log.info("Skip loading db configs")
+        LOG.info("Skip loading db configs")
         return
 
     schema = os.path.join(opts["SWM_PRIV_DIR"], "schema.json")
@@ -309,9 +291,9 @@ def run_create_cert(args, opts):
 
 def generate_certificates(opts):
     if opts["DIVISION"] != "grid" and not opts["SWM_SKY_PORT"]:
-        log.info("Skip keys generating")
+        LOG.info("Skip keys generating")
         return
-    log.info("Generate certificates")
+    LOG.info("Generate certificates")
     run_create_cert(["grid"], opts)
     run_create_cert(["cluster"], opts)
     run_create_cert(["user", opts["SWM_ADMIN_USER"], opts["SWM_ADMIN_ID"]], opts)
@@ -325,8 +307,7 @@ def generate_certificates(opts):
 
 
 def create_chain_cert(opts):
-    filenames = ['/opt/swm/spool/secure/cluster/cert.pem',
-                 '/opt/swm/spool/secure/grid/cert.pem']
+    filenames = ['/opt/swm/spool/secure/cluster/cert.pem', '/opt/swm/spool/secure/grid/cert.pem']
     with open('/opt/swm/spool/secure/cluster/ca-chain-cert.pem', 'w') as outfile:
         for fname in filenames:
             with open(fname) as infile:
@@ -336,41 +317,35 @@ def create_chain_cert(opts):
 def install_admin_cert(opts):
     home = os.environ["HOME"]
     if not home:
-        log.error("$HOME is not defined")
+        LOG.error("$HOME is not defined")
         sys.exit(1)
-    src_dir = os.path.join(opts["SWM_SPOOL"], "secure",
-                           "users", opts["SWM_ADMIN_USER"])
+    src_dir = os.path.join(opts["SWM_SPOOL"], "secure", "users", opts["SWM_ADMIN_USER"])
     dst_dir = os.path.join(home, ".swm")
-    if not os.path.exists(dst_dir):
-        try:
-            os.makedirs(dst_dir)
-        except IOError as e:
-            log.error("Cannot create %s: %s" % (dst_dir, e))
-            sys.exit(1)
+    make_dirs(dst_dir)
 
     for file in ["cert.pem", "key.pem"]:
         src = os.path.join(src_dir, file)
         dst = os.path.join(dst_dir, file)
 
         if os.path.exists(dst):
-            log.info("file exists, will be replaced: %s" % dst)
+            LOG.info("file exists, will be replaced: %s" % dst)
             try:
                 os.remove(dst)
             except IOError as e:
-                log.error("Cannot remove: %s" % (dst, e))
+                LOG.error("Cannot remove: %s" % (dst, e))
                 sys.exit(1)
 
         try:
             shutil.copyfile(src, dst, follow_symlinks=True)
         except IOError as e:
-            log.error("Cannot copy %s -> %s: %s" % (src, dst, e))
+            LOG.error("Cannot copy %s -> %s: %s" % (src, dst, e))
             sys.exit(1)
 
 
 def add_default_users(opts):
-    log.info("Add default users")
+    LOG.info("Add default users")
     if opts["DIVISION"] not in ["grid", "cluster"]:
-        log.info("User will not be added")
+        LOG.info("User will not be added")
         return
     run_ctl(["user", "create", opts["SWM_ADMIN_USER"], opts["SWM_ADMIN_ID"]], opts)
 
@@ -378,8 +353,8 @@ def add_default_users(opts):
 def get_setup_options():
     args = get_args()
     opts = {}
-    if args.skyport:
-        opts["SWM_SKY_PORT"] = True
+    opts["NO_SERVICE"] = args.no_service
+    opts["SWM_SKY_PORT"] = args.skyport
     if args.spool:
         opts["SWM_SPOOL"] = args.spool
     if args.division:
@@ -392,16 +367,16 @@ def get_setup_options():
     if args.extra:
         opts["EXTRA_CONFIG"] = args.extra
     if args.extra and not os.path.exists(args.extra):
-        log.error("No such file: " + str(args.extra))
+        LOG.error("No such file: " + str(args.extra))
         sys.exit(1)
     if args.prefix:
         if not os.path.exists(args.prefix):
-            log.error("No such file: " + str(args.prefix))
+            LOG.error("No such file: " + str(args.prefix))
             sys.exit(1)
         opts["SWM_ROOT"] = args.prefix
     if args.config:
         if not os.path.isfile(args.config):
-            log.error("No such file: " + str(args.config))
+            LOG.error("No such file: " + str(args.config))
             sys.exit(1)
         try:
             fp = open(args.config, "rt")
@@ -422,7 +397,7 @@ def get_setup_options():
                 if len(key) and len(val):
                     opts[key] = val
         except IOError as e:
-            log.error("Cannot read %s: %s" % (args.config, e))
+            LOG.error("Cannot read %s: %s" % (args.config, e))
             sys.exit(1)
     return opts
 
@@ -459,9 +434,15 @@ def get_args():
     )
 
     parser.add_argument(
+        "-n", "--no-service",
+        action="store_false",
+        help="Do not install swm service file"
+    )
+
+    parser.add_argument(
         "-t", "--testing",
         action="store_true",
-        help="Setup for testing purposes (no servicefile, just a spool)"
+        help="Setup for testing purposes (no service file, just a spool)"
     )
 
     parser.add_argument(
@@ -477,6 +458,7 @@ def get_args():
 
     parser.add_argument(
         "-a", "--archive",
+        action="store_true",
         help="Generate final worker SWM archive"
     )
 
@@ -489,23 +471,21 @@ def userInput(env, default, descr, opts, replacements=[], ispath=True):
         opts[env] = answer
     for (x,y) in replacements:
         opts[env] = opts[env].replace(x, y)
-    log.info("Entered " + descr + ": " + opts[env])
+    LOG.info("Entered " + descr + ": " + opts[env])
 
 
 def set_default(env, default, descr, opts):
     if env not in opts:
         opts[env] = default
     os.environ[env] = opts[env]
-    log.info("Using " + descr + ": " + opts[env])
+    LOG.info("Using " + descr + ": " + opts[env])
 
 
 def get_defaults(opts):
-    set_default("SWM_VERSION",     os.environ["SWM_VERSION"],             "version",                   opts)
-
-    set_default("SWM_ROOT",        os.environ["SWM_ROOT"],                "product directory",         opts)
-    set_default("SWM_SPOOL",       os.environ["SWM_SPOOL"],               "product spool directory",   opts)
-
-    set_default("SWM_PRIV_DIR",    os.path.join(SWM_VERSION_DIR, "priv"), "priv directory",            opts)
+    set_default("SWM_VERSION",     os.environ["SWM_VERSION"],             "version",                 opts)
+    set_default("SWM_ROOT",        os.environ["SWM_ROOT"],                "product directory",       opts)
+    set_default("SWM_SPOOL",       os.environ["SWM_SPOOL"],               "product spool directory", opts)
+    set_default("SWM_PRIV_DIR",    os.path.join(SWM_VERSION_DIR, "priv"), "priv directory",          opts)
 
     if "EXTRA_CONFIG" not in opts:
         if opts["DIVISION"] == "grid":
@@ -550,36 +530,36 @@ def get_from_user(opts):
 
 
 def create_archive(opts):
-    if opts.get("TESTING", False):
-        log.info("Archive will not be created")
-        return
-    root_dir    = opts["SWM_ROOT"]
-    swm_dir     = os.path.join(root_dir, opts["SWM_VERSION"])
     spool_dir   = opts["SWM_SPOOL"]
     swm_version = opts["SWM_VERSION"]
-
-    files = [swm_dir,
-             os.path.join(spool_dir, "secure/cluster"),
+    files = [os.path.join(spool_dir, "secure/cluster"),
              os.path.join(spool_dir, "secure/node"),
              os.path.join(spool_dir, "secure/users")]
 
     for f in files:
         if not os.path.isdir(f):
-            log.error("No such file: " + f)
+            LOG.error("No such directory: " + f)
             sys.exit(1)
 
-    archive = "{root_dir}/{product}-{version}-worker.tar.gz".format(root_dir=root_dir, product=product, version=swm_version)
-    script = "tar"
+    if opts.get("TESTING", False):
+        release_dir = os.path.join(SWM_VERSION_DIR, "_build", "default", "rel", "swm")
+        root_dir = os.path.join(SWM_VERSION_DIR, "_build", "packages")
+        make_dirs(root_dir)
+        files.append(release_dir)
+    else:
+        root_dir = opts["SWM_ROOT"]
+        files.append(os.path.join(root_dir, opts["SWM_VERSION"]))
+
+    archive = f"{root_dir}/{PRODUCT}-{swm_version}-worker.tar.gz"
     args = ["--transform", "'s,^.*\/swm/,,'", "-czf", archive, " ".join(files)]
 
-    run(script, args, os.environ)
-
-    log.info("Final worker SWM archive: " + archive)
+    run("tar", args, os.environ)
+    LOG.info("Final worker SWM archive: " + archive)
 
 
 def symlink_to_current(opts):
     if opts.get("TESTING", False):
-        log.info("Do not create a symlink 'current'")
+        LOG.info("Do not create a symlink 'current'")
         return
 
     root_dir = opts["SWM_ROOT"]
@@ -591,7 +571,7 @@ def symlink_to_current(opts):
         os.unlink(dst)
     os.symlink(src, dst)
 
-    log.info("Create symlink %s -> %s" % (dst, src))
+    LOG.info("Create symlink %s -> %s" % (dst, src))
 
 
 def final_message(opts):
