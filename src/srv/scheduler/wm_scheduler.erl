@@ -249,7 +249,7 @@ get_binary_for_scheduler(Scheduler) ->
     Jobs2 = [wm_entity:set_attr({revision, wm_entity:get_attr(revision, X) + 1}, X) || X <- Jobs1],
     wm_conf:update(Jobs2), %% TODO: mark that the job has been scheduled at least once differently
     Jobs3 = wm_utils:make_jobs_c_decodable(Jobs2),
-    ?LOG_DEBUG("Jobs for scheduler: ~p", [Jobs3]),
+    ?LOG_DEBUG("Jobs for scheduler: ~p", [length(Jobs3)]),
     JobsBin = erlang:term_to_binary(Jobs3),
     Bin3 = wm_sched_utils:add_input(?DATA_TYPE_JOBS, JobsBin, Bin2),
     [Grid] = wm_conf:select(grid, all),

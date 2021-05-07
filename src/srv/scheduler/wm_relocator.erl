@@ -256,7 +256,6 @@ spawn_virtres_if_needed(Job, Relocations) ->
 
 -spec restart_stopped_virtres_processes() -> ok.
 restart_stopped_virtres_processes() ->
-    ?LOG_DEBUG("Restart stopped virtres processes"),
     Filter =
         fun (#job{state = S,
                   relocatable = true,
@@ -277,7 +276,6 @@ restart_stopped_virtres_processes() ->
 
 -spec start_new_virtres_processes() -> ok.
 start_new_virtres_processes() ->
-    ?LOG_DEBUG("Start new virtres processes"),
     Filter =
         fun (#job{state = ?JOB_STATE_QUEUED,
                   nodes = [],

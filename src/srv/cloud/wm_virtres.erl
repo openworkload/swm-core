@@ -185,7 +185,15 @@ validating({partition_exists, Ref, true},
                MState) ->
     ?LOG_DEBUG("Destroy remote partition while validating for job ~p", [JobId]),
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
-    {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}}.
+    {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
+validating({error, Ref, Msg}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
+    ?LOG_INFO("Could not validate partition for job ~p: ~p", [JobId, Msg]),
+    Timer = wm_virtres_handler:wait_for_partition_fetch(),
+    {next_state, validating, MState#mstate{part_check_timer = Timer}};
+validating({Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
+    ?LOG_INFO("Timeout when validating partition for job ~p => try to fetch the partition later", [JobId]),
+    Timer = wm_virtres_handler:wait_for_partition_fetch(),
+    {next_state, validating, MState#mstate{part_check_timer = Timer}}.
 
 creating({partition_spawned, Ref, NewPartExtId}, #mstate{job_id = JobId, wait_ref = Ref} = MState) ->
     ?LOG_INFO("Partition spawned => check status: ~p, job ~p", [NewPartExtId, JobId]),
@@ -215,7 +223,11 @@ creating({partition_fetched, Ref, Partition},
 creating({error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Partition creation failed: ~p", [Error]),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
-    handle_remote_failure(MState).
+    handle_remote_failure(MState);
+creating({Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
+    ?LOG_INFO("Timeout when creating partition for job ~p => check it later", [JobId]),
+    Timer = wm_virtres_handler:wait_for_partition_fetch(),
+    {next_state, creating, MState#mstate{part_check_timer = Timer}}.
 
 uploading({Ref, ok}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Uploading has finished (~p)", [Ref]),

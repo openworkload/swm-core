@@ -16,7 +16,7 @@
    },
    "template":{
       "heat_template_version":"2013-05-23",
-      "description":"Sky Workflows heat templeate",
+      "description":"SWM heat templeate",
       "parameters":{
          "image":{
             "type":"string",
