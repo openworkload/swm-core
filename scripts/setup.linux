@@ -532,29 +532,51 @@ def get_from_user(opts):
 def create_archive(opts):
     spool_dir   = opts["SWM_SPOOL"]
     swm_version = opts["SWM_VERSION"]
-    files = [os.path.join(spool_dir, "secure/cluster"),
-             os.path.join(spool_dir, "secure/node"),
-             os.path.join(spool_dir, "secure/users")]
+    key_dirs = [os.path.join(spool_dir, "secure/cluster"), os.path.join(spool_dir, "secure/node")]
 
-    for f in files:
-        if not os.path.isdir(f):
-            LOG.error("No such directory: " + f)
+    for key_dir in key_dirs:
+        if not os.path.isdir(key_dir):
+            LOG.error(f"No such key directory: {key_dir}")
             sys.exit(1)
 
+    files = []
     if opts.get("TESTING", False):
-        release_dir = os.path.join(SWM_VERSION_DIR, "_build", "default", "rel", "swm")
-        root_dir = os.path.join(SWM_VERSION_DIR, "_build", "packages")
+        build_dir = os.path.join(SWM_VERSION_DIR, "_build")
+        tmp_dir = os.path.join(build_dir, "packages", "swm")
+
+        release_dir = os.path.join(build_dir, "default", "rel", "swm")
+        version_dir = os.path.join(tmp_dir, opts["SWM_VERSION"])
+        copy_and_overwrite(release_dir, version_dir)
+
+        root_dir = os.path.join(build_dir, "packages")
         make_dirs(root_dir)
-        files.append(release_dir)
+        files.append(version_dir)
+
+        secure_dir = os.path.join(tmp_dir, "spool", "secure")
+        make_dirs(secure_dir)
+        for key_dir in key_dirs:
+            copy_and_overwrite(key_dir, os.path.join(secure_dir, os.path.basename(key_dir)))
+        files.append(secure_dir)
     else:
         root_dir = opts["SWM_ROOT"]
         files.append(os.path.join(root_dir, opts["SWM_VERSION"]))
+        files.extend(key_dirs)
 
     archive = f"{root_dir}/{PRODUCT}-{swm_version}-worker.tar.gz"
     args = ["--transform", "'s,^.*\/swm/,,'", "-czf", archive, " ".join(files)]
 
     run("tar", args, os.environ)
-    LOG.info("Final worker SWM archive: " + archive)
+    LOG.info(f"Final worker SWM archive: {archive}")
+
+    LOG.info(f"Remove temporary directory: {tmp_dir}")
+    #shutil.rmtree(tmp_dir)
+
+
+def copy_and_overwrite(from_path, to_path):
+    LOG.info(f"Copy/overwrite {from_path} -> {to_path}")
+    if os.path.exists(to_path):
+        shutil.rmtree(to_path)
+    shutil.copytree(from_path, to_path)
 
 
 def symlink_to_current(opts):
