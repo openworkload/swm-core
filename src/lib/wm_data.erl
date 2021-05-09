@@ -58,8 +58,7 @@ handle_cast(Msg, #mstate{} = MState) ->
 
 handle_info(collect, #mstate{} = MState) ->
     MState2 = do_collect(MState),
-    gen_server:cast(?MODULE,
-                    transfer), % TODO: use scheduler for the transferring
+    gen_server:cast(?MODULE, transfer), % TODO: use scheduler for the transferring
     N = wm_conf:g(collect_data_interval, {?DEFAULT_COLLECT, integer}),
     wm_utils:wake_up_after(N, collect),
     {noreply, MState2};
@@ -89,7 +88,13 @@ do_collect(#mstate{} = MState) ->
     F = fun(Module) ->
            case wm_utils:is_module_loaded(Module) of
                true ->
-                   Module:export_data();
+                   try
+                       Module:export_data()
+                   catch
+                       E1:E2 ->
+                           ?LOG_ERROR("Error when exporting data from ~p: ~p:~p", [Module, E1, E2]),
+                           []
+                   end;
                _ ->
                    []
            end

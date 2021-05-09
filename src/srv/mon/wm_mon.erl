@@ -35,7 +35,7 @@ get_values(MetricName, Conditions) ->
 
 -spec export_data() -> {tuple(), atom(), binary(), term()}.
 export_data() ->
-    wm_utils:protected_call(?MODULE, export_data, []).
+    gen_server:call(?MODULE, export_data).
 
 -spec import_data(term(), binary()) -> ok.
 import_data(Meta, Data) ->
