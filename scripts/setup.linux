@@ -569,7 +569,7 @@ def create_archive(opts):
     LOG.info(f"Final worker SWM archive: {archive}")
 
     LOG.info(f"Remove temporary directory: {tmp_dir}")
-    #shutil.rmtree(tmp_dir)
+    shutil.rmtree(tmp_dir)
 
 
 def copy_and_overwrite(from_path, to_path):
