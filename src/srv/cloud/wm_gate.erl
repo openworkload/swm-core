@@ -282,7 +282,9 @@ fetch_images(Remote, Creds, Spool) ->
     Result =
         case wait_response_boby(ConnPid, StreamRef) of
             {ok, BinBody} ->
-                wm_gate_parsers:parse_images(BinBody);
+                RemoteId = wm_entity:get_attr(id, Remote),
+                {ok, Images} = wm_gate_parsers:parse_images(BinBody),
+                {ok, [wm_entity:set_attr({remote_id, RemoteId}, Image) || Image <- Images]};
             {error, Error} ->
                 {error, Error}
         end,

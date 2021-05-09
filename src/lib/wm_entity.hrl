@@ -199,6 +199,7 @@
          size = 0 :: pos_integer(),
          kind :: atom(),
          status :: string(),
+         remote_id :: remote_id(),
          created = "" :: string(),
          updated = "" :: string(),
          comment = "" :: string(),

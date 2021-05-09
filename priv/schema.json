@@ -845,6 +845,9 @@
     "status": {
       "type": "string()"
     },
+    "remote_id": {
+      "type": "remote_id()"
+    },
     "created": {
       "default": "",
       "type": "string()"

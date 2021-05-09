@@ -51,23 +51,28 @@ SwmImage::SwmImage(ETERM *term) {
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 8, created)) {
+  if(eterm_to_str(term, 8, remote_id)) {
     std::cerr << "Could not initialize image paremeter at position 8" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 9, updated)) {
+  if(eterm_to_str(term, 9, created)) {
     std::cerr << "Could not initialize image paremeter at position 9" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 10, comment)) {
+  if(eterm_to_str(term, 10, updated)) {
     std::cerr << "Could not initialize image paremeter at position 10" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_uint64_t(term, 11, revision)) {
+  if(eterm_to_str(term, 11, comment)) {
     std::cerr << "Could not initialize image paremeter at position 11" << std::endl;
+    erl_print_term(stderr, term);
+    return;
+  }
+  if(eterm_to_uint64_t(term, 12, revision)) {
+    std::cerr << "Could not initialize image paremeter at position 12" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
@@ -97,6 +102,10 @@ void SwmImage::set_kind(const std::string &new_val) {
 
 void SwmImage::set_status(const std::string &new_val) {
   status = new_val;
+}
+
+void SwmImage::set_remote_id(const std::string &new_val) {
+  remote_id = new_val;
 }
 
 void SwmImage::set_created(const std::string &new_val) {
@@ -137,6 +146,10 @@ std::string SwmImage::get_kind() const {
 
 std::string SwmImage::get_status() const {
   return status;
+}
+
+std::string SwmImage::get_remote_id() const {
+  return remote_id;
 }
 
 std::string SwmImage::get_created() const {
@@ -197,6 +210,7 @@ void SwmImage::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << size << separator;
     std::cerr << prefix << kind << separator;
     std::cerr << prefix << status << separator;
+    std::cerr << prefix << remote_id << separator;
     std::cerr << prefix << created << separator;
     std::cerr << prefix << updated << separator;
     std::cerr << prefix << comment << separator;

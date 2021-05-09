@@ -70,6 +70,15 @@ handle_call({get_flavors, RemoteId}, _From, MState) ->
     ?LOG_DEBUG("{get_flavors, ~p}: selected ~p flavor nodes", [RemoteId, length(FlavorNodes)]),
     {reply, FlavorNodes, MState}.
 
+handle_cast({list_images, Ref, Images}, MState = #mstate{refs_in_process = Refs}) ->
+    case maps:get(Ref, Refs, undefined) of
+        undefined ->
+            ?LOG_WARN("Got orphaned list_images message with reference ~p", [Ref]),
+            {noreply, MState};
+        RemoteId ->
+            handle_retrieved_images(Images, RemoteId),
+            {noreply, MState#mstate{refs_in_process = maps:remove(Ref, Refs)}}
+    end;
 handle_cast({list_flavors, Ref, FlavorNodes}, MState = #mstate{refs_in_process = Refs}) ->
     case maps:get(Ref, Refs, undefined) of
         undefined ->
@@ -107,8 +116,9 @@ handle_info(update, MState = #mstate{refs_in_process = Refs, timer = OldTRef}) -
                 lists:foldl(fun(Remote, Accum) ->
                                RemoteId = wm_entity:get_attr(id, Remote),
                                {ok, Creds} = wm_conf:select(credential, {remote_id, RemoteId}),
-                               {ok, Ref} = wm_gate:list_flavors(?MODULE, Remote, Creds),
-                               Accum#{Ref => RemoteId}
+                               {ok, RefFlavors} = wm_gate:list_flavors(?MODULE, Remote, Creds),
+                               {ok, RefImages} = wm_gate:list_images(?MODULE, Remote, Creds),
+                               Accum#{RefFlavors => RemoteId, RefImages => RemoteId}
                             end,
                             Refs,
                             Remotes);
@@ -132,6 +142,22 @@ parse_args([], MState = #mstate{}) ->
     MState;
 parse_args([{_, _} | T], MState = #mstate{}) ->
     parse_args(T, MState).
+
+-spec handle_retrieved_images([#image{}], remote_id()) -> atom().
+handle_retrieved_images(NewImages, RemoteId) ->
+    case wm_conf:select(image, {remote_id, RemoteId}) of
+        {error, not_found} ->
+            ok;
+        {ok, OldImages} ->
+            ?LOG_DEBUG("Found ~p old images for remote ~p", [length(OldImages), RemoteId]),
+            [ok = wm_conf:delete(Image) || Image <- OldImages]
+    end,
+    case wm_conf:select(remote, {id, RemoteId}) of
+        {ok, _} ->
+            true = wm_conf:update(NewImages) == length(NewImages);
+        {error, not_found} ->
+            ?LOG_DEBUG("New images will not be added for remote ~p, because it is not configured", [RemoteId])
+    end.
 
 -spec handle_retrieved_flavors([#node{}], remote_id()) -> atom().
 handle_retrieved_flavors(FlavorNodes, RemoteId) ->

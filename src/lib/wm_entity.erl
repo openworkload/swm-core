@@ -677,6 +677,8 @@ get_type(image, Attr) when is_atom(Attr) ->
             atom;
         status ->
             string;
+        remote_id ->
+            string;
         created ->
             string;
         updated ->
