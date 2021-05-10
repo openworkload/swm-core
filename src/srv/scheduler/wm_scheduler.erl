@@ -25,10 +25,10 @@ start_link(Args) ->
 handle_call(start_scheduling, _, #mstate{} = MState) ->
     case get_scheduler() of
         {error, Error} ->
-            ?LOG_ERROR("Cannot get scheduler: ~p", [Error]),
+            ?LOG_ERROR("Cannot get scheduler: ~w", [Error]),
             {reply, error, MState};
         {SubDivType, Scheduler} ->
-            ?LOG_DEBUG("Start scheduler using record: ~p, subdiv=~p", [Scheduler, SubDivType]),
+            ?LOG_DEBUG("Start scheduler using record (subdiv=~p): ~w", [SubDivType, Scheduler]),
             case start_scheduler(Scheduler, MState) of
                 {ok, NewMState} ->
                     {reply, erlang:send(self(), schedule), NewMState};
@@ -46,7 +46,7 @@ handle_info({exit_status, ExitCode, _}, #mstate{} = MState) ->
 handle_info({output, BinOut, _}, #mstate{} = MState) ->
     ?LOG_DEBUG("Received new scheduling result (size=~p)", [byte_size(BinOut)]),
     Term = erlang:binary_to_term(BinOut),
-    ?LOG_DEBUG("New scheduling result: ~p", [Term]),
+    ?LOG_DEBUG("New scheduling result: ~w", [Term]),
     MState2 = handle_new_timetable(Term, MState),
     {noreply, MState2};
 handle_info(job_start_time, #mstate{} = MState) ->
@@ -67,7 +67,7 @@ handle_info(schedule, #mstate{} = MState) ->
             ?LOG_ERROR("Cannot get scheduler: ~p", [Error]),
             {noreply, MState};
         {SubDivType, Scheduler} ->
-            ?LOG_DEBUG("Use scheduler record: ~p, subdiv=~p", [Scheduler, SubDivType]),
+            ?LOG_DEBUG("Use scheduler record for subdiv ~p: ~w", [SubDivType, Scheduler]),
             RunInterval = wm_entity:get_attr(run_interval, Scheduler),
             wm_utils:wake_up_after(RunInterval, schedule),
             {noreply, start_timetable_creation(SubDivType, Scheduler, MState)}
@@ -174,13 +174,10 @@ run_mock_scheduler(grid, #mstate{} = MState) ->
                         up ->
                             send_jobs([?JOB_STATE_QUEUED], Node, MState);
                         down ->
-                            ?LOG_DEBUG("Cluster manager ~p not UP (jobs won't "
-                                       "be sent)",
-                                       [Node])
+                            ?LOG_DEBUG("Cluster manager ~p not UP (jobs won't be sent)", [Node])
                     end;
                 _ ->
-                    ?LOG_DEBUG("Scheduler is not ready for running (my "
-                               "node not found)")
+                    ?LOG_DEBUG("Scheduler is not ready for running (my node not found)")
             end
     end,
     MState.
@@ -267,7 +264,7 @@ get_binary_for_scheduler(Scheduler) ->
     wm_sched_utils:add_input(?DATA_TYPE_NODES, NodesBin, Bin6).
 
 handle_new_timetable(SchedulerResult, #mstate{} = MState) when is_tuple(SchedulerResult) ->
-    ?LOG_DEBUG("Received scheduling result: ~p", [SchedulerResult]),
+    ?LOG_DEBUG("Received scheduling result: ~w", [SchedulerResult]),
     case erlang:element(1, SchedulerResult) =:= scheduler_result of
         true ->
             case wm_entity:get_attr(timetable, SchedulerResult) of
