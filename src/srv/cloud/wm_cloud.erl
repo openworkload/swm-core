@@ -166,7 +166,7 @@ handle_retrieved_images(NewImages, RemoteId) ->
     case wm_conf:select(remote, {id, RemoteId}) of
         {ok, Remote} ->
             true = wm_conf:update(NewImages) == length(NewImages),
-            DefaultImage = lists:last(NewImages),
+            DefaultImage = lists:nth(1, NewImages),
             DefaultImageId = wm_entity:get_attr(id, DefaultImage),
             case wm_entity:get_attr(default_image_id, Remote) of
                 DefaultImageId ->
@@ -187,7 +187,7 @@ handle_retrieved_images(NewImages, RemoteId) ->
 handle_retrieved_flavors(FlavorNodes, RemoteId) ->
     TemplateNodes = select_template_nodes(RemoteId),
     case wm_conf:select(remote, {id, RemoteId}) of
-        {ok, _} ->
+        {ok, Remote} ->
             {PreserveNodes, DeleteNodes} =
                 lists:foldl(fun(FlavorNode, {PreserveNodes, DeleteNodes}) ->
                                Name = wm_entity:get_attr(name, FlavorNode),
@@ -206,7 +206,26 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
                             {[], TemplateNodes},
                             FlavorNodes),
             [ok = wm_conf:delete(Node) || Node <- DeleteNodes],
-            true = wm_conf:update(PreserveNodes) == length(PreserveNodes);
+
+            case length(PreserveNodes) of
+                0 ->
+                    ok;
+                Length ->
+                    true = wm_conf:update(PreserveNodes) == Length,
+                    Default = lists:nth(1, PreserveNodes),
+                    DefaultId = wm_entity:get_attr(id, Default),
+                    case wm_entity:get_attr(default_flavor_id, Remote) of
+                        DefaultId ->
+                            ok;
+                        undefined ->
+                            ?LOG_INFO("Default flavor node ID is updated for remote ~p: ~p", [RemoteId, DefaultId]),
+                            1 =
+                                wm_conf:update(
+                                    wm_entity:set_attr({default_flavor_id, DefaultId}, Remote));
+                        _ ->
+                            ok
+                    end
+            end;
         {error, not_found} ->
             [ok = wm_conf:delete(Node) || Node <- TemplateNodes]
     end.

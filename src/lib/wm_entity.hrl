@@ -218,6 +218,7 @@
         {id :: remote_id(),
          account_id :: account_id(),
          default_image_id :: image_id(),
+         default_flavor_id :: node_id(),
          name :: atom(),
          kind = local :: atom(),
          server :: string(),

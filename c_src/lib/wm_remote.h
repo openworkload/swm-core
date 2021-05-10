@@ -19,6 +19,7 @@ class SwmRemote:SwmEntity {
   void set_id(const std::string&);
   void set_account_id(const std::string&);
   void set_default_image_id(const std::string&);
+  void set_default_flavor_id(const std::string&);
   void set_name(const std::string&);
   void set_kind(const std::string&);
   void set_server(const std::string&);
@@ -28,6 +29,7 @@ class SwmRemote:SwmEntity {
   std::string get_id() const;
   std::string get_account_id() const;
   std::string get_default_image_id() const;
+  std::string get_default_flavor_id() const;
   std::string get_name() const;
   std::string get_kind() const;
   std::string get_server() const;
@@ -38,6 +40,7 @@ class SwmRemote:SwmEntity {
   std::string id;
   std::string account_id;
   std::string default_image_id;
+  std::string default_flavor_id;
   std::string name;
   std::string kind;
   std::string server;

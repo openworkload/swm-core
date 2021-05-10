@@ -36,28 +36,33 @@ SwmRemote::SwmRemote(ETERM *term) {
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_atom(term, 5, name)) {
+  if(eterm_to_str(term, 5, default_flavor_id)) {
     std::cerr << "Could not initialize remote paremeter at position 5" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_atom(term, 6, kind)) {
+  if(eterm_to_atom(term, 6, name)) {
     std::cerr << "Could not initialize remote paremeter at position 6" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 7, server)) {
+  if(eterm_to_atom(term, 7, kind)) {
     std::cerr << "Could not initialize remote paremeter at position 7" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_uint64_t(term, 8, port)) {
+  if(eterm_to_str(term, 8, server)) {
     std::cerr << "Could not initialize remote paremeter at position 8" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_uint64_t(term, 9, revision)) {
+  if(eterm_to_uint64_t(term, 9, port)) {
     std::cerr << "Could not initialize remote paremeter at position 9" << std::endl;
+    erl_print_term(stderr, term);
+    return;
+  }
+  if(eterm_to_uint64_t(term, 10, revision)) {
+    std::cerr << "Could not initialize remote paremeter at position 10" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
@@ -75,6 +80,10 @@ void SwmRemote::set_account_id(const std::string &new_val) {
 
 void SwmRemote::set_default_image_id(const std::string &new_val) {
   default_image_id = new_val;
+}
+
+void SwmRemote::set_default_flavor_id(const std::string &new_val) {
+  default_flavor_id = new_val;
 }
 
 void SwmRemote::set_name(const std::string &new_val) {
@@ -107,6 +116,10 @@ std::string SwmRemote::get_account_id() const {
 
 std::string SwmRemote::get_default_image_id() const {
   return default_image_id;
+}
+
+std::string SwmRemote::get_default_flavor_id() const {
+  return default_flavor_id;
 }
 
 std::string SwmRemote::get_name() const {
@@ -160,6 +173,7 @@ void SwmRemote::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << id << separator;
     std::cerr << prefix << account_id << separator;
     std::cerr << prefix << default_image_id << separator;
+    std::cerr << prefix << default_flavor_id << separator;
     std::cerr << prefix << name << separator;
     std::cerr << prefix << kind << separator;
     std::cerr << prefix << server << separator;

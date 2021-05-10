@@ -117,8 +117,8 @@ spawn_partition(JobId, Remote) ->
     PartName = get_partition_name(JobId),
     Options =
         #{name => PartName,
-          image_name => "cirros",
-          flavor_name => "m1.micro",
+          image_name => get_default_image(Remote),
+          flavor_name => get_default_flavor(Remote),
           partition_name => get_partition_name(JobId),
           node_count => integer_to_binary(wm_utils:get_requested_nodes_number(Job))},
     {ok, Creds} = get_credentials(Remote),
@@ -132,6 +132,40 @@ ensure_entities_created(JobId, Partition, TplNode) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
+
+-spec get_default_image(#remote{}) -> string().
+get_default_image(Remote) ->
+    RemoteName = wm_entity:get_attr(name, Remote),
+    case wm_entity:get_attr(default_image_id, Remote) of
+        undefined ->
+            ?LOG_ERROR("No default image id is set for the remote ~p", [RemoteName]),
+            "";
+        DefaultImageId ->
+            case wm_conf:select(image, {id, DefaultImageId}) of
+                {error, not_found} ->
+                    ?LOG_ERROR("Default image for remote ~p is not found: ~p", [RemoteName, DefaultImageId]),
+                    "";
+                {ok, Image} ->
+                    wm_entity:get_attr(name, Image)
+            end
+    end.
+
+-spec get_default_flavor(#remote{}) -> string().
+get_default_flavor(Remote) ->
+    RemoteName = wm_entity:get_attr(name, Remote),
+    case wm_entity:get_attr(default_flavor_id, Remote) of
+        undefined ->
+            ?LOG_ERROR("No default flavor node id is set for the remote ~p", [RemoteName]),
+            "";
+        DefaultFlavorId ->
+            case wm_conf:select(node, {id, DefaultFlavorId}) of
+                {error, not_found} ->
+                    ?LOG_ERROR("Default flavor for remote ~p is not found: ~p", [RemoteName, DefaultFlavorId]),
+                    "";
+                {ok, Node} ->
+                    wm_entity:get_attr(name, Node)
+            end
+    end.
 
 -spec create_relocation_entities(job_id(), #partition{}, #node{}) -> {atom(), string()}.
 create_relocation_entities(JobId, Partition, TplNode) ->

@@ -905,6 +905,9 @@
     "default_image_id": {
       "type": "image_id()"
     },
+    "default_flavor_id": {
+      "type": "node_id()"
+    },
     "name": {
       "type": "atom()"
     },

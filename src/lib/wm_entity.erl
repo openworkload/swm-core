@@ -715,6 +715,8 @@ get_type(remote, Attr) when is_atom(Attr) ->
             string;
         default_image_id ->
             string;
+        default_flavor_id ->
+            string;
         name ->
             atom;
         kind ->
