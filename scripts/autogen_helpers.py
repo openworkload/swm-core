@@ -27,6 +27,7 @@ types = {
      "partition_id()": "std::string",
      "node_id()": "std::string",
      "job_id()": "std::string",
+     "image_id()": "std::string",
      "relocation_id()": "std::uint64_t",
      "hook_id()": "std::string"
 }
@@ -52,6 +53,7 @@ type_suffix = {
      "partition_id()": "str",
      "node_id()": "str",
      "job_id()": "str",
+     "image_id()": "str",
      "relocation_id()": "uint64_t",
      "hook_id()": "str"
 }
@@ -77,6 +79,7 @@ printer = {
      "partition_id()": "%s",
      "node_id()": "%s",
      "job_id()": "%s",
+     "image_id()": "%s",
      "relocation_id()": "%ld",
      "hook_id()": "%s"
 }

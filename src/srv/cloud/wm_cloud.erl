@@ -118,6 +118,7 @@ handle_info(update, MState = #mstate{refs_in_process = Refs, timer = OldTRef}) -
                                {ok, Creds} = wm_conf:select(credential, {remote_id, RemoteId}),
                                {ok, RefFlavors} = wm_gate:list_flavors(?MODULE, Remote, Creds),
                                {ok, RefImages} = wm_gate:list_images(?MODULE, Remote, Creds),
+                               ?LOG_DEBUG("Requested lists of flavors and images: ~p and ~p", [RefFlavors, RefImages]),
                                Accum#{RefFlavors => RemoteId, RefImages => RemoteId}
                             end,
                             Refs,
@@ -144,7 +145,17 @@ parse_args([{_, _} | T], MState = #mstate{}) ->
     parse_args(T, MState).
 
 -spec handle_retrieved_images([#image{}], remote_id()) -> atom().
+handle_retrieved_images([], RemoteId) ->
+    ?LOG_DEBUG("Retrieved 0 images for remote ~p => clean known images for this remote", [RemoteId]),
+    case wm_conf:select(image, {remote_id, RemoteId}) of
+        {error, not_found} ->
+            ok;
+        {ok, OldImages} ->
+            ?LOG_DEBUG("Remove ~p outdated images for remote ~p", [length(OldImages), RemoteId]),
+            [ok = wm_conf:delete(Image) || Image <- OldImages]
+    end;
 handle_retrieved_images(NewImages, RemoteId) ->
+    ?LOG_DEBUG("Handle retrieved ~p images for remote ~p", [length(NewImages), RemoteId]),
     case wm_conf:select(image, {remote_id, RemoteId}) of
         {error, not_found} ->
             ok;
@@ -153,8 +164,21 @@ handle_retrieved_images(NewImages, RemoteId) ->
             [ok = wm_conf:delete(Image) || Image <- OldImages]
     end,
     case wm_conf:select(remote, {id, RemoteId}) of
-        {ok, _} ->
-            true = wm_conf:update(NewImages) == length(NewImages);
+        {ok, Remote} ->
+            true = wm_conf:update(NewImages) == length(NewImages),
+            DefaultImage = lists:last(NewImages),
+            DefaultImageId = wm_entity:get_attr(id, DefaultImage),
+            case wm_entity:get_attr(default_image_id, Remote) of
+                DefaultImageId ->
+                    ok;
+                undefined ->
+                    ?LOG_INFO("Default image ID is updated for remote ~p: ~p", [RemoteId, DefaultImageId]),
+                    1 =
+                        wm_conf:update(
+                            wm_entity:set_attr({default_image_id, DefaultImageId}, Remote));
+                _ ->
+                    ok
+            end;
         {error, not_found} ->
             ?LOG_DEBUG("New images will not be added for remote ~p, because it is not configured", [RemoteId])
     end.

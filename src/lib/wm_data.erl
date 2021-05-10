@@ -92,7 +92,7 @@ do_collect(#mstate{} = MState) ->
                        Module:export_data()
                    catch
                        E1:E2 ->
-                           ?LOG_ERROR("Error when exporting data from ~p: ~p:~p", [Module, E1, E2]),
+                           ?LOG_ERROR("Error when exporting data from ~p: ~w:~w", [Module, E1, E2]),
                            []
                    end;
                _ ->

@@ -829,7 +829,7 @@
       "type": "string()"
     },
     "id": {
-      "type": "string()"
+      "type": "image_id()"
     },
     "tags": {
       "default": [],
@@ -901,6 +901,9 @@
     },
     "account_id": {
       "type": "account_id()"
+    },
+    "default_image_id": {
+      "type": "image_id()"
     },
     "name": {
       "type": "atom()"

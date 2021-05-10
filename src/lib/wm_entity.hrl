@@ -12,6 +12,7 @@
 -type user_id() :: string().
 -type hook_id() :: string().
 -type job_id() :: string().
+-type image_id() :: string().
 -type relocation_id() :: integer().
 
 -record(executable,
@@ -194,7 +195,7 @@
 -record(subscriber, {ref :: {atom(), atom()}, event = any_event :: atom(), revision = 0 :: pos_integer()}).
 -record(image,
         {name :: string(),
-         id :: string(),
+         id :: image_id(),
          tags = [] :: [string()],
          size = 0 :: pos_integer(),
          kind :: atom(),
@@ -216,6 +217,7 @@
 -record(remote,
         {id :: remote_id(),
          account_id :: account_id(),
+         default_image_id :: image_id(),
          name :: atom(),
          kind = local :: atom(),
          server :: string(),

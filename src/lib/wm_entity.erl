@@ -646,9 +646,9 @@ get_type(timetable, Attr) when is_atom(Attr) ->
 get_type(relocation, Attr) when is_atom(Attr) ->
     case Attr of
         id ->
-            {list, string};
+            integer;
         job_id ->
-            {list, string};
+            string;
         template_node_id ->
             string;
         canceled ->
@@ -712,6 +712,8 @@ get_type(remote, Attr) when is_atom(Attr) ->
         id ->
             string;
         account_id ->
+            string;
+        default_image_id ->
             string;
         name ->
             atom;
@@ -805,7 +807,7 @@ get_names(all) ->
 get_names(local) ->
     [job];
 get_names(local_bag) ->
-    [subscriber, timetable];
+    [subscriber, timetable, relocation];
 get_names(non_replicable) ->
     [schema, subscriber, timetable, job];
 get_names(with_ids) ->

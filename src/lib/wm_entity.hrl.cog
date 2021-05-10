@@ -12,6 +12,7 @@
 -type user_id()         :: string().
 -type hook_id()         :: string().
 -type job_id()          :: string().
+-type image_id()        :: string().
 -type relocation_id()   :: integer().
 
 %[[[cog
