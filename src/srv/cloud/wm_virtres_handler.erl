@@ -117,10 +117,11 @@ spawn_partition(JobId, Remote) ->
     PartName = get_partition_name(JobId),
     Options =
         #{name => PartName,
-          image_name => get_default_image(Remote),
-          flavor_name => get_default_flavor(Remote),
+          image_name => get_resource_value_property(image, Job, Remote, fun get_default_image_name/1),
+          flavor_name => get_resource_value_property(flavor, Job, Remote, fun get_default_flavor_name/1),
           partition_name => get_partition_name(JobId),
-          node_count => integer_to_binary(wm_utils:get_requested_nodes_number(Job))},
+          node_count => wm_utils:get_requested_nodes_number(Job)},
+    ?LOG_DEBUG("Start partition options: ~w", [Options]),
     {ok, Creds} = get_credentials(Remote),
     wm_gate:create_partition(self(), Remote, Creds, Options).
 
@@ -133,8 +134,36 @@ ensure_entities_created(JobId, Partition, TplNode) ->
 %% Implementation functions
 %% ============================================================================
 
--spec get_default_image(#remote{}) -> string().
-get_default_image(Remote) ->
+-spec get_resource_value_property(atom(), #job{}, #remote{}, fun((#remote{}) -> string())) -> string().
+get_resource_value_property(Name, Job, Remote, FunGetDefault) ->
+    case lists:search(fun (#resource{name = X}) when X == Name ->
+                              true;
+                          (_) ->
+                              false
+                      end,
+                      wm_entity:get_attr(request, Job))
+    of
+        {value, Resource} ->
+            Properties = wm_entity:get_attr(properties, Resource),
+            case proplists:get_value(value, Properties) of
+                undefined ->
+                    FunGetDefault(Remote);
+                ImageName ->
+                    case wm_conf:select(image, {name, ImageName}) of
+                        {ok, _} ->
+                            ImageName;
+                        {error, not_found} ->
+                            JobId = wm_entity:get_attr(id, Job),
+                            Msg = io_lib:format("Image ~p requested by job ~p is unknown", [ImageName, JobId]),
+                            throw(Msg)
+                    end
+            end;
+        false ->
+            FunGetDefault(Remote)
+    end.
+
+-spec get_default_image_name(#remote{}) -> string().
+get_default_image_name(Remote) ->
     RemoteName = wm_entity:get_attr(name, Remote),
     case wm_entity:get_attr(default_image_id, Remote) of
         undefined ->
@@ -150,8 +179,8 @@ get_default_image(Remote) ->
             end
     end.
 
--spec get_default_flavor(#remote{}) -> string().
-get_default_flavor(Remote) ->
+-spec get_default_flavor_name(#remote{}) -> string().
+get_default_flavor_name(Remote) ->
     RemoteName = wm_entity:get_attr(name, Remote),
     case wm_entity:get_attr(default_flavor_id, Remote) of
         undefined ->

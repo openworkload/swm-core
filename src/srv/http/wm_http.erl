@@ -82,9 +82,7 @@ init(Args) ->
                           {certfile, Cert},
                           {keyfile, Key}],
                          #{env => #{dispatch => Dispatch}, onresponse => fun error_hook/4}),
-    ?LOG_INFO("Web server service has been started "
-              "(~p)",
-              [Result]),
+    ?LOG_INFO("Web server has been started on port ~p: ~p", [Port, Result]),
     wm_event:announce(http_started),
     {ok, MState2}.
 

@@ -156,7 +156,7 @@ do_cast_subscribers(EventType, EventData) ->
                 Subscribers1 ->
                     F1 = fun(S) ->
                             Ref = wm_entity:get_attr(ref, S),
-                            ?LOG_DEBUG("Cast ~p with event: ~p, data=~P", [Ref, EventType, EventData, 10]),
+                            ?LOG_DEBUG("Cast ~p with event: ~p, data=~W", [Ref, EventType, EventData, 10]),
                             forward_event(Ref, {event, EventType, EventData})
                          end,
                     lists:map(F1, Subscribers1)

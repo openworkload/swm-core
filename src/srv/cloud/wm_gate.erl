@@ -240,7 +240,6 @@ handle_http_call(Func, Label, CallbackModule, MState = #mstate{children = Childr
 -spec do_partition_create(#remote{}, #credential{}, string(), map()) -> {ok, string(), string()} | {error, string()}.
 do_partition_create(Remote, Creds, Spool, Options) ->
     ConnPid = open_connection(Remote, Spool),
-    NodesNumber = list_to_binary(integer_to_list(maps:get(nodes_count, Options, 1))),
     Headers =
         get_auth_headers(Creds)
         ++ [{<<"partname">>, list_to_binary(maps:get(name, Options, ""))},
@@ -248,7 +247,7 @@ do_partition_create(Remote, Creds, Spool, Options) ->
             {<<"imagename">>, list_to_binary(maps:get(image_name, Options, ""))},
             {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
             {<<"keyname">>, list_to_binary(maps:get(key_name, Options, ""))},
-            {<<"count">>, NodesNumber}],
+            {<<"count">>, integer_to_binary(maps:get(nodes_count, Options, 1))}],
     StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers),
     Result =
         case wait_response_boby(ConnPid, StreamRef) of

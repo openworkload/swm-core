@@ -2,6 +2,7 @@
 
 -export([parse/1]).
 
+-include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 
 %% ============================================================================
@@ -11,15 +12,16 @@
 -spec parse(string()) -> tuple().
 parse(JobScriptContent) ->
     Lines = string:tokens(binary_to_list(JobScriptContent), "\n"),
-    Job1 = wm_entity:new(<<"job">>),
+    Job1 = wm_entity:new(job),
     Job2 = do_parse(Lines, Job1),
-    ?LOG_DEBUG("Job: ~p", [Job2]),
+    ?LOG_DEBUG("Parsed job: ~p", [Job2]),
     Job2.
 
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
 
+-spec do_parse([string()], #job{}) -> #job{}.
 do_parse([], Job) ->
     Job;
 do_parse([Line | T], Job) ->
@@ -39,6 +41,30 @@ do_parse([Line | T], Job) ->
             do_parse(T, Job)
     end.
 
+-spec add_requested_resource(atom(), string(), #job{}) -> #job{}.
+add_requested_resource(Name, PropValue, Job) ->
+    ResourcesOld = wm_entity:get_attr(request, Job),
+    ResourcesNew = add_resource_with_property(Name, PropValue, ResourcesOld, []),
+    wm_entity:set_attr({request, ResourcesNew}, Job).
+
+-spec add_resource_with_property(atom(), string(), [#resource{}], [#resource{}]) -> [#resource{}].
+add_resource_with_property(Name, PropValue, [], ResourcesNew) ->
+    NewResource = wm_entity:set_attr([{name, Name}, {properties, [{value, PropValue}]}], wm_entity:new(resource)),
+    [NewResource | ResourcesNew];
+add_resource_with_property(Name, PropValue, [#resource{name = Name} = OldResource | ResourcesOld], ResourcesNew) ->
+    Props1 = wm_entity:get_attr(properties, OldResource),
+    Props2 = proplists:delete(value, Props1),
+    Props3 = [{value, PropValue} | Props2],
+    NewResource = wm_entity:set_attr({properties, Props3}, OldResource),
+    add_resource_with_property(Name, PropValue, ResourcesOld, [NewResource | ResourcesNew]);
+add_resource_with_property(Name, PropValue, [#resource{} = OldResource | ResourcesOld], ResourcesNew) ->
+    add_resource_with_property(Name, PropValue, ResourcesOld, [OldResource | ResourcesNew]).
+
+-spec parse_line([string()], #job{}) -> #job{}.
+parse_line(Ws, Job) when hd(Ws) == "image", length(Ws) > 1 ->
+    add_requested_resource(image, lists:flatten(tl(Ws)), Job);
+parse_line(Ws, Job) when hd(Ws) == "flavor", length(Ws) > 1 ->
+    add_requested_resource(flavor, lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "account_id", length(Ws) > 1 ->
     wm_entity:set_attr({account_id, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "name", length(Ws) > 1 ->
