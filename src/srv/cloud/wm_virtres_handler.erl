@@ -117,8 +117,8 @@ spawn_partition(JobId, Remote) ->
     PartName = get_partition_name(JobId),
     Options =
         #{name => PartName,
-          image_name => get_resource_value_property(image, Job, Remote, fun get_default_image_name/1),
-          flavor_name => get_resource_value_property(flavor, Job, Remote, fun get_default_flavor_name/1),
+          image_name => get_resource_value_property(image, image, Job, Remote, fun get_default_image_name/1),
+          flavor_name => get_resource_value_property(node, flavor, Job, Remote, fun get_default_flavor_name/1),
           partition_name => get_partition_name(JobId),
           node_count => wm_utils:get_requested_nodes_number(Job)},
     ?LOG_DEBUG("Start partition options: ~w", [Options]),
@@ -134,8 +134,8 @@ ensure_entities_created(JobId, Partition, TplNode) ->
 %% Implementation functions
 %% ============================================================================
 
--spec get_resource_value_property(atom(), #job{}, #remote{}, fun((#remote{}) -> string())) -> string().
-get_resource_value_property(Name, Job, Remote, FunGetDefault) ->
+-spec get_resource_value_property(atom(), atom(), #job{}, #remote{}, fun((#remote{}) -> string())) -> string().
+get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
     case lists:search(fun (#resource{name = X}) when X == Name ->
                               true;
                           (_) ->
@@ -148,14 +148,13 @@ get_resource_value_property(Name, Job, Remote, FunGetDefault) ->
             case proplists:get_value(value, Properties) of
                 undefined ->
                     FunGetDefault(Remote);
-                ImageName ->
-                    case wm_conf:select(image, {name, ImageName}) of
+                EntityName ->
+                    case wm_conf:select(Tab, {name, EntityName}) of
                         {ok, _} ->
-                            ImageName;
+                            EntityName;
                         {error, not_found} ->
                             JobId = wm_entity:get_attr(id, Job),
-                            Msg = io_lib:format("Image ~p requested by job ~p is unknown", [ImageName, JobId]),
-                            throw(Msg)
+                            throw(io_lib:format("Entity ~p ~p (job ~p) is unknown", [Tab, EntityName, JobId]))
                     end
             end;
         false ->
