@@ -5,7 +5,7 @@ cat > ${JOB_SCRIPT_PATH} <<EOF
 #!/bin/bash
 #SWM relocatable
 #SWM image ubuntu-21.04
-#SWM flavor m1.tiny
+#SWM flavor m1.small
 date
 hostname
 EOF
