@@ -23,6 +23,24 @@ start_link(Args) ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 handle_call({show, JIDs}, _From, MState) ->
     {ReturnMsg, MStateNew} = handle_request(show, JIDs, MState),
     {reply, ReturnMsg, MStateNew};
@@ -76,10 +94,12 @@ handle_event(http_started, _, #mstate{} = MState) ->
     ?LOG_INFO("Initialize user REST API resources"),
     wm_http:add_route({api, wm_user_rest}, "/user"),
     wm_http:add_route({api, wm_user_rest}, "/user/node"),
+    wm_http:add_route({api, wm_user_rest}, "/user/flavors"),
     wm_http:add_route({api, wm_user_rest}, "/user/job"),
     MState.
 
-handle_request(submit, Args, MState) ->
+-spec handle_request(atom(), any(), #mstate{}) -> {any(), #mstate{}}.
+handle_request(submit, Args, #mstate{} = MState) ->
     ?LOG_DEBUG("Job submission has been requested: ~n~p", [Args]),
     {JobScriptContent, Filename, Username} = Args,
     case wm_conf:select(user, {name, Username}) of
@@ -129,10 +149,12 @@ handle_request(cancel, Args, MState) ->
     NotFoundIds = lists:map(fun({_, ID}) -> ID end, NotFoundFiltered),
     Msg = "Cancelled: " ++ lists:join(", ", CancelledIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
     {{string, Msg}, MState};
+handle_request(list, {[flavor], Limit}, MState) ->
+    Nodes = wm_conf:select(node, {all, Limit}),
+    NodesWithRemote = lists:filter(fun(X) -> wm_entity:get_attr(remote_id, X) =/= [] end, Nodes),
+    {NodesWithRemote, MState};
 handle_request(list, {Args, Limit}, MState) ->
-    ?LOG_DEBUG("List of ~p entities with limit ~p has "
-               "been requested",
-               [Args, Limit]),
+    ?LOG_DEBUG("List of ~p entities with limit ~p has been requested", [Args, Limit]),
     F = fun(X) -> wm_conf:select(X, {all, Limit}) end,
     Entities = lists:flatten([F(X) || X <- Args]),
     {Entities, MState};

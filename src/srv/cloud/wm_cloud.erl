@@ -4,7 +4,6 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([get_flavors/1]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
@@ -21,11 +20,6 @@
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
-
-%% @doc Get flavor (template) nodes kept in local config
--spec get_flavors(remote_id()) -> ok.
-get_flavors(RemoteId) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {get_flavors, RemoteId}).
 
 %% ============================================================================
 %% Server callbacks
@@ -64,11 +58,7 @@ handle_call(turn_timer_on, _From, MState) ->
             false ->
                 MState
         end,
-    {reply, ok, MState2};
-handle_call({get_flavors, RemoteId}, _From, MState) ->
-    FlavorNodes = select_template_nodes(RemoteId),
-    ?LOG_DEBUG("{get_flavors, ~p}: selected ~p flavor nodes", [RemoteId, length(FlavorNodes)]),
-    {reply, FlavorNodes, MState}.
+    {reply, ok, MState2}.
 
 handle_cast({list_images, Ref, Images}, MState = #mstate{refs_in_process = Refs}) ->
     case maps:get(Ref, Refs, undefined) of
