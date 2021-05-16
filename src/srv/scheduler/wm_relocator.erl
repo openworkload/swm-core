@@ -269,9 +269,13 @@ restart_stopped_virtres_processes() ->
         {error, not_found} ->
             ok;
         {ok, Jobs} when is_list(Jobs) ->
-            Relocations = lists:foldl(fun spawn_virtres_if_needed/2, [], Jobs),
-            N = wm_conf:update(Relocations),
-            ?LOG_DEBUG("Restarted ~p virtres processes", [N])
+            case lists:foldl(fun spawn_virtres_if_needed/2, [], Jobs) of
+                [] ->
+                    ?LOG_DEBUG("No relocation requires virtres spawning");
+                Relocations ->
+                    N = wm_conf:update(Relocations),
+                    ?LOG_DEBUG("Restarted ~p virtres processes", [N])
+            end
     end.
 
 -spec start_new_virtres_processes() -> ok.

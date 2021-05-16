@@ -67,7 +67,6 @@ handle_info(schedule, #mstate{} = MState) ->
             ?LOG_ERROR("Cannot get scheduler: ~p", [Error]),
             {noreply, MState};
         {SubDivType, Scheduler} ->
-            ?LOG_DEBUG("Use scheduler record for subdiv ~p: ~w", [SubDivType, Scheduler]),
             RunInterval = wm_entity:get_attr(run_interval, Scheduler),
             wm_utils:wake_up_after(RunInterval, schedule),
             {noreply, start_timetable_creation(SubDivType, Scheduler, MState)}

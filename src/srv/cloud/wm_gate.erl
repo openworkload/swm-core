@@ -216,6 +216,9 @@ wait_response_boby(ConnPid, StreamRef) ->
                     ?LOG_WARN("Response error: ~p", [ResponseError]),
                     {error, ResponseError}
             end;
+        {response, nofin, 404, _} ->
+            ?LOG_WARN("Waiting response: not found"),
+            {error, not_found};
         AwaitError ->
             ?LOG_WARN("Await error: ~p", [AwaitError]),
             {error, AwaitError}
