@@ -264,7 +264,7 @@ def run_ctl(args, opts):
 
 def load_db_configs(opts):
     if opts["DIVISION"] not in ["grid", "cluster"]:
-        LOG.info("Skip loading db configs")
+        LOG.info(f'Skip loading db configs (division: {opts["DIVISION"]})')
         return
 
     schema = os.path.join(opts["SWM_PRIV_DIR"], "schema.json")
@@ -291,7 +291,7 @@ def run_create_cert(args, opts):
 
 def generate_certificates(opts):
     if opts["DIVISION"] != "grid" and not opts["SWM_SKY_PORT"]:
-        LOG.info("Skip keys generating")
+        LOG.info("Skip certificates generation")
         return
     LOG.info("Generate certificates")
     run_create_cert(["grid"], opts)
@@ -435,7 +435,7 @@ def get_args():
 
     parser.add_argument(
         "-n", "--no-service",
-        action="store_false",
+        action="store_true",
         help="Do not install swm service file"
     )
 
