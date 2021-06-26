@@ -66,11 +66,11 @@ then
     cat /etc/exports
     echo
 
-    systemctl enable nfs-kernel-server
-    systemctl restart nfs-kernel-server
-
-    echo $(date) ": systemctl | grep nfs:"
-    systemctl | grep swm
+    # Temporary disable for debug purposes
+    #systemctl enable nfs-kernel-server
+    #systemctl restart nfs-kernel-server
+    #echo $(date) ": systemctl | grep nfs:"
+    #systemctl | grep nfs
 
 else
     echo "${PRIV_IP}:/home /home nfs rsize=32768,wsize=32768,hard,intr,async 0 0" >> /etc/fstab

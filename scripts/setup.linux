@@ -532,7 +532,10 @@ def get_from_user(opts):
 def create_archive(opts):
     spool_dir   = opts["SWM_SPOOL"]
     swm_version = opts["SWM_VERSION"]
-    key_dirs = [os.path.join(spool_dir, "secure/cluster"), os.path.join(spool_dir, "secure/node")]
+    key_dirs = [os.path.join(spool_dir, "secure/cluster"),
+                os.path.join(spool_dir, "secure/node"),
+                os.path.join(spool_dir, "secure/host"),
+               ]
 
     for key_dir in key_dirs:
         if not os.path.isdir(key_dir):
