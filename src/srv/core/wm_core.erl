@@ -216,9 +216,7 @@ handle_event(nodeup, {AllocState, NodeName}, MState) ->
     handle_maint_state(AllocState, NodeName, MState),
     case wm_parent:get_current(MState#mstate.pstack) of
         not_found ->  % assume this is a grid manager node
-            ?LOG_DEBUG("Parent will not be notified about state "
-                       "change (not set): ~p",
-                       [NodeName]);
+            ?LOG_DEBUG("Parent will not be notified about state change (not set): ~p", [NodeName]);
         Parent ->
             wm_api:cast_self({event, nodeup, {AllocState, NodeName}}, [Parent])
     end,
@@ -232,17 +230,13 @@ handle_event(nodedown, {AllocState, NodeName}, MState) ->
     wm_api:cast_self({event, nodedown, {AllocState, NodeName}}, [Parent]),
     MState2;
 handle_event(started_slave, Node, MState) ->
-    ?LOG_DEBUG("Received event: virtual node ~p has "
-               "been spawned",
-               [Node]),
+    ?LOG_DEBUG("Received event: virtual node ~p has been spawned", [Node]),
     wm_conf:set_node_state(power, up, Node),
     wm_pinger:add(
         wm_utils:get_address(Node)),
     MState;
 handle_event(stopped_slave, Node, MState) ->
-    ?LOG_DEBUG("Received event: virtual node ~p has "
-               "been stopped",
-               [Node]),
+    ?LOG_DEBUG("Received event: virtual node ~p has been stopped", [Node]),
     wm_conf:set_node_state(power, down, Node),
     wm_pinger:del(
         wm_utils:get_address(Node)),
@@ -349,8 +343,7 @@ add_children_to_pinger() ->
                   end,
             lists:map(Add, ChildRecs2);
         Error ->
-            ?LOG_ERROR("Cannot get my node, no nodes will be "
-                       "pinged"),
+            ?LOG_ERROR("Cannot get my node, no nodes will be pinged"),
             Error
     end.
 
@@ -376,8 +369,7 @@ add_parent({ParentHost, ParentPort}, #mstate{} = MState) ->
         not_found ->
             monitor_parent(ParentHost, ParentPort, MState);
         {ParentHost, ParentPort} ->
-            ?LOG_DEBUG("Don't add parent, it is already in the "
-                       "pstack"),
+            ?LOG_DEBUG("Don't add parent, it is already in the pstack"),
             MState;
         OldAddr ->
             ?LOG_DEBUG("Stop monitoring and subscription for ~p", [OldAddr]),
@@ -385,9 +377,7 @@ add_parent({ParentHost, ParentPort}, #mstate{} = MState) ->
             monitor_parent(ParentHost, ParentPort, MState)
     end;
 add_parent(ParentShortName, #mstate{} = MState) when is_list(ParentShortName) ->
-    ?LOG_DEBUG("Add new parent to pstack by its short "
-               "name: ~p",
-               [ParentShortName]),
+    ?LOG_DEBUG("Add new parent to pstack by its short name: ~p", [ParentShortName]),
     case wm_conf:select_node(ParentShortName) of
         {ok, ParentTuple} ->
             ParentHost = wm_entity:get_attr(host, ParentTuple),
@@ -405,9 +395,7 @@ do_start_slave(ShortName, SlaveArgs, AppArgs) ->
         {ok, Node} ->
             wm_event:announce(started_slave, Node),
             Pid = spawn(Node, wm_root_sup, start_slave, [AppArgs]),
-            ?LOG_DEBUG("Slave node ~p has been spawned (supervisor: "
-                       "~p)",
-                       [Node, Pid]),
+            ?LOG_DEBUG("Slave node ~p has been spawned (supervisor: ~p)", [Node, Pid]),
             {ok, Node};
         {error, Reason} ->
             error_logger:error_msg(Reason),
@@ -419,8 +407,7 @@ start_parent(MState) ->
     ParentStr = wm_parent:get_current(MState#mstate.pstack),
     ParentParts = string:tokens(ParentStr, "@"),
     OldParentName = hd(ParentParts),
-    Suffix =
-        "new1", %FIXME Imcrement index each time when new parent is started
+    Suffix = "new1", %FIXME Imcrement index each time when new parent is started
     NewParentName = OldParentName ++ Suffix,
     {ok, MyNode} = wm_self:get_node(),
     MyPort = wm_entity:get_attr(api_port, MyNode),
@@ -452,9 +439,7 @@ start_parent(MState) ->
 
 add_parent_to_db(OldParentName, NewParentName, Port, MState) ->
     {ok, Node1} = wm_conf:select_node(OldParentName),
-    NewID =
-        random:uniform(1000)
-        + 100, %FIXME we should assign some unique ID (how to get unique one?)
+    NewID = random:uniform(1000) + 100, %FIXME we should assign some unique ID (how to get unique one?)
     Node2 = wm_entity:set_attr({id, NewID}, Node1),
     Node3 = wm_entity:set_attr({name, NewParentName}, Node2),
     Node4 = wm_entity:set_attr({api_port, Port}, Node3),
@@ -496,12 +481,10 @@ do_allocate_port() ->
     NextPort = wm_conf:g(floating_port_last, {?FLOATING_PORT_LAST, integer}) + 1,
     case NextPort of
         NextAfterEnd ->
-            ?LOG_DEBUG("No free port is in the range, lets check "
-                       "deallocated ones"),
+            ?LOG_DEBUG("No free port is in the range, lets check deallocated ones"),
             case get_free_deallocated_ports() of
                 [] ->
-                    ?LOG_ERROR("No free port available, please increase "
-                               "port range"),
+                    ?LOG_ERROR("No free port available, please increase port range"),
                     0;
                 FreePorts ->
                     [FreePort | FreePortsRest] = FreePorts,
@@ -654,9 +637,7 @@ handle_maint_state(maint, NodeAddr, #mstate{}) ->
                     ok
             end;
         {error, _} ->
-            ?LOG_ERROR("Cannot handle maint state: node not "
-                       "known: ~p",
-                       [NodeAddr]),
+            ?LOG_ERROR("Cannot handle maint state: node not known: ~p", [NodeAddr]),
             ok
     end;
 handle_maint_state(_, _, _) ->

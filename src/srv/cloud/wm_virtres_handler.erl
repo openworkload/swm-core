@@ -198,7 +198,6 @@ get_default_flavor_name(Remote) ->
 -spec create_relocation_entities(job_id(), #partition{}, #node{}) -> {atom(), string()}.
 create_relocation_entities(JobId, Partition, TplNode) ->
     ?LOG_INFO("Remote partition [job ~p]: ~p", [JobId, Partition]),
-    1 = wm_conf:update(Partition),
     Addresses = wm_entity:get_attr(addresses, Partition),
     NodeIps = maps:get(compute_instances_ips, Addresses, []),
     PubPartMgrIp = maps:get(master_public_ip, Addresses, ""),
@@ -212,6 +211,7 @@ create_relocation_entities(JobId, Partition, TplNode) ->
         ComputeNodes ->
             ComputeNodeIds = [wm_entity:get_attr(id, X) || X <- ComputeNodes],
             PartMgrNode = create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode),
+            update_division_entities(Partition, PartMgrNode, ComputeNodeIds),
             NewNodes = [PartMgrNode | ComputeNodes],
             wm_conf:update(NewNodes),
             ?LOG_INFO("Remote nodes [job ~p]: ~p", [JobId, NewNodes]),
@@ -222,6 +222,26 @@ create_relocation_entities(JobId, Partition, TplNode) ->
             wm_topology:reload(),
             {ok, PartMgrNodeId}
     end.
+
+-spec update_division_entities(#partition{}, #node{}, [string()]) -> ok.
+update_division_entities(Partition, PartMgrNode, ComputeNodeIds) ->
+    Cluster = wm_topology:get_subdiv(),
+    NameStr = wm_entity:get_attr(name, PartMgrNode),
+    HostStr = wm_entity:get_attr(host, PartMgrNode),
+    PartMgrNodeId = wm_entity:get_attr(id, PartMgrNode),
+    PartID = wm_entity:get_attr(id, Partition),
+    Cluster1 = wm_topology:get_subdiv(cluster),
+    OldPartIDs = wm_entity:get_attr(partitions, Cluster1),
+    Cluster2 = wm_entity:set_attr({partitions, [PartID | OldPartIDs]}, Cluster1),
+    PartitionUpdated =
+        wm_entity:set_attr([{subdivision, cluster},
+                            {subdivision_id, wm_entity:get_attr(id, Cluster)},
+                            {manager, NameStr ++ "@" ++ HostStr},
+                            {nodes, [PartMgrNodeId | ComputeNodeIds]}],
+                           Partition),
+    1 = wm_conf:update(PartitionUpdated),
+    1 = wm_conf:update(Cluster2),
+    ok.
 
 -spec get_partition_name(job_id()) -> string().
 get_partition_name(JobId) ->

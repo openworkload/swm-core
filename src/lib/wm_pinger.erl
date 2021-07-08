@@ -136,17 +136,10 @@ do_wakeup(MState = #mstate{nodes = Nodes}) ->
     Size = maps:size(Nodes),
     NextS = wm_conf:g(pinger_period, {?DEFAULT_PINGER_PERIOD, integer}),
     Next = NextS * ?MICROSECONDS_IN_SECOND,
-    %?LOG_DEBUG("Lets ping some nodes (Size=~p, Next=~p)", [Size, Next]),
     Now1 = wm_utils:timestamp(second),
-    ShouldBePinged =
-        fun(X, {LastPing, Interval}) ->
-           %?LOG_DEBUG("Should ~p be pinged? now=~p last=~p int=~p",
-           %         [X, Now1, LastPing, Interval]),
-           Now1 - LastPing > Interval
-        end,
+    ShouldBePinged = fun(_, {LastPing, Interval}) -> Now1 - LastPing > Interval end,
     ToPingMap = maps:filter(ShouldBePinged, Nodes),
     AnswersMap = maps:merge(MState#mstate.answers, do_ping(ToPingMap)),
-    %?LOG_DEBUG("Ping answers: ~p", [AnswersMap]),
     Now2 = wm_utils:timestamp(second),
     UpFun = fun(K, {_, I}, M) -> maps:put(K, {Now2, I}, M) end,
     UpdatedNodes = maps:fold(UpFun, Nodes, ToPingMap),
@@ -183,10 +176,10 @@ do_ping(Map) when is_map(Map) ->
            ?LOG_DEBUG("Ping ~p", [Address]),
            case wm_api:call_self(ping, Address) of
                [{pong, AllocState}] ->
-                   ?LOG_DEBUG("PING OK: ~p (alloc=~p)", [Address, AllocState]),
+                   ?LOG_DEBUG("Ping OK: ~p (alloc=~p)", [Address, AllocState]),
                    maps:put(Address, {pong, AllocState}, Answers);
                Error ->
-                   ?LOG_DEBUG("PING FAILED: ~p (~p)", [Address, Error]),
+                   ?LOG_DEBUG("Ping FAILED: ~p (~p)", [Address, Error]),
                    maps:put(Address, {pang, stopped}, Answers)
            end
         end,

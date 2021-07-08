@@ -19,8 +19,7 @@ get_current(PStack) ->
 find_my_parents(ParentName, ParentHost, ParentPort, NodeName, Host) ->
     case is_grid_management_node(NodeName) of
         true -> % grid management node never has any parents
-            ?LOG_DEBUG("No parents are set (I am a grid management "
-                       "node)"),
+            ?LOG_DEBUG("No parents are set (I am a grid management node)"),
             [];
         false ->
             L0 = [],
@@ -51,9 +50,7 @@ add_parent_from_my_sname(NodeShortName, List) ->
 
 %% @doc Search parent entity defined by $SWM_PARENT_SNAME
 add_parent_from_parent_sname(ParentShortName, NodeName, List) ->
-    ?LOG_DEBUG("Get parent from parent sname: ~p ~p "
-               "(~p)",
-               [ParentShortName, NodeName, List]),
+    ?LOG_DEBUG("Get parent from parent sname: ~p ~p (~p)", [ParentShortName, NodeName, List]),
     case wm_conf:select(node, {name, ParentShortName}) of
         {ok, Parent} ->
             case wm_conf:select_node(NodeName) of
