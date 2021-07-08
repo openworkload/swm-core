@@ -248,9 +248,7 @@ get_binary_for_scheduler(Scheduler) ->
     ?LOG_DEBUG("Jobs for scheduler: ~p", [length(Jobs3)]),
     JobsBin = erlang:term_to_binary(Jobs3),
     Bin3 = wm_sched_utils:add_input(?DATA_TYPE_JOBS, JobsBin, Bin2),
-    [Grid] = wm_conf:select(grid, all),
-    GridBin = erlang:term_to_binary(Grid),
-    Bin4 = wm_sched_utils:add_input(?DATA_TYPE_GRID, GridBin, Bin3),
+    Bin4 = get_grid_bin_entity(Bin3),
     Clusters = wm_conf:select(cluster, all),
     ClustersBin = erlang:term_to_binary(Clusters),
     Bin5 = wm_sched_utils:add_input(?DATA_TYPE_CLUSTERS, ClustersBin, Bin4),
@@ -261,6 +259,16 @@ get_binary_for_scheduler(Scheduler) ->
     Nodes2 = wm_utils:make_nodes_c_decodable(Nodes1),
     NodesBin = erlang:term_to_binary(Nodes2),
     wm_sched_utils:add_input(?DATA_TYPE_NODES, NodesBin, Bin6).
+
+-spec get_grid_bin_entity(binary()) -> binary().
+get_grid_bin_entity(OldBin) ->
+    case wm_conf:select(grid, all) of
+        [Grid] ->
+            GridBin = erlang:term_to_binary(Grid),
+            wm_sched_utils:add_input(?DATA_TYPE_GRID, GridBin, OldBin);
+        _ ->
+            wm_sched_utils:add_input(?DATA_TYPE_GRID, <<>>, OldBin)
+    end.
 
 handle_new_timetable(SchedulerResult, #mstate{} = MState) when is_tuple(SchedulerResult) ->
     ?LOG_DEBUG("Received scheduling result: ~w", [SchedulerResult]),
