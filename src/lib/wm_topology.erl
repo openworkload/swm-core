@@ -11,11 +11,11 @@
 -include("wm_log.hrl").
 
 -record(mstate,
-        {rh :: map(),      %% Resource Hierarchy
-         nl :: binary(),   %% Neighbour List (binary vector)
-         ct :: binary(),   %% Connection Tolopogy (binary matrix)
-         ct_map :: map(),      %% NodeId --> Position in CT
-         mrole :: atom(),     %% Management role name
+        {rh :: map(),            %% Resource Hierarchy
+         nl :: binary(),         %% Neighbour List (binary vector)
+         ct :: binary(),         %% Connection Tolopogy (binary matrix)
+         ct_map :: map(),        %% NodeId --> Position in CT
+         mrole :: atom(),        %% Management role name
          sname :: string()}).    %% Short node name
 
 -define(DEFAULT_TRIALS, 8).
@@ -277,8 +277,9 @@ do_make_rh(grid, _, RH, Owner, #mstate{} = MState) ->
     Grids = wm_conf:select(grid, all),
     case Grids of
         [] ->
-            ?LOG_ERROR("Grid description not defined"),
-            RH;
+            ?LOG_ERROR("Grid description not defined => assume cluster without grid"),
+            Cluster = do_get_my_subdiv(cluster, MState),
+            do_make_rh(cluster, [Cluster], RH, Owner, MState);
         GridList when is_list(GridList) ->
             Grid = hd(GridList),
             Map1 = get_props_res(Grid, maps:new()),
