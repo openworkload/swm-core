@@ -465,12 +465,14 @@ get_my_children(Filter, _, #mstate{mrole = Role, rh = RH} = MState) ->
                 1 ->
                     [Root] = maps:keys(RH),
                     SubRH =
-                        case Role of
-                            grid ->
+                        case [Role, Root] of
+                            [grid, _] ->
                                 maps:get(Root, RH);
-                            compute ->
+                            [cluster, {cluster, _}] ->
+                                maps:get(Root, RH);
+                            [compute, _] ->
                                 #{};
-                            _ ->
+                            [_, _] ->
                                 case do_get_my_subdiv(direct, MState) of
                                     [] ->
                                         #{};
@@ -713,15 +715,16 @@ do_get_tree_nodes(#mstate{rh = RH}) ->
 %%       management node and will be logged as error.
 -spec find_rh_path(string(), string(), map()) -> list().
 find_rh_path(FromNodeId, ToNodeId, _RH = undefined) ->
-    ?LOG_DEBUG("RH has not been created yet: assume "
-               "next node is ~p",
-               [ToNodeId]),
+    ?LOG_DEBUG("RH has not been created yet: assume next node is ~p", [ToNodeId]),
     [ToNodeId];
 find_rh_path(FromNodeId, ToNodeId, RH) ->
-    ?LOG_DEBUG("Find RH path: ~p --> ~p", [FromNodeId, ToNodeId]),
+    ?LOG_DEBUG("Try to find the RH path: ~p --> ~p", [FromNodeId, ToNodeId]),
     case get_parent_id(FromNodeId) of
-        {error, not_found} ->
-            [];
+        {error, not_found} ->  % assume cluster without parent
+            Path1 = find_child_rh_path(ToNodeId, RH, []),
+            Path2 = lists:filter(fun(X) -> X =/= FromNodeId end, Path1),
+            Path3 = lists:reverse(Path2),
+            Path3;
         {ok, ToNodeId} ->
             [ToNodeId];
         _ ->
