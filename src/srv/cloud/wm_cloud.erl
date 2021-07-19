@@ -149,9 +149,12 @@ handle_retrieved_images(NewImages, RemoteId) ->
     case wm_conf:select(image, {remote_id, RemoteId}) of
         {error, not_found} ->
             ok;
-        {ok, OldImages} ->
+        {ok, OldImages} when is_list(OldImages) ->
             ?LOG_DEBUG("Found ~p old images for remote ~p", [length(OldImages), RemoteId]),
-            [ok = wm_conf:delete(Image) || Image <- OldImages]
+            [ok = wm_conf:delete(Image) || Image <- OldImages];
+        {ok, OldImage} ->
+            ?LOG_DEBUG("Found old image for remote ~p", [RemoteId]),
+            ok = wm_conf:delete(OldImage)
     end,
     case wm_conf:select(remote, {id, RemoteId}) of
         {ok, Remote} ->

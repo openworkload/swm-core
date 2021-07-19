@@ -224,9 +224,7 @@ select_node_apply({Host, Port}, Func) ->
             ?LOG_DEBUG("Node ~p:~p found by host", [Host, Port]),
             Func({ok, Node});
         [] ->
-            ?LOG_DEBUG("Node by host ~p (~p) not found, look "
-                       "at gateway",
-                       [Host, Port]),
+            ?LOG_DEBUG("Node by host ~p (~p) not found, look at gateway", [Host, Port]),
             case wm_db:get_one_2keys(node, {gateway, Host}, {api_port, Port}) of
                 Nodes when length(Nodes) > 1 ->
                     ?LOG_ERROR("Multiple nodes with gateway ~p:~p found: ~p", [Host, Port, Nodes]),
@@ -241,8 +239,7 @@ select_node_apply({Host, Port}, Func) ->
     end.
 
 ensure_boot_info_deleted() ->
-    ?LOG_DEBUG("Ensure the boot info is deleted (not "
-               "needed any more)"),
+    ?LOG_DEBUG("Ensure the boot info is deleted (not needed any more)"),
     case select(node, {name, "boot_node"}) of
         {ok, BootNode} ->
             delete(BootNode);
@@ -328,8 +325,7 @@ handle_cast({pull_config, Node}, MState) when MState#mstate.sync == false ->
     ?LOG_DEBUG("Pull hashes: ~p from ~p", [Hashes, Node]),
     case get_my_relative_address(Node) of
         not_found ->
-            ?LOG_DEBUG("Self address not known => do not pull "
-                       "config for now"),
+            ?LOG_DEBUG("Self address not known => do not pull config for now"),
             {noreply, MState};
         MyAddr ->
             wm_api:cast_self({sync_schema_request, Hashes, MyAddr}, [Node]),
@@ -348,14 +344,10 @@ handle_cast({sync_schema_request, TabHashes, From}, MState) ->
     wm_api:cast_self({sync_schema_reply, Meta, MyAddr}, [From]),
     {noreply, MState};
 handle_cast({sync_schema_reply, not_ready, Parent}, MState) ->
-    ?LOG_DEBUG("Reply on sync schema request received "
-               "(~p not ready)",
-               [Parent]),
+    ?LOG_DEBUG("Reply on sync schema request received (~p not ready)", [Parent]),
     {noreply, MState#mstate{sync = false}};
 handle_cast({sync_schema_reply, Meta, Parent}, MState) when MState#mstate.sync =/= false ->
-    ?LOG_DEBUG("Reply on sync schema request received "
-               "(N=~p, parent=~p)",
-               [length(Meta), Parent]),
+    ?LOG_DEBUG("Reply on sync schema request received (N=~p, parent=~p)", [length(Meta), Parent]),
     wm_db:upgrade_schema(Meta),
     Hashes = wm_db:get_hashes(tables),
     ?LOG_DEBUG("Pull configuration data from ~p", [Parent]),
@@ -373,9 +365,7 @@ handle_cast({sync_config_request, TabHashes, From, Me}, MState) ->
     wm_api:cast_self({sync_config_reply, DifferentTabs, Me}, [From]),
     {noreply, MState};
 handle_cast({sync_config_reply, not_ready, Parent}, MState) ->
-    ?LOG_DEBUG("Reply on sync config update request "
-               "received (~p not ready)",
-               [Parent]),
+    ?LOG_DEBUG("Reply on sync config update request received (~p not ready)", [Parent]),
     {noreply, MState#mstate{sync = false}};
 handle_cast({sync_config_reply, DifferentTabs, Parent}, MState) when MState#mstate.sync =/= false ->
     ?LOG_DEBUG("Reply on sync config request received "
@@ -383,8 +373,7 @@ handle_cast({sync_config_reply, DifferentTabs, Parent}, MState) when MState#msta
                [length(DifferentTabs), Parent]),
     case DifferentTabs of
         [] ->
-            ?LOG_DEBUG("No tabs to update (sync_config_request "
-                       "returned [])");
+            ?LOG_DEBUG("No tabs to update (sync_config_request returned [])");
         DifferentTabs when is_list(DifferentTabs) ->
             ?LOG_INFO("The local and parent's tabs differ: ~p", [DifferentTabs]),
             wm_state:enter(maint),
@@ -546,12 +535,10 @@ do_get_my_address() ->
     Addr =
         case wm_db:get_one(node, name, wm_utils:get_short_name(node())) of
             [] ->
-                ?LOG_DEBUG("Could not get my node => look at boot "
-                           "node"),
+                ?LOG_DEBUG("Could not get my node => look at boot node"),
                 case wm_db:get_one(node, name, "boot_node") of
                     [] ->
-                        ?LOG_DEBUG("Could not get any nodes => my address "
-                                   "is not known"),
+                        ?LOG_DEBUG("Could not get any nodes => my address is not known"),
                         {error, not_found};
                     [BootNode] ->
                         NodeHost = wm_entity:get_attr(host, BootNode),

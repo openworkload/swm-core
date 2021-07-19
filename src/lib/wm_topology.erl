@@ -792,20 +792,16 @@ find_child_rh_path(_, RH, _) when map_size(RH) == 0 ->
     [];
 find_child_rh_path(NodeId, RH, Path) ->
     F = fun ({{node, Id}, _})
-                when Id
-                     =:= NodeId ->            % searched node is found
+                when Id =:= NodeId ->            % searched node is found
                 [NodeId | Path];
-            ({{node, _},
-              _}) ->                                % node does not have children
+            ({{node, _}, _}) ->                                % node does not have children
                 [];
-            ({{Division, Id},
-              SubRH}) ->                       % check cluster or partition
+            ({{Division, Id}, SubRH}) ->                       % check cluster or partition
                 {ok, X} = wm_conf:select(Division, {id, Id}),
                 case is_subdiv_manager(NodeId, X) of
                     true ->                                        % searched node (manager) is found
                         [NodeId | Path];
-                    {false,
-                     MgrId} ->                              % not found yet => search in depth
+                    {false, MgrId} ->                              % not found yet => search in depth
                         find_child_rh_path(NodeId, SubRH, [MgrId | Path])
                 end
         end,
@@ -818,7 +814,6 @@ find_child_rh_path(NodeId, RH, Path) ->
     end.
 
 is_subdiv_manager(NodeId, Entity) ->
-    ?LOG_DEBUG("Is subdiv manager: ~p", [Entity]),
     MgrName = wm_entity:get_attr(manager, Entity),
     {ok, Node} = wm_conf:select_node(MgrName),
     case wm_entity:get_attr(id, Node) of
