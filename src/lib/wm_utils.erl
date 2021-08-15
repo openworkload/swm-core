@@ -6,7 +6,7 @@
          get_module_dir/1, intersection/2, ensure_loaded/1, unroll_symlink/1, get_my_hostname/0, get_my_fqdn/0,
          get_short_name/1, get_address/1, get_job_user/1, is_module_loaded/1, encode_to_binary/1, decode_from_binary/1,
          get_calling_module_name/0, map_to_list/1, terminate_msg/2, match_floats/3, read_file/2, read_stdin/0,
-         make_jobs_c_decodable/1, make_nodes_c_decodable/1, is_manager/1, has_role/2, get_behaviour/1, cast/2, await/3,
+         make_partitions_c_decodable/1, make_jobs_c_decodable/1, make_nodes_c_decodable/1, is_manager/1, has_role/2, get_behaviour/1, cast/2, await/3,
          await/2]).
 -export([do/2, itr/2]).
 -export([host_port_uri/1, path_query_uri/1]).
@@ -570,15 +570,26 @@ read_bin_blocks_from_file(File, Device, Acc) ->
             {ok, Acc}
     end.
 
-%% @doc Converts jobs to such ones that can be used with  erl_decode()
+%% @doc Converts jobs to such ones that can be used with erl_decode()
 -spec make_jobs_c_decodable(list()) -> list().
 make_jobs_c_decodable(Jobs) ->
     make_jobs_c_decodable(Jobs, []).
 
-%% @doc Converts nodes to such ones that can be used with  erl_decode()
+%% @doc Converts nodes to such ones that can be used with erl_decode()
 -spec make_nodes_c_decodable(list()) -> list().
 make_nodes_c_decodable(Nodes) ->
     make_nodes_c_decodable(Nodes, []).
+
+%% @doc Converts partitions to such ones that can be used with erl_decode()
+-spec make_partitions_c_decodable(list()) -> list().
+make_partitions_c_decodable(Nodes) ->
+    make_partitions_c_decodable(Nodes, []).
+
+make_partitions_c_decodable([], Result) ->
+    Result;
+make_partitions_c_decodable([Part | T], Result) ->
+    Part = wm_entity:set_attr({addresses, []}, Part), % not used in C++
+    make_jobs_c_decodable(T, [Part | Result]).
 
 make_resources_c_decodable(Resources) when is_list(Resources) ->
     F = fun(Res) -> wm_entity:set_attr({prices, []}, Res) end,
@@ -590,9 +601,7 @@ make_jobs_c_decodable([Job | T], Result) ->
     OldRequests = wm_entity:get_attr(request, Job),
     NewRequests = make_resources_c_decodable(OldRequests),
     Job2 = wm_entity:set_attr({request, NewRequests}, Job),
-    Job3 =
-        wm_entity:set_attr({resources, []},
-                           Job2), % not used in C++
+    Job3 = wm_entity:set_attr({resources, []}, Job2), % not used in C++
     make_jobs_c_decodable(T, [Job3 | Result]).
 
 make_nodes_c_decodable([], Result) ->

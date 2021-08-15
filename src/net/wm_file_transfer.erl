@@ -407,8 +407,7 @@ handle_call({enqueue, CallbackModule, Node, Priority, Source, Destination, Opts}
                                {ok, Bytes} ->
                                    Bytes;
                                {error, File, Reason} ->
-                                   ?LOG_WARN("Can't obtain file size for ~p with reason "
-                                             "~p, continue with 1 byte size",
+                                   ?LOG_WARN("Can't obtain file size for ~p with reason ~p, continue with 1 byte size",
                                              [File, Reason]),
                                    1
                            end

@@ -90,9 +90,7 @@ parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
 handle_event(job_start_time, Time, MState) ->
-    ?LOG_DEBUG("Received request to start jobs from "
-               "local timetable (~p)",
-               [Time]),
+    ?LOG_DEBUG("Received request to start jobs from local timetable (~p)", [Time]),
     TT = wm_db:get_less_equal(timetable, start_time, Time),
     ?LOG_DEBUG("Handle ~p timetable entities", [length(TT)]),
     handle_timetable(TT, MState);

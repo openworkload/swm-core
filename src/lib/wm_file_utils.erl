@@ -161,7 +161,7 @@ close_file(Fd) ->
         file:sync(Fd),
         file:close(Fd)
     catch
-        C:R ->
+        _:_ ->
             ignore
     end,
     ok.
@@ -209,7 +209,7 @@ list_directory_ll([X | Xs], Acc) ->
         true ->
             case file:list_dir(X) of
                 {ok, Ys} ->
-                    Ks = lists:foldl(fun(Y, Acc) -> [filename:join(X, Y) | Acc] end, [], Ys),
+                    Ks = lists:foldl(fun(Y, Acc2) -> [filename:join(X, Y) | Acc2] end, [], Ys),
                     list_directory_ll(Xs, [[X | list_directory_ll(Ks, [])] | Acc]);
                 {error, _Reason} ->
                     list_directory_ll(Xs, [[X] | Acc])
@@ -294,26 +294,21 @@ get_size_ll([], Acc) ->
 get_size_ll([X | Xs], Acc) ->
     case filelib:is_file(X) of
         true ->
-            case filelib:is_regular(X) of
+            case filelib:is_dir(X) of
                 true ->
+                    case file:list_dir(X) of
+                        {ok, Ys} ->
+                            Ks = lists:foldl(fun(Y, Acc2) -> [filename:join(X, Y) | Acc2] end, Xs, Ys),
+                            get_size_ll(Ks, Acc);
+                        {error, Reason} ->
+                            {error, X, wm_posix_utils:errno(Reason)}
+                    end;
+                false ->
                     case get_file_info(X) of
                         {ok, #file_info{size = Size}} ->
                             get_size_ll(Xs, Acc + Size);
                         Otherwise ->
                             Otherwise
-                    end;
-                false ->
-                    case filelib:is_dir(X) of
-                        true ->
-                            case file:list_dir(X) of
-                                {ok, Ys} ->
-                                    Ks = lists:foldl(fun(Y, Acc) -> [filename:join(X, Y) | Acc] end, Xs, Ys),
-                                    get_size_ll(Ks, Acc);
-                                {error, Reason} ->
-                                    {error, X, wm_posix_utils:errno(Reason)}
-                            end;
-                        false ->
-                            {error, X, wm_posix_utils:errno(eperm)}
                     end
             end;
         false ->
