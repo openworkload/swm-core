@@ -108,6 +108,6 @@ do_transfer(#mstate{} = MState) ->
     MState#mstate{data = []}.
 
 send_data({not_found, Module, Binary, Meta}) ->
-  ?LOG_DEBUG("Destination address is unknown");
+    ?LOG_DEBUG("Destination address is unknown");
 send_data({Addr, Module, Binary, Meta}) ->
     wm_api:cast_self({data_sending, Module, Binary, Meta}, [Addr]).

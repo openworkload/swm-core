@@ -6,7 +6,7 @@ DOCKER=docker
 IMAGE_NAME=swm-build:22.3
 DOCKER_SOCKET=/var/run/docker.sock
 X11_SOCKET=/tmp/.X11-unix
-CONTAINER_NAME=swmdev
+CONTAINER_NAME=swm-dev
 BRIDGE=docker0
 HOST_IP=$(ip addr list ${BRIDGE} |grep "inet " |cut -d' ' -f6|cut -d/ -f1)
 
@@ -34,7 +34,6 @@ if [ "$?" = "1" ]; then
     --interactive\
     --net bridge\
     -p 10000:10000\
-    -p 10001:10001\
     -p 10011:10011\
     ${IMAGE_NAME}\
     runuser -u ${USER} /bin/bash

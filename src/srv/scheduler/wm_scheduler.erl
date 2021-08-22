@@ -237,7 +237,9 @@ get_binary_for_scheduler(Scheduler) ->
     SchedsBin = erlang:term_to_binary([Scheduler]),
     Bin1 = wm_sched_utils:add_input(?DATA_TYPE_SCHEDULERS, SchedsBin, Bin0),
     RH = wm_topology:get_tree(static),
-    RhBin = erlang:term_to_binary(wm_utils:map_to_list(RH)),
+    RhBin =
+        erlang:term_to_binary(
+            wm_utils:map_to_list(RH)),
     Bin2 = wm_sched_utils:add_input(?DATA_TYPE_RH, RhBin, Bin1),
     Jobs1 = wm_db:get_many(job, state, [?JOB_STATE_QUEUED]),
     Jobs2 = [wm_entity:set_attr({revision, wm_entity:get_attr(revision, X) + 1}, X) || X <- Jobs1],

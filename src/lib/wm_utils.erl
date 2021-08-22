@@ -6,8 +6,8 @@
          get_module_dir/1, intersection/2, ensure_loaded/1, unroll_symlink/1, get_my_hostname/0, get_my_fqdn/0,
          get_short_name/1, get_address/1, get_job_user/1, is_module_loaded/1, encode_to_binary/1, decode_from_binary/1,
          get_calling_module_name/0, map_to_list/1, terminate_msg/2, match_floats/3, read_file/2, read_stdin/0,
-         make_partitions_c_decodable/1, make_jobs_c_decodable/1, make_nodes_c_decodable/1, is_manager/1, has_role/2, get_behaviour/1, cast/2, await/3,
-         await/2]).
+         make_partitions_c_decodable/1, make_jobs_c_decodable/1, make_nodes_c_decodable/1, is_manager/1, has_role/2,
+         get_behaviour/1, cast/2, await/3, await/2]).
 -export([do/2, itr/2]).
 -export([host_port_uri/1, path_query_uri/1]).
 -export([named_substitution/2]).

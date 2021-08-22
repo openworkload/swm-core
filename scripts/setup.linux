@@ -48,11 +48,13 @@ def setup_logger(opts):
     LOG.addHandler(ch)
 
 
-def run(exe, args, env, exit_on_fail = True, verbose = True):
+def run(exe, args, env, exit_on_fail = True, verbose = True, user = None):
     def normalize(x):
         return list(filter(None, x.decode("utf-8", "strict").split("\n")))
 
     cmdline = exe + ' ' + ' '.join(args)
+    if user:
+        cmdline = f"runuser -u {user} {cmdline}"
     LOG.info("Run " + "'" + cmdline + "'")
     filename = os.path.basename(exe)
 
@@ -191,9 +193,9 @@ def spawn_vnode(opts):
         args = [get_div_arg(opts), "-b"]
         script = os.path.join(SWM_VERSION_DIR, "scripts", "run-in-shell.sh")
     else:
-        args = ["start"]
+        args = ["daemon"]
         script = os.path.join(SWM_VERSION_DIR, "bin", PRODUCT)
-        opts["SWM_MNESIA_DIR"] = os.path.join(opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb")
+        #opts["SWM_MNESIA_DIR"] = os.path.join(opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb")
 
     os.environ["SWM_MODE"] = "MAINT"
     envs = os.environ
@@ -204,7 +206,7 @@ def spawn_vnode(opts):
         if key.startswith("SWM"):
             LOG.info("export %s=%s" % (key, val))
 
-    run(script, args, envs)
+    run(script, args, envs, user=opts["SWM_ADMIN_USER"])
 
 
 def wait_vnode(opts):
@@ -286,7 +288,10 @@ def run_create_cert(args, opts):
         if isinstance(val, str):
             envs[key] = val
 
-    run(script, args, envs)
+    if "SWM_ADMIN_USER" in opts:
+        run(script, args, envs, user=opts["SWM_ADMIN_USER"])
+    else:
+        run(script, args, envs)
 
 
 def generate_certificates(opts):
@@ -353,6 +358,7 @@ def add_default_users(opts):
 def get_setup_options():
     args = get_args()
     opts = {}
+    opts["SWM_USER"] = args.user_name
     opts["NO_SERVICE"] = args.no_service
     opts["SWM_SKY_PORT"] = args.skyport
     if args.spool:
@@ -410,6 +416,11 @@ def get_args():
         default='node',
         choices=['grid', 'cluster'],
         help="Configuring division name"
+    )
+
+    parser.add_argument(
+        "-u", "--user-name",
+        help="User name that will be admin (default: current user)"
     )
 
     parser.add_argument(
@@ -499,13 +510,13 @@ def get_defaults(opts):
         if division == 'grid':
             opts["SWM_SNAME"] = "ghead"
         elif division == 'cluster':
-            opts["SWM_SNAME"] = "sp1" if opts["SWM_SKY_PORT"] else "chead1"
+            opts["SWM_SNAME"] = "node" if opts["SWM_SKY_PORT"] else "chead1"
         else:
             opts["SWM_SNAME"] = division
 
 
 def get_from_user(opts):
-    default_port = "10001" if opts.get("DIVISION", "") == "grid" else "10011"
+    default_port = "10001"
     if "SWM_API_PORT" not in opts:
         opts["SWM_API_PORT"] = default_port
     userInput("SWM_API_PORT", default_port, "API port", opts)
@@ -516,12 +527,10 @@ def get_from_user(opts):
     userInput("SWM_HOST", hostname, "Division management host name", opts,
               [("{HOSTNAME}", hostname)], False)
 
-    admin = getpass.getuser()
+    admin = opts.get("SWM_USER", "root")
     opts["SWM_ADMIN_ID"] = str(uuid.uuid4())
-    userInput("SWM_ADMIN_USER", admin, "administrator user", opts,
-              [("{USER}", admin)], False)
-    userInput("SWM_ADMIN_EMAIL", opts["SWM_ADMIN_USER"]+"@"+opts["SWM_HOST"],
-              "administrator email", opts, [("{USER}", admin)], False)
+    userInput("SWM_ADMIN_USER", admin, "administrator user", opts, [("{USER}", admin)], False)
+    userInput("SWM_ADMIN_EMAIL", admin+"@"+opts["SWM_HOST"], "administrator email", opts, [("{USER}", admin)], False)
 
     userInput("SWM_UNIT_NAME", "Dev", "organizational unit name", opts, ispath=False)
     userInput("SWM_ORG_NAME", "Sky Workflows", "organization name", opts, ispath=False)
@@ -636,4 +645,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print()
         sys.exit(0)
-
