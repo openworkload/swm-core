@@ -51,7 +51,7 @@ remote({ArgsDict, Ent}, ConnArgs) ->
         ["show" | T] ->
             remote(show, T, Ent, ConnArgs);
         [Name, "set" | T] ->
-            remove(set, T, Name, ConnArgs);
+            remote(set, T, Name, ConnArgs);
         ["set" | T] ->
             remote(set, T, Ent, ConnArgs);
         ["create" | T] ->
@@ -154,7 +154,7 @@ partition({ArgsDict, Ent}, ConnArgs) ->
         ["use" | T] ->
             get_entity_submode(hd(T));
         [Name, "set" | T] ->
-            partition(set, T, EntName, ConnArgs);
+            partition(set, T, Name, ConnArgs);
         ["set" | T] ->
             partition(set, T, Ent, ConnArgs);
         ["list" | T] ->
