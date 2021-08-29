@@ -50,6 +50,8 @@ remote({ArgsDict, Ent}, ConnArgs) ->
             remote(list, T, Ent, ConnArgs);
         ["show" | T] ->
             remote(show, T, Ent, ConnArgs);
+        [Name, "set" | T] ->
+            remove(set, T, Name, ConnArgs);
         ["set" | T] ->
             remote(set, T, Ent, ConnArgs);
         ["create" | T] ->
@@ -70,6 +72,8 @@ global({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
             get_entity_submode(hd(T));
+        [Name, "set" | T] ->
+            global(set, T, Name, ConnArgs);
         ["list" | T] ->
             global(list, T, Ent, ConnArgs);
         ["show" | T] ->
@@ -94,6 +98,10 @@ grid({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["route" | T] ->
             grid(route, T, Ent, ConnArgs);
+        [Name, "set" | T] ->
+            grid(set, T, Name, ConnArgs);
+        ["set" | T] ->
+            grid(set, T, Ent, ConnArgs);
         ["list" | T] ->
             grid(list, T, Ent, ConnArgs);
         ["show" | T] ->
@@ -120,6 +128,8 @@ cluster({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
             get_entity_submode(hd(T));
+        [Name, "set" | T] ->
+            cluster(set, T, Name, ConnArgs);
         ["set" | T] ->
             cluster(set, T, Ent, ConnArgs);
         ["list" | T] ->
@@ -143,6 +153,8 @@ partition({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
             get_entity_submode(hd(T));
+        [Name, "set" | T] ->
+            partition(set, T, EntName, ConnArgs);
         ["set" | T] ->
             partition(set, T, Ent, ConnArgs);
         ["list" | T] ->
@@ -155,7 +167,7 @@ partition({ArgsDict, Ent}, ConnArgs) ->
             partition(remove, T, Ent, ConnArgs);
         ["clone" | T] ->
             partition(clone, T, Ent, ConnArgs);
-        [Unknown | _] ->
+        [Unknown | T] ->
             unknown_arg(Unknown),
             Ent
     end.
@@ -164,6 +176,8 @@ node({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
             get_entity_submode(hd(T));
+        [Name, "set" | T] ->
+            node(set, T, Name, ConnArgs);
         ["set" | T] ->
             node(set, T, Ent, ConnArgs);
         ["list" | T] ->
@@ -191,6 +205,8 @@ user({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
             get_entity_submode(hd(T));
+        [Name, "set" | T] ->
+            user(set, T, Name, ConnArgs);
         ["set" | T] ->
             user(set, T, Ent, ConnArgs);
         ["list" | T] ->
@@ -214,6 +230,8 @@ queue({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
             get_entity_submode(hd(T));
+        [Name, "set" | T] ->
+            queue(set, T, Name, ConnArgs);
         ["set" | T] ->
             queue(set, T, Ent, ConnArgs);
         ["list" | T] ->
@@ -235,6 +253,8 @@ scheduler({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
             get_entity_submode(hd(T));
+        [Name, "set" | T] ->
+            scheduler(set, T, Name, ConnArgs);
         ["set" | T] ->
             scheduler(set, T, Ent, ConnArgs);
         ["list" | T] ->
@@ -256,6 +276,8 @@ image({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
             get_entity_submode(hd(T));
+        [Name, "set" | T] ->
+            image(set, T, Name, ConnArgs);
         ["set" | T] ->
             image(set, T, Ent, ConnArgs);
         ["list" | T] ->
