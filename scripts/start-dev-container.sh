@@ -27,7 +27,8 @@ if [ "$?" = "1" ]; then
     -v ${X11_SOCKET}:${X11_SOCKET}\
     -e DISPLAY=${DISPLAY}\
     --name ${CONTAINER_NAME}\
-    --hostname container.skyworkflows.com\
+    --hostname $(hostname)\
+    --domainname=skyworkflows.com\
     --add-host host:${HOST_IP}\
     --workdir ${PWD}\
     --tty\

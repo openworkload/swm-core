@@ -22,7 +22,7 @@ case $i in
     shift # past argument
     ;;
     -x|--skyport)
-    export SWM_SNAME=sp1
+    export SWM_SNAME=node
     shift # past argument
     ;;
     -b|--background)
