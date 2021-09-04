@@ -115,7 +115,7 @@ handle_request(submit, Args, #mstate{} = MState) ->
             Job2 =
                 wm_entity:set_attr([{cluster_id, wm_entity:get_attr(id, Cluster)},
                                     {state, ?JOB_STATE_QUEUED},
-                                    {script, Filename}, % TODO use jobscript content?
+                                    {script, Filename},
                                     {user_id, wm_entity:get_attr(id, User)},
                                     {id, JID},
                                     {job_stdout, JID ++ ".out"},
@@ -124,7 +124,7 @@ handle_request(submit, Args, #mstate{} = MState) ->
                                     {duration, 3600}],
                                    Job1),
             Job3 = set_defaults(Job2),
-            Job4 = ensure_request(Job3),
+            Job4 = ensure_request_is_full(Job3),
             1 = wm_conf:update(Job4),
             {{string, JID}, MState}
     end;
@@ -168,19 +168,38 @@ handle_request(show, Args, MState) ->
     Entities = wm_conf:select(job, Args),
     {Entities, MState}.
 
-ensure_request(Job) ->
-    case wm_entity:get_attr(request, Job) of
-        [] ->
-            ResNode1 = wm_entity:new(resource),
-            ResNode2 = wm_entity:set_attr({name, "node"}, ResNode1),
-            ResNode3 = wm_entity:set_attr({count, 1}, ResNode2),
-            ResCpu1 = wm_entity:new(resource),
-            ResCpu2 = wm_entity:set_attr({name, "cpus"}, ResCpu1),
-            ResCpu3 = wm_entity:set_attr({count, 1}, ResCpu2),
-            wm_entity:set_attr({request, [ResNode3, ResCpu3]}, Job);
-        _ ->
-            Job
-    end.
+-spec ensure_request_is_full(#job{}) -> #job{}.
+ensure_request_is_full(Job) ->
+    ResourcesOld = wm_entity:get_attr(request, Job),
+    ResourcesNew = add_missed_mandatory_request_resources(ResourcesOld),
+    wm_entity:set_attr({request, ResourcesNew}, Job).
+
+-spec add_missed_mandatory_request_resources([#resource{}]) -> [#resource{}].
+add_missed_mandatory_request_resources(Resources) ->
+    Names = lists:foldl(fun(R, Acc) -> [wm_entity:get_attr(name, R) | Acc] end, [], Resources),
+
+    AddIfMissed = fun(Name, ResList, AddFun) ->
+        case lists:member(Name, Names) of
+            false ->
+                [AddFun() | ResList];
+            true ->
+                ResList
+        end
+    end,
+
+    Resources2 = AddIfMissed("node", Resources,
+                             fun() ->
+                                 ResNode1 = wm_entity:new(resource),
+                                 ResNode2 = wm_entity:set_attr({name, "node"}, ResNode1),
+                                 wm_entity:set_attr({count, 1}, ResNode2)
+                             end),
+    Resources3 = AddIfMissed("cpus", Resources2,
+                             fun() ->
+                                 ResCpu1 = wm_entity:new(resource),
+                                 ResCpu2 = wm_entity:set_attr({name, "cpus"}, ResCpu1),
+                                 wm_entity:set_attr({count, 1}, ResCpu2)
+                             end),
+    Resources3.
 
 cancel_jobs([], Results) ->
     Results;

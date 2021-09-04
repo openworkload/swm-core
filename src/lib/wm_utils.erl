@@ -588,8 +588,8 @@ make_partitions_c_decodable(Nodes) ->
 make_partitions_c_decodable([], Result) ->
     Result;
 make_partitions_c_decodable([Part | T], Result) ->
-    Part = wm_entity:set_attr({addresses, []}, Part), % not used in C++
-    make_jobs_c_decodable(T, [Part | Result]).
+    Part2 = wm_entity:set_attr({addresses, []}, Part), % not used in C++
+    make_jobs_c_decodable(T, [Part2 | Result]).
 
 make_resources_c_decodable(Resources) when is_list(Resources) ->
     F = fun(Res) -> wm_entity:set_attr({prices, []}, Res) end,
@@ -610,7 +610,8 @@ make_nodes_c_decodable([Node | T], Result) ->
     OldResources = wm_entity:get_attr(resources, Node),
     NewResources = make_resources_c_decodable(OldResources),
     Node2 = wm_entity:set_attr({resources, NewResources}, Node),
-    make_nodes_c_decodable(T, [Node2 | Result]).
+    Node3 = wm_entity:set_attr({prices, []}, Node2),
+    make_nodes_c_decodable(T, [Node3 | Result]).
 
 %% @doc Returns true if self node is a manager one
 -spec is_manager(#node{}) -> true | false.

@@ -2,8 +2,7 @@
 
 CERT=~/.swm/cert.pem
 KEY=~/.swm/key.pem
-#CA=/opt/swm/spool/secure/cluster/ca-chain-cert.pem
-CA=~/.swm-spool/secure/cluster/ca-chain-cert.pem
+CA=/opt/swm/spool/secure/cluster/ca-chain-cert.pem
 
 PORT=8443
 HOST=$(hostname -s)

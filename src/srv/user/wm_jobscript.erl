@@ -41,7 +41,7 @@ do_parse([Line | T], Job) ->
             do_parse(T, Job)
     end.
 
--spec add_requested_resource(atom(), string(), #job{}) -> #job{}.
+-spec add_requested_resource(string(), string(), #job{}) -> #job{}.
 add_requested_resource(Name, PropValue, Job) ->
     ResourcesOld = wm_entity:get_attr(request, Job),
     ResourcesNew = add_resource_with_property(Name, PropValue, ResourcesOld, []),
@@ -62,9 +62,9 @@ add_resource_with_property(Name, PropValue, [#resource{} = OldResource | Resourc
 
 -spec parse_line([string()], #job{}) -> #job{}.
 parse_line(Ws, Job) when hd(Ws) == "image", length(Ws) > 1 ->
-    add_requested_resource(image, lists:flatten(tl(Ws)), Job);
+    add_requested_resource("image", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "flavor", length(Ws) > 1 ->
-    add_requested_resource(flavor, lists:flatten(tl(Ws)), Job);
+    add_requested_resource("flavor", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "account_id", length(Ws) > 1 ->
     wm_entity:set_attr({account_id, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "name", length(Ws) > 1 ->

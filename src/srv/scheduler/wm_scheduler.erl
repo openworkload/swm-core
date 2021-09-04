@@ -234,13 +234,14 @@ request_new_schedule(Scheduler, #mstate{sched_wm_port = WmPortPid} = MState) ->
 
 get_binary_for_scheduler(Scheduler) ->
     Bin0 = wm_sched_utils:add_input(?TOTAL_DATA_TYPES, <<>>, <<>>),
+
     SchedsBin = erlang:term_to_binary([Scheduler]),
     Bin1 = wm_sched_utils:add_input(?DATA_TYPE_SCHEDULERS, SchedsBin, Bin0),
+
     RH = wm_topology:get_tree(static),
-    RhBin =
-        erlang:term_to_binary(
-            wm_utils:map_to_list(RH)),
+    RhBin = erlang:term_to_binary(wm_utils:map_to_list(RH)),
     Bin2 = wm_sched_utils:add_input(?DATA_TYPE_RH, RhBin, Bin1),
+
     Jobs1 = wm_db:get_many(job, state, [?JOB_STATE_QUEUED]),
     Jobs2 = [wm_entity:set_attr({revision, wm_entity:get_attr(revision, X) + 1}, X) || X <- Jobs1],
     wm_conf:update(Jobs2), %% TODO: mark that the job has been scheduled at least once differently
@@ -248,14 +249,17 @@ get_binary_for_scheduler(Scheduler) ->
     ?LOG_DEBUG("Jobs for scheduler: ~p", [length(Jobs3)]),
     JobsBin = erlang:term_to_binary(Jobs3),
     Bin3 = wm_sched_utils:add_input(?DATA_TYPE_JOBS, JobsBin, Bin2),
+
     Bin4 = get_grid_bin_entity(Bin3),
     Clusters = wm_conf:select(cluster, all),
     ClustersBin = erlang:term_to_binary(Clusters),
     Bin5 = wm_sched_utils:add_input(?DATA_TYPE_CLUSTERS, ClustersBin, Bin4),
+
     Parts1 = wm_conf:select(partition, all),
     Parts2 = wm_utils:make_partitions_c_decodable(Parts1),
     PartsBin = erlang:term_to_binary(Parts2),
     Bin6 = wm_sched_utils:add_input(?DATA_TYPE_PARTITIONS, PartsBin, Bin5),
+
     Nodes1 = wm_topology:get_tree_nodes(),
     Nodes2 = wm_utils:make_nodes_c_decodable(Nodes1),
     NodesBin = erlang:term_to_binary(Nodes2),
@@ -268,7 +272,9 @@ get_grid_bin_entity(OldBin) ->
             GridBin = erlang:term_to_binary(Grid),
             wm_sched_utils:add_input(?DATA_TYPE_GRID, GridBin, OldBin);
         _ ->
-            wm_sched_utils:add_input(?DATA_TYPE_GRID, <<>>, OldBin)
+            GridMock = wm_entity:set_attr([{id, "grid_id"}, {name, "mock grid"}, {state, up}], wm_entity:new(grid)),
+            GridMockBin = erlang:term_to_binary(GridMock),
+            wm_sched_utils:add_input(?DATA_TYPE_GRID, GridMockBin, OldBin)
     end.
 
 handle_new_timetable(SchedulerResult, #mstate{} = MState) when is_tuple(SchedulerResult) ->
