@@ -178,27 +178,32 @@ ensure_request_is_full(Job) ->
 add_missed_mandatory_request_resources(Resources) ->
     Names = lists:foldl(fun(R, Acc) -> [wm_entity:get_attr(name, R) | Acc] end, [], Resources),
 
-    AddIfMissed = fun(Name, ResList, AddFun) ->
-        case lists:member(Name, Names) of
-            false ->
-                [AddFun() | ResList];
-            true ->
-                ResList
-        end
-    end,
+    AddIfMissed =
+        fun(Name, ResList, AddFun) ->
+           case lists:member(Name, Names) of
+               false ->
+                   [AddFun() | ResList];
+               true ->
+                   ResList
+           end
+        end,
 
-    Resources2 = AddIfMissed("node", Resources,
-                             fun() ->
-                                 ResNode1 = wm_entity:new(resource),
-                                 ResNode2 = wm_entity:set_attr({name, "node"}, ResNode1),
-                                 wm_entity:set_attr({count, 1}, ResNode2)
-                             end),
-    Resources3 = AddIfMissed("cpus", Resources2,
-                             fun() ->
-                                 ResCpu1 = wm_entity:new(resource),
-                                 ResCpu2 = wm_entity:set_attr({name, "cpus"}, ResCpu1),
-                                 wm_entity:set_attr({count, 1}, ResCpu2)
-                             end),
+    Resources2 =
+        AddIfMissed("node",
+                    Resources,
+                    fun() ->
+                       ResNode1 = wm_entity:new(resource),
+                       ResNode2 = wm_entity:set_attr({name, "node"}, ResNode1),
+                       wm_entity:set_attr({count, 1}, ResNode2)
+                    end),
+    Resources3 =
+        AddIfMissed("cpus",
+                    Resources2,
+                    fun() ->
+                       ResCpu1 = wm_entity:new(resource),
+                       ResCpu2 = wm_entity:set_attr({name, "cpus"}, ResCpu1),
+                       wm_entity:set_attr({count, 1}, ResCpu2)
+                    end),
     Resources3.
 
 cancel_jobs([], Results) ->
