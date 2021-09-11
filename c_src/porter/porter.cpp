@@ -3,6 +3,7 @@
 #include <ei.h>
 
 #include <iostream>
+#include <fstream>
 #include <fcntl.h>
 #include <getopt.h>
 #include <linux/limits.h>
@@ -13,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -30,7 +32,6 @@
 
 using namespace swm;
 
-
 void set_uid_gid(uid_t uid, uid_t gid) {
   int status = -1;
   status = setregid(gid, gid);
@@ -47,7 +48,7 @@ void set_uid_gid(uid_t uid, uid_t gid) {
 
 void set_workdir(passwd *pw, SwmJob &job) {
   auto workdir = job.get_workdir();
-  if(workdir.empty()) {
+  if (workdir.empty()) {
     workdir = pw->pw_dir;
   }
   chdir(workdir.c_str());
@@ -56,10 +57,10 @@ void set_workdir(passwd *pw, SwmJob &job) {
 
 void switch_stdout(const std::string &path) {
   FILE *outfile = fopen(path.c_str(), "w");
-  if(outfile==nullptr) {
+  if (outfile==nullptr) {
     exit(EXIT_FILE_ERROR);
   }
-  if(dup2(fileno(outfile), STDOUT_FILENO) == -1) {
+  if (dup2(fileno(outfile), STDOUT_FILENO) == -1) {
     exit(EXIT_SYSTEM_ERROR);
   }
   fclose(outfile);
@@ -67,10 +68,10 @@ void switch_stdout(const std::string &path) {
 
 void switch_stderr(const std::string &path) {
   FILE *errfile = fopen(path.c_str(), "w");
-  if(errfile==nullptr) {
+  if (errfile==nullptr) {
     exit(EXIT_FILE_ERROR);
   }
-  if(dup2(fileno(errfile), STDERR_FILENO) == -1) {
+  if (dup2(fileno(errfile), STDERR_FILENO) == -1) {
     exit(EXIT_SYSTEM_ERROR);
   }
   fclose(errfile);
@@ -82,9 +83,9 @@ void set_io(const SwmJob &job) {
   static std::string token = "%j";
   const auto id = job.get_id();
   const size_t len = std::string("%j").size();
-  if(out.size()) {
+  if (out.size()) {
     const size_t pos = out.find(token);
-    if(pos != std::string::npos) {
+    if (pos != std::string::npos) {
       out.replace(pos, len, id);
     }
     swm_logd("Job stdout=%s", out.c_str());
@@ -92,9 +93,9 @@ void set_io(const SwmJob &job) {
   }
 
   auto err = job.get_job_stderr();
-  if(err.size()) {
+  if (err.size()) {
     const size_t pos = err.find(token);
-    if(pos != std::string::npos) {
+    if (pos != std::string::npos) {
       err.replace(pos, len, id);
     }
     swm_logd("Job stderr=%s", err.c_str());
@@ -138,7 +139,7 @@ void set_env(passwd *pw, const SwmJob &job) {
   setenv("HOME", pw->pw_dir, 1);
   setenv("USER", pw->pw_name, 1);
   setenv("SWM_JOB_ID", job.get_id().c_str(), 1);
-  if(cwd.size()) {
+  if (cwd.size()) {
     const std::string path = job.get_workdir() + ":" + getenv("PATH");
     const auto path_str = path.c_str();
     setenv("PATH", path_str, 1);
@@ -156,7 +157,7 @@ int send_process_info(const SwmProcess &proc) {
   props[4] = erl_mk_int(proc.get_signal());
   props[5] = erl_mk_string(proc.get_comment().c_str());
   ETERM* eproc =erl_mk_tuple(props, PROCESS_TUPLE_SIZE);
-  if(swm_get_log_level() >= SWM_LOG_LEVEL_DEBUG1) {
+  if (swm_get_log_level() >= SWM_LOG_LEVEL_DEBUG1) {
     swm_logd("PROCESS ETERM: ");
     erl_print_term(stderr, eproc);
     std::cerr << std::endl;
@@ -165,7 +166,7 @@ int send_process_info(const SwmProcess &proc) {
   byte *buf = (byte*)malloc(erl_term_len(eproc));
   size_t bufbytes = erl_encode(eproc, buf);
 
-  if(!bufbytes) {
+  if (!bufbytes) {
     std::cerr << "Can not encode ETERM" << std::endl;
     return -1;
   }
@@ -179,6 +180,32 @@ int send_process_info(const SwmProcess &proc) {
   return 0;
 }
 
+std::string save_script(const std::string &job_id, const uid_t uid, const gid_t gid, const std::string &content) {
+  const std::string path = "/tmp/swm-" + job_id + ".sh";
+  std::ofstream file(path);
+  if (!file.is_open()) {
+    const auto msg = "Error creating script file: " + path;
+    std::perror(msg.c_str());
+    exit(EXIT_FAILURE);
+  }
+  file << content;
+  file.close();
+
+  if (chmod(path.c_str(), S_IRUSR|S_IXUSR) != 0) {
+    const auto msg = "Could not set permissions to " + path;
+    std::perror(msg.c_str());
+    exit(EXIT_FAILURE);
+  }
+
+  if (chown(path.c_str(), uid, gid) == -1) {
+    const auto msg = "Could not set ownership to " + path;
+    std::perror(msg.c_str());
+    exit(EXIT_FAILURE);
+  }
+
+  return path;
+}
+
 int main(int argc, char* const argv[]) {
   // Fix docker issue: exec does not wait for its command completion
   // thus user creation and send to porter started at the same time.
@@ -190,13 +217,13 @@ int main(int argc, char* const argv[]) {
   erl_init(nullptr, 0);
 
   byte* data[SWM_DATA_TYPES_COUNT];
-  if(get_porter_data(&std::cin, data)) {
+  if (get_porter_data(&std::cin, data)) {
     std::cerr << "Could not read raw input data" << std::endl;
     return EXIT_FAILURE;
   }
 
   SwmProcInfo info;
-  if(parse_data(data, info)) {
+  if (parse_data(data, info)) {
     std::cerr << "Could not decode data" << std::endl;
     return EXIT_FAILURE;
   }
@@ -204,11 +231,10 @@ int main(int argc, char* const argv[]) {
   time_t when;
   pid_t child_pid;
 
-  if((child_pid = fork()) == -1) {
+  if ((child_pid = fork()) == -1) {
     std::cerr << "Fork error" << std::endl;
     exit(EXIT_FAILURE);
-  }
-  else if (child_pid == 0) { /* This is the child */
+  } else if (child_pid == 0) { /* This is the child */
     time(&when);
     swm_logd("Job process started at %s", ctime(&when));
 
@@ -217,15 +243,17 @@ int main(int argc, char* const argv[]) {
 
     passwd *pw = nullptr;
     sleep(20); //TODO wait when user is completely added by finalize script
-    if((pw = getpwnam(username)) == nullptr) {
+    if ((pw = getpwnam(username)) == nullptr) {
       swm_logd("User %s not found", username);
       fflush(stderr);
       exit(EXIT_USER_NOT_FOUND);
     }
     swm_logd("uid=%d gid=%d", pw->pw_uid, pw->pw_gid);
 
-    char *script = erl_iolist_to_string(info.job.get_script());
-    swm_logd("Job script: \"%s\"", script);
+    const auto content = info.job.get_script_content();
+    const auto job_id = info.job.get_id();
+    const auto path = save_script(job_id, pw->pw_uid, pw->pw_gid, content);
+    swm_logd("Temporary execution path: \"%s\"", path.c_str());
 
     set_uid_gid(pw->pw_uid, pw->pw_gid);
     set_env(pw, info.job);
@@ -236,7 +264,7 @@ int main(int argc, char* const argv[]) {
     char* const argv[] = {
       const_cast<char*>("/bin/sh"),
       const_cast<char*>("-c"),
-      script,
+      const_cast<char*>(path.c_str()),
       nullptr
     };
     execve("/bin/sh", &argv[0], environ);
@@ -258,10 +286,10 @@ int main(int argc, char* const argv[]) {
       proc.set_signal(-1);
 
       swm_logd("Child end_pid: %d (status=%d)", end_pid, status);
-      if(end_pid == -1) { /*  error calling waitpid */
+      if (end_pid == -1) { /*  error calling waitpid */
         std::cerr << "waitpid error" << std::endl;
         proc.set_comment("waitpid error");
-        if(send_process_info(proc)) {
+        if (send_process_info(proc)) {
           std::cerr << "Process info not sent" << std::endl;
           fflush(stderr);
           return EXIT_FAILURE;
@@ -269,20 +297,20 @@ int main(int argc, char* const argv[]) {
         sleep(CHILD_WAITING_TIME); // give container time to propagate the final info to swm
         exit(EXIT_FAILURE);
       }
-      else if(end_pid == 0) { /* child still running  */
+      else if (end_pid == 0) { /* child still running  */
         time(&when);
         swm_logd("Parent waiting for child at %s", ctime(&when));
         proc.set_state(SWM_JOB_STATE_RUNNING);
-        if(send_process_info(proc)) {
+        if (send_process_info(proc)) {
           std::cerr << "Process info not sent" << std::endl;
           return EXIT_FAILURE;
         }
         sleep(CHILD_WAITING_TIME);
       }
-      else if(end_pid == child_pid) { /* child ended */
+      else if (end_pid == child_pid) { /* child ended */
         int exitcode = -1;
         int sig = 0;
-        if(WIFEXITED(status)) {
+        if (WIFEXITED(status)) {
           exitcode = WEXITSTATUS(status);
           if (status == 0) {
             swm_logd("Job process has terminated normally", exitcode);
@@ -290,15 +318,15 @@ int main(int argc, char* const argv[]) {
             std::cerr << "Job process has terminated with exit code " <<  exitcode << std::endl;
           }
         }
-        if(WIFSIGNALED(status)) {
+        if (WIFSIGNALED(status)) {
           sig = WTERMSIG(status);
           const char *strsig = strsignal(sig);
           swm_logd("Job process has terminated by uncaught signal \"%s\"", strsig);
-          if(WCOREDUMP(status)) {
+          if (WCOREDUMP(status)) {
             swm_logd("Job process has produced a core dump");
           }
         }
-        if(WIFSTOPPED(status)) {
+        if (WIFSTOPPED(status)) {
           sig = WSTOPSIG(status);
           const char *strsig = strsignal(sig);
           swm_logd("Job process has been stopped by delivery of a signal \"%s\"", strsig);
@@ -306,7 +334,7 @@ int main(int argc, char* const argv[]) {
         proc.set_state( SWM_JOB_STATE_FINISHED);
         proc.set_exitcode(exitcode);
         proc.set_signal(sig);
-        if(send_process_info(proc)) {
+        if (send_process_info(proc)) {
           std::cerr << "The final job process info has not been sent" << std::endl;
           return EXIT_FAILURE;
         }

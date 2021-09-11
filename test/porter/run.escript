@@ -16,6 +16,7 @@ get_final_binary() ->
                              ], User1),
   UserBin = erlang:term_to_binary(User2),
   UserBinSize = byte_size(UserBin),
+  JobScriptContent = "#!/usr/bin/env bash\necho SWM_JOB_ID=${SWM_JOB_ID}\nsleep 20\n",
 
   Job1 = wm_entity:new(job),
   Job2 = wm_entity:set_attr({id, "10000000-0000-0000-0000-000000000000"}, Job1),
@@ -24,7 +25,7 @@ get_final_binary() ->
   Job5 = wm_entity:set_attr({job_stdout, "%j.out"}, Job4),
   Job6 = wm_entity:set_attr({job_stderr, "%j.err"}, Job5),
   Job7 = wm_entity:set_attr({workdir, "/tmp"}, Job6),
-  Job8 = wm_entity:set_attr({script, "job.sh"}, Job7),
+  Job8 = wm_entity:set_attr({script_content, JobScriptContent}, Job7),
   JobBin = erlang:term_to_binary(Job8),
   JobBinSize = byte_size(JobBin),
 
@@ -82,6 +83,10 @@ loop(Outputs) ->
   end.
 
 test_outputs([{process, _, "F",  0,  0, _},
+               {process, _, "R", -1, -1, _},
+               {process, _, "R", -1, -1, _},
+               {process, _, "R", -1, -1, _},
+               {process, _, "R", -1, -1, _},
                {process, _, "R", -1, -1, _},
                {process, _, "R", -1, -1, _},
                {process, _, "R", -1, -1, _},
