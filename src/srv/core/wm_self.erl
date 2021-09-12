@@ -5,6 +5,7 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([has_role/1, get_node_id/0, get_node/0, get_sname/0, get_host/0, update/0]).
+-export([is_local_node/1]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
@@ -48,6 +49,11 @@ get_host() ->
 -spec update() -> ok.
 update() ->
     gen_server:call(?MODULE, update).
+
+%% @doc Verify is node entity points to the node where the code is running now
+-spec is_local_node(#node{}) -> true | false.
+is_local_node(Node) ->
+    wm_entity:get_attr(id, Node) == get_node_id().
 
 %% ============================================================================
 %% Server callbacks

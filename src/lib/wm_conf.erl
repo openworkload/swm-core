@@ -482,9 +482,7 @@ select_one({Tab, Attr}, Val) ->
 do_set_state(Type, State, Node) when is_atom(Node) ->
     case wm_db:table_exists(node) of
         false ->
-            ?LOG_DEBUG("Table 'node' not found, don't set node "
-                       "~p state ~p",
-                       [Node, State]);
+            ?LOG_DEBUG("Table 'node' not found, don't set node ~p state ~p", [Node, State]);
         true ->
             NodeNameStr = atom_to_list(Node),
             [ShortName, Host] = string:tokens(NodeNameStr, "@"),

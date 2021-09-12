@@ -5,6 +5,7 @@
 -export([start_link/1, get_parent/0, start_slave/3, has_malfunction/1, allocate_port/0, get_my_gateway_address/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 
 -define(FLOATING_PORT_BEGIN, 50000).
@@ -165,7 +166,7 @@ load_services(MState, Args) ->
                     Services = wm_conf:select(service, lists:flatten(ServiceIDs)),
                     NewState = start_services_suspended(Services, Args, MState),
                     resume_services(Services),
-                    wm_state:enter(offline),
+                    set_local_node_state(Node),
                     {ok, NewState}
             end;
         {error, E2} ->
@@ -292,17 +293,30 @@ set_default_nodes_states() ->
     NodesDown = wm_conf:get_nodes_with_state({state_power, down}),
     L = length(NodesUp) + length(NodesDown),
     ?LOG_DEBUG("Set default node states for ~p nodes", [L]),
-    F3 = fun(Node) ->
-            case wm_entity:get_attr(is_template, Node) of
-                false ->
-                    Name = wm_utils:node_to_fullname(Node),
-                    wm_conf:set_node_state(power, down, Name),
-                    wm_conf:set_node_state(alloc, stopped, Name);
-                true ->
-                    ok
-            end
+    F3 = fun (#node{is_template = true} = Node) ->
+                 ok;
+             (Node) ->
+                 case wm_self:is_local_node(Node) of
+                     true ->
+                         set_local_node_state(Node);
+                     false ->
+                         wm_conf:update(
+                             wm_entity:set_attr([{state_power, down}, {state_alloc, offline}], Node))
+                 end
          end,
     [F3(X) || X <- NodesDown ++ NodesUp].
+
+-spec set_local_node_state(#node{}) -> ok.
+set_local_node_state(Node) ->
+    ?LOG_DEBUG("Set local node state"),
+    case wm_self:has_role("compute") of
+        true ->
+            wm_conf:update(
+                wm_entity:set_attr([{state_power, up}, {state_alloc, idle}], Node));
+        false ->
+            wm_conf:update(
+                wm_entity:set_attr([{state_power, up}, {state_alloc, offline}], Node))
+    end.
 
 add_children_to_pinger() ->
     Children = wm_topology:get_children(nosort),
