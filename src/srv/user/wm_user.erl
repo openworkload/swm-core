@@ -115,7 +115,8 @@ handle_request(submit, Args, #mstate{} = MState) ->
             Job2 =
                 wm_entity:set_attr([{cluster_id, wm_entity:get_attr(id, Cluster)},
                                     {state, ?JOB_STATE_QUEUED},
-                                    {script, Filename},
+                                    {execution_path, Filename},
+                                    {script_content, JobScriptContent},
                                     {user_id, wm_entity:get_attr(id, User)},
                                     {id, JID},
                                     {job_stdout, JID ++ ".out"},
@@ -221,9 +222,9 @@ cancel_jobs([JobID | T], Results) ->
         end,
     cancel_jobs(T, [Result | Results]).
 
-set_defaults(#job{workdir = [], script = Script} = Job) ->
+set_defaults(#job{workdir = [], execution_path = Path} = Job) ->
     Dir = filename:absname(
-              filename:dirname(Script)),
+              filename:dirname(Path)),
     set_defaults(wm_entity:set_attr({workdir, Dir}, Job));
 set_defaults(#job{account_id = [], user_id = UserId} = Job) ->
     % If account is not specified by user during job submission then use the user's main account

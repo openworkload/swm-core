@@ -441,7 +441,7 @@
       "type": "string()"
     },
     "cluster_id": {
-      "default": 0,
+      "default": "",
       "type": "cluster_id()"
     },
     "nodes": {
@@ -532,9 +532,13 @@
       "default": "",
       "type": "string()"
     },
-    "script": {
+    "execution_path": {
       "default": "",
-      "type": "binary()"
+      "type": "string()"
+    },
+    "script_content": {
+      "default": "",
+      "type": "string()"
     },
     "request": {
       "default": [],

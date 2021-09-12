@@ -497,8 +497,10 @@ get_type(job, Attr) when is_atom(Attr) ->
             string;
         task_id ->
             string;
-        script ->
-            binary;
+        execution_path ->
+            string;
+        script_content ->
+            string;
         request ->
             {list, {record, resource}};
         resources ->

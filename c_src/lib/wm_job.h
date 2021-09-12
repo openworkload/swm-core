@@ -52,7 +52,8 @@ class SwmJob:SwmEntity {
   void set_account_id(const std::string&);
   void set_gang_id(const std::string&);
   void set_task_id(const std::string&);
-  void set_script(const ETERM*&);
+  void set_execution_path(const std::string&);
+  void set_script_content(const std::string&);
   void set_request(const std::vector<SwmResource>&);
   void set_resources(const std::vector<SwmResource>&);
   void set_container(const std::string&);
@@ -88,7 +89,8 @@ class SwmJob:SwmEntity {
   std::string get_account_id() const;
   std::string get_gang_id() const;
   std::string get_task_id() const;
-  ETERM* get_script() const;
+  std::string get_execution_path() const;
+  std::string get_script_content() const;
   std::vector<SwmResource> get_request() const;
   std::vector<SwmResource> get_resources() const;
   std::string get_container() const;
@@ -125,7 +127,8 @@ class SwmJob:SwmEntity {
   std::string account_id;
   std::string gang_id;
   std::string task_id;
-  ETERM* script;
+  std::string execution_path;
+  std::string script_content;
   std::vector<SwmResource> request;
   std::vector<SwmResource> resources;
   std::string container;

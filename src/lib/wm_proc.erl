@@ -124,9 +124,9 @@ execute(MState) ->
         {error, not_found} ->
             MState;
         {ok, User} ->
-            ScriptPath = wm_entity:get_attr(script, Job),
+            Path = wm_entity:get_attr(execution_path, Job),
             ProcEnvs =
-                [{"SWM_JOB_SCRIPT", ScriptPath},
+                [{"SWM_JOB_SCRIPT", Path},
                  {"SWM_STDIN_PATH", wm_entity:get_attr(job_stdin, Job)},
                  {"SWM_STDOUT_PATH", wm_entity:get_attr(job_stdout, Job)},
                  {"SWM_STDERR_PATH", wm_entity:get_attr(job_stderr, Job)},
@@ -146,7 +146,7 @@ execute(MState) ->
     end.
 
 get_porter_path() ->
-    Porter1 = ?SWM_PORTER_IN_CONTAINER,
+    Porter1 = os:getenv("SWM_PORTER_IN_CONTAINER", ?SWM_PORTER_IN_CONTAINER),
     Porter2 = wm_conf:g(porter_path, {Porter1, string}),
     wm_utils:unroll_symlink(Porter2).
 
@@ -214,7 +214,7 @@ init_porter(User, MState) ->
     JobID = wm_entity:get_attr(id, MState#mstate.job),
     ?LOG_DEBUG("Init porter for ~p", [JobID]),
     BinIn = prepare_porter_input(MState#mstate.job, User),
-    ?LOG_DEBUG("Porter input for user ~p: ~p", [User, BinIn]),
+    ?LOG_DEBUG("Porter input size for user ~p: ~p", [User, byte_size(BinIn)]),
     wm_container:communicate(MState#mstate.job, BinIn, self()).
 
 do_clean(Job) ->

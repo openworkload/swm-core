@@ -46,7 +46,7 @@
          revision = 0 :: pos_integer()}).
 -record(table, {name :: binary(), fields = [] :: [any()], revision = 0 :: pos_integer()}).
 -record(grid,
-        {id = 0 :: grid_id(),
+        {id = "" :: grid_id(),
          name = "" :: string(),
          state = down :: atom(),
          manager = "" :: string(),
@@ -123,17 +123,18 @@
          comment = "" :: string(),
          revision = 0 :: pos_integer()}).
 -record(job,
-        {id :: string(), name = "" :: string(), cluster_id = 0 :: cluster_id(), nodes = [] :: [node_id()],
+        {id :: string(), name = "" :: string(), cluster_id = "" :: cluster_id(), nodes = [] :: [node_id()],
          state = "Q" :: string(), job_class = [] :: [atom()], start_time = "" :: string(), submit_time = "" :: string(),
          end_time = "" :: string(), duration = 0 :: pos_integer(), job_stdin = "" :: string(),
          job_stdout = "" :: string(), job_stderr = "" :: string(), input_files = [] :: [string()],
          output_files = [] :: [string()], workdir = "" :: string(), user_id = "" :: user_id(),
          hooks = [] :: [hook_id()], env = [] :: [{string(), string()}], deps = [] :: [{atom(), string()}],
          steps = [] :: [string()], projects = [] :: [pos_integer()], account_id = "" :: account_id(),
-         gang_id = "" :: string(), task_id = "" :: string(), script = "" :: binary(), request = [] :: [#resource{}],
-         resources = [] :: [#resource{}], container = "" :: string(), relocatable = true :: atom(),
-         exitcode = 0 :: pos_integer(), signal = 0 :: pos_integer(), priority = 0 :: pos_integer(),
-         comment = "" :: string(), revision = 0 :: pos_integer()}).
+         gang_id = "" :: string(), task_id = "" :: string(), execution_path = "" :: string(),
+         script_content = "" :: string(), request = [] :: [#resource{}], resources = [] :: [#resource{}],
+         container = "" :: string(), relocatable = true :: atom(), exitcode = 0 :: pos_integer(),
+         signal = 0 :: pos_integer(), priority = 0 :: pos_integer(), comment = "" :: string(),
+         revision = 0 :: pos_integer()}).
 -record(process,
         {pid = -1 :: integer(),
          state = "unknown" :: string(),
