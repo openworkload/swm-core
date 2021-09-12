@@ -35,7 +35,7 @@ RUNNING=$(${DOCKER} inspect -f '{{.State.Running}}' ${CONTAINER_NAME})
 INSPECTATION_CODE=$?
 
 if [ $MOUNT_SCRIPTS ]; then
-    EXTRA_MOUNTS="-v $PWD/scripts:/opt/swm/latest/scripts"
+    EXTRA_MOUNTS="-v $PWD/scripts:/opt/swm/current/scripts"
 fi
 
 if [ ! -e ${HOST_SPOOL} ]; then
@@ -46,6 +46,7 @@ if [ $INTERACTIVE ]; then
     if [ "$INSPECTATION_CODE" = "1" ]; then
         ${DOCKER} run\
             ${EXTRA_MOUNTS}\
+            -v /opt/swm/current\
             -v $HOME/.swm:/root/.swm\
             -v ${HOST_SPOOL}:/opt/swm/spool\
             -v ${DOCKER_SOCKET}:${DOCKER_SOCKET}\

@@ -19,9 +19,11 @@ RUN mkdir -p /opt/swm/$SWM_VERSION
 RUN mkdir -p /opt/swm/spool
 
 COPY _build/default/rel/swm/ /opt/swm/$SWM_VERSION/
-RUN ln -s /opt/swm/$SWM_VERSION /opt/swm/latest
+RUN ln -s /opt/swm/$SWM_VERSION /opt/swm/current
 
 EXPOSE 10001
 EXPOSE 8443
 
-CMD ["/opt/swm/latest/scripts/run-swm-foreground.sh"]
+VOLUME /opt/swm
+
+CMD ["/opt/swm/current/scripts/run-swm-foreground.sh"]

@@ -1,4 +1,4 @@
 #!/bin/bash
 
-source /opt/swm/latest/scripts/swm.env
-/opt/swm/latest/bin/swm foreground
+source /opt/swm/current/scripts/swm.env
+/opt/swm/current/bin/swm foreground

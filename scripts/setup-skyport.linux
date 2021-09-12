@@ -52,13 +52,13 @@ else
 fi
 
 export SWM_ROOT=/opt/swm
-export SWM_VERSION_DIR=/opt/swm/latest
+export SWM_VERSION_DIR=/opt/swm/current
 
 source ${SWM_VERSION_DIR}/scripts/swm.env
 export SWM_API_PORT=10001
 
 mkdir -p /opt/swm/spool
-cd /opt/swm/latest
+cd /opt/swm/current
 
 echo "Add group docker/${ARG_GID} and user ${ARG_USER}/${ARG_UID}:${ARG_GID}"
 addgroup --gid ${ARG_GID} docker

@@ -24,7 +24,7 @@ the container while spool directory is mounted there. This script initializes sw
 ```console
 SWM_SPOOL_ON_HOST=$HOME/.swm/spool
 mkdir -p ${SWM_SPOOL_ON_HOST}
-COMMAND="/opt/swm/latest/scripts/setup-skyport.linux -u $(id -u) -g $(id -g) -n $(id -u -n)"
+COMMAND="/opt/swm/current/scripts/setup-skyport.linux -u $(id -u) -g $(id -g) -n $(id -u -n)"
 docker run --rm -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=skyworkflows.com -ti swm-core:latest ${COMMAND}
 ```
 
