@@ -128,11 +128,10 @@ handle_info({'EXIT', From, normal}, MState = #mstate{children = Children}) ->
 handle_info({'EXIT', From, Reason}, MState = #mstate{children = Children}) ->
     case maps:get(From, Children, undefined) of
         undefined ->
-            ?LOG_INFO("Got orphaned EXIT message from ~p with reason ~p", [From, Reason]),
+            ?LOG_INFO("Got orphaned EXIT message from ~p", [From, Reason]),
             {noreply, MState};
         {CallbackModule, Ref} ->
-            ?LOG_INFO("Received EXIT from ~p with reason ~p, propagate notification to ~p with ref ~p",
-                      [From, Reason, CallbackModule, Ref]),
+            ?LOG_INFO("Received EXIT from ~p, propagate notification to ~p with ref ~p", [From, CallbackModule, Ref]),
             ok = wm_utils:cast(CallbackModule, {Ref, 'EXIT', Reason}),
             {noreply, MState#mstate{children = maps:remove(From, Children)}}
     end;

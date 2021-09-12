@@ -76,6 +76,7 @@ send(Frame, HttpProcPid, Steps) ->
     Command = {ws_send, Frame, Steps},
     gen_server:call(HttpProcPid, Command).
 
+-spec stop(pid()) -> atom().
 stop(HttpProcPid) ->
     gen_server:call(HttpProcPid, stop).
 
@@ -83,7 +84,6 @@ stop(HttpProcPid) ->
 %% CALLBACKS
 %% ============================================================================
 
-%% @hidden
 init({Owner, Addr, Port, ReqID}) ->
     process_flag(trap_exit, true),
     application:ensure_all_started(gun),
@@ -93,9 +93,7 @@ init({Owner, Addr, Port, ReqID}) ->
                 conn_pid = ConnPid,
                 mref = MRef,
                 reqid = ReqID},
-    ?LOG_INFO("HTTP client has been started: ~p:~p "
-              "(~p)",
-              [Addr, Port, MState]),
+    ?LOG_INFO("HTTP client has been started: ~p:~p (~p)", [Addr, Port, MState]),
     {ok, MState}.
 
 handle_call({get_start, Path, Hdr} = Command, _, #mstate{} = MState) ->
@@ -110,8 +108,8 @@ handle_call({delete_start, Path, Hdr, Steps} = Command, _, #mstate{} = MState) -
 handle_call({ws_upgrade_start, Path, Hdr, Steps} = Command, _, #mstate{} = MState) ->
     MState2 = do_ws_upgrade(Path, Hdr, MState),
     {reply, ok, MState2#mstate{steps = Steps, command = Command}};
-handle_call({ws_send, Frame, Steps} = Command, _, #mstate{conn_pid = ConnPid} = MState) ->
-    ok = gun:ws_send(ConnPid, Frame),
+handle_call({ws_send, Frame, Steps} = Command, _, #mstate{stream = Stream, conn_pid = ConnPid} = MState) ->
+    ok = gun:ws_send(ConnPid, Stream, Frame),
     {reply, ok, MState#mstate{steps = Steps, command = Command}};
 handle_call(stop, _, #mstate{} = MState) ->
     shutdown(MState),
@@ -123,8 +121,8 @@ handle_cast(_Msg, #mstate{conn_pid = ConnPid} = MState) ->
     ?LOG_ERROR("[HTTP] unknown cast message [~p]", [ConnPid]),
     {noreply, MState}.
 
-handle_info({do_ws_ping, ConnPid}, #mstate{conn_pid = ConnPid} = MState) ->
-    ok = gun:ws_send(ConnPid, ping),
+handle_info({do_ws_ping, ConnPid}, #mstate{stream = Stream, conn_pid = ConnPid} = MState) ->
+    ok = gun:ws_send(ConnPid, Stream, ping),
     {noreply, MState};
 handle_info({gun_up, ConnPid, http}, #mstate{} = MState) ->
     ?LOG_DEBUG("[HTTP] UP [~p]", [ConnPid]),
@@ -133,8 +131,12 @@ handle_info({gun_response, ConnPid, _, fin, Status, Hdrs}, #mstate{} = MState) -
     ?LOG_DEBUG("[HTTP] FIN RESPONSE: ~p [~p]", [Status, ConnPid]),
     NewHdrs = MState#mstate.hdrs ++ Hdrs,
     notify_requestor(<<>>, NewHdrs, Status, MState),
-    gun:flush(ConnPid),
+    ok = gun:flush(ConnPid),
     {noreply, MState#mstate{hdrs = []}};
+handle_info({gun_response, ConnPid, _, nofin, 404, Hdrs}, #mstate{} = MState) ->
+    notify_requestor(<<>>, Hdrs, 404, MState),
+    shutdown(MState),
+    {stop, normal, shutdown_ok, MState};
 handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) when Status =:= 304; Status =:= 101 ->
     ?LOG_DEBUG("[HTTP] NOFIN RESPONSE: ~p [~p]", [Status, ConnPid]),
     NewHdrs = MState#mstate.hdrs ++ Hdrs,
@@ -148,14 +150,13 @@ handle_info({gun_data, ConnPid, _, nofin, FrameData}, #mstate{} = MState) ->
     ?LOG_DEBUG("[HTTP] NOFIN DATA: size=~p [~p]", [byte_size(FrameData), ConnPid]),
     {noreply, handle_docker_output(FrameData, MState)};
 handle_info({gun_data, ConnPid, _, fin, Data}, #mstate{} = MState) ->
-    ?LOG_DEBUG("[HTTP] FIN: frame_size=~p [~p] => notify "
-               "requestor",
-               [byte_size(Data), ConnPid]),
+    ?LOG_DEBUG("[HTTP] FIN: frame_size=~p [~p] => notify requestor", [byte_size(Data), ConnPid]),
     OldData = MState#mstate.data,
     Bin = <<OldData/binary, Data/binary>>,
     notify_requestor(Bin, [], [], MState),
     {noreply, MState#mstate{data = Bin}};
-handle_info({gun_ws_upgrade, ConnPid, ok, Headers}, #mstate{} = MState) ->
+%handle_info({gun_ws_upgrade, ConnPid, ok, Headers}, #mstate{} = MState) ->
+handle_info({gun_upgrade, ConnPid, _, _, Headers}, #mstate{} = MState) ->
     ?LOG_DEBUG("[WS] UPGRADE OK [~p]", [ConnPid]),
     Interval = wm_conf:g(ws_ping_interval, {?WS_KEEP_ALIVE, integer}),
     Timer = wm_utils:wake_up_after(Interval, {do_ws_ping, ConnPid}),
@@ -171,14 +172,15 @@ handle_info({gun_ws, ConnPid, {text, Bin}}, #mstate{} = MState) ->
 handle_info({gun_ws, ConnPid, {close, Status, Data}}, #mstate{} = MState) ->
     ?LOG_DEBUG("[WS] CLOSE: ~p ~p [~p]", [Status, Data, ConnPid]),
     {noreply, MState};
-handle_info({gun_error, ConnPid, _, Msg}, #mstate{} = MState) ->
+handle_info({gun_error, ConnPid, Msg}, #mstate{} = MState) ->
     ?LOG_DEBUG("[HTTP] ERROR (ignore): ~p [~p]", [Msg, ConnPid]),
-    gun:flush(ConnPid),
+    ok = gun:flush(ConnPid),
     notify_requestor(<<>>, [], ok, MState),
     {noreply, MState};
-handle_info({gun_down, ConnPid, http, Reason, _, _}, #mstate{} = MState) ->
-    ?LOG_DEBUG("CONNECTION DOWN: ~p [~p]", [Reason, ConnPid]),
-    {noreply, MState};
+handle_info({gun_down, ConnPid, Proto, Reason, _}, #mstate{} = MState) ->
+    ?LOG_DEBUG("CONNECTION DOWN: ~p, proto= ~p [~p]", [Reason, Proto, ConnPid]),
+    shutdown(MState),
+    {stop, normal, MState};
 handle_info({'DOWN', MRef, process, ConnPid, Msg}, #mstate{mref = MRef, conn_pid = ConnPid} = MState) ->
     ?LOG_DEBUG("DOWN: ~p [~p]", [Msg, ConnPid]),
     shutdown(MState),
@@ -189,10 +191,8 @@ handle_info({gun_inform, ConnPid, _, Status, Hdrs}, #mstate{} = MState) ->
     notify_requestor(<<>>, NewHdrs, Status, MState),
     {noreply, MState};
 handle_info({'EXIT', ConnPid, {timeout, Reason}}, #mstate{conn_pid = ConnPid} = MState) ->
-    ?LOG_ERROR("Connection timeout detected: ~p [~p] "
-               "==> RETRY",
-               [Reason, ConnPid]),
-    gun:flush(ConnPid),
+    ?LOG_ERROR("Connection timeout detected: ~p [~p] => RETRY", [Reason, ConnPid]),
+    ok = gun:flush(ConnPid),
     {noreply, retry_command(MState)};
 handle_info(OtherMsg, #mstate{conn_pid = ConnPid} = MState) ->
     ?LOG_DEBUG("IGNORE NEW MESSAGE: ~p [~p]", [OtherMsg, ConnPid]),
@@ -218,9 +218,7 @@ open_conn(Addr, Port) ->
           retry => Retries,
           http_opts => #{keepalive => KeepAlive}},
     {ok, ConnPid} = gun:open(Addr, Port, Opts),
-    ?LOG_DEBUG("Connection to ~p:~p has been opened "
-               "(~p)",
-               [Addr, Port, ConnPid]),
+    ?LOG_DEBUG("Connection to ~p:~p has been opened (~p)", [Addr, Port, ConnPid]),
     MRef = monitor(process, ConnPid),
     {ConnPid, MRef}.
 
@@ -230,8 +228,8 @@ shutdown(#mstate{conn_pid = ConnPid,
     ?LOG_DEBUG("Shutdown and demonitor [~p, ~p]", [ConnPid, MRef]),
     catch timer:cancel(Timer),
     demonitor(MRef),
-    gun:flush(ConnPid),
-    gun:shutdown(ConnPid).
+    ok = gun:flush(ConnPid),
+    ok = gun:shutdown(ConnPid).
 
 do_get(Path, Hdr, #mstate{conn_pid = ConnPid} = MState) ->
     ?LOG_DEBUG("GET: ~p", [Path]),
@@ -324,14 +322,12 @@ handle_docker_output(Data,
     DataSize = byte_size(Data),
     case DataSize < ExpectedSize of
         true ->  % received one more frame's part, but we expect another part of the frame in the future
-            ?LOG_DEBUG("[FRAME] recevied: one more frame's part, "
-                       "but not the last"),
+            ?LOG_DEBUG("[FRAME] recevied: one more frame's part, but not the last one"),
             Remained = ExpectedSize - DataSize,
             MState#mstate{data = <<OldData/binary, Data/binary>>, data_size = Remained};
         false ->  % received last part of the frame, plus maybe a part of the next frame
             <<Frame:ExpectedSize/binary, ExtraData/binary>> = Data,
-            ?LOG_DEBUG("[FRAME] received: last Handle docker "
-                       "output: ~p + ~p bytes",
+            ?LOG_DEBUG("[FRAME] received: last Handle docker output: ~p + ~p bytes",
                        [byte_size(Frame), byte_size(ExtraData)]),
             handle_frame(Type, Frame, MState),
             handle_docker_output(ExtraData, reset_data_state(MState))

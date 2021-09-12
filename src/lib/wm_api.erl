@@ -49,10 +49,8 @@ cast_self(Msg, Node) when is_atom(Node) ->
 -spec cast_self_confirm(term(), [atom()]) -> ok.
 cast_self_confirm(Msg, Nodes) when is_list(Nodes) ->
     Mod = wm_utils:get_calling_module_name(),
-    cast_all_nodes_process(Mod,
-                           Msg,
-                           Nodes,
-                           wait). %TODO return on some timeout
+    %TODO: return on some timeout
+    cast_all_nodes_process(Mod, Msg, Nodes, wait).
 
 %% ============================================================================
 %% Callbacks

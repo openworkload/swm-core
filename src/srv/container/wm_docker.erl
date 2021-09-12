@@ -170,24 +170,30 @@ get_config_map(binds) ->
 get_cmd(Porter) ->
     [list_to_binary(wm_utils:unroll_symlink(Porter)), <<"-d">>].
 
-generate_container_json(Job, Porter) ->
+-spec get_volumes_from() -> binary().
+get_volumes_from() ->
+    [list_to_binary(os:getenv("SWM_DOCKER_VOLUMES_FROM", "swm-core:ro"))].
+
+-spec generate_container_json(string()) -> list().
+generate_container_json(Porter) ->
     Term1 = jwalk:set({"Tty"}, #{}, false),
     Term2 = jwalk:set({"OpenStdin"}, Term1, true),
     Term3 = jwalk:set({"AttachStdin"}, Term2, true),
     Term4 = jwalk:set({"AttachStdout"}, Term3, true),
     Term5 = jwalk:set({"AttachStderr"}, Term4, true),
-    Term6 = jwalk:set({"Image"}, Term5, <<"ubuntu:16.04">>),
+    Term6 = jwalk:set({"Image"}, Term5, <<"ubuntu:18.04">>),
     Term7 = jwalk:set({"Cmd"}, Term6, get_cmd(Porter)),
     Term8 = jwalk:set({"Volumes"}, Term7, get_config_map(volumes)),
     Term9 = jwalk:set({"HostConfig"}, Term8, get_config_map(binds)),
     Term10 = jwalk:set({"StdinOnce"}, Term9, false),
-    jsx:encode(Term10).
+    Term11 = jwalk:set({"VolumesFrom"}, Term10, get_volumes_from()),
+    jsx:encode(Term11).
 
 do_create_container(Job, Porter, Envs, Owner, Steps) ->
     ContID = "swmjob-" ++ wm_entity:get_attr(id, Job),
     ?LOG_DEBUG("Create container ~p", [ContID]),
     HttpProcPid = start_http_client(Owner, ContID),
-    Body = generate_container_json(Job, Porter),
+    Body = generate_container_json(Porter),
     Path = "/containers/create?name=" ++ ContID,
     Hdrs = [{<<"content-type">>, "application/json"}],
     wm_docker_client:post(Path, Body, Hdrs, HttpProcPid, Steps),
@@ -224,9 +230,9 @@ do_attach_container(Job, Owner, Steps) ->
     Params = "?logs=1&stream=1&stderr=1&stdout=1&stdin=0",
     Path = "/containers/" ++ ContID ++ "/attach" ++ Params,
     Hdrs =
-        [{<<"Content-Type">>, "application/vnd.docker.raw-stream"},
-         {<<"Upgrade">>, "tcp"},
-         {<<"Connection">>, "Upgrade"}],
+        [{<<"Content-Type">>, <<"application/vnd.docker.raw-stream">>},
+         {<<"Upgrade">>, <<"tcp">>},
+         {<<"Connection">>, <<"Upgrade">>}],
     wm_docker_client:post(Path, [], Hdrs, HttpProcPid, Steps),
     {ContID, HttpProcPid}.
 
@@ -240,9 +246,9 @@ do_attach_ws_container(Job, Owner, Steps) ->
     Params = "?logs=0&stream=1&stderr=0&stdout=0&stdin=1",
     Path = "/containers/" ++ ContID ++ "/attach/ws" ++ Params,
     Hdrs =
-        [{<<"Content-Type">>, "application/vnd.docker.raw-stream"},
-         {<<"Upgrade">>, "tcp"},
-         {<<"Connection">>, "Upgrade"}],
+        [{<<"Content-Type">>, <<"application/vnd.docker.raw-stream">>},
+         {<<"Upgrade">>, <<"tcp">>},
+         {<<"Connection">>, <<"Upgrade">>}],
     wm_docker_client:ws_upgrade(Path, Hdrs, HttpProcPid, Steps),
     {ContID, HttpProcPid}.
 
@@ -261,28 +267,9 @@ get_finalize_cmd(Job) ->
             BGID = list_to_binary(GID),
             BName = list_to_binary(Username),
             ContID = wm_entity:get_attr(container, Job),
-            FinScript = ?SWM_FINALIZE_IN_CONTAINER,
+            FinScript = os:getenv("SWM_FINALIZE_IN_CONTAINER", ?SWM_FINALIZE_IN_CONTAINER),
             ?LOG_DEBUG("Finalize ~p: ~p ~p ~p", [ContID, FinScript, BUID, BGID]),
-            fix_job_script_permissions(Job,
-                                       User), %FIXME the perms/ownertship must be kept automatically
             [list_to_binary(FinScript), BName, BUID, BGID]
-    end.
-
-fix_job_script_permissions(#job{script = Script}, #user{name = Username}) ->
-    ?LOG_DEBUG("Fix job script permissions for ~p (~p)", [Script, Username]),
-    {ok, MyNode} = wm_self:get_node(),
-    case wm_entity:get_attr(remote_id, MyNode) of
-        [] ->
-            ok;
-        _ ->
-            {ok, Info} = file:read_file_info(Script),
-            UID = list_to_integer(wm_posix_utils:get_system_uid(Username)),
-            GID = list_to_integer(wm_posix_utils:get_system_gid(Username)),
-            Info2 =
-                Info#file_info{mode = 8#00500,
-                               uid = UID,
-                               gid = GID},
-            ok = file:write_file_info(Script, Info2)
     end.
 
 generate_finalize_json(Job, create) ->

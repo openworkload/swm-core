@@ -84,7 +84,7 @@ handle_cast({Ref, 'EXIT', Msg}, MState = #mstate{refs_in_process = Refs}) ->
             ?LOG_WARN("Got orphaned list_flavors error with reference ~p: ~p", [Ref, Msg]),
             {noreply, MState};
         RemoteId ->
-            ?LOG_WARN("Could not list flavors for remote ~p: ~p", [RemoteId, Msg]),
+            ?LOG_WARN("Could not list flavors for remote ~p", [RemoteId]),
             {noreply, MState#mstate{refs_in_process = maps:remove(Ref, Refs)}}
     end;
 handle_cast({error, Ref, Error}, MState = #mstate{refs_in_process = Refs}) ->
