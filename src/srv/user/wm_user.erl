@@ -44,6 +44,9 @@ start_link(Args) ->
 handle_call({show, JIDs}, _From, MState) ->
     {ReturnMsg, MStateNew} = handle_request(show, JIDs, MState),
     {reply, ReturnMsg, MStateNew};
+handle_call({requeue, JIDs}, _From, MState) ->
+    {ReturnMsg, MStateNew} = handle_request(requeue, JIDs, MState),
+    {reply, ReturnMsg, MStateNew};
 handle_call({cancel, JIDs}, _From, MState) ->
     %% TODO: free job's nodes if any have been already allocated
     {ReturnMsg, MStateNew} = handle_request(cancel, JIDs, MState),
@@ -129,6 +132,27 @@ handle_request(submit, Args, #mstate{} = MState) ->
             1 = wm_conf:update(Job4),
             {{string, JID}, MState}
     end;
+handle_request(requeue, Args, MState) ->
+    ?LOG_DEBUG("Jobs requeue has been requested: ~p", [Args]),
+    Results = requeue_jobs(Args, []),
+    RequeuedFiltered =
+        lists:filter(fun ({requeued, _}) ->
+                             true;
+                         (_) ->
+                             false
+                     end,
+                     Results),
+    RequeuedIds = lists:map(fun({_, ID}) -> ID end, RequeuedFiltered),
+    NotFoundFiltered =
+        lists:filter(fun ({not_found, _}) ->
+                             true;
+                         (_) ->
+                             false
+                     end,
+                     Results),
+    NotFoundIds = lists:map(fun({_, ID}) -> ID end, NotFoundFiltered),
+    Msg = "Requeued: " ++ lists:join(", ", RequeuedIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
+    {{string, Msg}, MState};
 handle_request(cancel, Args, MState) ->
     ?LOG_DEBUG("Jobs cancellation has been requested: ~p", [Args]),
     Results = cancel_jobs(Args, []),
@@ -206,6 +230,21 @@ add_missed_mandatory_request_resources(Resources) ->
                        wm_entity:set_attr({count, 1}, ResCpu2)
                     end),
     Resources3.
+
+-spec requeue_jobs([job_id()], [{atom(), job_id()}]) -> [{atom(), job_id()}].
+requeue_jobs([], Results) ->
+    Results;
+requeue_jobs([JobID | T], Results) ->
+    Result =
+        case wm_conf:select(job, {id, JobID}) of
+            {ok, Job} ->
+                UpdatedJob = wm_entity:set_attr({state, ?JOB_STATE_QUEUED}, Job),
+                1 = wm_conf:update([UpdatedJob]),
+                {requeued, JobID};
+            _ ->
+                {not_found, JobID}
+        end,
+    requeue_jobs(T, [Result | Results]).
 
 cancel_jobs([], Results) ->
     Results;

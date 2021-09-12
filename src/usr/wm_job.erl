@@ -14,6 +14,8 @@ top_mode(ArgsDict, Ent, ConnArgs) ->
             list(FreeArg, Ent, ConnArgs);
         "cancel" ->
             cancel(FreeArg, Ent, ConnArgs);
+        "requeue" ->
+            requeue(FreeArg, Ent, ConnArgs);
         "show" ->
             show(FreeArg, Ent, ConnArgs);
         Else ->
@@ -30,6 +32,21 @@ show(JIDs, Ent, ConnArgs) ->
                 fatal_error(Error)
         end,
     rpc_generic(show, {JIDs}, ConnArgs, Handler),
+    get_entity_submode(Ent).
+
+requeue(JIDs, Ent, ConnArgs) ->
+    Handler =
+        fun H([[]]) ->
+                io:format("No jobs to requeue~n");
+            H([{string, Msg} | T]) ->
+                io:format("~s~n", [Msg]),
+                H(T);
+            H([]) ->
+                ok;
+            H(Error) ->
+                fatal_error(Error)
+        end,
+    rpc_generic(requeue, {JIDs}, ConnArgs, Handler),
     get_entity_submode(Ent).
 
 cancel(JIDs, Ent, ConnArgs) ->
