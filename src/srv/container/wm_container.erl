@@ -175,7 +175,6 @@ handle_cast({Steps, Status, Data, Hdrs, ContID}, #mstate{} = MState) ->
     Out = io_lib:format("~s", [Data]),
     ?LOG_DEBUG("RECEIVED DATA: ~p | ~p | ~p | ~p | OUTPUT=~p", [Status, ContID, Hdrs, Steps, Out]),
     {noreply, MState};
-%%%%%% End of scenarios handlers
 handle_cast(_Msg, #mstate{} = MState) ->
     {noreply, MState}.
 

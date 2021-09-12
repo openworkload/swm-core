@@ -76,6 +76,8 @@ stopped({enter, offline}, MState) ->
     {next_state, offline, MState}.
 
 %% @doc State meaning: services are loading now according the node roles
+loading({enter, idle}, MState) ->
+    {next_state, idle, MState};
 loading({enter, loading}, MState) ->
     {next_state, loading, MState};
 loading({enter, offline}, MState) ->

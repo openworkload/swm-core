@@ -9,7 +9,7 @@
 -define(DEFAULT_MAXR, 1).
 -define(DEFAULT_MAXT, 60).
 -define(DEFAULT_EXIT_TIMEOUT, 20).
--define(STRATEGY, one_for_all).
+-define(STRATEGY, one_for_one).
 
 %% ============================================================================
 %% API functions
@@ -23,11 +23,21 @@ start_link({Services, Args}) when is_list(Services), is_list(Args) ->
 init({Services, Args}) ->
     MaxR = wm_conf:g(srv_max_restarts_count, {?DEFAULT_MAXR, integer}),
     MaxT = wm_conf:g(srv_max_restarts_period, {?DEFAULT_MAXT, integer}),
-    {ok, {{?STRATEGY, MaxR, MaxT}, addChilds(Services, Args, [])}};
+    SupFlags =
+        #{strategy => ?STRATEGY,
+          intensity => MaxR,
+          period => MaxT,
+          auto_shutdown => any_significant},
+    {ok, {SupFlags, get_children_spec(Services, Args, [])}};
 init(Services) ->
     MaxR = wm_conf:g(srv_max_restarts_count, {?DEFAULT_MAXR, integer}),
     MaxT = wm_conf:g(srv_max_restarts_period, {?DEFAULT_MAXT, integer}),
-    {ok, {{?STRATEGY, MaxR, MaxT}, addChilds(Services, [])}}.
+    SupFlags =
+        #{strategy => ?STRATEGY,
+          intensity => MaxR,
+          period => MaxT,
+          auto_shutdown => any_significant},
+    {ok, {SupFlags, get_children_spec(Services, [])}}.
 
 get_child_pid(SupRef) ->
     do_get_children_pid(SupRef).
@@ -36,21 +46,21 @@ get_child_pid(SupRef) ->
 %% Implementation functions
 %% ============================================================================
 
-addChilds([], Result) ->
+get_children_spec([], Result) ->
     Result;
-addChilds([Module | T], Result) ->
+get_children_spec([Module | T], Result) ->
     ET = wm_conf:g(srv_exit_timeout, {?DEFAULT_EXIT_TIMEOUT, integer}),
     StartFun = {Module, start_link, [[]]},
-    ChildSpec = {Module, StartFun, permanent, ET, worker, [Module]},
-    addChilds(T, [ChildSpec | Result]).
+    ChildSpec = {Module, StartFun, transient, ET, worker, [Module]},
+    get_children_spec(T, [ChildSpec | Result]).
 
-addChilds([], _, Result) ->
+get_children_spec([], _, Result) ->
     Result;
-addChilds([Module | T], Args, Result) ->
+get_children_spec([Module | T], Args, Result) ->
     StartFun = {Module, start_link, [Args]},
     ET = wm_conf:g(srv_exit_timeout, {?DEFAULT_EXIT_TIMEOUT, integer}),
-    ChildSpec = {Module, StartFun, permanent, ET, worker, [Module]},
-    addChilds(T, Args, [ChildSpec | Result]).
+    ChildSpec = {Module, StartFun, transient, ET, worker, [Module]},
+    get_children_spec(T, Args, [ChildSpec | Result]).
 
 do_get_children_pid(SupRef) ->
     % assume wm_sup serves one and only one child

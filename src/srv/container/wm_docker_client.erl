@@ -155,21 +155,20 @@ handle_info({gun_data, ConnPid, _, fin, Data}, #mstate{} = MState) ->
     Bin = <<OldData/binary, Data/binary>>,
     notify_requestor(Bin, [], [], MState),
     {noreply, MState#mstate{data = Bin}};
-%handle_info({gun_ws_upgrade, ConnPid, ok, Headers}, #mstate{} = MState) ->
 handle_info({gun_upgrade, ConnPid, _, _, Headers}, #mstate{} = MState) ->
     ?LOG_DEBUG("[WS] UPGRADE OK [~p]", [ConnPid]),
     Interval = wm_conf:g(ws_ping_interval, {?WS_KEEP_ALIVE, integer}),
     Timer = wm_utils:wake_up_after(Interval, {do_ws_ping, ConnPid}),
     notify_requestor(Headers, [], ok, MState),
     {noreply, MState#mstate{ws_ping_timer = Timer}};
-handle_info({gun_ws_upgrade, ConnPid, error, _, Status, _}, #mstate{} = MState) ->
+handle_info({gun_upgrade, ConnPid, error, _, Status, _}, #mstate{} = MState) ->
     ?LOG_DEBUG("[WS] UPGRADE ERROR: ~p [~p]", [Status, ConnPid]),
     {noreply, retry_command(MState)};
-handle_info({gun_ws, ConnPid, {text, Bin}}, #mstate{} = MState) ->
+handle_info({gun_ws, ConnPid, _, {text, Bin}}, #mstate{} = MState) ->
     ?LOG_DEBUG("[WS] TEXT: ~p [~p]", [Bin, ConnPid]),
     % Ignore the text from ws, cause we get the data from regular attach command
     {noreply, MState};
-handle_info({gun_ws, ConnPid, {close, Status, Data}}, #mstate{} = MState) ->
+handle_info({gun_ws, ConnPid, _, {close, Status, Data}}, #mstate{} = MState) ->
     ?LOG_DEBUG("[WS] CLOSE: ~p ~p [~p]", [Status, Data, ConnPid]),
     {noreply, MState};
 handle_info({gun_error, ConnPid, Msg}, #mstate{} = MState) ->
@@ -178,13 +177,17 @@ handle_info({gun_error, ConnPid, Msg}, #mstate{} = MState) ->
     notify_requestor(<<>>, [], ok, MState),
     {noreply, MState};
 handle_info({gun_down, ConnPid, Proto, Reason, _}, #mstate{} = MState) ->
-    ?LOG_DEBUG("CONNECTION DOWN: ~p, proto= ~p [~p]", [Reason, Proto, ConnPid]),
+    ?LOG_DEBUG("CONNECTION DOWN: ~p, proto=~p [~p]", [Reason, Proto, ConnPid]),
     shutdown(MState),
     {stop, normal, MState};
+handle_info({'DOWN', MRef, process, ConnPid, Msg={undef, [{gun_raw, _, _, _}|_]}}, #mstate{mref = MRef} = MState) ->
+    ?LOG_DEBUG("DOWN (bug in gun?): ~p [~p]", [Msg, ConnPid]),
+    shutdown(MState),
+    {stop, shutdown, MState};
 handle_info({'DOWN', MRef, process, ConnPid, Msg}, #mstate{mref = MRef, conn_pid = ConnPid} = MState) ->
     ?LOG_DEBUG("DOWN: ~p [~p]", [Msg, ConnPid]),
     shutdown(MState),
-    {stop, normal, MState};
+    {stop, shutdown, MState};
 handle_info({gun_inform, ConnPid, _, Status, Hdrs}, #mstate{} = MState) ->
     ?LOG_DEBUG("GUN INFORM: ~p status=~p [~p]", [Hdrs, Status, ConnPid]),
     NewHdrs = MState#mstate.hdrs ++ Hdrs,
@@ -256,8 +259,7 @@ retry_command(MState = #mstate{command = undefined}) ->
     ?LOG_ERROR("The command will not be retried (undefined)"),
     MState;
 retry_command(MState = #mstate{retries = 0}) ->
-    ?LOG_INFO("The command will not be retried: no "
-              "more retries have remained"),
+    ?LOG_INFO("The command will not be retried: no more retries have remained"),
     shutdown(MState),
     exit(normal),
     MState;
@@ -301,9 +303,7 @@ handle_docker_output(<<Type:8/integer, 0, 0, 0, FrameSize:32/integer, Data/binar
             when DataSize
                  > FrameSize ->  % received whole frame plus extra data
             <<Frame:FrameSize/binary, ExtraData/binary>> = Data,
-            ?LOG_DEBUG("[FRAME] received: whole frame + extra "
-                       "~p bytes",
-                       [byte_size(ExtraData)]),
+            ?LOG_DEBUG("[FRAME] received: whole frame + extra ~p bytes", [byte_size(ExtraData)]),
             handle_frame(Type, Frame, MState),
             handle_docker_output(ExtraData, reset_data_state(MState));
         PartSize ->  % received a part of frame

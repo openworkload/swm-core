@@ -119,7 +119,7 @@ handle_cast({subscribe, ModuleTaskId, EventType}, MState) ->
         end,
     {noreply, MState#mstate{subscribers = SsMap}};
 handle_cast({event, EventType, EventData}, MState) ->
-    ?LOG_DEBUG("Event recevied: ~p, ~p}", [EventType, EventData]),
+    ?LOG_DEBUG("Event ~p received: ~p", [EventType, EventData]),
     {noreply, handle_event(EventType, EventData, MState)};
 handle_cast({send_event, AllState, From, ModuleTaskId, Msg}, MState) ->
     ?LOG_DEBUG("Received send event cast, task=~p, msg=~P", [ModuleTaskId, Msg, 10]),
@@ -197,13 +197,16 @@ handle_event(Event, {ModuleTaskId, Extra}, MState) when Event == MState#mstate.d
     Me = node(),
     case Extra of
         {node, Me} ->
-            Nodes = get_nodes(ModuleTaskId, MState),
-            wm_event:announce_nodes(Nodes, Event, {ModuleTaskId, Extra});
+            SelfNodeId = wm_self:get_node_id(),
+            Nodes1 = get_nodes(ModuleTaskId, MState),
+            Nodes2 = lists:filter(fun(Node) -> wm_entity:get_attr(id, Node) =/= SelfNodeId end, Nodes1),
+            wm_event:announce_nodes(Nodes2, Event, {ModuleTaskId, Extra});
         _ ->
             ok
     end,
     terminate_task(ModuleTaskId, MState);
 handle_event(Event, {ModuleTaskId, EventData}, MState) ->
+    ?LOG_DEBUG("Event received for task ~p: ~p", [ModuleTaskId, Event]),
     case maps:get(ModuleTaskId, MState#mstate.subscribers, []) of
         SubscribedEvents ->
             case sets:is_element(ModuleTaskId, SubscribedEvents) of
@@ -225,7 +228,7 @@ start_module(ModuleTaskId, ExtraData, Nodes, MState) ->
     ?LOG_DEBUG("Start module ~p for task ~p (~p)", [?MODULE, ModuleTaskId, Nodes]),
     Module = MState#mstate.module,
     AddrList = [wm_utils:get_address(X) || X <- Nodes],
-    ?LOG_DEBUG("Start ~p for ~p nodes, ~p", [Module, length(AddrList) + 1, ModuleTaskId]),
+    ?LOG_DEBUG("Start ~p for ~p nodes, ~p", [Module, length(AddrList), ModuleTaskId]),
     Args = [{extra, ExtraData}, {nodes, AddrList}, {task_id, ModuleTaskId}, {root, MState#mstate.root}],
     case wm_sup:start_link({[Module], Args}) of
         {ok, SupPid} ->

@@ -6,6 +6,7 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-include("../../../include/wm_scheduler.hrl").
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 
@@ -125,7 +126,7 @@ handle_event(wm_commit_done, {COMMIT_ID, _}, MState) ->
             MState
     end;
 handle_event(proc_started, {JobID, Node}, MState) ->
-    update_job(JobID, state, "R"),
+    update_job(JobID, state, ?JOB_STATE_RUNNING),
     update_job(JobID, start_time, wm_utils:now_iso8601(without_ms)),
     event_to_parent({event, proc_started, {JobID, Node}}),
     MState.

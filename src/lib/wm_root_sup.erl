@@ -74,8 +74,7 @@ stop_child(Mod) ->
 %% ============================================================================
 
 add_arg(Name, Value, Args) ->
-    List = [[{Name, Value} | hd(Args)]],
-    List.
+    [[{Name, Value} | hd(Args)]].
 
 get_worker_spec(wm_factory_mst, Args) ->
     Args1 = add_arg(regname, wm_factory_mst, Args),
@@ -105,9 +104,7 @@ get_worker_spec(Mod, Args) ->
 restarter_process() ->
     receive
         {restart_all, ReqPid} ->
-            ?LOG_INFO("All modules will be restarted now (request "
-                      "by ~p)",
-                      [ReqPid]),
+            ?LOG_INFO("All modules will be restarted now (request by ~p)", [ReqPid]),
             restart_children(),
             restarter_process()
     end.

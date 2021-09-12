@@ -142,6 +142,7 @@ do_cast_neighbours(EventType, EventData) ->
     do_cast_nodes(FullNodeNames, EventType, EventData).
 
 do_cast_nodes(Nodes, EventType, EventData) ->
+    ?LOG_DEBUG("Cast nodes ~d with event ~p", [length(Nodes), EventType]),
     Args = {EventType, EventData},
     F = fun(Addr) -> wm_rpc:cast(?MODULE, cast_subscribers, Args, Addr) end,
     [F(Node) || Node <- Nodes].

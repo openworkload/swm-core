@@ -17,7 +17,7 @@
 -define(PORTER_DATA_TYPE_USERS, 0).
 -define(PORTER_DATA_TYPE_JOBS, 1).
 % Job states
--define(JOB_STATE_RUNNING, "E").
+-define(JOB_STATE_RUNNING, "R").
 -define(JOB_STATE_QUEUED, "Q").
 -define(JOB_STATE_WAITING, "W").
 -define(JOB_STATE_FINISHED, "F").

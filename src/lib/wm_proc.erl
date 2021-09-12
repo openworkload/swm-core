@@ -42,9 +42,6 @@ handle_info({output, BinOut, From}, State, #mstate{} = MState) ->
     ?LOG_DEBUG("Porter output: ~p (from ~p)", [Process, From]),
     do_announce_completed(Process, MState),
     {next_state, State, MState};
-handle_info(check_process, State, MState) ->
-    ?LOG_DEBUG("Check process ~p [[[NOT IMPLEMENTED]]]", [get_id(MState)]),
-    {next_state, State, MState};
 handle_info({'EXIT', Proc, normal}, State, #mstate{} = MState) ->
     ?LOG_DEBUG("Process ~p has finished normally (~p)", [Proc, get_id(MState)]),
     {next_state, State, MState}.
@@ -53,9 +50,7 @@ code_change(_, State, MState, _) ->
     {ok, State, MState}.
 
 terminate(Status, State, MState) ->
-    Msg = io_lib:format("commit ~p has been terminated (status=~p, "
-                        "state=~p)",
-                        [get_id(MState), Status, State]),
+    Msg = io_lib:format("proc ~p has been terminated (status=~p, state=~p)", [get_id(MState), Status, State]),
     wm_utils:terminate_msg(?MODULE, Msg).
 
 %% ============================================================================
@@ -87,6 +82,7 @@ finished({{process, Process}, JobID}, #mstate{} = MState) ->
     do_check(Process, MState);
 finished({completed, Process}, #mstate{} = MState) ->
     do_complete(Process, MState),
+    ?LOG_DEBUG("Stopping wm_proc"),
     {stop, normal, MState}.
 
 error({{process, Process}, JobID}, #mstate{} = MState) ->
@@ -193,16 +189,14 @@ do_check(Process, MState) ->
     State = wm_entity:get_attr(state, Process),
     ExitCode = wm_entity:get_attr(exitcode, Process),
     Signal = wm_entity:get_attr(signal, Process),
-    ?LOG_DEBUG("Process update: pid=~p state=~p exit=~p "
-               "sig=~p [~p]",
-               [Pid, State, ExitCode, Signal, get_id(MState)]),
+    ?LOG_DEBUG("Process update: pid=~p state=~p exit=~p sig=~p [~p]", [Pid, State, ExitCode, Signal, get_id(MState)]),
     case State of
-        "R" -> %FIXME: user consts
+        ?JOB_STATE_RUNNING ->
             {next_state, running, MState};
-        "F" ->
+        ?JOB_STATE_FINISHED ->
             gen_fsm:send_event(self(), {completed, Process}),
             {next_state, finished, MState};
-        "E" ->
+        ?JOB_STATE_ERROR ->
             gen_fsm:send_event(self(), {completed, Process}),
             {next_state, error, MState}
     end.
@@ -218,7 +212,7 @@ init_porter(User, MState) ->
     wm_container:communicate(MState#mstate.job, BinIn, self()).
 
 do_clean(Job) ->
-    %TODO clean container stuff
+    %TODO clean container stuff (see wm_docker:delete/3)
     ok.
 
 do_complete(Process, MState) ->
@@ -240,7 +234,7 @@ do_announce_completed(Process, MState) ->
     EndTime = wm_utils:now_iso8601(without_ms),
     JobID = wm_entity:get_attr(id, MState#mstate.job),
     case wm_entity:get_attr(state, Process) of
-        "F" ->
+        ?JOB_STATE_FINISHED ->
             EventData = {MState#mstate.sys_pid, {JobID, Process, EndTime, node()}},
             wm_event:announce(wm_proc_done, EventData);
         _ ->
