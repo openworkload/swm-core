@@ -92,12 +92,16 @@ handle_call({cancel_relocation, Job}, _, MState = #mstate{}) ->
 
 handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job finished event received for job ~p", [JobId]),
-    {ok, Relocation} = wm_conf:select(relocation, {job_id, JobId}),
-    RelocationId = wm_entity:get_attr(id, Relocation),
-    ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationId]),
-    wm_conf:delete(Relocation),
-    wm_compute:set_nodes_alloc_state(remote, drained, JobId),
-    ok = wm_factory:send_event_locally(job_finished, virtres, RelocationId),
+    case wm_conf:select(relocation, {job_id, JobId}) of
+        {ok, Relocation} ->
+            RelocationId = wm_entity:get_attr(id, Relocation),
+            ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationId]),
+            wm_conf:delete(Relocation),
+            wm_compute:set_nodes_alloc_state(remote, drained, JobId),
+            ok = wm_factory:send_event_locally(job_finished, virtres, RelocationId);
+        _ ->  % no relocation was created for the job
+            ok
+    end,
     {noreply, MState};
 handle_cast(_, #mstate{} = MState) ->
     {noreply, MState}.

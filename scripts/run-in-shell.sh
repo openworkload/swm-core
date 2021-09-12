@@ -62,9 +62,11 @@ ROOT_DIR=$( dirname "$( dirname "$ME" )" )
 source ${ROOT_DIR}/scripts/swm.env
 
 ## Use paths in source directory
-export SWM_CONTAINER_FINALIZE=${ROOT_DIR}/scripts/swm-docker-finalize.sh
 export SWM_SCHED_EXEC=${ROOT_DIR}/../swm-sched/bin/swm-sched
 export SWM_SCHED_LIB=${ROOT_DIR}/../swm-sched/bin
+export SWM_DOCKER_VOLUMES_FROM=swm-dev:ro
+export SWM_FINALIZE_IN_CONTAINER=${ROOT_DIR}/scripts/swm-docker-finalize.sh
+export SWM_PORTER_IN_CONTAINER=${ROOT_DIR}/c_src/porter/swm-porter
 
 VM_ARGS=$(grep -v -E '^#|^-name|^-sname|^-args_file' "${SWM_VM_ARGS}" | xargs | sed -e 's/ / /g')
 

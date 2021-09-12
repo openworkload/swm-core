@@ -151,8 +151,7 @@ load_services(MState, Args) ->
             ?LOG_DEBUG("My short node name is ~s", [SName]),
             case wm_conf:select_node(SName) of
                 {error, need_maint} ->
-                    ?LOG_DEBUG("Could not load services, maintanance "
-                               "is required"),
+                    ?LOG_DEBUG("Could not load services, maintanance is required"),
                     MState2 = start_modules([wm_admin], Args, 0, MState),
                     {error, MState2};
                 {ok, Node} ->
@@ -652,8 +651,7 @@ set_boot_info(BootInfo, MState) ->
     Node =
         case wm_conf:select_node(boot_node) of
             {ok, X} ->
-                ?LOG_DEBUG("Boot node entity is already defined "
-                           "=> update"),
+                ?LOG_DEBUG("Boot node entity is already defined => update"),
                 X;
             {error, _} ->
                 ?LOG_DEBUG("Boot node entity is not defined => create"),

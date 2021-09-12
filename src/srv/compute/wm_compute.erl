@@ -6,6 +6,7 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 
 -record(mstate, {processes = maps:new(), transfers = maps:new()}).
@@ -36,10 +37,7 @@ set_nodes_alloc_state(Kind, Status, JobID) ->
                 end,
             wm_conf:set_nodes_state(state_alloc, Status, Filtered);
         {error, not_found} ->
-            ?LOG_DEBUG("Job ~p job found => don't change nodes "
-                       "state",
-                       [JobID]),
-            ok
+            ?LOG_DEBUG("Job ~p job found => don't change nodes state", [JobID])
     end.
 
 %% ============================================================================
@@ -50,9 +48,7 @@ handle_call(_Msg, _From, MState) ->
     {reply, {error, not_handled}, MState}.
 
 handle_cast({job_arrived, JobNodes, JobID}, MState) ->
-    ?LOG_DEBUG("Received event that job ~p has been "
-               "propagated",
-               [JobID]),
+    ?LOG_DEBUG("Received event that job ~p has been propagated", [JobID]),
     {noreply, start_job_processes(JobNodes, JobID, MState)};
 handle_cast({event, EventType, EventData}, MState) ->
     {noreply, handle_event(EventType, EventData, MState)}.
@@ -74,8 +70,7 @@ code_change(_OldVsn, MState, _Extra) ->
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
-    ?LOG_INFO("Compute node management service has "
-              "been started"),
+    ?LOG_INFO("Compute node management service has been started"),
     wm_event:subscribe(job_start_time, node(), ?MODULE),
     wm_event:subscribe(job_arrived, node(), ?MODULE),
     wm_event:subscribe(wm_proc_done, node(), ?MODULE),
@@ -135,17 +130,27 @@ handle_event(proc_started, {JobID, Node}, MState) ->
     event_to_parent({event, proc_started, {JobID, Node}}),
     MState.
 
+-spec handle_timetable([#timetable{}], #mstate{}) -> #mstate{}.
 handle_timetable([], MState) ->
     MState;
 handle_timetable([X | T], MState) ->
     JobID = wm_entity:get_attr(job_id, X),
     JobNodeIds = wm_entity:get_attr(job_nodes, X),
-    ?LOG_DEBUG("Handle job ~p, nodes: ~p", [JobID, JobNodeIds]),
+    ?LOG_DEBUG("Handle job ~p, node IDs: ~p", [JobID, JobNodeIds]),
+    SelfNodeId = wm_self:get_node_id(),
     case JobNodeIds of
         [] ->
             ?LOG_DEBUG("No appropriate nodes found for job ~p", [JobID]),
             handle_timetable(T, MState);
+        [FirstNodeId | _] when FirstNodeId == SelfNodeId ->
+            Nodes = wm_conf:select_many(node, id, JobNodeIds),
+            ?LOG_DEBUG("Job will be started locally (on ~p)", [wm_entity:get_attr(name, hd(Nodes))]),
+            wm_conf:set_nodes_state(state_alloc, busy, Nodes),
+            update_job(JobID, nodes, JobNodeIds),
+            MState2 = start_job_processes(Nodes, JobID, MState),
+            handle_timetable(T, MState2);
         _ ->
+            ?LOG_DEBUG("Job will be sent to its compute nodes, job id: ~p", [JobID]),
             Records = wm_db:get_one(job, id, JobID),
             {ok, MyNode} = wm_self:get_node(),
             F = fun(Z) -> wm_conf:get_relative_address(Z, MyNode) end,
@@ -165,6 +170,7 @@ handle_timetable([X | T], MState) ->
             end
     end.
 
+-spec start_job_processes([#node{}], job_id(), #mstate{}) -> #mstate{}.
 start_job_processes(JobNodes, JobID, MState) ->
     ?LOG_DEBUG("Start process of job ~p", [JobID]),
     %TODO Calculate number of processes for this node and start/follow all of them
@@ -172,6 +178,7 @@ start_job_processes(JobNodes, JobID, MState) ->
     {ok, ProcID} = wm_factory:new(proc, Job, JobNodes),
     add_proc(JobID, ProcID, JobNodes, MState).
 
+-spec add_proc(job_id(), string(), [#node{}], #mstate{}) -> #mstate{}.
 add_proc(JobID, ProcID, JobNodes, MState) ->
     JobPsMap1 = maps:get(JobID, MState#mstate.processes, maps:new()),
     JobPsMap2 = maps:put(ProcID, JobNodes, JobPsMap1),
