@@ -3,25 +3,18 @@
 Prepare Docker (for both dev and prod setups):
 ==============================================
 
-In the current version of SWM jobs are always started via docker.
+In the current version of SWM jobs are started via docker.
 All the communications between SWM and docker daemon are performed
 via a TCP port. By default it is port 6000 (set as SWM global option,
 that can be changed). The developer or administrator should ensure
-that the docker daemon listens to this port (usually by default it
-does not do that).
+that the docker daemon listens to this port on the compute nodes
+(usually by default it does not do that by default).
 
-For that purpose this option can be added to /etc/default/docker
-in case of production setup:
+For that purpose this "-H tcp://127.0.0.1:6000" can be added to start
+arguments in docker.service.
 
- DOCKER_OPTS="-H tcp://127.0.0.1:6000"
-
-or in case of dev setup (in order to allow connections from
-SWM in dev container to a host's docker daemon):
-
- DOCKER_OPTS="-H tcp://0.0.0.0:6000" # WARNING: do not user in prod!
-
-Then restart docker daemon on the host. This should be done on every
-compute node where the jobs are suppose to run.
+Then do "systemctl daemon-reload" and "systemctl restart docker".
+This should be done on every compute node where the jobs are suppose to run.
 
 
 ==============================================
