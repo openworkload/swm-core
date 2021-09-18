@@ -32,8 +32,8 @@ node_prices(Node) ->
     lists:foldl(fun(Resource, Acc) ->
                    Count = wm_entity:get_attr(count, Resource),
                    Prices = wm_entity:get_attr(prices, Resource),
-                   maps:fold(fun(AccountId, Price, Acc) ->
-                                Acc#{AccountId => maps:get(AccountId, Acc, 0) + Count * Price}
+                   maps:fold(fun(AccountId, Price, Acc2) ->
+                                Acc2#{AccountId => maps:get(AccountId, Acc2, 0) + Count * Price}
                              end,
                              Acc,
                              Prices)
@@ -115,7 +115,7 @@ parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
 -spec job_cost(#job{}, [#node{}]) -> {ok, {#node{}, number()}} | {error, not_found}.
-job_cost(Jobs, []) ->
+job_cost(_, []) ->
     {error, not_found};
 job_cost(Job, Nodes) ->
     AccountId = wm_entity:get_attr(account_id, Job),
@@ -129,9 +129,9 @@ job_cost(Job, Nodes) ->
                   end,
                   Nodes),
     Result =
-        lists:foldl(fun ({CurrNode, CurrPrice} = Current, {Node, Price} = Acc) when CurrPrice < Price ->
+        lists:foldl(fun ({_CurrNode, CurrPrice} = Current, {_Node, Price}) when CurrPrice < Price ->
                             Current;
-                        (Current, Acc) ->
+                        (_Current, Acc) ->
                             Acc
                     end,
                     X,

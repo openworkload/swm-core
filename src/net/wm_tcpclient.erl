@@ -12,6 +12,7 @@
 %% API functions
 %% ============================================================================
 
+-spec connect(list()) -> {ok, any()} | {error, term()}.
 connect(Args) ->
     Host = get_host(Args),
     Port = maps:get(port, Args, ?DEFAULT_PORT),
@@ -53,7 +54,8 @@ connect(Args) ->
         end
     catch
         E1:E2 ->
-            ?LOG_ERROR("SSL error: ~p: ~p", [E1, E2])
+            ?LOG_ERROR("SSL error: ~p: ~p", [E1, E2]),
+            {error, {E1, E2}}
     end.
 
 disconnect(Socket) ->

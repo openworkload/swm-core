@@ -180,7 +180,7 @@ handle_info({gun_down, ConnPid, Proto, Reason, _}, #mstate{} = MState) ->
     ?LOG_DEBUG("CONNECTION DOWN: ~p, proto=~p [~p]", [Reason, Proto, ConnPid]),
     shutdown(MState),
     {stop, normal, MState};
-handle_info({'DOWN', MRef, process, ConnPid, Msg={undef, [{gun_raw, _, _, _}|_]}}, #mstate{mref = MRef} = MState) ->
+handle_info({'DOWN', MRef, process, ConnPid, Msg = {undef, [{gun_raw, _, _, _} | _]}}, #mstate{mref = MRef} = MState) ->
     ?LOG_DEBUG("DOWN (bug in gun?): ~p [~p]", [Msg, ConnPid]),
     shutdown(MState),
     {stop, shutdown, MState};

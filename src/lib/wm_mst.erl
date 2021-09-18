@@ -9,18 +9,18 @@
 -include("wm_log.hrl").
 
 -record(mstate,
-        {fragm_id,
-         level,
-         edge_states = maps:new(),
-         best_edge,
-         best_wt,
-         test_edge,
-         in_branch,
-         find_count,
-         state,
-         requests_queue = [],
-         nodes,
-         mst_id}).
+        {fragm_id :: atom(),
+         level :: integer(),
+         edge_states = maps:new() :: map(),
+         best_edge :: atom(),
+         best_wt :: atom() | integer(),
+         test_edge :: atom(),
+         in_branch :: atom(),
+         find_count :: integer(),
+         state :: atom(),
+         requests_queue = [] :: list(),
+         nodes :: list(),
+         mst_id :: string()}).
 
 -define(EDGE_ACTIVATION_TIMEOUT, 5000).
 
@@ -32,8 +32,8 @@
 start_link(Args) ->
     gen_fsm:start_link(?MODULE, Args, []).
 
--spec activate(pid()) -> ok.
 %% @doc Activate a new MST construction
+-spec activate(pid()) -> ok.
 activate(Pid) ->
     ?LOG_DEBUG("Activate ~p", [Pid]),
     gen_fsm:send_event(Pid, wakeup).
@@ -41,6 +41,36 @@ activate(Pid) ->
 %% ============================================================================
 %% Server callbacks
 %% ============================================================================
+
+-spec init(term()) ->
+              {ok, atom(), term()} |
+              {ok, atom(), term(), hibernate | infinity | non_neg_integer()} |
+              {stop, term()} |
+              ignore.
+-spec handle_event(term(), atom(), term()) ->
+                      {next_state, atom(), term()} |
+                      {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
+                      {stop, term(), term()} |
+                      {stop, term(), term(), term()}.
+-spec handle_sync_event(term(), atom(), atom(), term()) ->
+                           {next_state, atom(), term()} |
+                           {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
+                           {reply, term(), atom(), term()} |
+                           {reply, term(), atom(), term(), hibernate | infinity | non_neg_integer()} |
+                           {stop, term(), term()} |
+                           {stop, term(), term(), term()}.
+-spec handle_info(term(), atom(), term()) ->
+                     {next_state, atom(), term()} |
+                     {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec code_change(term(), atom(), term(), term()) -> {ok, term()}.
+-spec terminate(term(), atom(), term()) -> ok.
+init(Args) ->
+    process_flag(trap_exit, true),
+    MState = parse_args(Args, #mstate{}),
+    ?LOG_INFO("MST module has been started (~p)", [MState#mstate.mst_id]),
+    wm_factory:notify_initiated(mst, MState#mstate.mst_id),
+    {ok, sleeping, MState}.
 
 handle_sync_event(_Event, _From, State, MState) ->
     {reply, State, State, MState}.
@@ -55,19 +85,16 @@ code_change(_OldVsn, StateName, MState, _Extra) ->
     {ok, StateName, MState}.
 
 terminate(Status, StateName, MState) ->
-    Msg = io_lib:format("MST ~p has been terminated (status=~p, "
-                        "state=~p)",
-                        [MState#mstate.mst_id, Status, StateName]),
+    Msg = io_lib:format("MST ~p has been terminated (status=~p, state=~p)", [MState#mstate.mst_id, Status, StateName]),
     wm_utils:terminate_msg(?MODULE, Msg).
 
 %% ============================================================================
 %% FSM state transitions
 %% ============================================================================
 
+-spec sleeping(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 sleeping({connect, From, Level}, MState) ->
-    ?LOG_DEBUG("Received connect from ~p => wake up "
-               "[sleeping]",
-               [From]),
+    ?LOG_DEBUG("Received connect from ~p => wake up [sleeping]", [From]),
     MState2 = wakeup(set_state(found, MState)),
     MState3 = do_connect_resp(From, Level, get_state(MState2), MState2),
     {next_state, get_state(MState3), MState3};
@@ -76,6 +103,7 @@ sleeping(Cmd, MState) ->
     MState2 = wakeup(set_state(found, MState)),
     {next_state, get_state(MState2), MState2}.
 
+-spec find(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 find({connect, From, Level}, MState) ->
     ?LOG_DEBUG("Received 'connect' (E=~p, L=~p) [find]", [From, Level]),
     MState2 = do_connect_resp(From, Level, find, set_state(find, MState)),
@@ -86,9 +114,7 @@ find({initiate, From, Level, FID, NodeState}, MState) ->
     MState3 = do_initiate_resp(From, Level, FID, NodeState, MState2),
     {next_state, get_state(MState3), MState3};
 find({test, From, Level, FID}, MState) ->
-    ?LOG_DEBUG("Received 'test' from ~p (L=~p, F=~p) "
-               "[find]",
-               [From, Level, FID]),
+    ?LOG_DEBUG("Received 'test' from ~p (L=~p, F=~p) [find]", [From, Level, FID]),
     MState2 = do_test_resp(From, Level, FID, set_state(find, MState)),
     {next_state, get_state(MState2), MState2};
 find({accept, From}, MState) ->
@@ -110,6 +136,7 @@ find({change_root, From}, MState) ->
 find(wakeup, MState) ->
     {next_state, get_state(MState), MState}.
 
+-spec found(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 found({connect, From, Level}, MState) ->
     ?LOG_DEBUG("Received 'connect' (E=~p, L=~p) [found]", [From, Level]),
     MState2 = do_connect_resp(From, Level, found, set_state(found, MState)),
@@ -146,14 +173,7 @@ found(wakeup, MState) ->
 %% FSM implementation functions
 %% ============================================================================
 
-%% @hidden
-init(Args) ->
-    process_flag(trap_exit, true),
-    MState = parse_args(Args, #mstate{}),
-    ?LOG_INFO("MST module has been started (~p)", [MState#mstate.mst_id]),
-    wm_factory:notify_initiated(mst, MState#mstate.mst_id),
-    {ok, sleeping, MState}.
-
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{nodes, Nodes} | T], MState) ->
@@ -168,8 +188,7 @@ parse_args([{_, _} | T], MState) ->
 %% ============================================================================
 
 wakeup(MState) ->
-    ?LOG_INFO("Wake up and explore nodes constructing "
-              "new MST"),
+    ?LOG_INFO("Wake up and explore nodes constructing new MST"),
     case MState#mstate.nodes of
         [] ->
             do_halt(MState);
@@ -356,8 +375,7 @@ try_report(MState) ->
            case MState#mstate.in_branch of
                none ->
                    ?LOG_DEBUG("My in-branch is looped and all find-branches"
-                              ++ " were reported to me, so lets halt the "
-                                 "algorithm"),
+                              ++ " were reported to me, so lets halt the algorithm"),
                    set_state(found, MState),
                    do_halt(MState);
                _ ->
@@ -417,8 +435,7 @@ do_change_root_resp(From, MState) ->
     do_change_root(From, MState).
 
 do_halt(MState) ->
-    ?LOG_DEBUG("Do halt the algorithm, MST has been "
-               "found with a single leader"),
+    ?LOG_DEBUG("Do halt the algorithm, MST has been found with a single leader"),
     MyAddr = wm_conf:get_my_address(),
     wm_event:announce(wm_mst_done, {MState#mstate.mst_id, {node, MyAddr}}),
     MState.
@@ -468,9 +485,7 @@ send_to_min_weight_edge(Msg, Edges, MState) ->
                     {true, MState#mstate{test_edge = Edge}};
                 Error ->
                     RemainingEdges = Edges -- [Edge],
-                    ?LOG_DEBUG("Failed to send ~p to ~p: ~p (remaining "
-                               "edges: ~p)",
-                               [Msg, Edge, Error, RemainingEdges]),
+                    ?LOG_DEBUG("Failed to send ~p to ~p: ~p (remaining edges: ~p)", [Msg, Edge, Error, RemainingEdges]),
                     MState2 = set_edge_state(Edge, rejected, MState),
                     send_to_min_weight_edge(Msg, RemainingEdges, MState2)
             end
@@ -508,11 +523,9 @@ set_state(State, MState) ->
     end.
 
 format_mstate(MState) ->
-    io_lib:format("fragm_id=~p level=~p edge_states=~p "
-                  "best_edge=~p"
-                  ++ " best_wt=~p test_edge=~p in_branch=~p "
-                     "find_count=~p"
-                  ++ " state=~p queuesize=~p id=~p",
+    io_lib:format("fragm_id=~p level=~p edge_states=~p best_edge=~p"
+                  " best_wt=~p test_edge=~p in_branch=~p find_count=~p"
+                  " state=~p queuesize=~p id=~p",
                   [MState#mstate.fragm_id,
                    MState#mstate.level,
                    maps:to_list(MState#mstate.edge_states),
@@ -524,7 +537,3 @@ format_mstate(MState) ->
                    MState#mstate.state,
                    length(MState#mstate.requests_queue),
                    MState#mstate.mst_id]).
-
-%% ============================================================================
-%% Tests
-%% ============================================================================

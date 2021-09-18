@@ -70,9 +70,7 @@ handle_call({call_port, Rr, Msg}, _, #mstate{port = Port} = MState) when is_port
     ?LOG_DEBUG("Call port ~p", [Port]),
     {reply, port_command(Port, Msg), MState#mstate{requestor = Rr}};
 handle_call({call_port, Requestor, _}, _, MState) ->
-    ?LOG_ERROR("Communication from ~p failed (port is "
-               "closed)",
-               [Requestor]),
+    ?LOG_ERROR("Communication from ~p failed (port is closed)", [Requestor]),
     Requestor ! {port_error, "Port is closed"},
     {reply, true, MState};
 handle_call(Msg, From, MState) ->
@@ -107,9 +105,7 @@ handle_info({Port, {data, Data}}, #mstate{port = Port} = MState) ->
     {noreply, MState}.
 
 terminate(Reason, #mstate{port = Port} = _MState) ->
-    Msg = io_lib:format("Port manager has been terminated (~w, "
-                        "~p)",
-                        [Reason, Port]),
+    Msg = io_lib:format("Port manager has been terminated (~w, ~p)", [Reason, Port]),
     wm_utils:terminate_msg(?MODULE, Msg),
     catch port_close(Port).
 

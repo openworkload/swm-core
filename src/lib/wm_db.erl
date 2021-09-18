@@ -6,12 +6,13 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([is_running/0, wait_for_table/1, ensure_tables_exist/1, ensure_table_exists/3, ensure_stopped/0,
          ensure_running/0, get_all/1, get_all/2, get_one/3, get_one_2keys/3, get_many/3, get_less_equal/3,
-         update_exist/4, update/1, upgrade_schema/1, clear_table/1, force_load_tables/0, table_exists/1,
+         update_existing/4, update/1, upgrade_schema/1, clear_table/1, force_load_tables/0, table_exists/1,
          get_all_tab_names/0, propagate_tables/2, propagate_tables/3, delete_by_key/2, delete/1, get_hashes/1,
-         compare_hashes/2, get_tables_meta/1, create_the_rest_tables/0, get_global/3, get_address/1, get_size/1]).
+         compare_hashes/1, get_tables_meta/1, create_the_rest_tables/0, get_global/3, get_address/1, get_size/1]).
 -export([get_many_pred/2]).
 -export([with_transaction/1]).
 
+-include("wm_entity.hrl").
 -include("wm_log.hrl").
 
 -include_lib("stdlib/include/ms_transform.hrl").
@@ -21,7 +22,7 @@
 -define(MNESIA_DEFAULT_SAVE_PERIOD, 30000).
 -define(DEFAULT_PROPAGATION_TIMEOUT, 60000).
 
--record(mstate, {propagations = maps:new()}).
+-record(mstate, {propagations = maps:new() :: map()}).
 
 %% ============================================================================
 %% API
@@ -40,47 +41,59 @@ get_size(Tab) ->
 is_running() ->
     mnesia:system_info(is_running).
 
+-spec ensure_running() -> ok | {error, term()}.
 ensure_running() ->
     do_ensure_running().
 
+-spec ensure_stopped() -> {ok, atom()} | {error, term()}.
 ensure_stopped() ->
     case is_running() of
         yes ->
             stop_db();
         _ ->
-            ok
+            {ok, stopped}
     end.
 
+-spec wait_for_table(atom()) -> ok | {error, term()}.
 wait_for_table(TabName) ->
     do_wait_for_table(TabName).
 
+-spec get_all(atom()) -> [term()].
 get_all(Tab) ->
     get_records(Tab).
 
+-spec get_all(atom(), integer()) -> [tuple()].
 get_all(Tab, MaxReturnedListSize) ->
     get_records({Tab, MaxReturnedListSize}).
 
+-spec get_one(atom(), atom(), term()) -> [tuple()].
 get_one(Tab, Attr, Value) ->
     do_get_one(Tab, Attr, Value).
 
+-spec get_one_2keys(atom(), {atom(), term()}, {atom(), term()}) -> [tuple()].
 get_one_2keys(Tab, {Attr1, Value1}, {Attr2, Value2}) ->
     do(qlc:q([X
               || X <- mnesia:table(Tab),
                  wm_entity:get_attr(Attr1, X) =:= Value1,
                  wm_entity:get_attr(Attr2, X) =:= Value2])).
 
+-spec get_many(atom(), atom(), list()) -> [tuple()].
 get_many(Tab, Attr, Values) ->
     do_get_many(Tab, Attr, Values).
 
+-spec get_less_equal(atom(), atom(), term()) -> [tuple()].
 get_less_equal(Tab, Attr, Value) ->
     do(qlc:q([X || X <- mnesia:table(Tab), wm_entity:get_attr(Attr, X) =< Value])).
 
-update_exist(Tab, {KeyName, KeyVal}, Attr, AttrVal) ->
-    do_update_exist(Tab, KeyName, KeyVal, Attr, AttrVal).
+-spec update_existing(atom(), {atom(), term()}, atom(), term()) -> {atomic, term()} | {aborted, term()}.
+update_existing(Tab, {KeyName, KeyVal}, Attr, AttrVal) ->
+    do_update_existing(Tab, KeyName, KeyVal, Attr, AttrVal).
 
+-spec update([tuple()]) -> pos_integer().
 update(Records) when is_list(Records) ->
     do_update(Records, 0).
 
+-spec upgrade_schema([{binary(), {struct, list()}}]) -> [{atom, atom()} | {error, string()}].
 upgrade_schema(Json) ->
     ?LOG_DEBUG("Upgrade schema call: ~P", [Json, 10]),
     case do_upgrade_schema(Json, []) of
@@ -105,41 +118,51 @@ upgrade_schema(Json) ->
             Results
     end.
 
+-spec force_load_tables() -> [yes | {error, term()}].
 force_load_tables() ->
     [mnesia:force_load_table(Tab) || Tab <- mnesia:system_info(tables)].
 
+-spec table_exists(atom()) -> boolean().
 table_exists(TabName) ->
     do_table_exists(TabName).
 
+-spec get_all_tab_names() -> [atom()].
 get_all_tab_names() ->
     mnesia:system_info(tables).
 
+-spec ensure_table_exists(atom(), atom(), atom()) -> ok | {error, term()}.
 ensure_table_exists(TabName, Index, Type) when is_atom(TabName) ->
     do_ensure_table(TabName, Index, Type).
 
+-spec ensure_tables_exist([tuple()]) -> ok.
 ensure_tables_exist(Records) ->
     do_ensure_tables(Records).
 
+-spec propagate_tables([atom()], node_address()) -> ok.
 propagate_tables(Nodes, MyAddr) ->
     wm_event:subscribe(wm_commit_done, node(), ?MODULE),
     gen_server:cast(?MODULE, {propagate, Nodes, MyAddr}).
 
+-spec propagate_tables([atom()], atom(), node_address()) -> ok.
 propagate_tables(TabNames, Node, MyAddr) ->
     wm_event:subscribe(wm_commit_done, node(), ?MODULE),
     gen_server:cast(?MODULE, {propagate, TabNames, Node, MyAddr}).
 
--spec delete(term()) -> ok.
+-spec delete(term()) -> {atomic, term()} | {aborted, term()}.
 delete(Record) ->
     transaction(fun() -> mnesia:delete_object(Record) end).
 
+-spec delete_by_key(atom(), term()) -> {atomic, term()} | {aborted, term()}.
 delete_by_key(TabName, KeyVal) ->
     ?LOG_DEBUG("Delete from ~p where key is ~p", [TabName, KeyVal]),
     transaction(fun() -> mnesia:delete({TabName, KeyVal}) end).
 
+-spec clear_table(atom()) -> {atomic, term()} | {aborted, term()}.
 clear_table(TabName) ->
     ?LOG_DEBUG("Clear table ~p", [TabName]),
     mnesia:clear_table(TabName).
 
+-spec get_hashes(atom()) -> [binary()].
 get_hashes(schema) ->
     ?LOG_DEBUG("Get schema hashes"),
     AllTabNames = mnesia:system_info(tables),
@@ -153,12 +176,15 @@ get_hashes(tables) ->
     ReplicableTabNames = lists:subtract(AllTabNames, NonReplicableTabNames),
     do_get_tab_content_hash(ReplicableTabNames, []).
 
-compare_hashes(content, Hashes) ->
-    DifferentTabs = do_compare_hashes(content, Hashes, []),
+%% @doc Compare tables content hashes
+-spec compare_hashes([binary()]) -> [atom()].
+compare_hashes(Hashes) ->
+    DifferentTabs = do_compare_hashes(Hashes, []),
     ?LOG_DEBUG("Tables, which content differs:  ~p", [DifferentTabs]),
     DifferentTabs.
 
 %% @doc Return fields structures for tables with different hashes
+-spec get_tables_meta([{atom(), binary()}]) -> [{atom(), {struct, list()}}].
 get_tables_meta(Hs) ->
     ?LOG_DEBUG("Get tables meta"),
     Meta = do_get_tables_meta(Hs, []),
@@ -170,13 +196,16 @@ get_tables_meta(Hs) ->
     ?LOG_DEBUG("New unknown tables: ~p", [RemainTabs]),
     do_get_tables_meta(RemainTabs, Meta).
 
-%% @doc Create tables that don't exist in db but should
+%% @doc Create tables that don't exist in db but should exist
+-spec create_the_rest_tables() -> pos_integer().
 create_the_rest_tables() ->
     do_create_the_rest_tables().
 
+-spec get_global(string(), atom(), term()) -> term().
 get_global(Name, Type, Default) ->
     do_get_global(Name, Type, Default).
 
+-spec get_address(string()) -> node_address() | not_found.
 get_address(NodeStr) when is_list(NodeStr) ->
     do_get_address(NodeStr).
 
@@ -339,6 +368,7 @@ code_change(_OldVsn, Data, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec handle_event(atom(), term(), #mstate{}) -> #mstate{}.
 handle_event(wm_commit_done, {COMMIT_ID, _}, MState) ->
     ?LOG_DEBUG("Some commit ~p finish has detected", [COMMIT_ID]),
     case maps:is_key(COMMIT_ID, MState#mstate.propagations) of
@@ -352,6 +382,7 @@ handle_event(wm_commit_done, {COMMIT_ID, _}, MState) ->
             MState#mstate{propagations = Map}
     end.
 
+-spec start_db() -> ok | {error, term()}.
 start_db() ->
     case mnesia:system_info(is_running) of
         no ->
@@ -366,6 +397,7 @@ start_db() ->
             ok
     end.
 
+-spec do_ensure_running() -> ok | {error, term()}.
 do_ensure_running() ->
     case mnesia:system_info(use_dir) of
         false ->
@@ -384,16 +416,19 @@ do_ensure_running() ->
             start_db()
     end.
 
+-spec do(fun()) -> {ok, term()} | {error, term()}.
 do(Q) ->
     F = fun() -> qlc:e(Q) end,
     transaction(F).
 
+-spec get_many_tabs_records([atom()], [tuple()]) -> [tuple()].
 get_many_tabs_records([], AllRecords) ->
     AllRecords;
 get_many_tabs_records([TabName | RestTabNames], AllRecords) ->
     TabRecords = do(qlc:q([X || X <- mnesia:table(TabName)])),
     get_many_tabs_records(RestTabNames, lists:append(TabRecords, AllRecords)).
 
+-spec get_records([atom()]) -> [tuple()].
 get_records(TabNames) when is_list(TabNames) ->
     get_many_tabs_records(TabNames, []);
 get_records({TabName, MaxReturnedListSize}) ->
@@ -408,12 +443,11 @@ get_records({TabName, MaxReturnedListSize}) ->
 get_records(TabName) ->
     do(qlc:q([X || X <- mnesia:table(TabName)])).
 
+-spec do_update(list(), pos_integer()) -> pos_integer().
 do_update([], Result) ->
     Result;
 do_update([{Rec, false} | T], Result) ->
-    ?LOG_DEBUG("Update DB with record: ~P (no revision "
-               "change)",
-               [Rec, 10]),
+    ?LOG_DEBUG("Update DB with record: ~P (no revision change)", [Rec, 10]),
     F = fun() -> ok = mnesia:write(Rec) end,
     transaction(F),
     do_update(T, Result + 1);
@@ -426,8 +460,7 @@ do_update([Rec | T], Result) ->
     transaction(F),
     do_update(T, Result + 1).
 
-%% TODO: for error try return error atom,
-%% or specify on_error argument in transaction function contract
+%% TODO: for error try return error atom or specify on_error argument in transaction function contract
 -spec transaction(term()) -> term() | [].
 transaction(F) ->
     case mnesia:transaction(F) of
@@ -438,6 +471,7 @@ transaction(F) ->
             []
     end.
 
+-spec create_table(atom(), atom(), atom()) -> ok.
 create_table(TabName, Index, Type) ->
     ?LOG_DEBUG("Create table ~p (index=~p, type=~p)", [TabName, Index, Type]),
     Opts =
@@ -457,6 +491,7 @@ create_table(TabName, Index, Type) ->
             ?LOG_ERROR("Cannot create ~p table ~w: ~p", [Type, TabName, Reason])
     end.
 
+-spec get_shared_tab_opts(atom(), atom(), atom()) -> [{atom(), term()}].
 get_shared_tab_opts(TabName, Index, Type) ->
     AutoSave = get_global("db_save_period", integer, ?MNESIA_DEFAULT_SAVE_PERIOD),
     [{attributes, wm_entity:get_fields(TabName)},
@@ -466,6 +501,7 @@ get_shared_tab_opts(TabName, Index, Type) ->
      {storage_properties, [{ets, []}, {dets, [{auto_save, AutoSave}]}]},
      {local_content, false}].
 
+-spec get_local_tab_opts(atom(), atom(), atom()) -> [{atom(), term()}].
 get_local_tab_opts(TabName, Index, Type) ->
     AutoSave = get_global("db_save_period", integer, ?MNESIA_DEFAULT_SAVE_PERIOD),
     [{attributes, wm_entity:get_fields(TabName)},
@@ -475,6 +511,7 @@ get_local_tab_opts(TabName, Index, Type) ->
      {storage_properties, [{ets, []}, {dets, [{auto_save, AutoSave}]}]},
      {local_content, true}].
 
+-spec do_ensure_table(atom(), atom(), atom()) -> ok | {error, term()}.
 do_ensure_table(TabName, Index, Type) ->
     case table_exists(TabName) of
         true ->
@@ -484,6 +521,7 @@ do_ensure_table(TabName, Index, Type) ->
             wait_for_table(TabName)
     end.
 
+-spec do_ensure_tables([tuple()]) -> ok.
 do_ensure_tables([]) ->
     ok;
 do_ensure_tables([Tab | T]) ->
@@ -492,6 +530,7 @@ do_ensure_tables([Tab | T]) ->
     do_ensure_table(TabName, ExtraIndexes, local),
     do_ensure_tables(T).
 
+-spec get_tab_opts(atom(), atom(), atom()) -> [{atom(), term()}].
 get_tab_opts(Tab, Index, local_bag) ->
     get_local_tab_opts(Tab, Index, bag);
 get_tab_opts(Tab, Index, local) ->
@@ -499,18 +538,23 @@ get_tab_opts(Tab, Index, local) ->
 get_tab_opts(Tab, Index, shared) ->
     get_shared_tab_opts(Tab, Index, set).
 
+-spec stop_db() -> {ok, stopped} | {error, term()}.
 stop_db() ->
-    ?LOG_INFO("Stop database"),
+    ?LOG_INFO("Stop local configuration DB"),
     case mnesia:system_info(is_running) of
-        yes ->
-            {ok, mnesia:stop()};
-        starting ->
-            {ok, mnesia:stop()};
+        X when X =:= yes; X =:= starting ->
+            case mnesia:stop() of
+                stopped ->
+                    {ok, stopped};
+                {error, Term} ->
+                    {error, Term}
+            end;
         _ ->
-            ?LOG_INFO("Database has already stopped"),
+            ?LOG_DEBUG("Mnesia is already stopped"),
             {ok, stopped}
     end.
 
+-spec do_propagate_tables([atom()], [atom()], #mstate{}) -> #mstate{}.
 do_propagate_tables(TabNames, Nodes, MState) ->
     ?LOG_DEBUG("Do propagate ~p to ~w", [TabNames, Nodes]),
     Records = get_records(TabNames),
@@ -526,10 +570,12 @@ do_propagate_tables(TabNames, Nodes, MState) ->
             MState
     end.
 
+-spec do_table_exists(atom()) -> boolean().
 do_table_exists(TabName) ->
     Tables = mnesia:system_info(tables),
     lists:member(TabName, Tables).
 
+-spec do_wait_for_table(atom()) -> {error, term()} | ok.
 do_wait_for_table(TabName) ->
     MnesiaTimeout = get_global("db_timeout", integer, ?MNESIA_DEFAULT_TIMEOUT),
     case do_table_exists(TabName) of
@@ -553,11 +599,11 @@ do_wait_for_table(TabName) ->
             end
     end.
 
+-spec do_get_many(atom(), atom(), [term()]) -> {ok, term()} | {error, term()}.
 do_get_many(Tab, Attr, Values) ->
-    Result =
-        do(qlc:q([X || X <- mnesia:table(Tab), lists:any(fun(Y) -> wm_entity:get_attr(Attr, X) =:= Y end, Values)])),
-    Result.
+    do(qlc:q([X || X <- mnesia:table(Tab), lists:any(fun(Y) -> wm_entity:get_attr(Attr, X) =:= Y end, Values)])).
 
+-spec do_get_tables_meta([{atom(), binary()}], [{atom(), {struct, list()}}]) -> [{atom(), {struct, list()}}].
 do_get_tables_meta([], Meta) ->
     Meta;
 do_get_tables_meta([{TabName, ReqHash} | T], Meta) ->
@@ -589,6 +635,7 @@ do_get_tables_meta([{TabName, ReqHash} | T], Meta) ->
             end
     end.
 
+-spec do_get_remain_meta([atom()], [{atom(), binary()}], [{atom(), binary()}]) -> [{atom(), binary()}].
 do_get_remain_meta([], _, Remain) ->
     Remain;
 do_get_remain_meta([Tab | T], RemoteHashes, Remain) ->
@@ -599,19 +646,21 @@ do_get_remain_meta([Tab | T], RemoteHashes, Remain) ->
             do_get_remain_meta(T, RemoteHashes, Remain)
     end.
 
-do_compare_hashes(content, [], DifferentTabs) ->
+-spec do_compare_hashes([binary()], [atom()]) -> [atom()].
+do_compare_hashes([], DifferentTabs) ->
     DifferentTabs;
-do_compare_hashes(content, [{TabName, CheckHash} | T], DifferentTabs) ->
+do_compare_hashes([{TabName, CheckHash} | T], DifferentTabs) ->
     LocalHash = do_get_tab_content_hash(TabName),
     case LocalHash of
         CheckHash ->
             ?LOG_DEBUG("Hash is the same: ~p (~p)", [CheckHash, TabName]),
-            do_compare_hashes(content, T, DifferentTabs);
+            do_compare_hashes(T, DifferentTabs);
         _ ->
             ?LOG_DEBUG("Hashes differ: ~p != ~p (~p)", [CheckHash, LocalHash, TabName]),
-            do_compare_hashes(content, T, [TabName | DifferentTabs])
+            do_compare_hashes(T, [TabName | DifferentTabs])
     end.
 
+-spec do_get_tab_content_hash([atom()], [{atom(), binary()}]) -> [{atom(), binary()}].
 do_get_tab_content_hash([], Hs) ->
     Hs;
 do_get_tab_content_hash([TabName | T], Hs) ->
@@ -619,6 +668,7 @@ do_get_tab_content_hash([TabName | T], Hs) ->
     H = do_get_tab_content_hash(TabName),
     do_get_tab_content_hash(T, [{TabName, H} | Hs]).
 
+-spec do_get_tab_content_hash(atom()) -> binary().
 do_get_tab_content_hash(TabName) ->
     L1 = try
              get_records(TabName)
@@ -635,12 +685,14 @@ do_get_tab_content_hash(TabName) ->
             io_lib:format("~p", [L3])),
     crypto:hash(md5, Data).
 
+-spec replace_incomparible_fields(atom(), [term()]) -> [term()].
 replace_incomparible_fields(TabName, Records) ->
     IncomFields = wm_entity:get_incomparible_fields(TabName),
     F1 = fun(Field, Rec) -> wm_entity:set_attr({Field, incomparible}, Rec) end,
     F2 = fun(Rec) -> lists:foldr(F1, Rec, IncomFields) end,
     [F2(X) || X <- Records].
 
+-spec do_get_tab_attr_hash([atom()], [binary()]) -> [binary()].
 do_get_tab_attr_hash([], Hs) ->
     Hs;
 do_get_tab_attr_hash([TabName | T], Hs) ->
@@ -648,6 +700,7 @@ do_get_tab_attr_hash([TabName | T], Hs) ->
     H = do_get_tab_attr_hash(TabName),
     do_get_tab_attr_hash(T, [{TabName, H} | Hs]).
 
+-spec do_get_tab_attr_hash(atom()) -> binary().
 do_get_tab_attr_hash(TabName) ->
     L = try
             mnesia:table_info(TabName, attributes)
@@ -661,20 +714,23 @@ do_get_tab_attr_hash(TabName) ->
             io_lib:format("~p", [L])),
     crypto:hash(md5, Data).
 
-do_upgrade_schema([], Result) ->
-    Result;
-do_upgrade_schema([RecordJson | T], Result) ->
+-spec do_upgrade_schema([], {string, string() | {atom, atom()}}) -> [{atom, atom()} | {string, string()}].
+do_upgrade_schema([], Results) ->
+    Results;
+do_upgrade_schema([RecordJson | T], Results) ->
     case do_update_tables_table(RecordJson) of
         ok ->
             R = do_transform_table(RecordJson),
-            do_upgrade_schema(T, [{atom, R} | Result]);
+            do_upgrade_schema(T, [{atom, R} | Results]);
         {error, Error} ->
             ?LOG_ERROR("Upgrade schema error: ~p", [Error]),
-            do_upgrade_schema(T, [{string, Error} | Result]);
+            do_upgrade_schema(T, [{string, Error} | Results]);
         Other ->
-            ?LOG_ERROR("Unrecognized result: ~p", [Other])
+            ?LOG_ERROR("Unrecognized result: ~p", [Other]),
+            []
     end.
 
+-spec do_update_tables_table({atom(), {struct, [term()]}}) -> ok | {error, term()}.
 do_update_tables_table({NameBin, {struct, Fields}}) ->
     ?LOG_DEBUG("Update table 'table'"),
     ensure_table_exists(table, [], local),
@@ -695,6 +751,7 @@ do_update_tables_table({NameBin, {struct, Fields}}) ->
             {error, Other}
     end.
 
+-spec do_transform_table({atom(), {struct, [term()]}}) -> {error, string()} | atom().
 do_transform_table({NameBin, {struct, Fields}}) ->
     ?LOG_DEBUG("Transform table ~p", [NameBin]),
     Name = binary_to_atom(NameBin, utf8),
@@ -735,6 +792,8 @@ do_transform_table({NameBin, {struct, Fields}}) ->
             Name
     end.
 
+-spec record_from_json([{atom(), {struct, [{binary(), binary()}]}}], term(), [atom()], [{atom(), term()}]) ->
+                          {term(), term(), [atom()], [{atom(), term()}]}.
 record_from_json([], NewRec, NewFields, Defaults) ->
     {NewRec, lists:reverse(NewFields), lists:reverse(Defaults)};
 record_from_json([JsonRecordField | T], NewRec, NewFields, Defaults) ->
@@ -744,13 +803,12 @@ record_from_json([JsonRecordField | T], NewRec, NewFields, Defaults) ->
             wm_entity:set_attr({FieldName, Default}, NewRec)
         catch
             E1:E2 ->
-                ?LOG_ERROR("Set attribute exception: ~p:~p (should "
-                           "schema be imported?)",
-                           [E1, E2]),
+                ?LOG_ERROR("Attribute set exception: ~p:~p", [E1, E2]),
                 []
         end,
     record_from_json(T, NewRec2, [FieldName | NewFields], [{FieldName, Default} | Defaults]).
 
+-spec merge_records(tuple(), tuple(), map(), [atom()], [{atom(), term()}]) -> term().
 merge_records(_, New, _, [], _) ->
     ?LOG_DEBUG("New particular record: ~P", [New, 5]),
     New;
@@ -760,12 +818,14 @@ merge_records(Old, New, OldMap, [NewField | NewFields], [{NewField, Default} | D
     ?LOG_DEBUG("Field '~p' will be merged with value: ~P", [NewField, NewValue, 5]),
     merge_records(Old, wm_entity:set_attr({NewField, NewValue}, New), OldMap, NewFields, Defaults).
 
+-spec get_attr_map(term(), [atom()], pos_integer(), map()) -> map().
 get_attr_map(_, [], _, Map) ->
     Map;
 get_attr_map(Rec, [Name | T], Next, Map) ->
     Value = erlang:element(Next, Rec),
     get_attr_map(Rec, T, Next + 1, maps:put(Name, Value, Map)).
 
+-spec do_get_global(string(), atom(), term()) -> term().
 do_get_global(Name, string, Default) ->
     try
         Q = qlc:q([X || X <- mnesia:table(global), wm_entity:get_attr(name, X) =:= Name]),
@@ -800,6 +860,7 @@ do_get_global(Name, integer, Default) ->
             Default
     end.
 
+-spec do_create_the_rest_tables() -> pos_integer().
 do_create_the_rest_tables() ->
     ?LOG_DEBUG("Create the rest tables"),
     NeedTabs = wm_entity:get_names(all),
@@ -821,9 +882,11 @@ do_create_the_rest_tables() ->
     ?LOG_DEBUG("The rest tables were created: ~p", [Num]),
     Num.
 
+-spec do_get_one(atom(), atom(), term()) -> {ok, term()} | {error, term()}.
 do_get_one(Tab, Attr, Value) ->
     do(qlc:q([X || X <- mnesia:table(Tab), wm_entity:get_attr(Attr, X) =:= Value])).
 
+-spec do_get_address(string()) -> node_address() | not_found.
 do_get_address(NodeStr) when is_list(NodeStr) ->
     X = case lists:any(fun ($@) ->
                                true;
@@ -851,7 +914,8 @@ do_get_address(NodeStr) when is_list(NodeStr) ->
             not_found
     end.
 
-do_update_exist(Tab, KeyName, KeyVal, Attr, AttrVal) ->
+-spec do_update_existing(atom(), atom(), term(), atom(), term()) -> {atomic, term()} | {aborted, term()}.
+do_update_existing(Tab, KeyName, KeyVal, Attr, AttrVal) ->
     F = fun() ->
            Q = qlc:q([X || X <- mnesia:table(Tab), wm_entity:get_attr(KeyName, X) =:= KeyVal]),
            case qlc:eval(Q) of

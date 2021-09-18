@@ -14,6 +14,7 @@
 -type job_id()          :: string().
 -type image_id()        :: string().
 -type relocation_id()   :: integer().
+-type node_address()    :: {string(), integer()}.
 
 %[[[cog
 %  import json, collections

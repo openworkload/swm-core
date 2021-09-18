@@ -5,11 +5,12 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-include("wm_entity.hrl").
 -include("wm_log.hrl").
 
 -define(DEFAULT_COLLECT, 30000).
 
--record(mstate, {sources = [], data = []}).
+-record(mstate, {sources = [] :: [atom()], data = [] :: [term()]}).
 
 %% ============================================================================
 %% API
@@ -23,6 +24,24 @@ start_link(Args) ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
@@ -76,14 +95,17 @@ code_change(_, #mstate{} = MState, _) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], #mstate{} = MState) ->
     MState;
 parse_args([{_, _} | T], #mstate{} = MState) ->
     parse_args(T, MState).
 
+-spec register_sources(#mstate{}) -> #mstate{}.
 register_sources(#mstate{} = MState) ->
     MState#mstate{sources = [wm_mon]}.
 
+-spec do_collect(#mstate{}) -> #mstate{}.
 do_collect(#mstate{} = MState) ->
     F = fun(Module) ->
            case wm_utils:is_module_loaded(Module) of
@@ -102,12 +124,14 @@ do_collect(#mstate{} = MState) ->
     DataList = lists:map(F, MState#mstate.sources),
     MState#mstate{data = lists:flatten(DataList)}.
 
+-spec do_transfer(#mstate{}) -> #mstate{}.
 do_transfer(#mstate{} = MState) ->
     F = fun(DataInfo) -> send_data(DataInfo) end,
     lists:map(F, MState#mstate.data),
     MState#mstate{data = []}.
 
-send_data({not_found, Module, Binary, Meta}) ->
+-spec send_data({not_found | node_address(), atom(), binary(), term()}) -> ok.
+send_data({not_found, _, _, _}) ->
     ?LOG_DEBUG("Destination address is unknown");
 send_data({Addr, Module, Binary, Meta}) ->
     wm_api:cast_self({data_sending, Module, Binary, Meta}, [Addr]).

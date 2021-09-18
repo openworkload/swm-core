@@ -3,11 +3,11 @@
 -export([create/3, get_uid/1]).
 
 -include_lib("public_key/include/public_key.hrl").
+-include_lib("public_key/include/OTP-PUB-KEY.hrl").
 
 -define(OPENSSL, "openssl").
 -define(SSH_KEYGEN, "ssh-keygen").
 -define(SECUREDIR, "secure").
--define(NODEDIR, "node").
 -define(USERSDIR, "users").
 -define(CAGRIDDIR, "grid").
 -define(CACLUSTERDIR, "cluster").
@@ -18,7 +18,14 @@
 -define(ENV_COUNTRY, "SWM_COUNTRY").
 -define(ENV_EMAIL, "SWM_ADMIN_EMAIL").
 
--record(dn, {commonName, organizationalUnitName, organizationName, localityName, countryName, emailAddress, id}).
+-record(dn,
+        {commonName :: string(),
+         organizationalUnitName :: string(),
+         organizationName :: string(),
+         localityName :: string(),
+         countryName :: string(),
+         emailAddress :: string(),
+         id :: string()}).
 
 %TODO Put IDs of grid, cluster and node into there CA/certificates
 
@@ -27,6 +34,7 @@
 %% ============================================================================
 
 %% @doc Create a root (grid) CA to sign intermediate (cluster) CAs
+-spec create(atom(), string(), string()) -> ok | {error, string()}.
 create(grid, GridID, _) ->
     create_grid_ca(GridID);
 %% @doc Create an intermediate (cluster) CA signed by a root (grid) CA
@@ -42,6 +50,7 @@ create(user, UserID, Name) ->
 create(host, _, Name) ->
     create_host_key(Name).
 
+-spec get_uid(term()) -> string().
 get_uid(Cert) ->
     do_get_altname(Cert).
 
@@ -49,7 +58,7 @@ get_uid(Cert) ->
 %% Implementation functions
 %% ============================================================================
 
-%% @hidden
+-spec create_grid_ca(string()) -> ok.
 create_grid_ca(GridID) ->
     SpoolDir = ask("Spool directory", ?ENV_SPOOL),
     SecureDir = filename:join([SpoolDir, secure_dirname()]),
@@ -59,7 +68,7 @@ create_grid_ca(GridID) ->
     create_ca_dir(SecureDir, cagrid_dirname(), ca_cnf(cagrid_dirname())),
     create_self_signed_cert(SecureDir, openssl_cmd(), cagrid_dirname(), Request).
 
-%% @hidden
+-spec create_cluster_ca(string(), string()) -> atom().
 create_cluster_ca(ClusterID, Name) ->
     SpoolDir = ask("Spool directory", ?ENV_SPOOL),
     SecureDir = filename:join([SpoolDir, secure_dirname()]),
@@ -77,7 +86,7 @@ create_cluster_ca(ClusterID, Name) ->
     sign_req(SecureDir, openssl_cmd(), RootCADir, "ca_cert", ReqFile, CertFile),
     remove_rnd(SecureDir, secure_dirname()).
 
-%% @hidden
+-spec create_node_cert(string(), string()) -> atom().
 create_node_cert(NodeID, CommonName) ->
     SpoolDir = ask("Spool directory", ?ENV_SPOOL),
     SecureDir = filename:join([SpoolDir, secure_dirname()]),
@@ -96,12 +105,12 @@ create_node_cert(NodeID, CommonName) ->
     sign_req(SecureDir, openssl_cmd(), CADir, "user_cert", ReqFile, CertFile),
     remove_rnd(SecureDir, "node").
 
-%% @hidden
+-spec create_user_cert(string(), string()) -> atom().
 create_user_cert(UserID, Name) ->
     SpoolDir = ask("Spool directory", ?ENV_SPOOL),
     create_cert(SpoolDir, Name, UserID, users_dirname()).
 
-%% @hidden
+-spec create_host_key(string) -> atom().
 create_host_key(Name) ->
     SpoolDir = ask("Spool directory", ?ENV_SPOOL),
     SecureDir = filename:join([SpoolDir, secure_dirname()]),
@@ -119,7 +128,7 @@ create_host_key(Name) ->
 %% Auxiliary functions
 %% ============================================================================
 
-%% @hidden
+-spec create_cert(string(), string(), string(), string()) -> atom().
 create_cert(SpoolDir, Name, ID, DirName) ->
     SecureDir = filename:join([SpoolDir, secure_dirname()]),
     ParentDir = filename:join([SecureDir, DirName]),
@@ -139,7 +148,7 @@ create_cert(SpoolDir, Name, ID, DirName) ->
     sign_req(SecureDir, openssl_cmd(), CADir, "user_cert", ReqFile, CertFile),
     remove_rnd(ParentDir, KeysDir).
 
-%% @hidden
+-spec ask(string(), string()) -> string().
 ask(Name, DefaultEnv) ->
     case os:getenv(DefaultEnv) of
         X when X == false; X == [] ->
@@ -149,7 +158,7 @@ ask(Name, DefaultEnv) ->
             Value
     end.
 
-%% @hidden
+-spec ask_ca_dn(string(), string()) -> #dn{}.
 ask_ca_dn(ID, CommonName) ->
     #dn{commonName = CommonName,
         id = ID,
@@ -159,7 +168,7 @@ ask_ca_dn(ID, CommonName) ->
         countryName = ask("Country Name", ?ENV_COUNTRY),
         emailAddress = ask("Email Address", ?ENV_EMAIL)}.
 
-%%@hidden
+-spec create_self_signed_cert(string(), string(), string(), list()) -> ok.
 create_self_signed_cert(SecureDir, OpenSSLCmd, CAName, Cnf) ->
     CADir = filename:join([SecureDir, CAName]),
     CnfFile = filename:join([CADir, "req.cnf"]),
@@ -170,7 +179,7 @@ create_self_signed_cert(SecureDir, OpenSSLCmd, CAName, Cnf) ->
     file:write_file(CnfFile, Cnf),
     cmd(Cmd, Env).
 
-%% @hidden
+-spec create_ca_dir(string(), string(), list()) -> ok.
 create_ca_dir(KeysRoot, CAName, Cnf) ->
     CADir = filename:join([KeysRoot, CAName]),
     filelib:ensure_dir(KeysRoot),
@@ -179,7 +188,7 @@ create_ca_dir(KeysRoot, CAName, Cnf) ->
     create_rnd(KeysRoot, filename:join([CAName, "private"])),
     create_files(CADir, [{"serial", "01\n"}, {"index.txt", ""}, {"ca.cnf", Cnf}]).
 
-%% @hidden
+-spec create_req(string(), string(), string(), string(), string()) -> ok.
 create_req(ReqDir, OpenSSLCmd, CnfFile, KeyFile, ReqFile) ->
     io:format("~s: ~s~n", ["ReqDir", ReqDir]),
     io:format("~s: ~s~n", ["OpenSSLCmd", OpenSSLCmd]),
@@ -190,7 +199,7 @@ create_req(ReqDir, OpenSSLCmd, CnfFile, KeyFile, ReqFile) ->
     Env = [{"ROOTDIR", ReqDir}],
     cmd(Cmd, Env).
 
-%% @hidden
+-spec sign_req(string(), string(), string(), string(), string(), string()) -> ok.
 sign_req(RootDir, OpenSSLCmd, CADir, Ext, ReqFile, CertFile) ->
     CACnfFile = filename:join([CADir, "ca.cnf"]),
     Cmd = [OpenSSLCmd,
@@ -205,7 +214,7 @@ sign_req(RootDir, OpenSSLCmd, CADir, Ext, ReqFile, CertFile) ->
     Env = [{"ROOTDIR", RootDir}],
     cmd(Cmd, Env).
 
-%% @hidden
+-spec generate_host_key(string(), string(), string(), string()) -> atom().
 generate_host_key(KeysDir, SSHKeygenCmd, Alg, KeyFile) ->
     io:format("~s: ~s~n", ["HostDir", KeysDir]),
     io:format("~s: ~s~n", ["SSHKeygenCmd", SSHKeygenCmd]),
@@ -216,7 +225,7 @@ generate_host_key(KeysDir, SSHKeygenCmd, Alg, KeyFile) ->
     Env = [{"ROOTDIR", KeysDir}],
     cmd(Cmd, Env).
 
-%% @hidden
+-spec create_dirs(string(), list()) -> ok.
 create_dirs(Root, Dirs) ->
     lists:foreach(fun(Dir) ->
                      filelib:ensure_dir(
@@ -226,7 +235,7 @@ create_dirs(Root, Dirs) ->
                   end,
                   Dirs).
 
-%% @hidden
+-spec create_files(string(), list()) -> ok.
 create_files(Root, NameContents) ->
     lists:foreach(fun({Name, Contents}) ->
                      file:write_file(
@@ -234,18 +243,18 @@ create_files(Root, NameContents) ->
                   end,
                   NameContents).
 
-%% @hidden
+-spec create_rnd(string(), string()) -> atom().
 create_rnd(Root, Dir) ->
     From = filename:join([Root, "RAND"]),
     To = filename:join([Root, Dir, "RAND"]),
     file:copy(From, To).
 
-%% @hidden
+-spec remove_rnd(string(), string()) -> atom().
 remove_rnd(Root, Dir) ->
     File = filename:join([Root, Dir, "RAND"]),
     file:delete(File).
 
-%% @hidden
+-spec cmd(list(), list()) -> atom().
 cmd(Cmd, Env) ->
     FCmd = lists:flatten(Cmd),
     io:format("~p~n", [FCmd]),
@@ -253,7 +262,7 @@ cmd(Cmd, Env) ->
     Port = open_port({spawn, FCmd}, [stream, eof, exit_status, {env, Env}]),
     eval_cmd(Port).
 
-%% @hidden
+-spec eval_cmd(port()) -> atom().
 eval_cmd(Port) ->
     receive
         {Port, {data, Data}} ->
@@ -269,34 +278,29 @@ eval_cmd(Port) ->
         ok
     end.
 
-%% @hidden
+-spec openssl_cmd() -> string().
 openssl_cmd() ->
     ?OPENSSL.
 
-%% @hidden
+-spec ssh_keygen_cmd() -> string().
 ssh_keygen_cmd() ->
     ?SSH_KEYGEN.
 
-%% @hidden
+-spec secure_dirname() -> string().
 secure_dirname() ->
     ?SECUREDIR.
 
-%% @hidden
+-spec users_dirname() -> string().
 users_dirname() ->
     ?USERSDIR.
 
-%% @hidden
-%TODO get node name from configuration
-node_dirname() ->
-    ?NODEDIR.
-
-%% @hidden
 %TODO get grid name from configuration
+-spec cagrid_dirname() -> string().
 cagrid_dirname() ->
     ?CAGRIDDIR.
 
-%% @hidden
 %TODO get cluster name from configuration
+-spec cacluster_dirname() -> string().
 cacluster_dirname() ->
     ?CACLUSTERDIR.
 
@@ -305,7 +309,7 @@ cacluster_dirname() ->
 %% ============================================================================
 
 %openssl x509 -in /opt/swm/spool/secure/users/taras/cert.pem -noout -text
-%% @hidden
+-spec req_cnf(string(), string()) -> list().
 req_cnf(DN, Dir) ->
     ["# Purpose: Configuration for requests "
      "(end users and CAs).\nROOTDIR       "
@@ -334,7 +338,7 @@ req_cnf(DN, Dir) ->
      DN#dn.id,
      "\n"].
 
-%% @hidden
+-spec ca_cnf(string()) -> list().
 ca_cnf(CA) ->
     ["# Purpose: Configuration for CAs.\n\nROOTDIR "
      "               = $ENV::ROOTDIR\ndefault_ca "
@@ -372,8 +376,7 @@ ca_cnf(CA) ->
      "eyIdentifier   = hash\nissuerAltName "
      "         = issuer:copy\n"].
 
-   %"authorityKeyIdentifier = keyid:always,issuer:always\n"
-
+-spec do_get_altname(term()) -> atom() | string().
 do_get_altname(Cert) ->
     {rdnSequence, Subject} = Cert#'OTPCertificate'.tbsCertificate#'OTPTBSCertificate'.subject,
     V = [Attribute#'AttributeTypeAndValue'.value
@@ -389,11 +392,8 @@ do_get_altname(Cert) ->
                     binary_to_list(Bin);
                 _ ->
                     List = binary_to_list(Att),
-                    lists:sublist(List,
-                                  3,
-                                  length(List)) % subjectAltName prefixed with
-                                                % 2 additional bytes, skip them;
-                                                % Erlang OTP bug?
+                    % subjectAltName prefixed with 2 additional bytes, skip them; Erlang OTP bug?
+                    lists:sublist(List, 3, length(List))
             end;
         _ ->
             unknown

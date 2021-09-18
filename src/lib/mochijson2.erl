@@ -1,3 +1,5 @@
+%TODO: get rid of this module
+
 %% @author Bob Ippolito <bob@mochimedia.com>
 %% @copyright 2007 Mochi Media, Inc.
 
@@ -72,43 +74,49 @@
 %% @type json_term() = json_string() | json_number() | json_array() |
 %%                     json_object() | json_eep18_object() | json_iolist()
 
--record(encoder, {handler = null, utf8 = false}).
--record(decoder, {object_hook = null, offset = 0, line = 1, column = 1, state = null}).
+-record(encoder, {handler = null :: atom(), utf8 = false :: atom()}).
+-record(decoder,
+        {object_hook = null :: atom(),
+         offset = 0 :: integer(),
+         line = 1 :: integer(),
+         column = 1 :: integer(),
+         state = null :: atom()}).
 
-%% @spec encoder([encoder_option()]) -> function()
 %% @doc Create an encoder/1 with the given options.
 %% @type encoder_option() = handler_option() | utf8_option()
 %% @type utf8_option() = boolean(). Emit unicode as utf8 (default - false)
+-spec encoder([term()]) -> function().
 encoder(Options) ->
     State = parse_encoder_options(Options, #encoder{}),
     fun(O) -> json_encode(O, State) end.
 
-%% @spec encode(json_term()) -> iolist()
 %% @doc Encode the given as JSON to an iolist.
+-spec encode(term()) -> iolist().
 encode(Any) ->
     json_encode(Any, #encoder{}).
 
-%% @spec decoder([decoder_option()]) -> function()
 %% @doc Create a decoder/1 with the given options.
+-spec decoder([term()]) -> function().
 decoder(Options) ->
     State = parse_decoder_options(Options, #decoder{}),
     fun(O) -> json_decode(O, State) end.
 
-%% @spec decode(iolist(), [{format, proplist | eep18 | struct}]) -> json_term()
 %% @doc Decode the given iolist to Erlang terms using the given object format
 %%      for decoding, where proplist returns JSON objects as [{binary(), json_term()}]
 %%      proplists, eep18 returns JSON objects as {[binary(), json_term()]}, and struct
 %%      returns them as-is.
+-spec decode(iolist(), [{format, proplist | eep18 | struct}]) -> term().
 decode(S, Options) ->
     json_decode(S, parse_decoder_options(Options, #decoder{})).
 
-%% @spec decode(iolist()) -> json_term()
 %% @doc Decode the given iolist to Erlang terms.
+-spec decode(iolist()) -> term().
 decode(S) ->
     json_decode(S, #decoder{}).
 
 %% Internal API
 
+-spec parse_encoder_options(list(), #encoder{}) -> #encoder{}.
 parse_encoder_options([], State) ->
     State;
 parse_encoder_options([{handler, Handler} | Rest], State) ->

@@ -1,13 +1,13 @@
 -module(wm_utils).
 
--export([module_exists/1, messages_in_queue/1, format/2, trail_newline/1, get_unique_id/1, get_env/1, wait_msg/2,
-         log_debug_table/1, join_atoms/2, trace_stack/0, uuid/1, wake_up_after/2, nodes_to_names/1, node_to_fullname/1,
-         protected_call/2, protected_call/3, get_my_vnode_name/4, get_parent_from_conf/1, get_hostname/1,
-         get_module_dir/1, intersection/2, ensure_loaded/1, unroll_symlink/1, get_my_hostname/0, get_my_fqdn/0,
-         get_short_name/1, get_address/1, get_job_user/1, is_module_loaded/1, encode_to_binary/1, decode_from_binary/1,
-         get_calling_module_name/0, map_to_list/1, terminate_msg/2, match_floats/3, read_file/2, read_stdin/0,
-         make_partitions_c_decodable/1, make_jobs_c_decodable/1, make_nodes_c_decodable/1, is_manager/1, has_role/2,
-         get_behaviour/1, cast/2, await/3, await/2]).
+-export([module_exists/1, messages_in_queue/1, format/2, trail_newline/1, get_unique_id/1, get_env/1, join_atoms/2,
+         uuid/1, wake_up_after/2, nodes_to_names/1, node_to_fullname/1, protected_call/2, protected_call/3,
+         get_my_vnode_name/4, get_parent_from_conf/1, get_hostname/1, get_module_dir/1, ensure_loaded/1,
+         unroll_symlink/1, get_my_hostname/0, get_my_fqdn/0, get_short_name/1, get_address/1, get_job_user/1,
+         is_module_loaded/1, encode_to_binary/1, decode_from_binary/1, get_calling_module_name/0, map_to_list/1,
+         terminate_msg/2, match_floats/3, read_file/2, read_stdin/0, make_partitions_c_decodable/1,
+         make_jobs_c_decodable/1, make_nodes_c_decodable/1, is_manager/1, has_role/2, get_behaviour/1, cast/2, await/3,
+         await/2]).
 -export([do/2, itr/2]).
 -export([host_port_uri/1, path_query_uri/1]).
 -export([named_substitution/2]).
@@ -22,33 +22,16 @@
 -define(CALL_TIMEOUT, 10000).
 -define(IO_READ_BLOCK_SIZE, 16384).
 
+-spec messages_in_queue(atom()) -> [term()].
 messages_in_queue(Module) ->
     {messages, Messages} = erlang:process_info(whereis(Module), messages),
     Messages.
 
-trace_stack() ->
-    {'EXIT', {_, CallStack}} = (catch 1 = undefined),
-    ?LOG_DEBUG("------> TRACE STACK <------~n~p~n------------"
-               "--~n",
-               [CallStack]).
-
-log_debug_table(Tab) ->
-    Iterator =
-        fun(Rec, _) ->
-           ?LOG_DEBUG("~p", [Rec]),
-           []
-        end,
-    case mnesia:is_transaction() of
-        true ->
-            mnesia:foldl(Iterator, [], Tab);
-        false ->
-            Exec = fun({Fun, T}) -> mnesia:foldl(Fun, [], T) end,
-            mnesia:activity(transaction, Exec, [{Iterator, Tab}], mnesia_frag)
-    end.
-
+-spec get_env(string()) -> string() | undefined.
 get_env(Name) ->
     os:getenv(Name, undefined).
 
+-spec module_exists(string()) -> true | false.
 module_exists(Module) ->
     case is_atom(Module) of
         true ->
@@ -63,12 +46,14 @@ module_exists(Module) ->
             false
     end.
 
+-spec format(string(), [term()]) -> string().
 format(Format, MsgParts) when is_list(MsgParts) ->
     io_lib:format(Format, MsgParts);
 %io_lib_pretty:print(X, [{depth, -1},{line_length, 1000000}]); % print erlang term in ope line
 format(Format, MsgPart) ->
     format(Format, [MsgPart]).
 
+-spec trail_newline(string()) -> string().
 trail_newline(S) ->
     case lists:reverse(S) of
         [$\n | Rest] ->
@@ -77,31 +62,23 @@ trail_newline(S) ->
             S
     end.
 
+-spec get_unique_id(integer()) -> string().
 get_unique_id(Len) ->
     ABC = "abcdifghijklmnopqrstuvwxwzABCDIFGHIJKLMNOPQRS"
           "TUVWXYZ1234567890",
     get_random_string(Len, ABC).
 
+-spec get_random_string(integer(), string()) -> string().
 get_random_string(Length, AllowedChars) ->
     lists:foldl(fun(_, Acc) ->
                    [lists:nth(
-                        random:uniform(length(AllowedChars)), AllowedChars)]
+                        rand:uniform(length(AllowedChars)), AllowedChars)]
                    ++ Acc
                 end,
                 [],
                 lists:seq(1, Length)).
 
-wait_msg([], _) ->
-    ok;
-wait_msg(Nodes, Msg) ->
-    ?LOG_DEBUG("Waiting (~p) for slave nodes: ~p", [Msg, Nodes]),
-    receive
-        {Msg, Node} ->
-            wait_msg(lists:delete(Node, Nodes), Msg);
-        _ ->
-            wait_msg(Nodes, Msg)
-    end.
-
+-spec join_atoms([atom()], string()) -> string().
 join_atoms(Xs, Sep) when is_list(Xs) ->
     List1 = [io_lib:format("~p", [X]) || X <- Xs],
     List2 = io_lib:format("~s", [string:join(List1, Sep)]),
@@ -122,9 +99,9 @@ wake_up_after(MilliSeconds, WakeUpMessage) ->
             _ ->
                 MilliSeconds
         end,
-    %?LOG_DEBUG("Wake up after ~p ms with message ~p", [S, WakeUpMessage]),
-    TRef = erlang:send_after(S, self(), WakeUpMessage).
+    erlang:send_after(S, self(), WakeUpMessage).
 
+-spec nodes_to_names([#node{}]) -> [string()].
 nodes_to_names(NodeRecords) ->
     do_nodes_to_names(NodeRecords, []).
 
@@ -134,6 +111,7 @@ do_nodes_to_names([Node | T], Names) ->
     Name = node_to_fullname(Node),
     do_nodes_to_names(T, [Name | Names]).
 
+-spec node_to_fullname(#node{} | tuple()) -> atom().
 node_to_fullname({_}) ->
     none;
 node_to_fullname({_, _}) ->
@@ -161,11 +139,11 @@ protected_call(Mod, Msg) ->
         gen_server:call(Mod, Msg, Ms)
     catch
         exit:E ->
-            trace_stack(),
             ?LOG_ERROR("Protected call to ~p failed: ~p", [Mod, E]),
             {error, E}
     end.
 
+-spec get_short_name(atom() | string() | {atom(), integer()}) -> {string(), integer()}.
 get_short_name({Node, Port}) when is_atom(Node) ->
     {get_short_name(Node), Port};
 get_short_name(Node) when is_atom(Node) ->
@@ -187,6 +165,8 @@ get_short_name(Node) when is_list(Node) ->
 get_short_name(Node) ->
     Node.
 
+-spec get_my_vnode_name(long | short, string | atom, undefined | string(), string()) ->
+                           {error, unknown} | {ok, string()}.
 get_my_vnode_name(Type1, Type2, NodeName, Host) ->
     case NodeName of
         undefined ->
@@ -214,6 +194,7 @@ get_my_vnode_name(Type1, Type2, NodeName, Host) ->
             {ok, Name}
     end.
 
+-spec get_parent_from_conf({string(), string()}) -> not_found | {string(), integer()}.
 get_parent_from_conf({NodeName, Host}) ->
     case get_my_vnode_name(short, string, NodeName, Host) of
         {ok, VNode} ->
@@ -237,31 +218,12 @@ get_parent_from_conf(Node) ->
             wm_conf:get_relative_address(ParentRec, Node)
     end.
 
+-spec get_module_dir(atom()) -> string().
 get_module_dir(Mod) ->
     filename:dirname(
         code:which(Mod)).
 
-intersection(List1, List2) ->
-    [Y || X <- List1, Y <- List2, X == Y].
-
-for_each_line(File, List) ->
-    case io:get_line(File, "") of
-        eof ->
-            file:close(File),
-            List;
-        Line ->
-            F = fun(X) -> re:replace(X, "(^\\s+)|(\\s+$)", "", [global, {return, list}]) end,
-            Ws = [F(W) || W <- string:tokens(Line, "=")],
-            List2 =
-                case length(Ws) == 2 of
-                    true ->
-                        [{lists:nth(1, Ws), lists:nth(2, Ws)} | List];
-                    false ->
-                        List
-                end,
-            for_each_line(File, List2)
-    end.
-
+-spec ensure_loaded(atom()) -> ok.
 ensure_loaded(Module) ->
     case code:get_mode() of
         embedded ->
@@ -280,6 +242,7 @@ ensure_loaded(Module) ->
             ok
     end.
 
+-spec unroll_symlink(string()) -> string().
 unroll_symlink(Path) ->
     case file:read_link(Path) of
         {ok, Filename} ->
@@ -288,13 +251,16 @@ unroll_symlink(Path) ->
             Path
     end.
 
+-spec get_my_hostname() -> string().
 get_my_hostname() ->
     {ok, Host} = inet:gethostname(),
     Host.
 
+-spec get_my_fqdn() -> string().
 get_my_fqdn() ->
     net_adm:localhost().
 
+-spec get_hostname(atom() | string()) -> string().
 get_hostname(NameAtom) when is_atom(NameAtom) ->
     get_hostname(atom_to_list(NameAtom));
 get_hostname(Name) when is_list(Name) ->
@@ -312,6 +278,7 @@ get_hostname(Name) when is_list(Name) ->
             Name
     end.
 
+-spec get_address({atom, term()} | not_found | {string(), integer()} | string() | #node{}) -> {string(), integer()}.
 get_address({error, _}) ->
     not_found;
 get_address(not_found) ->
@@ -334,17 +301,21 @@ get_address(Node) when is_tuple(Node) ->
     Port = wm_entity:get_attr(api_port, Node),
     {Host, Port}.
 
+-spec is_module_loaded(atom()) -> true | false.
 is_module_loaded(Module) ->
     lists:any(fun(X) -> X == Module end, erlang:loaded()).
 
+-spec encode_to_binary(term()) -> binary().
 encode_to_binary(Term) when is_binary(Term) ->
     Term;
 encode_to_binary(Term) ->
     erlang:term_to_binary(Term).
 
+-spec decode_from_binary(binary()) -> term().
 decode_from_binary(Binary) when is_binary(Binary) ->
     erlang:binary_to_term(Binary).
 
+-spec get_calling_module_name() -> atom().
 get_calling_module_name() ->
     Info = erlang:process_info(self()),
     try
@@ -356,6 +327,7 @@ get_calling_module_name() ->
             noproc
     end.
 
+-spec map_to_list(map() | list()) -> list().
 map_to_list(Map) when is_map(Map) ->
     [{X, map_to_list(Y)} || {X, Y} <- maps:to_list(Map)];
 map_to_list(List) when is_list(List) ->
@@ -363,6 +335,7 @@ map_to_list(List) when is_list(List) ->
 map_to_list(NotMapOrList) ->
     NotMapOrList.
 
+-spec terminate_msg(atom(), term()) -> ok.
 terminate_msg(Mod, Reason) ->
     case whereis(wm_log) of
         Pid when is_pid(Pid) ->
@@ -377,6 +350,7 @@ terminate_msg(Mod, Reason) ->
             ok
     end.
 
+-spec get_job_user(#job{}) -> {ok, #user{}} | {error, not_found}.
 get_job_user(Job) ->
     JobID = wm_entity:get_attr(id, Job),
     UserID = wm_entity:get_attr(user_id, Job),

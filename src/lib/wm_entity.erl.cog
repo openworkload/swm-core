@@ -32,11 +32,14 @@
 %  cog.outl('-export_records(?ENTITIES).')
 %  cog.outl('')
 %
+%  cog.outl("-spec new(binary() | atom()) -> tuple().")
 %  for x,y in data.items():
 %    cog.outl("new(<<\"" + x + "\">>) -> '#new-" + x + "'();")
 %    cog.outl("new(" + x + ") -> '#new-" + x + "'();")
 %  cog.outl("new(_) -> undefined.")
 %  cog.outl("")
+%
+%  cog.outl('-spec rec(tuple()) -> boolean().')
 %  for x,y in data.items():
 %    cog.outl("rec(#" + x + "{}) -> true;")
 %  cog.outl('rec(_) -> false.')
@@ -96,10 +99,12 @@
 %    tmp += ';\n'.join(plist) + '\n'
 %    tmp += '  end'
 %    rlist.append(tmp)
+%  cog.outl('-spec get_type(atom(), atom()) -> atom() | {list, term()}.')
 %  cog.out(';\n'.join(rlist))
 %  cog.outl('.')
 %  cog.outl('')
 %
+%  cog.outl('-spec get_names(atom()) -> [atom()].')
 %  cog.outl('get_names(all) -> ?ENTITIES;')
 %  cog.outl('get_names(local) -> [job];')
 %  cog.outl('get_names(local_bag) -> [subscriber, timetable, relocation];')
@@ -112,20 +117,23 @@
 %[[[end]]]
 
 %% @doc get all record field names
+-spec get_fields(tuple()) -> [atom()].
 get_fields(Rec) ->
   '#info-'(Rec).
 
 %% @doc get an attribute by name
+-spec get_attr(atom(), tuple()) -> term().
 get_attr(Attr, Rec) when is_atom(Attr) ->
   '#get-'(Attr, Rec).
 
 %% @doc set an attribute by name
+-spec set_attr({atom(), term()} | [{atom(), term()}], tuple()) -> term().
 set_attr({Attr, Value}, Rec) when is_atom(Attr) ->
   '#set-'([{Attr,Value}], Rec);
-
 set_attr(Xs, Rec) when is_list(Xs) ->
   lists:foldl(fun({Attr, Value}, Acc) -> set_attr({Attr, Value}, Acc) end, Rec, Xs).
 
+-spec pretty([tuple()] | tuple()) -> [string()].
 pretty(Recs) when is_list(Recs) ->
   lists:map(fun(R) -> pretty(R) end, Recs);
 pretty(Rec) ->
@@ -136,6 +144,7 @@ pretty(Rec) ->
        end,
   [io_lib_pretty:print(Rec, RF),"\n"].
 
+-spec decode_json_default(binary(), atom()) -> term().
 decode_json_default(<<>>, _) ->
   "";
 decode_json_default(X, atom) when is_binary(X) ->
@@ -151,6 +160,7 @@ decode_json_default(X, {list,T}) when is_list(X)->
 decode_json_default(X, _) ->
   X.
 
+-spec decode_json_type(binary) -> term().
 decode_json_type(<<" ",X/binary>>) ->
   decode_json_type(X);
 decode_json_type(<<"{",X/binary>>) ->
@@ -176,6 +186,7 @@ decode_json_type(X) ->
       binary_to_atom(Y, utf8)
   end.
 
+-spec extract_json_field_info({binary(), {struct, [{binary(), binary()}]}}) -> {atom(), term(), atom()}.
 extract_json_field_info({NameBin, {struct, [{<<"type">>, TypeBin}]}}) ->
   extract_json_field_info({NameBin, {struct, [{<<"default">>, []},
                                               {<<"type">>, TypeBin}]}});
@@ -190,14 +201,17 @@ extract_json_field_info({NameBin, {struct, [{<<"default">>, DefaultBin},
 
 %% @doc The function returns table of properties that can be different on
 %% different nodes and this is expected, so we treat such entities as identical
+-spec get_incomparible_fields(atom()) -> [atom()].
 get_incomparible_fields(node) ->
   [state_power, state_alloc, revision];
 get_incomparible_fields(_) ->
   [].
 
+-spec descriptions_to_recs([{atom(), {atom(), term()}}]) -> [tuple()].
 descriptions_to_recs(Ds) ->
   descriptions_to_recs(Ds, []).
 
+-spec descriptions_to_recs([{atom(), {atom(), term()}}], [tuple()]) -> [tuple()].
 descriptions_to_recs([], Recs) ->
   Recs;
 descriptions_to_recs([{Name, AttrPairs}|T], Recs) ->
@@ -205,9 +219,10 @@ descriptions_to_recs([{Name, AttrPairs}|T], Recs) ->
   Rec2 = description_to_entity(AttrPairs, Rec1),
   descriptions_to_recs(T, [Rec2|Recs]).
 
+-spec description_to_entity([{atom(), {atom(), term()}}], tuple()) -> tuple().
 description_to_entity([], Rec) ->
   Rec;
-description_to_entity([{resources,ResDescList}|T], Rec) when is_list(ResDescList) ->
+description_to_entity([{resources, ResDescList}|T], Rec) when is_list(ResDescList) ->
   F = fun({resource, ResAttrs}) when is_list(ResAttrs) ->
         ResRec = ?MODULE:new(resource),
         description_to_entity(ResAttrs, ResRec)
@@ -218,4 +233,3 @@ description_to_entity([{resources,ResDescList}|T], Rec) when is_list(ResDescList
 description_to_entity([AttrPair|T], Rec) ->
   Rec2 = ?MODULE:set_attr(AttrPair, Rec),
   description_to_entity(T, Rec2).
-

@@ -159,9 +159,7 @@ try_start_slave(Node, MState = #mstate{nodes = Nodes}) when is_tuple(Node) ->
     FullName = wm_utils:node_to_fullname(Node),
     case maps:is_key(FullName, Nodes) of
         true ->
-            ?LOG_INFO("Node ~p simulation has already been "
-                      "started",
-                      [FullName]),
+            ?LOG_INFO("Node ~p simulation has already been started", [FullName]),
             MState;
         false ->
             do_start_slave(Node, MState)
@@ -205,9 +203,7 @@ do_start_slave(Node, MState = #mstate{sim_spool = Spool, root = RootDir}) ->
                     MState
             end;
         not_found ->
-            ?LOG_INFO("Node will not be started, because of "
-                      "no parent: ~p",
-                      [SlaveShortName]),
+            ?LOG_INFO("Node will not be started, because of no parent: ~p", [SlaveShortName]),
             MState
     end.
 

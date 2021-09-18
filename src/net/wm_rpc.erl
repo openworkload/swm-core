@@ -3,6 +3,7 @@
 -export([call/3, call/4, cast/3, cast/4]).
 
 -include("../lib/wm_log.hrl").
+-include("../lib/wm_entity.hrl").
 
 %TODO: When DB does not exist we need to define default global values in a file
 %TODO: Implement batch JSON-RPC calls
@@ -49,6 +50,7 @@ call(Module, Function, Args, Node) ->
 cast(Module, Function, Args) ->
     cast(Module, Function, Args, {localhost}).
 
+-spec cast(atom(), fun(), list(), node_address()) -> {ok, any()} | {error, term()}.
 cast(Module, Function, Args, FinalAddr = {_, _}) ->
     ?LOG_DEBUG("m=~p f=~p, a=~P, n=~p", [Module, Function, Args, 3, FinalAddr]),
     NextAddr = get_next_destination(FinalAddr),

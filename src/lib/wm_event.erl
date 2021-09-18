@@ -10,7 +10,7 @@
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
 
--record(mstate, {cleaned}).
+-record(mstate, {cleaned :: boolean()}).
 
 %% ============================================================================
 %% API
@@ -36,11 +36,11 @@ announce_neighbours(EventType, EventData) ->
     gen_server:cast(?MODULE, {cast_neighbours, EventType, EventData}).
 
 %% @doc send event with data to specific nodes
--spec announce_nodes(list(), atom(), term()) -> ok.
+-spec announce_nodes([node()], atom(), term()) -> ok.
 announce_nodes(Nodes, EventType, EventData) ->
     gen_server:cast(?MODULE, {cast_nodes, Nodes, EventType, EventData}).
 
--spec subscribe(atom(), atom(), atom()) -> ok.
+-spec subscribe(atom(), node(), atom()) -> ok.
 subscribe(EventType, Node, Module) ->
     gen_server:call(?MODULE, {subscribe, EventType, Node, Module}).
 
@@ -48,11 +48,11 @@ subscribe(EventType, Node, Module) ->
 subscribe_async(EventType, Node, Module) ->
     gen_server:cast(?MODULE, {subscribe, EventType, Node, Module}).
 
--spec unsubscribe(atom(), atom(), atom()) -> ok.
+-spec unsubscribe(atom(), node(), atom()) -> ok.
 unsubscribe(EventType, Node, Module) ->
     do_unsubscribe(EventType, Node, Module).
 
--spec unsubscribe_async(atom(), atom(), atom()) -> ok.
+-spec unsubscribe_async(atom(), node(), atom()) -> ok.
 unsubscribe_async(EventType, Node, Module) ->
     gen_server:cast(?MODULE, {unsubscribe, EventType, Node, Module}).
 
@@ -137,16 +137,19 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec do_cast_neighbours(atom(), term()) -> {ok, any()} | {error, term()}.
 do_cast_neighbours(EventType, EventData) ->
     FullNodeNames = wm_topology:get_neighbour_addresses(unsorted),
     do_cast_nodes(FullNodeNames, EventType, EventData).
 
+-spec do_cast_nodes([node()], atom(), term()) -> [{ok, any()} | {error, term()}].
 do_cast_nodes(Nodes, EventType, EventData) ->
     ?LOG_DEBUG("Cast nodes ~d with event ~p", [length(Nodes), EventType]),
     Args = {EventType, EventData},
     F = fun(Addr) -> wm_rpc:cast(?MODULE, cast_subscribers, Args, Addr) end,
     [F(Node) || Node <- Nodes].
 
+-spec do_cast_subscribers(atom(), term()) -> ok.
 do_cast_subscribers(EventType, EventData) ->
     ?LOG_DEBUG("Cast subscribers on event: ~p ~p", [EventType, EventData]),
     case wm_db:table_exists(subscriber) of
@@ -172,11 +175,13 @@ do_cast_subscribers(EventType, EventData) ->
                             forward_event(Ref, {event, EventType, EventData})
                          end,
                     lists:map(F2, Subscribers2)
-            end;
+            end,
+            ok;
         false ->
             ?LOG_ERROR("Subscriber table has not been found in DB")
     end.
 
+-spec do_subscribe(atom(), node(), atom()) -> ok.
 do_subscribe(EventType, Node, Module) ->
     ?LOG_DEBUG("Subscribe ~p on ~p:~p", [EventType, Node, Module]),
     case wm_db:ensure_running() of
@@ -186,20 +191,20 @@ do_subscribe(EventType, Node, Module) ->
             Subscribers = wm_db:get_one(subscriber, ref, {Module, Node}),
             case lists:any(F, Subscribers) of
                 true ->
-                    ?LOG_DEBUG("Service ~p:~p has already been subscribed "
-                               "on event: ~p",
-                               [Node, Module, EventType]);
+                    ?LOG_DEBUG("Service ~p:~p has already been subscribed on event: ~p", [Node, Module, EventType]);
                 false ->
                     S1 = wm_entity:new(<<"subscriber">>),
                     S2 = wm_entity:set_attr({ref, {Module, Node}}, S1),
                     S3 = wm_entity:set_attr({event, EventType}, S2),
                     ?LOG_DEBUG("Update ~p", S3),
                     wm_db:update([S3])
-            end;
+            end,
+            ok;
         {error, Reason} ->
             ?LOG_ERROR("~p", [Reason])
     end.
 
+-spec do_unsubscribe(atom(), node(), atom()) -> ok.
 do_unsubscribe(EventType, Node, Module) ->
     ?LOG_DEBUG("Unsubscribe ~p on ~p:~p", [EventType, Node, Module]),
     case wm_db:ensure_running() of
@@ -217,11 +222,13 @@ do_unsubscribe(EventType, Node, Module) ->
             ?LOG_ERROR("~p", [Reason])
     end.
 
+-spec remove_all_subscribers() -> [{atomic, term()} | {aborted, term()}].
 remove_all_subscribers() ->
     ?LOG_DEBUG("Clear subscribers"),
     AllSubscribers = wm_db:get_all(subscriber),
     [wm_db:delete(X) || X <- AllSubscribers].
 
+-spec forward_event({atom(), node()}, term()) -> ok.
 forward_event({Module, Node}, Msg) when Node =:= node() ->
     forward_event(Module, Msg);
 forward_event({Module, Node}, Msg) ->

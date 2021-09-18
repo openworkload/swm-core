@@ -56,6 +56,24 @@ cast_self_confirm(Msg, Nodes) when is_list(Nodes) ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 handle_call({accept_conn, ServerPid, Socket}, _From, #mstate{} = MState) ->
     ?LOG_DEBUG("Accepting new connection"),
     MState2 = connection_loop(Socket, ServerPid, MState),
@@ -157,6 +175,7 @@ split_rpc_msg(Msg) ->
     ArgT = tl(List),
     {Arg0, list_to_tuple(ArgT)}.
 
+-spec cast_all_nodes_process(atom(), string(), list(), atom()) -> atom().
 cast_all_nodes_process(_, _, [], _) ->
     ok;
 cast_all_nodes_process(Mod, Msg, [Node | Nodes], Wait) when Node =:= node() ->
@@ -180,9 +199,7 @@ cast_all_nodes_process(Mod,
            {Arg0, Args} = split_rpc_msg(Msg),
            case wm_utils:get_address(Node) of
                not_found ->
-                   ?LOG_DEBUG("The wait-cast to ~p will not be performed "
-                              "now",
-                              [Node]);
+                   ?LOG_DEBUG("The wait-cast to ~p will not be performed now", [Node]);
                Addr ->
                    ?LOG_DEBUG("wait-cast: ~p, ~p --> ~p", [Mod, Arg0, Addr]),
                    wm_rpc:cast(Mod, Arg0, Args, Addr)
@@ -204,10 +221,9 @@ do_send_event(Mod, Event) ->
             ?LOG_ERROR("Could not send event ~p to ~p: ~p:~p", [Event, Mod, E1, E2])
     end.
 
+-spec call_self_process(atom(), string(), atom(), atom(), string()) -> atom().
 call_self_process(Module, Msg, From, To, ID) ->
-    ?LOG_DEBUG("call_self_process [remote]: M=~p, Msg=~p, "
-               "From=~p,To=~p, ID=~p",
-               [Module, Msg, From, To, ID]),
+    ?LOG_DEBUG("call_self_process [remote]: M=~p, Msg=~p, From=~p,To=~p, ID=~p", [Module, Msg, From, To, ID]),
     Answer = wm_rpc:call(?MODULE, recv, {Module, Msg}, To),
     From ! {ID, Answer},
     exit(normal).

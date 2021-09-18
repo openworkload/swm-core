@@ -6,6 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([new/3, send_confirm/5, send_event_locally/3, notify_initiated/2, subscribe/3, is_running/2]).
 
+-include("wm_entity.hrl").
 -include("wm_log.hrl").
 
 -record(mstate,
@@ -217,6 +218,7 @@ handle_event(Event, {ModuleTaskId, EventData}, MState) ->
             end
     end.
 
+-spec calc_id([node_address()]) -> integer().
 calc_id(Nodes) ->
     erlang:phash2({lists:sort(Nodes), wm_utils:timestamp(microsecond)}).
 

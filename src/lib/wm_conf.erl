@@ -15,13 +15,13 @@
 -define(DEFAULT_SYCN_INTERVAL, 60000).
 -define(DEFAULT_PULL_TIMEOUT, 10000).
 
--record(mstate, {spool = "" :: string(), default_port = unknown :: integer(), sync = false :: atom()}).
+-record(mstate, {spool = "" :: string(), default_port = unknown :: integer() | atom(), sync = false :: atom()}).
 
 %% ============================================================================
 %% Module API
 %% ============================================================================
 
-%% @doc start configuration server
+%% @doc Start configuration server
 -spec start_link(term()) -> {ok, pid()}.
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
@@ -33,10 +33,12 @@ pull_async(Node) ->
     gen_server:cast(?MODULE, {pull_config, Node}).
 
 %% @doc Get global parameter value
+-spec g(string(), {term(), atom()}) -> term().
 g(Name, {Default, ConvertTo}) ->
     do_get_global(Name, Default, ConvertTo).
 
 %% @doc Set global parameter value
+-spec set_global(string(), term()) -> pos_integer().
 set_global(Name, Value) ->
     do_set_global(Name, Value).
 
@@ -77,7 +79,8 @@ select_many(Tab, Attr, Values) ->
 get_nodes_with_state(NodesState) ->
     wm_utils:protected_call(?MODULE, {get_nodes_with_state, NodesState}, []).
 
-%% @doc Update existing record
+%% @doc Update existing record in the configuration
+-spec update(atom(), {atom(), term()}, {atom(), term()}) -> {atomic, term()} | {aborted, term()}.
 update(Tab, {KeyName, KeyVal}, {Attr, NewValue}) ->
     Arg = {update, Tab, {KeyName, KeyVal, Attr, NewValue}},
     wm_utils:protected_call(?MODULE, Arg).
@@ -89,13 +92,17 @@ update(Records) when is_list(Records) ->
 update(Entity) ->
     wm_utils:protected_call(?MODULE, {set, [Entity]}).
 
+%% @doc Delete existing record from configuration
 -spec delete(term()) -> ok.
 delete(Record) ->
     wm_utils:protected_call(?MODULE, {delete, Record}).
 
+%% @doc Delete existing record by key from configuration
+-spec delete(term(), term()) -> ok.
 delete(Tab, KeyVal) ->
     wm_utils:protected_call(?MODULE, {delete, Tab, KeyVal}).
 
+-spec import([term()], integer()) -> {integer, integer()}.
 import([], Count) ->
     ?LOG_DEBUG("Imported ~p tables", [Count]),
     {integer, Count + wm_db:create_the_rest_tables()};
@@ -103,22 +110,27 @@ import([Term | T], Count) ->
     update(Term),
     import(T, Count + 1).
 
+-spec propagate_config([atom()], atom()) -> ok.
 propagate_config(Tabs, Node) ->
     gen_server:cast(?MODULE, {propagate, Tabs, Node}).
 
+-spec propagate_config([atom()]) -> ok.
 propagate_config(Nodes) ->
     %TODO use mnesia checkpointings (to get a consistent config or rollback?)
     gen_server:cast(?MODULE, {propagate, Nodes}).
 
+-spec set_node_state(atom(), atom(), atom | node_address()) -> ok.
 set_node_state(power, State, Node) ->
     gen_server:cast(?MODULE, {set_state, state_power, State, Node});
 set_node_state(alloc, State, Node) ->
     gen_server:cast(?MODULE, {set_state, state_alloc, State, Node}).
 
+-spec set_nodes_state(atom(), atom(), [#node{}]) -> pos_integer().
 set_nodes_state(StateType, StateName, Nodes) ->
     NewNodes = [wm_entity:set_attr({StateType, StateName}, Z) || Z <- Nodes],
     update(NewNodes).
 
+-spec get_my_address() -> node_address() | not_found.
 get_my_address() ->
     case wm_db:get_one(node, name, wm_utils:get_short_name(node())) of
         [] ->
@@ -141,7 +153,7 @@ is_my_address(Addr) ->
             IsGw
     end.
 
-%% @doc Get not my node address that depends on what self node requests it
+%% @doc Get "not my" node address that depends on what self node requests it
 -spec get_relative_address(#node{}, #node{}) -> {string(), integer()}.
 get_relative_address(_To = #node{gateway = [],
                                  host = Host,
@@ -185,6 +197,7 @@ get_my_relative_address(DestAddr = {_, _}) ->
             do_get_my_address()
     end.
 
+-spec select_my_node() -> {ok, #node{}} | {error, not_found}.
 select_my_node() ->
     Name = wm_utils:get_short_name(node()),
     case do_select_node(Name) of
@@ -194,6 +207,7 @@ select_my_node() ->
             {error, not_found}
     end.
 
+-spec get_my_relative_direct_address(#node{}) -> node_address().
 get_my_relative_direct_address(DestNode) ->
     case wm_entity:get_attr(remote_id, DestNode) of
         [] ->
@@ -215,6 +229,7 @@ get_my_relative_direct_address(DestNode) ->
             end
     end.
 
+-spec select_node_apply(node_address(), function()) -> {error, not_found} | term().
 select_node_apply({Host, Port}, Func) ->
     case wm_db:get_one_2keys(node, {host, Host}, {api_port, Port}) of
         Nodes when length(Nodes) > 1 ->
@@ -238,6 +253,7 @@ select_node_apply({Host, Port}, Func) ->
             end
     end.
 
+-spec ensure_boot_info_deleted() -> {atomic, term()} | {aborted, term()} | ok.
 ensure_boot_info_deleted() ->
     ?LOG_DEBUG("Ensure the boot info is deleted (not needed any more)"),
     case select(node, {name, "boot_node"}) of
@@ -289,7 +305,7 @@ handle_call({delete, Record}, _From, MState) ->
 handle_call({delete, Tab, KeyVal}, _From, MState) ->
     {reply, wm_db:delete_by_key(Tab, KeyVal), MState};
 handle_call({update, Tab, {Key, KeyVal, Attr, Value}}, _From, MState) ->
-    {reply, wm_db:update_exist(Tab, {Key, KeyVal}, Attr, Value), MState};
+    {reply, wm_db:update_existing(Tab, {Key, KeyVal}, Attr, Value), MState};
 handle_call({get_nodes_with_state, {StateType, St}}, _From, MState) ->
     case wm_db:get_many(node, StateType, [St]) of
         [] ->
@@ -358,7 +374,7 @@ handle_cast({sync_config_request, TabHashes, From, Me}, MState) ->
     DifferentTabs =
         case wm_state:get_current() of
             idle ->
-                wm_db:compare_hashes(content, TabHashes);
+                wm_db:compare_hashes(TabHashes);
             _ ->
                 not_ready
         end,
@@ -452,6 +468,7 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{spool, Dir} | T], MState) ->
@@ -463,6 +480,7 @@ parse_args([{default_api_port, Port} | T], #mstate{} = MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
+-spec select_several({[atom()], atom()}, term()) -> [term()].
 select_several({Tabs, _}, all) when is_list(Tabs) ->
     lists:flatten(select_several(Tabs, []));
 select_several({Tab, _}, {all, MaxReturnedListSize}) ->
@@ -476,25 +494,30 @@ select_several([], Acc) ->
 select_several([Tab | T], Acc) ->
     select_several(T, [select_several({Tab, []}, all) | Acc]).
 
+-spec select_one({atom(), atom()}, term()) -> term().
 select_one({Tab, Attr}, Val) ->
     wm_db:get_one(Tab, Attr, Val).
 
+-spec do_set_state(atom(), atom(), atom() | node_address()) -> pos_integer().
 do_set_state(Type, State, Node) when is_atom(Node) ->
     case wm_db:table_exists(node) of
         false ->
-            ?LOG_DEBUG("Table 'node' not found, don't set node ~p state ~p", [Node, State]);
+            ?LOG_DEBUG("Table 'node' not found, don't set node ~p state ~p", [Node, State]),
+            0;
         true ->
             NodeNameStr = atom_to_list(Node),
             [ShortName, Host] = string:tokens(NodeNameStr, "@"),
             case select_one({node, name}, ShortName) of
                 [] ->
-                    ?LOG_DEBUG("The node is unknown: ~p", [ShortName]);
+                    ?LOG_DEBUG("The node is unknown: ~p", [ShortName]),
+                    0;
                 Nodes when is_list(Nodes) ->
                     F = fun(Nd) -> wm_entity:get_attr(host, Nd) =:= Host end,
                     {NodesOnHost, _} = lists:partition(F, Nodes),
                     case NodesOnHost of
                         [] ->
-                            ?LOG_DEBUG("Node ~p not found on host: ~p", [ShortName, Host]);
+                            ?LOG_DEBUG("Node ~p not found on host: ~p", [ShortName, Host]),
+                            0;
                         SatisfyingNodes ->
                             Node1 = hd(SatisfyingNodes), % should be one only
                             Node2 = wm_entity:set_attr({Type, State}, Node1),
@@ -509,9 +532,11 @@ do_set_state(Type, State, {Host, Port}) when is_list(Host) ->
         end,
     select_node_apply({Host, Port}, F).
 
+-spec do_get_global(string(), term(), atom()) -> term().
 do_get_global(Name, Default, Type) ->
     wm_db:get_global(Name, Type, Default).
 
+-spec do_set_global(string(), term()) -> integer().
 do_set_global(Name, Value) when is_integer(Value) ->
     do_set_global(Name, integer_to_list(Value));
 do_set_global(Name, Value) ->
@@ -524,11 +549,13 @@ do_set_global(Name, Value) ->
     X3 = wm_entity:set_attr({value, Value}, X2),
     wm_utils:protected_call(?MODULE, {set, [X3]}).
 
+-spec schedule_sync_check() -> reference().
 schedule_sync_check() ->
     N = ?MODULE:g(sync_interval, {?DEFAULT_SYCN_INTERVAL, integer}),
     ?LOG_DEBUG("Schedule new sync check in ~p ms", [N]),
     wm_utils:wake_up_after(N, sync_check).
 
+-spec do_get_my_address() -> node_address().
 do_get_my_address() ->
     Addr =
         case wm_db:get_one(node, name, wm_utils:get_short_name(node())) of
@@ -549,6 +576,7 @@ do_get_my_address() ->
     ?LOG_DEBUG("Get my address result: ~p", [Addr]),
     Addr.
 
+-spec do_select(atom(), {atom(), term()} | function() | list() | atom()) -> {ok, term()} | {error, not_found}.
 do_select(Tab, {Key, Value}) when Key =/= all ->
     case select_one({Tab, Key}, Value) of
         [] ->
@@ -571,6 +599,7 @@ do_select(Tab, IDs) when is_list(IDs) ->
 do_select(Tab, Condition) ->
     select_several({Tab, id}, Condition).
 
+-spec do_select_node(node_address()) -> {ok, #node{}} | {error, atom()}.
 do_select_node({Host, Port}) ->
     select_node_apply({Host, Port}, fun(X) -> X end);
 do_select_node(Name) when is_list(Name) ->

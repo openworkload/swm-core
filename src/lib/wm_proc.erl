@@ -8,12 +8,13 @@
 
 -include("../../include/wm_timeouts.hrl").
 -include("../../include/wm_scheduler.hrl").
+-include("wm_entity.hrl").
 -include("wm_log.hrl").
 
 -define(SWM_EXEC_METHOD, "docker").
 -define(SWM_PORTER_IN_CONTAINER, "/opt/swm/current/bin/swm-porter").
 
--record(mstate, {sys_pid, job, nodes = [], root, spool}).
+-record(mstate, {sys_pid :: string(), job :: #job{}}).
 
 %% ============================================================================
 %% Module API
@@ -27,6 +28,29 @@ start_link(Args) ->
 %% Server callbacks
 %% ============================================================================
 
+-spec init(term()) ->
+              {ok, atom(), term()} |
+              {ok, atom(), term(), hibernate | infinity | non_neg_integer()} |
+              {stop, term()} |
+              ignore.
+-spec handle_event(term(), atom(), term()) ->
+                      {next_state, atom(), term()} |
+                      {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
+                      {stop, term(), term()} |
+                      {stop, term(), term(), term()}.
+-spec handle_sync_event(term(), atom(), atom(), term()) ->
+                           {next_state, atom(), term()} |
+                           {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
+                           {reply, term(), atom(), term()} |
+                           {reply, term(), atom(), term(), hibernate | infinity | non_neg_integer()} |
+                           {stop, term(), term()} |
+                           {stop, term(), term(), term()}.
+-spec handle_info(term(), atom(), term()) ->
+                     {next_state, atom(), term()} |
+                     {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec code_change(term(), atom(), term(), term()) -> {ok, term()}.
+-spec terminate(term(), atom(), term()) -> ok.
 handle_sync_event(_Event, _From, State, MState) ->
     {reply, State, State, MState}.
 
@@ -57,11 +81,13 @@ terminate(Status, State, MState) ->
 %% FSM state transitions
 %% ============================================================================
 
+-spec sleeping(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 sleeping(activate, MState) ->
     ?LOG_DEBUG("Received 'activate' [sleeping] (~p)", [get_id(MState)]),
     MState2 = execute(MState),
     {next_state, running, MState2}.
 
+-spec running(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 running({started, JobID}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job ~p has been started", [JobID]),
     wm_event:announce(proc_started, {JobID, node()}),
@@ -75,17 +101,19 @@ running({started, JobID}, #mstate{} = MState) ->
 running({sent, JobID}, #mstate{} = MState) ->
     ?LOG_DEBUG("Message to ~p has been sent", [JobID]),
     {next_state, running, MState};
-running({{process, Process}, JobID}, #mstate{} = MState) ->
+running({{process, Process}, _JobID}, #mstate{} = MState) ->
     do_check(Process, MState).
 
-finished({{process, Process}, JobID}, #mstate{} = MState) ->
+-spec finished(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+finished({{process, Process}, _JobID}, #mstate{} = MState) ->
     do_check(Process, MState);
 finished({completed, Process}, #mstate{} = MState) ->
     do_complete(Process, MState),
     ?LOG_DEBUG("Stopping wm_proc"),
     {stop, normal, MState}.
 
-error({{process, Process}, JobID}, #mstate{} = MState) ->
+-spec error(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+error({{process, Process}, _JobID}, #mstate{} = MState) ->
     do_check(Process, MState).
 
 %% ============================================================================
@@ -103,14 +131,8 @@ parse_args([], MState) ->
     MState;
 parse_args([{extra, Job} | T], MState) ->
     parse_args(T, MState#mstate{job = Job});
-parse_args([{nodes, Nodes} | T], MState) ->
-    parse_args(T, MState#mstate{nodes = Nodes});
 parse_args([{task_id, ID} | T], MState) ->
     parse_args(T, MState#mstate{sys_pid = ID});
-parse_args([{root, Root} | T], MState) ->
-    parse_args(T, MState#mstate{root = Root});
-parse_args([{spool, Spool} | T], MState) ->
-    parse_args(T, MState#mstate{spool = Spool});
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
@@ -211,7 +233,7 @@ init_porter(User, MState) ->
     ?LOG_DEBUG("Porter input size for user ~p: ~p", [User, byte_size(BinIn)]),
     wm_container:communicate(MState#mstate.job, BinIn, self()).
 
-do_clean(Job) ->
+do_clean(_Job) ->
     %TODO clean container stuff (see wm_docker:delete/3)
     ok.
 
