@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/4, get/3, post/5, ws_upgrade/4, delete/4, send/3, stop/1]).
+-export([start_link/5, get/3, post/5, ws_upgrade/4, delete/4, send/3, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../../lib/wm_log.hrl").
@@ -37,9 +37,9 @@
 %% API
 %% ============================================================================
 
--spec start_link(string(), integer(), pid() | [], term()) -> {ok, pid()}.
-start_link(Addr, Port, Owner, ReqID) ->
-    Args = {Owner, Addr, Port, ReqID},
+-spec start_link(string(), integer(), pid() | [], term(), string()) -> {ok, pid()}.
+start_link(Addr, Port, Owner, ReqID, Reason) ->
+    Args = {Owner, Addr, Port, ReqID, Reason},
     gen_server:start_link(?MODULE, Args, []).
 
 -spec get(string(), list(), term()) -> binary().
@@ -84,7 +84,25 @@ stop(HttpProcPid) ->
 %% CALLBACKS
 %% ============================================================================
 
-init({Owner, Addr, Port, ReqID}) ->
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init({Owner, Addr, Port, ReqID, Reason}) ->
     process_flag(trap_exit, true),
     application:ensure_all_started(gun),
     {ConnPid, MRef} = open_conn(Addr, Port),
@@ -93,7 +111,7 @@ init({Owner, Addr, Port, ReqID}) ->
                 conn_pid = ConnPid,
                 mref = MRef,
                 reqid = ReqID},
-    ?LOG_INFO("HTTP client has been started: ~p:~p (~p)", [Addr, Port, MState]),
+    ?LOG_INFO("HTTP client has been started: ~p:~p (~p)", [Addr, Port, Reason]),
     {ok, MState}.
 
 handle_call({get_start, Path, Hdr} = Command, _, #mstate{} = MState) ->
@@ -225,6 +243,7 @@ open_conn(Addr, Port) ->
     MRef = monitor(process, ConnPid),
     {ConnPid, MRef}.
 
+-spec shutdown(#mstate{}) -> ok.
 shutdown(#mstate{conn_pid = ConnPid,
                  mref = MRef,
                  ws_ping_timer = Timer}) ->
@@ -291,9 +310,7 @@ handle_docker_output(<<>>, MState = #mstate{}) ->
     reset_data_state(MState);
 handle_docker_output(<<Type:8/integer, 0, 0, 0, FrameSize:32/integer, Data/binary>>, MState) ->
     %% See https://docs.docker.com/engine/api/v1.24 (ATTACH TO A CONTAINER)
-    ?LOG_DEBUG("[FRAME] start: type=~p frame_size=~p "
-               "data_size=~p",
-               [Type, FrameSize, byte_size(Data)]),
+    ?LOG_DEBUG("[FRAME] start: type=~p frame_size=~p data_size=~p", [Type, FrameSize, byte_size(Data)]),
     case byte_size(Data) of
         FrameSize ->  % received whole frame
             ?LOG_DEBUG("[FRAME] received: whole frame"),

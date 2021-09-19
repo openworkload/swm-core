@@ -233,10 +233,6 @@ init_porter(User, MState) ->
     ?LOG_DEBUG("Porter input size for user ~p: ~p", [User, byte_size(BinIn)]),
     wm_container:communicate(MState#mstate.job, BinIn, self()).
 
-do_clean(_Job) ->
-    %TODO clean container stuff (see wm_docker:delete/3)
-    ok.
-
 do_complete(Process, MState) ->
     Exit = wm_entity:get_attr(pid, Process),
     State = wm_entity:get_attr(state, Process),
@@ -249,8 +245,10 @@ do_complete(Process, MState) ->
     Job4 = wm_entity:set_attr({comment, Comment}, Job3),
     Job5 = wm_entity:set_attr({state, State}, Job4),
     wm_conf:update([Job5]),
-    do_announce_completed(Process, MState),
-    do_clean(Job5).
+    ok = wm_container:clear(Job5),
+    {ok, Node} = wm_self:get_node(),
+    wm_conf:set_nodes_state(state_alloc, idle, [Node]),
+    do_announce_completed(Process, MState).
 
 do_announce_completed(Process, MState) ->
     EndTime = wm_utils:now_iso8601(without_ms),

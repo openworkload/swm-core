@@ -172,8 +172,7 @@ accept(MState = #mstate{lsocket = LSocket}) ->
     ?LOG_DEBUG("Connection has been accepting"),
     Pid = spawn(?MODULE, loop, [{self(), LSocket, wm_api}]),
     ?LOG_DEBUG("New connection process pid: ~p", [Pid]),
-    MState#mstate{pids =
-                      [Pid | MState#mstate.pids]}. %TODO should the pids be used?
+    MState#mstate{pids = [Pid | MState#mstate.pids]}. %TODO should the pids be used?
 
 loop({Server, LSocket, Module}) ->
     ?LOG_DEBUG("Ready to accept new SSL connection"),
@@ -194,9 +193,7 @@ loop({Server, LSocket, Module}) ->
                         ?LOG_DEBUG("SSL peer: ~p.~p.~p.~p:~p", [IP1, IP2, IP3, IP4, Port]),
                         {ok, [{protocol, ProtoVer}, {cipher_suite, CipherSuite}]} =
                             ssl:connection_information(Socket, [protocol, cipher_suite]),
-                        ?LOG_DEBUG("SSL connection is accepted (protocol: "
-                                   "~p, cipher: ~p)",
-                                   [ProtoVer, CipherSuite]),
+                        ?LOG_DEBUG("SSL connection is accepted (protocol: ~p, cipher: ~w)", [ProtoVer, CipherSuite]),
                         {ok, CertBin} = ssl:peercert(Socket),
                         Cert = public_key:pkix_decode_cert(CertBin, otp),
                         UserId = wm_cert:get_uid(Cert),

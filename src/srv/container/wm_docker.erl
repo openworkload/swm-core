@@ -1,6 +1,6 @@
 -module(wm_docker).
 
--export([get_unregistered_images/0, get_unregistered_image/1, create/5, start/2, attach/3, attach_ws/3, delete/3,
+-export([get_unregistered_images/0, get_unregistered_image/1, create/5, start/2, attach/3, attach_ws/3, delete/2,
          send/3, create_exec/2, start_exec/4]).
 
 -include_lib("kernel/include/file.hrl").
@@ -37,7 +37,7 @@ start(Job, Steps) ->
     do_start_container(Job, Steps).
 
 %% @doc Attach to container for specified job
--spec attach(tuple(), pid(), list()) -> pid().
+-spec attach(tuple(), pid(), list()) -> {string(), pid()}.
 attach(Job, Owner, Steps) ->
     do_attach_container(Job, Owner, Steps).
 
@@ -51,11 +51,6 @@ attach_ws(Job, Owner, Steps) ->
 send(HttpProcPid, Data, Steps) ->
     do_send(HttpProcPid, Data, Steps).
 
-%% @doc Delete container for specified job
--spec delete(tuple(), pid(), list()) -> ok.
-delete(Job, Owner, Steps) ->
-    do_delete_container(Job, Owner, Steps).
-
 %% @doc Create exec in running container
 -spec create_exec(tuple(), list()) -> pid().
 create_exec(Job, Steps) ->
@@ -66,17 +61,24 @@ create_exec(Job, Steps) ->
 start_exec(Job, ExecId, HttpProcPid, Steps) ->
     do_start_exec(Job, ExecId, HttpProcPid, Steps).
 
+%% @doc Delete container for specified job
+-spec delete(#job{}, pid()) -> ok.
+delete(Job, Owner) ->
+    do_delete_container(Job, Owner).
+
 %% ============================================================================
 %% IMPLEMENTATION
 %% ============================================================================
 
-start_http_client(Owner, ReqID) ->
+-spec start_http_client(pid(), term(), string()) -> pid().
+start_http_client(Owner, ReqID, Reason) ->
     Host = get_connection_host(),
     Port = wm_conf:g(cont_port, {?CONTAINER_PORT, integer}),
-    {ok, Pid} = wm_docker_client:start_link(Host, Port, Owner, ReqID),
+    {ok, Pid} = wm_docker_client:start_link(Host, Port, Owner, ReqID, Reason),
     ?LOG_DEBUG("HTTP client Pid=~p", [Pid]),
     Pid.
 
+-spec get_connection_host() -> string().
 get_connection_host() ->
     case filelib:is_regular("/.dockerenv") of
         true -> % we are in docker
@@ -86,7 +88,7 @@ get_connection_host() ->
     end.
 
 do_get_unregistered_image(ImageId) ->
-    HttpProcPid = start_http_client(self(), ImageId),
+    HttpProcPid = start_http_client(self(), ImageId, "get unregistered image " ++ ImageId),
     Path = "/images/" ++ ImageId ++ "/json",
     BodyBin = wm_docker_client:get(Path, [], HttpProcPid),
     ?LOG_DEBUG("Get unregistered images: ~p", [BodyBin]),
@@ -96,7 +98,7 @@ do_get_unregistered_image(ImageId) ->
     Image.
 
 do_get_unregistered_images() ->
-    HttpProcPid = start_http_client(self(), []),
+    HttpProcPid = start_http_client(self(), [], "get all unregistered images"),
     Path = "/images/json",
     BodyBin = wm_docker_client:get(Path, [], HttpProcPid),
     wm_docker_client:stop(HttpProcPid),
@@ -189,44 +191,38 @@ generate_container_json(Porter) ->
     Term11 = jwalk:set({"VolumesFrom"}, Term10, get_volumes_from()),
     jsx:encode(Term11).
 
-do_create_container(Job, Porter, Envs, Owner, Steps) ->
+do_create_container(Job, Porter, _Envs, Owner, Steps) ->
     ContID = "swmjob-" ++ wm_entity:get_attr(id, Job),
     ?LOG_DEBUG("Create container ~p", [ContID]),
-    HttpProcPid = start_http_client(Owner, ContID),
+    HttpProcPid = start_http_client(Owner, ContID, "create container " ++ ContID),
     Body = generate_container_json(Porter),
     Path = "/containers/create?name=" ++ ContID,
     Hdrs = [{<<"content-type">>, "application/json"}],
     wm_docker_client:post(Path, Body, Hdrs, HttpProcPid, Steps),
     {ContID, HttpProcPid}.
 
-do_stop_container(Job, Owner, Steps) ->
+-spec do_delete_container(#job{}, pid()) -> ok.
+do_delete_container(Job, Owner) ->
     ContID = wm_entity:get_attr(container, Job),
-    ?LOG_DEBUG("Stop container ~p", [ContID]),
-    HttpProcPid = start_http_client(Owner, ContID),
-    Timeout = "1",
-    Path = "/containers/" ++ ContID ++ "/stop?t=" ++ Timeout,
-    wm_docker_client:post(Path, [], [], HttpProcPid, Steps),
-    wm_docker_client:stop(HttpProcPid).
-
-do_delete_container(Job, Owner, Steps) ->
-    ContID = wm_entity:get_attr(container, Job),
-    ?LOG_DEBUG("Delete container ~p", [ContID]),
-    HttpProcPid = start_http_client(Owner, ContID),
-    Path = "/containers/" ++ ContID,
-    wm_docker_client:delete(Path, [], HttpProcPid, Steps),
-    wm_docker_client:stop(HttpProcPid).
+    HttpProcPid = start_http_client(Owner, ContID, "delete container " ++ ContID),
+    KillBeforeDeleteOption = "?force=1",
+    Path = "/containers/" ++ ContID ++ KillBeforeDeleteOption,
+    ?LOG_DEBUG("Delete docker container with path=~p [~p]", [Path, HttpProcPid]),
+    ok = wm_docker_client:delete(Path, [], HttpProcPid, []),
+    wm_docker_client:stop(HttpProcPid),
+    ok.
 
 do_start_container(Job, Steps) ->
     ContID = wm_entity:get_attr(container, Job),
     ?LOG_DEBUG("Start container ~p", [ContID]),
-    HttpProcPid = start_http_client(self(), ContID),
+    HttpProcPid = start_http_client(self(), ContID, "start container " ++ ContID),
     Path = "/containers/" ++ ContID ++ "/start",
     wm_docker_client:post(Path, [], [], HttpProcPid, Steps).
 
 do_attach_container(Job, Owner, Steps) ->
     ContID = wm_entity:get_attr(container, Job),
-    ?LOG_DEBUG("Attach container ~p", [ContID]),
-    HttpProcPid = start_http_client(Owner, ContID),
+    ?LOG_DEBUG("Attach to container ~p", [ContID]),
+    HttpProcPid = start_http_client(Owner, ContID, "attach to container " ++ ContID),
     Params = "?logs=1&stream=1&stderr=1&stdout=1&stdin=0",
     Path = "/containers/" ++ ContID ++ "/attach" ++ Params,
     Hdrs =
@@ -239,7 +235,7 @@ do_attach_container(Job, Owner, Steps) ->
 do_attach_ws_container(Job, Owner, Steps) ->
     ContID = wm_entity:get_attr(container, Job),
     ?LOG_DEBUG("Attach (ws) container ~p", [ContID]),
-    HttpProcPid = start_http_client(Owner, ContID),
+    HttpProcPid = start_http_client(Owner, ContID, "attach to webscket container " ++ ContID),
     % We attach using websockets here only for data sending.
     % Although we still set stream=1 otherwise the attachment
     % connection is closed by docker immidiatly after esteblished.
@@ -287,7 +283,7 @@ generate_finalize_json(_, start) ->
 
 do_create_exec(Job, Steps) ->
     ContID = wm_entity:get_attr(container, Job),
-    HttpProcPid = start_http_client(self(), ContID),
+    HttpProcPid = start_http_client(self(), ContID, "exec-finalize in container " ++ ContID),
     ?LOG_DEBUG("Finalize container (HttpProcPid=~p)", [HttpProcPid]),
     ContID = wm_entity:get_attr(container, Job),
     Path = "/containers/" ++ ContID ++ "/exec",

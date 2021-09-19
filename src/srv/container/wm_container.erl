@@ -2,16 +2,18 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, list_images/1, register_image/1, run/4, communicate/3, unfollow/1]).
+-export([start_link/1, list_images/1, register_image/1, run/4, communicate/3, clear/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../../lib/wm_log.hrl").
+-include("../../lib/wm_entity.hrl").
 
 -define(DEFAULT_CONTAINER_TYPE, "docker").
 
 -record(mstate,
-        {containers = #{}, % ContID => {Owner, Job, HttpPid}
-         execs = #{}}). % ContID => ExecPid
+        {containers = #{} :: map(),           % ContID => {Owner, Job, HttpPid}
+         execs = #{} :: map(),                % ContID => ExecPid
+         attachment_pid = undefined :: pid()}).  % PID of the process that attaches to container websocket
 
 %% ============================================================================
 %% API
@@ -31,10 +33,6 @@ communicate(Job, Bin, Owner) ->
     Steps = [attach_ws, {send, Bin}, return_sent],
     wm_utils:protected_call(?MODULE, {communicate, Job, Owner, Steps}, []).
 
--spec unfollow(tuple()) -> ok.
-unfollow(Job) ->
-    gen_server:call(?MODULE, {unfollow, Job}, []).
-
 -spec list_images(atom()) -> list().
 list_images(Type) ->
     wm_utils:protected_call(?MODULE, {list_images, Type}, []).
@@ -43,17 +41,44 @@ list_images(Type) ->
 register_image(ImageID) ->
     wm_utils:protected_call(?MODULE, {register_image, ImageID}, []).
 
+-spec clear(#job{}) -> ok.
+clear(Job) ->
+    wm_utils:protected_call(?MODULE, {clear_container, Job}, []).
+
 %% ============================================================================
 %% CALLBACKS
 %% ============================================================================
 
-%% @hidden
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     ?LOG_INFO("Container service has been started"),
     {ok, MState}.
 
+handle_call({clear_container, #job{container = ContID} = Job}, _, #mstate{attachment_pid = AttachmentPid} = MState) ->
+    ?LOG_INFO("Clear container ~p", [ContID]),
+    Module = get_conteinerizer(),
+    ok = Module:delete(Job, self()),
+    wm_docker_client:stop(AttachmentPid),
+    {reply, ok, MState};
 handle_call({register_image, ImageID}, _, #mstate{} = MState) ->
     Module = get_conteinerizer(),
     case Module:get_unregistered_image(ImageID) of
@@ -79,30 +104,26 @@ handle_call({communicate, Job, Owner, [attach_ws | Steps]}, _, #mstate{} = MStat
     Module = get_conteinerizer(),
     {ContID, HttpProcPid} = Module:attach_ws(Job, self(), Steps),
     Map = maps:put(ContID, {Owner, Job, HttpProcPid}, MState#mstate.containers),
-    {reply, ok, MState#mstate{containers = Map}};
-handle_call({unfollow, Job}, _, #mstate{} = MState) ->
-    ContID = wm_entity:get_attr(container, Job),
-    Map = maps:remove(ContID, MState#mstate.containers),
     {reply, ok, MState#mstate{containers = Map}}.
 
 %% Next block of handle_cast serves scenarios defined by list of atoms.
 %% Each step in the scenario passes tail of the list to the next command
 %% that will return the list to that block of handles when finishes.
 handle_cast({[attach | Steps], Status, Data, _, ContID}, #mstate{} = MState) ->
-    ?LOG_DEBUG("STEP ATTACH ~p | ~p | ~p | ~p", [Status, ContID, Data, Steps]),
+    ?LOG_DEBUG("STEP ATTACH ~p | ~p | ~p | ~w", [Status, ContID, Data, Steps]),
     Module = get_conteinerizer(),
     {_, Job, _} = maps:get(ContID, MState#mstate.containers),
-    Module:attach(Job, self(), Steps),
-    {noreply, MState};
+    {ContID, AttachmentPid} = Module:attach(Job, self(), Steps),
+    {noreply, MState#mstate{attachment_pid = AttachmentPid}};
 handle_cast({[attach_ws | Steps], Status, Data, _, ContID}, #mstate{} = MState) ->
-    ?LOG_DEBUG("STEP ATTACH WS ~p | ~p | ~p | ~p", [Status, ContID, Data, Steps]),
+    ?LOG_DEBUG("STEP ATTACH WS ~p | ~p | ~p | ~w", [Status, ContID, Data, Steps]),
     Module = get_conteinerizer(),
     {_, Job, _} = maps:get(ContID, MState#mstate.containers),
     Module:attach_ws(Job, self(), Steps),
     {noreply, MState};
 handle_cast({[start | Steps], Status, Data, _, ContID}, #mstate{} = MState)
     when Status =:= ok; Status =:= 304; Status =:= 101 ->
-    ?LOG_DEBUG("STEP START | ~p | ~p | ~p", [ContID, Data, Steps]),
+    ?LOG_DEBUG("STEP START | ~p | ~p | ~w", [ContID, Data, Steps]),
     Module = get_conteinerizer(),
     {_, Job, _} = maps:get(ContID, MState#mstate.containers),
     Module:start(Job, Steps),
@@ -115,7 +136,7 @@ handle_cast({[create_exec | Steps], Status, _, _, ContID}, #mstate{} = MState) -
     Map = maps:put(ContID, HttpProcPid, MState#mstate.execs),
     {noreply, MState#mstate{execs = Map}};
 handle_cast({[start_exec | Steps], _, Data, _, ContID}, #mstate{} = MState) ->
-    ?LOG_DEBUG("STEP START EXEC ~p | ~p", [ContID, Steps]),
+    ?LOG_DEBUG("STEP START EXEC ~p | ~w", [ContID, Steps]),
     Module = get_conteinerizer(),
     {_, Job, _} = maps:get(ContID, MState#mstate.containers),
     HttpProcPid = maps:get(ContID, MState#mstate.execs),
@@ -128,24 +149,24 @@ handle_cast({[start_exec | Steps], _, Data, _, ContID}, #mstate{} = MState) ->
     end,
     {noreply, MState};
 handle_cast({[{send, Bin} | Steps], Status, Data, _, ContID}, #mstate{} = MState) ->
-    ?LOG_DEBUG("STEP SEND | ~p | ~p | ~p | ~p", [Status, ContID, Data, Steps]),
+    ?LOG_DEBUG("STEP SEND | ~p | ~p | ~p | ~w", [Status, ContID, Data, Steps]),
     Module = get_conteinerizer(),
     {_, _, HttpProcPid} = maps:get(ContID, MState#mstate.containers),
     Module:send(HttpProcPid, Bin, Steps),
     {noreply, MState};
 handle_cast({[return_started | Steps], Status, Data, _, ContID}, #mstate{} = MState) ->
-    ?LOG_DEBUG("STEP RETURN STARTED ~p | ~p | ~p | ~p", [Status, ContID, Data, Steps]),
+    ?LOG_DEBUG("STEP RETURN STARTED ~p | ~p | ~p | ~w", [Status, ContID, Data, Steps]),
     send_event_to_owner(started, ContID, MState),
     {noreply, MState};
 handle_cast({[return_sent | Steps], Status, Data, _, ContID}, #mstate{} = MState) ->
-    ?LOG_DEBUG("STEP RETURN SENT ~p | ~p | ~p | ~p", [Status, ContID, Data, Steps]),
+    ?LOG_DEBUG("STEP RETURN SENT ~p | ~p | ~p | ~w", [Status, ContID, Data, Steps]),
     send_event_to_owner(sent, ContID, MState),
     {noreply, MState};
 handle_cast({_, {stream, 1}, Data, _, ContID}, #mstate{} = MState) ->
     %%TODO Do we need to handle the std streams here?
     try
         Term = binary_to_term(Data),
-        ?LOG_DEBUG("STDOUT from ~p: ~p", [ContID, Term]),
+        ?LOG_DEBUG("STDOUT from ~p: ~w", [ContID, Term]),
         try
             case element(1, Term) of
                 process ->
@@ -173,7 +194,7 @@ handle_cast({_, {stream, 2}, Data, _, ContID}, #mstate{} = MState) ->
     {noreply, MState};
 handle_cast({Steps, Status, Data, Hdrs, ContID}, #mstate{} = MState) ->
     Out = io_lib:format("~s", [Data]),
-    ?LOG_DEBUG("RECEIVED DATA: ~p | ~p | ~p | ~p | OUTPUT=~p", [Status, ContID, Hdrs, Steps, Out]),
+    ?LOG_DEBUG("RECEIVED DATA: ~p | ~p | ~p | ~w | OUTPUT=~p", [Status, ContID, Hdrs, Steps, Out]),
     {noreply, MState};
 handle_cast(_Msg, #mstate{} = MState) ->
     {noreply, MState}.

@@ -94,7 +94,7 @@ handle_received_call({Module, Arg0, Args, Socket, ServerPid}) ->
             try
                 Msg = erlang:insert_element(1, Args, Arg0),
                 Result = wm_utils:protected_call(Module, Msg),
-                ?LOG_DEBUG("Call result: ~P", [Result, 10]),
+                %?LOG_DEBUG("Call result: ~P", [Result, 10]),
                 wm_tcpserver:reply(Result, Socket)
             catch
                 T:Error ->

@@ -1,7 +1,9 @@
 -module(wm_entity).
+
 -behaviour(json_rec_model).
 
 -include_lib("wm_entity.hrl").
+
 -include("wm_log.hrl").
 
 -export([ new/1,
