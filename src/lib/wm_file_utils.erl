@@ -4,7 +4,7 @@
 -export([md5sum/1, async_md5sum/1]).
 -export([create_symlink/2]).
 -export([open_file/1, close_file/1, delete_file/1]).
--export([create_directory/1, list_directory/1, list_directory/2, delete_directory/1]).
+-export([create_directory/1, list_directory/1, list_directory/2, delete_directory/1, ensure_directory_exists/1]).
 -export([get_file_info/1, set_file_info/2]).
 -export([get_size/1]).
 
@@ -39,7 +39,7 @@ create_tar_gz(File, Files) ->
     end.
 
 -spec create_tar_gz_ll(term(), [file:filename()]) -> ok | {error, {file:filename(), atom()}}.
-create_tar_gz_ll(Td, []) ->
+create_tar_gz_ll(_, []) ->
     ok;
 create_tar_gz_ll(Td, [File | Files]) ->
     case erl_tar:add(Td, File, filename:basename(File), []) of
@@ -73,7 +73,7 @@ md5sum(File) when is_pid(File) ->
         fun Loop(MD5Context) ->
                 case file:read(File, 1024 * 1024) of
                     eof ->
-                        Digest = crypto:hash_final(MD5Context);
+                        crypto:hash_final(MD5Context);
                     {ok, Chunk} ->
                         Loop(crypto:hash_update(MD5Context, Chunk))
                 end
@@ -184,6 +184,20 @@ create_directory(File) ->
             exist;
         {error, Reason} ->
             {error, File, wm_posix_utils:errno(Reason)}
+    end.
+
+-spec ensure_directory_exists(file:filename()) -> ok | {error, nonempty_string()}.
+ensure_directory_exists(Dir) ->
+    case filelib:ensure_dir(Dir) of
+        ok ->
+            case create_directory(Dir) of
+                {error, _, Msg} ->
+                    {error, Msg};
+                _ ->
+                    ok
+            end;
+        {error, Reason} ->
+            {error, wm_posix_utils:errno(Reason)}
     end.
 
 -spec list_directory(file:filename()) -> {ok, [file:filename()]} | {error, file:filename(), nonempty_string()}.

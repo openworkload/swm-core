@@ -10,7 +10,7 @@
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 
--record(mstate, {processes = maps:new(), transfers = maps:new()}).
+-record(mstate, {processes = maps:new() :: map(), transfers = maps:new() :: map()}).
 
 %% ============================================================================
 %% Module API
@@ -45,6 +45,36 @@ set_nodes_alloc_state(Kind, Status, JobID) ->
 %% Server callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    process_flag(trap_exit, true),
+    MState = parse_args(Args, #mstate{}),
+    ?LOG_INFO("Compute node management service has been started"),
+    wm_event:subscribe(job_start_time, node(), ?MODULE),
+    wm_event:subscribe(job_arrived, node(), ?MODULE),
+    wm_event:subscribe(wm_proc_done, node(), ?MODULE),
+    wm_event:subscribe(wm_commit_done, node(), ?MODULE),
+    wm_event:subscribe(wm_commit_failed, node(), ?MODULE),
+    wm_event:subscribe(proc_started, node(), ?MODULE),
+    {ok, MState}.
+
 handle_call(_Msg, _From, MState) ->
     {reply, {error, not_handled}, MState}.
 
@@ -66,19 +96,6 @@ code_change(_OldVsn, MState, _Extra) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
-
-%% @hidden
-init(Args) ->
-    process_flag(trap_exit, true),
-    MState = parse_args(Args, #mstate{}),
-    ?LOG_INFO("Compute node management service has been started"),
-    wm_event:subscribe(job_start_time, node(), ?MODULE),
-    wm_event:subscribe(job_arrived, node(), ?MODULE),
-    wm_event:subscribe(wm_proc_done, node(), ?MODULE),
-    wm_event:subscribe(wm_commit_done, node(), ?MODULE),
-    wm_event:subscribe(wm_commit_failed, node(), ?MODULE),
-    wm_event:subscribe(proc_started, node(), ?MODULE),
-    {ok, MState}.
 
 parse_args([], MState) ->
     MState;
@@ -173,8 +190,8 @@ handle_timetable([X | T], MState) ->
 
 -spec start_job_processes([#node{}], job_id(), #mstate{}) -> #mstate{}.
 start_job_processes(JobNodes, JobID, MState) ->
-    ?LOG_DEBUG("Start process of job ~p", [JobID]),
-    %TODO Calculate number of processes for this node and start/follow all of them
+    ?LOG_DEBUG("Start process for job ~p", [JobID]),
+    %TODO Calculate number of processes for this node and start/follow all of them with separate wm_procs
     {ok, Job} = wm_conf:select(job, {id, JobID}),
     {ok, ProcID} = wm_factory:new(proc, Job, JobNodes),
     add_proc(JobID, ProcID, JobNodes, MState).

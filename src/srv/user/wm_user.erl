@@ -9,7 +9,7 @@
 -include("../../lib/wm_entity.hrl").
 -include("../../../include/wm_scheduler.hrl").
 
--record(mstate, {}).
+-record(mstate, {spool = "" :: string}).
 
 %% ============================================================================
 %% API
@@ -41,6 +41,13 @@ start_link(Args) ->
                      {stop, term(), term()}.
 -spec terminate(term(), term()) -> ok.
 -spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    ?LOG_INFO("Load user management service"),
+    process_flag(trap_exit, true),
+    wm_event:subscribe(http_started, node(), ?MODULE),
+    MState = parse_args(Args, #mstate{}),
+    {ok, MState}.
+
 handle_call({show, JIDs}, _From, MState) ->
     {ReturnMsg, MStateNew} = handle_request(show, JIDs, MState),
     {reply, ReturnMsg, MStateNew};
@@ -85,13 +92,12 @@ code_change(_OldVsn, Data, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
-%% @hidden
-init(_Args) ->
-    ?LOG_INFO("Load user service"),
-    process_flag(trap_exit, true),
-    wm_event:subscribe(http_started, node(), ?MODULE),
-    MState = #mstate{},
-    {ok, MState}.
+parse_args([], #mstate{} = MState) ->
+    MState;
+parse_args([{spool, Spool} | T], #mstate{} = MState) ->
+    parse_args(T, MState#mstate{spool = Spool});
+parse_args([{_, _} | T], MState) ->
+    parse_args(T, MState).
 
 handle_event(http_started, _, #mstate{} = MState) ->
     ?LOG_INFO("Initialize user REST API resources"),
@@ -102,7 +108,7 @@ handle_event(http_started, _, #mstate{} = MState) ->
     MState.
 
 -spec handle_request(atom(), any(), #mstate{}) -> {any(), #mstate{}}.
-handle_request(submit, Args, #mstate{} = MState) ->
+handle_request(submit, Args, #mstate{spool = Spool} = MState) ->
     ?LOG_DEBUG("Job submission has been requested: ~n~p", [Args]),
     {JobScriptContent, Filename, Username} = Args,
     case wm_conf:select(user, {name, Username}) of
@@ -127,7 +133,7 @@ handle_request(submit, Args, #mstate{} = MState) ->
                                     {submit_time, wm_utils:now_iso8601(without_ms)},
                                     {duration, 3600}],
                                    Job1),
-            Job3 = set_defaults(Job2),
+            Job3 = set_defaults(Job2, Spool),
             Job4 = ensure_request_is_full(Job3),
             1 = wm_conf:update(Job4),
             {{string, JID}, MState}
@@ -261,14 +267,13 @@ cancel_jobs([JobID | T], Results) ->
         end,
     cancel_jobs(T, [Result | Results]).
 
-set_defaults(#job{workdir = [], execution_path = Path} = Job) ->
-    Dir = filename:absname(
-              filename:dirname(Path)),
-    set_defaults(wm_entity:set_attr({workdir, Dir}, Job));
-set_defaults(#job{account_id = [], user_id = UserId} = Job) ->
+-spec set_defaults(#job{}, string()) -> #job{}.
+set_defaults(#job{workdir = [], id = JobID} = Job, Spool) ->
+    set_defaults(wm_entity:set_attr({workdir, Spool ++ "/output/" ++ JobID}, Job), Spool);
+set_defaults(#job{account_id = [], user_id = UserId} = Job, Spool) ->
     % If account is not specified by user during job submission then use the user's main account
     {ok, Account} = wm_conf:select(account, {admins, [UserId]}),
     AccountId = wm_entity:get_attr(id, Account),
-    set_defaults(wm_entity:set_attr({account_id, AccountId}, Job));
-set_defaults(Job) ->
+    set_defaults(wm_entity:set_attr({account_id, AccountId}, Job), Spool);
+set_defaults(Job, _) ->
     Job.

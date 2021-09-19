@@ -158,9 +158,21 @@ execute(MState) ->
                     run_native_process(Job, Porter, ProcEnvs, User),
                     MState;
                 "docker" ->
+                    ok = ensure_workdir_exists(Job),
                     {ok, NewJob} = wm_container:run(Job, Porter, ProcEnvs, self()),
                     MState#mstate{job = NewJob}
             end
+    end.
+
+-spec ensure_workdir_exists(#job{}) -> ok | error.
+ensure_workdir_exists(#job{workdir = Dir}) ->
+    ?LOG_DEBUG("Ensure job working directory exists: " ++ Dir),
+    case wm_file_utils:ensure_directory_exists(Dir) of
+        {error, Error} ->
+            ?LOG_ERROR("Can't create job working directory " ++ Dir ++ ":  " ++ Error),
+            error;
+        _ ->
+            ok
     end.
 
 get_porter_path() ->
