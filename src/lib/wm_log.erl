@@ -94,6 +94,24 @@ switch(Dest) ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init(MState) ->
     {ok, MState}.
 
@@ -137,6 +155,7 @@ terminate(Reason, MState) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{spool, SpoolDir} | T], MState) ->
@@ -146,6 +165,7 @@ parse_args([{printer, PrinterName} | T], MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
+-spec make_dirs(#mstate{}) -> #mstate{}.
 make_dirs(MState) ->
     {Year, _, _} = erlang:date(),
     YStr =
@@ -158,6 +178,7 @@ make_dirs(MState) ->
     filelib:ensure_dir(SaslLogFile),
     MState#mstate{logfile = MainLogFile}.
 
+-spec open_disk_log(#mstate{}) -> {ok, #mstate{}} | {error, string()}.
 open_disk_log(MState) ->
     DiskOpts = [{name, node()}, {file, MState#mstate.logfile}, {format, external}],
     case disk_log:open(DiskOpts) of
@@ -173,6 +194,7 @@ open_disk_log(MState) ->
             {error, ?NICE("Can't create " ++ MState#mstate.logfile)}
     end.
 
+-spec set_printer(atom(), #mstate{}) -> #mstate{}.
 set_printer(none, MState) ->
     MState#mstate{logf = fun(_, _) -> ok end};
 set_printer(stdout, MState) ->
@@ -187,16 +209,14 @@ set_printer(file, MState) ->
             MState2
     end.
 
+-spec log_intro(#mstate{}) -> ok.
 log_intro(MState) ->
     case MState#mstate.logfile of
         [] ->
             ok;
         _ ->
             info(""),
-            info("---------------------------------------------"
-                 "--------------------"),
-            info("                    The logger has been "
-                 "started                  "),
-            info("---------------------------------------------"
-                 "--------------------")
+            info("-----------------------------------------------------------------"),
+            info("                    The logger has been started                  "),
+            info("-----------------------------------------------------------------")
     end.

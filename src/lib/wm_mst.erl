@@ -22,8 +22,6 @@
          nodes :: list(),
          mst_id :: string()}).
 
--define(EDGE_ACTIVATION_TIMEOUT, 5000).
-
 %% ============================================================================
 %% Module API
 %% ============================================================================
@@ -187,6 +185,7 @@ parse_args([{_, _} | T], MState) ->
 %% GHS implementation functions
 %% ============================================================================
 
+-spec wakeup(#mstate{}) -> #mstate{}.
 wakeup(MState) ->
     ?LOG_INFO("Wake up and explore nodes constructing new MST"),
     case MState#mstate.nodes of
@@ -210,6 +209,7 @@ wakeup(MState) ->
 
 %------------------------------- CONNECT
 
+-spec try_connect([atom()], term(), #mstate{}) -> {connected, #mstate{}} | {not_connected, #mstate{}}.
 try_connect(_, {true, Edge}, MState) ->
     {connected, set_edge_state(Edge, branch, MState)};
 try_connect([], _, MState) ->
@@ -219,6 +219,7 @@ try_connect([Edge | T], _, MState) ->
     ?LOG_DEBUG("Sending 'connect' to ~p result: ~p", [Edge, Result]),
     try_connect(T, Result, MState).
 
+-spec do_connect_resp(atom(), integer(), atom(), #mstate{}) -> #mstate{}.
 do_connect_resp(Edge, Level, NodeState, MState) when Level < MState#mstate.level ->
     ?LOG_DEBUG("Connect respond: E=~p, L=~p<~p", [Edge, Level, MState#mstate.level]),
     MState2 = set_edge_state(Edge, branch, MState),
@@ -244,11 +245,13 @@ do_connect_resp(Edge,
 
 %------------------------------- INITIATE
 
+-spec try_initiate(atom(), atom(), #mstate{}) -> #mstate{}.
 try_initiate(Edge, NodeState, MState) ->
     ?LOG_DEBUG("Initiate ~p (S=~p)", [Edge, NodeState]),
     FID = MState#mstate.fragm_id,
     send({initiate, node(), MState#mstate.level, FID, NodeState}, Edge, MState).
 
+-spec do_initiate_resp(atom(), integer(), atom(), atom(), #mstate{}) -> #mstate{}.
 do_initiate_resp(From, Level, FID, NodeState, MState) ->
     ?LOG_DEBUG("Respond to 'initiate' from ~p", [From]),
     {ok, RemoteNode} = wm_conf:select_node(atom_to_list(FID)),
@@ -300,6 +303,7 @@ do_initiate_resp(From, Level, FID, NodeState, MState) ->
 
 %------------------------------- TEST
 
+-spec try_test(integer(), atom(), #mstate{}) -> #mstate{}.
 try_test(Level, FID, MState) ->
     ?LOG_DEBUG("Run procedure 'test': L=~p, ID=~p", [Level, FID]),
     F = fun ({_, basic}) ->
@@ -320,6 +324,7 @@ try_test(Level, FID, MState) ->
     ?LOG_DEBUG("Test procedure finished, MState=~s", [format_mstate(MState3)]),
     MState3.
 
+-spec do_test_resp(atom(), integer(), atom(), #mstate{}) -> #mstate{}.
 do_test_resp(From, Level, FID, MState) when Level > MState#mstate.level ->
     ?LOG_DEBUG("Respond to 'test' from ~p (L=~p, FID=~p)", [From, Level, FID]),
     queue_request({test, From, Level, FID}, MState);
@@ -338,11 +343,13 @@ do_test_resp(From, Level, FID, MState) ->
 
 %------------------------------- ACCEPT
 
+-spec try_accept(atom(), #mstate{}) -> #mstate{}.
 try_accept(Edge, MState) ->
     ?LOG_DEBUG("Run procedure 'accept' on edge ~p", [Edge]),
     send({accept, node()}, Edge, MState),
     MState.
 
+-spec do_accept_resp(atom(), #mstate{}) -> #mstate{}.
 do_accept_resp(From, MState) ->
     ?LOG_DEBUG("Respond to 'accept' from ~p", [From]),
     MState2 = MState#mstate{test_edge = none},
@@ -357,11 +364,13 @@ do_accept_resp(From, MState) ->
 
 %------------------------------- REJECT
 
+-spec try_reject(atom(), #mstate{}) -> #mstate{}.
 try_reject(Edge, MState) ->
     ?LOG_DEBUG("Run procedure 'reject' on edge ~p", [Edge]),
     send({reject, node()}, Edge, MState),
     MState.
 
+-spec do_reject_resp(atom(), #mstate{}) -> #mstate{}.
 do_reject_resp(From, MState) ->
     ?LOG_DEBUG("Respond to 'reject' from ~p", [From]),
     MState2 = set_edge_rejected_if_basic(From, MState),
@@ -369,6 +378,7 @@ do_reject_resp(From, MState) ->
 
 %------------------------------- REPORT
 
+-spec try_report(#mstate{}) -> #mstate{}.
 try_report(MState) ->
     ?LOG_DEBUG("Run procedure 'report', mstate=~s", [format_mstate(MState)]),
     if MState#mstate.find_count == 0, MState#mstate.test_edge == none ->
@@ -388,6 +398,7 @@ try_report(MState) ->
            MState
     end.
 
+-spec do_report_resp(atom(), atom() | integer(), #mstate{}) -> #mstate{}.
 do_report_resp(From, RBestWeight, MState) when From =/= MState#mstate.in_branch ->
     ?LOG_DEBUG("Respond to 'report' from ~p (W=~p)", [From, RBestWeight]),
     MState2 = MState#mstate{find_count = MState#mstate.find_count - 1},
@@ -418,6 +429,7 @@ do_report_resp(From, RBestWeight, MState) ->
 
 %------------------------------- CHANGE_ROOT
 
+-spec do_change_root(atom(), #mstate{}) -> #mstate{}.
 do_change_root(Edge, MState) ->
     ?LOG_DEBUG("Change root: ~p", [Edge]),
     case get_edge_state(Edge, MState) of
@@ -430,10 +442,12 @@ do_change_root(Edge, MState) ->
             set_edge_state(MState#mstate.best_edge, branch, MState)
     end.
 
+-spec do_change_root_resp(atom(), #mstate{}) -> #mstate{}.
 do_change_root_resp(From, MState) ->
     ?LOG_DEBUG("Respond to 'change_root' from ~p", [From]),
     do_change_root(From, MState).
 
+-spec do_halt(#mstate{}) -> #mstate{}.
 do_halt(MState) ->
     ?LOG_DEBUG("Do halt the algorithm, MST has been found with a single leader"),
     MyAddr = wm_conf:get_my_address(),
@@ -444,11 +458,13 @@ do_halt(MState) ->
 %% Helper functions
 %% ============================================================================
 
+-spec queue_request(term(), #mstate{}) -> #mstate{}.
 queue_request(Msg, MState) ->
     ?LOG_DEBUG("Put the request back to events queue: ~p", [Msg]),
     NewQueue = [Msg | MState#mstate.requests_queue],
     MState#mstate{requests_queue = NewQueue}.
 
+-spec handle_queued_requests(#mstate{}) -> #mstate{}.
 handle_queued_requests(MState) ->
     ?LOG_DEBUG("Requests queue: ~p", [MState#mstate.requests_queue]),
     QueueSize = length(MState#mstate.requests_queue),
@@ -457,23 +473,22 @@ handle_queued_requests(MState) ->
     [F(X) || X <- lists:reverse(MState#mstate.requests_queue)],
     MState#mstate{requests_queue = []}.
 
+-spec init_edge_states([atom()], #mstate{}) -> #mstate{}.
 init_edge_states(Edges, MState) ->
     F = fun(E, MStateAcc) -> set_edge_state(E, basic, MStateAcc) end,
     lists:foldl(F, MState#mstate{edge_states = maps:new()}, Edges).
 
+-spec send(term(), atom(), #mstate{}) -> {term(), atom()}.
 send(Msg, Edge, MState) ->
     Result = wm_factory:send_confirm(mst, one_state, MState#mstate.mst_id, Msg, [Edge]),
     {Result, Edge}.
 
+-spec send_to_min_weight_edge(term(), [atom()], #mstate{}) -> {boolean(), #mstate{}}.
 send_to_min_weight_edge(Msg, [], MState2) ->
-    ?LOG_DEBUG("No more min-weight edges are available "
-               "to send ~p",
-               Msg),
+    ?LOG_DEBUG("No more min-weight edges are available to send ~p", Msg),
     {false, MState2};
 send_to_min_weight_edge(Msg, Edges, MState) ->
-    ?LOG_DEBUG("Send ~p to min-weight edge (edges set: "
-               "~p)",
-               [Msg, Edges]),
+    ?LOG_DEBUG("Send ~p to min-weight edge (edges set: ~p)", [Msg, Edges]),
     case wm_topology:get_min_latency_to(Edges) of
         {} ->
             ?LOG_DEBUG("No edges were found"),
@@ -491,9 +506,11 @@ send_to_min_weight_edge(Msg, Edges, MState) ->
             end
     end.
 
+-spec get_edge_state(atom(), #mstate{}) -> map().
 get_edge_state(Edge, MState) ->
     maps:get(Edge, MState#mstate.edge_states).
 
+set_edge_rejected_if_basic(atom(), #mstate{}) -> #mstate{}.
 set_edge_rejected_if_basic(Edge, MState) ->
     case get_edge_state(Edge, MState) of
         basic ->
@@ -502,6 +519,7 @@ set_edge_rejected_if_basic(Edge, MState) ->
             MState
     end.
 
+-spec set_edge_state(atom(), atom(), #mstate{}) -> #mstate{}.
 set_edge_state(Edge, basic, MState) ->
     NewMap = maps:put(Edge, basic, MState#mstate.edge_states),
     MState#mstate{edge_states = NewMap};
@@ -510,9 +528,11 @@ set_edge_state(Edge, EdgeState, MState) ->
     NewMap = maps:put(Edge, EdgeState, MState2#mstate.edge_states),
     MState#mstate{edge_states = NewMap}.
 
+-spec get_state(#mstate{}) -> atom().
 get_state(MState) ->
     MState#mstate.state.
 
+-spec set_state(atom(), #mstate{}) -> #mstate{}.
 set_state(State, MState) ->
     MState2 = MState#mstate{state = State},
     case MState#mstate.state =/= MState2#mstate.state of
@@ -522,10 +542,10 @@ set_state(State, MState) ->
             MState2
     end.
 
+-spec format_mstate(#mstate{}) -> string().
 format_mstate(MState) ->
-    io_lib:format("fragm_id=~p level=~p edge_states=~p best_edge=~p"
-                  " best_wt=~p test_edge=~p in_branch=~p find_count=~p"
-                  " state=~p queuesize=~p id=~p",
+    io_lib:format("fragm_id=~p level=~p edge_states=~p best_edge=~p best_wt=~p test_edge=~p "
+                  "in_branch=~p find_count=~p state=~p queuesize=~p id=~p",
                   [MState#mstate.fragm_id,
                    MState#mstate.level,
                    maps:to_list(MState#mstate.edge_states),

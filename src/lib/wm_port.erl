@@ -53,6 +53,24 @@ close(WmPortPid) ->
 %% Server callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
@@ -116,6 +134,7 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation
 %% ============================================================================
 
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{exec, Executable} | T], MState) ->
@@ -125,6 +144,7 @@ parse_args([{verbosity, V} | T], MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
+-spec get_port_opts(list(), list(), list()) -> list().
 get_port_opts([], [], PortOpts) ->
     PortOpts;
 get_port_opts([], Envs, PortOpts) ->
@@ -132,6 +152,7 @@ get_port_opts([], Envs, PortOpts) ->
 get_port_opts(Args, Envs, PortOpts) ->
     [{args, Args} | get_port_opts([], Envs, PortOpts)].
 
+-spec do_run(list(), list(), list(), #mstate{}) -> #mstate{}.
 do_run(Args, Envs, PortOpts, MState) ->
     Executable = MState#mstate.exec,
     Opts = get_port_opts(Args, Envs, PortOpts),

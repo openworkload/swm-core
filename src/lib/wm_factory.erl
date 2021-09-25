@@ -10,17 +10,18 @@
 -include("wm_log.hrl").
 
 -record(mstate,
-        {module,
-         root,
-         regname,
-         done_event,
-         activate_passive = true,
-         subscribers = maps:new(),
-         sups = maps:new(),
-         mods = maps:new(),
-         reqs = maps:new(),   % requests came before module initalized
-         status = maps:new(), % modules with finished init()
-         nodes = maps:new()}).   % nodes per distributed task
+        {module :: atom(),
+         root :: string(),
+         regname :: atom(),
+         done_event :: atom(),
+         activate_passive = true :: boolean(),
+         subscribers = maps:new() :: map(),
+         sups = maps:new() :: map(),
+         mods = maps:new() :: map(),
+         reqs = maps:new() :: map(),   % requests came before module initalized
+         status = maps:new() :: map(), % modules with finished init()
+         nodes = maps:new() :: map()   % nodes per distributed task
+        }).
 
 -define(REPEAT_CALL_INTERVAL, 3000).
 -define(NODES_REQUEST_TIMEOUT, 10000).
@@ -76,6 +77,32 @@ subscribe(Type, ModuleTaskId, EventType) ->
 %% ============================================================================
 %% Server callbacks
 %% ============================================================================
+
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    process_flag(trap_exit, true),
+    MState1 = parse_args(Args, #mstate{}),
+    MState2 = subscribe(MState1),
+    ?LOG_INFO("Factory to produce ~p has been started", [MState2#mstate.module]),
+    ?LOG_DEBUG("Factory initial MState: ~p", [MState2]),
+    {ok, MState2}.
 
 handle_call({is_running, ModuleTaskId}, _, MState) ->
     Result =
@@ -166,15 +193,7 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
-%% @hidden
-init(Args) ->
-    process_flag(trap_exit, true),
-    MState1 = parse_args(Args, #mstate{}),
-    MState2 = subscribe(MState1),
-    ?LOG_INFO("Factory to produce ~p has been started", [MState2#mstate.module]),
-    ?LOG_DEBUG("Factory initial MState: ~p", [MState2]),
-    {ok, MState2}.
-
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{module, Module} | T], MState) ->
@@ -188,11 +207,13 @@ parse_args([{root, Root} | T], MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
+-spec subscribe(#mstate{}) -> #mstate{}.
 subscribe(MState) ->
     DoneEvent = list_to_atom(atom_to_list(MState#mstate.module) ++ "_done"),
     wm_event:subscribe(DoneEvent, node(), MState#mstate.regname),
     MState#mstate{done_event = DoneEvent}.
 
+-spec handle_event(atom(), {integer(), term()}, #mstate{}) -> #mstate{}.
 handle_event(Event, {ModuleTaskId, Extra}, MState) when Event == MState#mstate.done_event ->
     ?LOG_DEBUG("Task ~p has finished (Extra=~p)", [ModuleTaskId, Extra]),
     Me = node(),
@@ -222,6 +243,7 @@ handle_event(Event, {ModuleTaskId, EventData}, MState) ->
 calc_id(Nodes) ->
     erlang:phash2({lists:sort(Nodes), wm_utils:timestamp(microsecond)}).
 
+-spec start_module(atom(), term(), [#node{}], #mstate{}) -> {integer(), #mstate{}}.
 start_module(not_exists, ExtraData, Nodes, MState) ->
     ModuleTaskId = calc_id(Nodes),
     AddrList = [wm_utils:get_address(X) || X <- Nodes],
@@ -250,34 +272,41 @@ start_module(ModuleTaskId, ExtraData, Nodes, MState) ->
             {ModuleTaskId, MState}
     end.
 
+-spec do_send_confirm(atom(), integer(), term(), [node_address()]) -> ok.
 do_send_confirm(AllState, ModuleTaskId, Msg, Nodes) ->
     ?LOG_DEBUG("Send ~P to ~p (~p)", [Msg, 10, Nodes, ModuleTaskId]),
     MyAddr = wm_conf:get_my_relative_address(hd(Nodes)),
     NewMsg = {send_event, AllState, MyAddr, ModuleTaskId, Msg},
     wm_api:cast_self_confirm(NewMsg, Nodes).
 
+-spec get_status(integer(), #mstate{}) -> ready | not_ready.
 get_status(ModuleTaskId, MState) ->
     maps:get(ModuleTaskId, MState#mstate.status, not_ready).
 
+-spec get_nodes(integer(), #mstate{}) -> [#node{}].
 get_nodes(ModuleTaskId, MState) ->
     maps:get(ModuleTaskId, MState#mstate.nodes, []).
 
+-spec set_ready(integer(), #mstate{}) -> #mstate{}.
 set_ready(ModuleTaskId, MState) ->
     Status = maps:put(ModuleTaskId, ready, MState#mstate.status),
     MState#mstate{status = Status}.
 
+-spec queue_request(atom(), integer(), term(), #mstate{}) -> #mstate{}.
 queue_request(AllState, ModuleTaskId, Msg, MState) ->
     ?LOG_DEBUG("Queue request ~P (~p, ~p)", [Msg, 10, ModuleTaskId, AllState]),
     ReqsList = [{AllState, Msg} | maps:get(ModuleTaskId, MState#mstate.reqs, [])],
     ReqsMap = maps:put(ModuleTaskId, ReqsList, MState#mstate.reqs),
     MState#mstate{reqs = ReqsMap}.
 
+-spec release_requested(integer(), #mstate{}) -> #mstate{}.
 release_requested(ModuleTaskId, MState) ->
     F = fun({AllState, Msg}) -> send_event_to_module(AllState, ModuleTaskId, Msg, MState) end,
     [F(X) || X <- maps:get(ModuleTaskId, MState#mstate.reqs, [])],
     Reqs = maps:put(ModuleTaskId, [], MState#mstate.reqs),
     MState#mstate{reqs = Reqs}.
 
+-spec send_event_to_module(atom(), integer(), term(), #mstate{}) -> #mstate{}.
 send_event_to_module(AllState, ModuleTaskId, Msg, MState) ->
     case maps:get(ModuleTaskId, MState#mstate.mods, not_found) of
         not_found ->
@@ -293,11 +322,13 @@ send_event_to_module(AllState, ModuleTaskId, Msg, MState) ->
     end,
     MState.
 
+-spec request_nodes_async(integer(), node_address()) -> ok.
 request_nodes_async(ModuleTaskId, From) ->
     ?LOG_DEBUG("Request nodes for task ~p from ~p", [ModuleTaskId, From]),
     MyAddr = wm_conf:get_my_relative_address(From),
     ok = wm_api:cast_self({get_task_nodes, ModuleTaskId, MyAddr}, [From]).
 
+-spec terminate_task(integer(), #mstate{}) -> #mstate{}.
 terminate_task(ModuleTaskId, MState) ->
     case maps:get(ModuleTaskId, MState#mstate.sups, not_found) of
         not_found ->
@@ -330,6 +361,7 @@ get_factory_name(Type) ->
     NameStr = atom_to_list(?MODULE) ++ "_" ++ atom_to_list(Type),
     list_to_existing_atom(NameStr).
 
+-spec handle_send_event(atom(), node_address(), integer(), term(), #mstate{}) -> {noreply, #mstate{}}.
 handle_send_event(AllState, From, ModuleTaskId, Msg, MState) ->
     ?LOG_DEBUG("Handle send event: a=~p f=~p id=~p", [AllState, From, ModuleTaskId]),
     case get_status(ModuleTaskId, MState) of

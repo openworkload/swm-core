@@ -6,13 +6,14 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([add/1, del/1, send_if_pinged/3, ping_sync/1, start_route/4]).
 
+-include("wm_entity.hrl").
 -include("wm_log.hrl").
 
 -define(DEFAULT_PING_PERIOD, 15).
 -define(DEFAULT_PINGER_PERIOD, 15).
 -define(MICROSECONDS_IN_SECOND, 1000).
 
--record(mstate, {nodes = #{}, answers = #{}}).
+-record(mstate, {nodes = #{} :: map(), answers = #{} :: map()}).
 
 %% ============================================================================
 %% API
@@ -33,13 +34,16 @@ add(Address) ->
 del(Address) ->
     gen_server:cast(?MODULE, {del, Address}).
 
+-spec send_if_pinged(node_address(), module(), term()) -> ok.
 send_if_pinged(Address, CallbackModule, Msg) ->
     gen_server:cast(?MODULE, {send_if_pinged, Address, CallbackModule, Msg}).
 
+-spec ping_sync(node_address()) -> {pong, atom()} | {pang, atom()}.
 ping_sync(Address) ->
     do_ping(Address).
 
 %% @doc Initialize route determination
+-spec start_route(node(), node(), string(), pid()) -> ok.
 start_route(From, To, RouteID, RequestorPid) ->
     gen_server:cast(?MODULE, {start_route, From, To, RouteID, RequestorPid}).
 
@@ -47,6 +51,24 @@ start_route(From, To, RouteID, RequestorPid) ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init(_) ->
     ?LOG_DEBUG("Load nodes pinger"),
     process_flag(trap_exit, true),
@@ -61,9 +83,7 @@ handle_call(Msg, From, MState) ->
     {reply, ok, MState}.
 
 handle_cast({start_route, StartNode, EndNode, RouteID, RequestorPid}, MState) ->
-    ?LOG_DEBUG("Route creation is started (from=~p, "
-               "to=~p, id=~p, pid=~p)",
-               [StartNode, EndNode, RouteID, RequestorPid]),
+    ?LOG_DEBUG("Route creation started (from=~p, to=~p, id=~p, pid=~p)", [StartNode, EndNode, RouteID, RequestorPid]),
     StartAddr = wm_utils:get_address(StartNode),
     EndAddr = wm_utils:get_address(EndNode),
     Requestor = {wm_conf:get_my_address(), RequestorPid},
@@ -131,9 +151,9 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec do_wakeup(#mstate{}) -> #mstate{}.
 do_wakeup(MState = #mstate{nodes = Nodes}) ->
     ?LOG_DEBUG("Nodes to ping: ~p", [Nodes]),
-    Size = maps:size(Nodes),
     NextS = wm_conf:g(pinger_period, {?DEFAULT_PINGER_PERIOD, integer}),
     Next = NextS * ?MICROSECONDS_IN_SECOND,
     Now1 = wm_utils:timestamp(second),
@@ -147,6 +167,7 @@ do_wakeup(MState = #mstate{nodes = Nodes}) ->
     announce_node_states_change(MState#mstate.answers, AnswersMap),
     MState#mstate{answers = AnswersMap, nodes = UpdatedNodes}.
 
+-spec announce_node_states_change(map(), map()) -> none().
 announce_node_states_change(Old, New) ->
     F = fun(Key, NewVal) ->
            case maps:get(Key, Old, {pang, stopped}) of
@@ -170,6 +191,7 @@ announce_node_states_change(Old, New) ->
         end,
     maps:map(F, New).
 
+-spec do_ping(map() | node_address()) -> {pong, atom()} | {pang, atom()}.
 do_ping(Map) when is_map(Map) ->
     PingFun =
         fun(Address, _, Answers) ->

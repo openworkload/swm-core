@@ -6,7 +6,7 @@
 %% API
 %% ============================================================================
 
--spec decode(string() | binary()) -> {ok, term()}.
+-spec decode(string() | binary()) -> {ok, term()} | {error, term()}.
 decode(S) ->
     do_decode(S).
 
@@ -14,10 +14,11 @@ decode(S) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec do_decode(string() | binary()) -> {ok, term()} | {error, term()}.
 do_decode(S) ->
     try
         mochijson2:decode(S)
     catch
         _:Error ->
-            Error
+        {error, Error}
     end.

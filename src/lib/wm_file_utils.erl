@@ -21,8 +21,7 @@ create_tar_gz(File, Files) ->
                     catch ok = file:delete(File),
                     {error, Filename, wm_posix_utils:errno(Reason)}
             catch
-                C:R ->
-                    Stacktrace = erlang:get_stacktrace(),
+                C:R:Stacktrace ->
                     catch ok = file:delete(File),
                     erlang:raise(C, R, Stacktrace)
             after
@@ -32,8 +31,7 @@ create_tar_gz(File, Files) ->
             catch ok = file:delete(File),
             {error, Filename, wm_posix_utils:errno(Reason)}
     catch
-        C:R ->
-            Stacktrace = erlang:get_stacktrace(),
+        C:R:Stacktrace ->
             catch ok = file:delete(File),
             erlang:raise(C, R, Stacktrace)
     end.

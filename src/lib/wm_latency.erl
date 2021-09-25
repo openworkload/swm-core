@@ -18,14 +18,39 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
--spec ping(node(), integer()) -> integer().
 %% @doc Measure send-receive time, where N is a number of measurements
+-spec ping(node(), integer()) -> integer().
 ping(Node, Trials) ->
     gen_server:call(?MODULE, {ping, Node, Trials}).
 
 %% ============================================================================
 %% Server callbacks
 %% ============================================================================
+
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    process_flag(trap_exit, true),
+    MState = parse_args(Args, #mstate{}),
+    ?LOG_INFO("Network latency measurement module has "
+              "been started"),
+    {ok, MState}.
 
 handle_call({ping, Node, Trials}, _From, MState) ->
     {reply, do_ping_avg(Node, Trials), MState};
@@ -50,19 +75,13 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
-%% @hidden
-init(Args) ->
-    process_flag(trap_exit, true),
-    MState = parse_args(Args, #mstate{}),
-    ?LOG_INFO("Network latency measurement module has "
-              "been started"),
-    {ok, MState}.
-
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
+-spec do_ping_avg(node(), integer()) -> [integer()].
 do_ping_avg(Node, Trials) ->
     Me = node(),
     case Node of
@@ -75,6 +94,7 @@ do_ping_avg(Node, Trials) ->
             round(lists:foldl(fun(X, Sum) -> X + Sum end, 0, L) / Length)
     end.
 
+-spec do_pings(node(), integer(), integer()) -> [integer()].
 do_pings(_, 0, L) ->
     L;
 do_pings(Node, Trials, L) ->
