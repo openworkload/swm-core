@@ -2,7 +2,7 @@
 .PHONY: run-ghead run-chead
 .PHONY: test ftest
 .PHONY: cb cr
-.PHONY: dialyzer format
+.PHONY: dialyzer format lint
 
 COG = cog.py
 REBAR = ./rebar3
@@ -95,3 +95,6 @@ dialyzer:		##@DEV Run dialyzer
 
 format:		##@DEV Format erlang code
 			$(REBAR) format
+
+lint:		##@DEV Run erlang linter to validate the code
+			$(REBAR) lint
