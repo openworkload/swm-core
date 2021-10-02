@@ -105,6 +105,7 @@ wake_up_after(MilliSeconds, WakeUpMessage) ->
 nodes_to_names(NodeRecords) ->
     do_nodes_to_names(NodeRecords, []).
 
+-spec do_nodes_to_names([#node{}], [string()]) -> [string()].
 do_nodes_to_names([], Names) ->
     Names;
 do_nodes_to_names([Node | T], Names) ->
@@ -545,30 +546,33 @@ read_bin_blocks_from_file(File, Device, Acc) ->
     end.
 
 %% @doc Converts jobs to such ones that can be used with erl_decode()
--spec make_jobs_c_decodable(list()) -> list().
+-spec make_jobs_c_decodable([#job{}]) -> [#job{}].
 make_jobs_c_decodable(Jobs) ->
     make_jobs_c_decodable(Jobs, []).
 
 %% @doc Converts nodes to such ones that can be used with erl_decode()
--spec make_nodes_c_decodable(list()) -> list().
+-spec make_nodes_c_decodable([#node{}]) -> [#node{}].
 make_nodes_c_decodable(Nodes) ->
     make_nodes_c_decodable(Nodes, []).
 
 %% @doc Converts partitions to such ones that can be used with erl_decode()
--spec make_partitions_c_decodable(list()) -> list().
+-spec make_partitions_c_decodable([#partition{}]) -> list().
 make_partitions_c_decodable(Nodes) ->
     make_partitions_c_decodable(Nodes, []).
 
+-spec make_partitions_c_decodable([#partition{}], [#partition{}]) -> [#partition{}].
 make_partitions_c_decodable([], Result) ->
     Result;
 make_partitions_c_decodable([Part | T], Result) ->
     Part2 = wm_entity:set_attr({addresses, []}, Part), % not used in C++
     make_jobs_c_decodable(T, [Part2 | Result]).
 
+-spec make_resources_c_decodable([#resource{}]) -> [#resource{}].
 make_resources_c_decodable(Resources) when is_list(Resources) ->
     F = fun(Res) -> wm_entity:set_attr({prices, []}, Res) end,
     lists:map(F, Resources).
 
+-spec make_jobs_c_decodable([#job{}], [#job{}]) -> [#job{}].
 make_jobs_c_decodable([], Result) ->
     Result;
 make_jobs_c_decodable([Job | T], Result) ->
@@ -578,6 +582,7 @@ make_jobs_c_decodable([Job | T], Result) ->
     Job3 = wm_entity:set_attr({resources, []}, Job2), % not used in C++
     make_jobs_c_decodable(T, [Job3 | Result]).
 
+-spec make_nodes_c_decodable([#node{}], [#node{}]) -> [#node{}].
 make_nodes_c_decodable([], Result) ->
     Result;
 make_nodes_c_decodable([Node | T], Result) ->

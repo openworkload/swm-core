@@ -17,6 +17,7 @@
 %% API functions
 %% ============================================================================
 
+-spec start_link([term()]) -> {ok, pid()} | ignore | {error, term()}.
 start_link(Args) ->
     case supervisor:start_link({local, ?MODULE}, ?MODULE, [Args]) of
         {error, {shutdown, {failed_to_start_child, Module, Error}}} ->
@@ -26,6 +27,7 @@ start_link(Args) ->
             Result
     end.
 
+-spec start_slave(list()) -> atom().
 start_slave(Args) ->
     application:ensure_all_started(folsom),
     case start_link(Args) of
@@ -35,6 +37,7 @@ start_slave(Args) ->
             ok
     end.
 
+-spec init([term()]) -> {ok, {{atom(), pos_integer(), pos_integer()}, [tuple()]}}.
 init(Args) ->
     Pid = spawn(?MODULE, restarter_process, []),
     register(wm_restarter, Pid),
@@ -61,10 +64,12 @@ init(Args) ->
        get_worker_spec(wm_topology, Args),
        get_worker_spec(wm_core, Args)]}}.
 
+-spec start_child(module(), list(), atom()) -> {ok, term()} | {ok, term(), term()} | {error, term()}.
 start_child(Mod, Args, worker) ->
     ChildSpec = get_worker_spec(Mod, Args),
     supervisor:start_child(?MODULE, ChildSpec).
 
+-spec stop_child(module()) -> ok | {error, running | restarting | not_found | simple_one_for_one}.
 stop_child(Mod) ->
     supervisor:terminate_child(?MODULE, Mod),
     supervisor:delete_child(?MODULE, Mod).
@@ -73,9 +78,11 @@ stop_child(Mod) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec add_arg(atom(), atom(), [{atom(), atom()}]) -> [{atom(), atom()}].
 add_arg(Name, Value, Args) ->
     [[{Name, Value} | hd(Args)]].
 
+-spec get_worker_spec(atom(), [{atom(), atom()}]) -> tuple().
 get_worker_spec(wm_factory_mst, Args) ->
     Args1 = add_arg(regname, wm_factory_mst, Args),
     Args2 = add_arg(module, wm_mst, Args1),
@@ -101,6 +108,7 @@ get_worker_spec({RegName, Mod}, Args) ->
 get_worker_spec(Mod, Args) ->
     {Mod, {Mod, start_link, Args}, permanent, ?EXIT_TIMEOUT, worker, [Mod]}.
 
+-spec restarter_process() -> no_return().
 restarter_process() ->
     receive
         {restart_all, ReqPid} ->
@@ -109,6 +117,7 @@ restarter_process() ->
             restarter_process()
     end.
 
+-spec restart_children() -> none().
 restart_children() ->
     Exceptions = [wm_log, wm_conf, wm_db],
     Children = [Name || {Name, _, _, _} <- supervisor:which_children(?MODULE)],

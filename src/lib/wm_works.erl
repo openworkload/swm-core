@@ -12,7 +12,7 @@
 -define(PARALLEL_CALLS, 2).
 -define(LOCAL_CALL_TIMEOUT, 60000).
 
--record(mstate, {enabled = false, tasks = []}).
+-record(mstate, {enabled = false :: boolean(), tasks = [] :: [{module(), term()}]}).
 
 %% ============================================================================
 %% API
@@ -120,6 +120,7 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec continue(#mstate{}) -> #mstate{}.
 continue(MState) ->
     Tasks = MState#mstate.tasks,
     case Tasks of
@@ -131,10 +132,12 @@ continue(MState) ->
             MState#mstate{enabled = true, tasks = Head}
     end.
 
+-spec call_thread(module(), term()) -> any().
 call_thread(Module, Message) ->
     T = wm_conf:g("srv_local_call_timeout", {?LOCAL_CALL_TIMEOUT, integer}),
     gen_server:call(Module, Message, T).
 
+-spec append_task(module(), term(), #mstate{}) -> #mstate{}.
 append_task(Module, Message, MState) ->
     Tasks = lists:append(MState#mstate.tasks, [{Module, Message}]),
     MState#mstate{tasks = Tasks}.

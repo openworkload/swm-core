@@ -10,6 +10,7 @@
         {nodes = maps:new() :: map(), sim_type = none :: atom(), sim_spool = "." :: string(), root = "." :: string()}).
 
 -include("wm_log.hrl").
+-include("wm_entity.hrl").
 
 %% ============================================================================
 %% API functions
@@ -45,6 +46,24 @@ stop_node(NodeName) ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
@@ -82,6 +101,7 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{root, Root} | T], MState) ->
@@ -93,6 +113,7 @@ parse_args([{sim_spool, SimSpool} | T], MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
+-spec do_start_all(#mstate{}) -> #mstate{}.
 do_start_all(MState = #mstate{sim_type = partition_per_node}) ->
     %TODO Take sim_type into account
     case wm_conf:select(node, all) of
@@ -105,6 +126,7 @@ do_start_all(MState = #mstate{sim_type = partition_per_node}) ->
             lists:foldl(F, MState, Nodes)
     end.
 
+-spec do_stop_all(#mstate{}) -> #mstate{}.
 do_stop_all(MState) ->
     case wm_conf:get_children({state_power, up}) of
         Nodes when is_list(Nodes) ->
@@ -119,10 +141,10 @@ do_stop_all(MState) ->
     end,
     MState#mstate{nodes = maps:new()}.
 
+-spec get_slave_args(string(), string(), #mstate{}) -> string().
 get_slave_args(SName, Host, #mstate{sim_spool = Spool}) ->
     Name = SName ++ "@" ++ Host,
     SaslDir = filename:join([Spool, Name, "log/sasl"]),
-    SaslLog = filename:join([Spool, Name, "log/sasl.log"]),
     CA = filename:join([Spool, "secure/cluster/cert.pem"]),
     Cert = filename:join([Spool, "secure/node/cert.pem"]),
     Key = filename:join([Spool, "secure/node/key.pem"]),
@@ -155,6 +177,7 @@ get_slave_args(SName, Host, #mstate{sim_spool = Spool}) ->
     ++ " -pa "
     ++ LibDir.
 
+-spec try_start_slave(#node{} | string(), #mstate{}) -> #mstate{}.
 try_start_slave(Node, MState = #mstate{nodes = Nodes}) when is_tuple(Node) ->
     FullName = wm_utils:node_to_fullname(Node),
     case maps:is_key(FullName, Nodes) of
@@ -173,6 +196,7 @@ try_start_slave(NodeName, MState) ->
             MState
     end.
 
+-spec do_start_slave(#node{}, #mstate{}) -> #mstate{}.
 do_start_slave(Node, MState = #mstate{sim_spool = Spool, root = RootDir}) ->
     SlaveShortName = wm_entity:get_attr(name, Node),
     case wm_utils:get_parent_from_conf(Node) of
@@ -207,6 +231,7 @@ do_start_slave(Node, MState = #mstate{sim_spool = Spool, root = RootDir}) ->
             MState
     end.
 
+-spec try_stop_slave(string(), #mstate{}) -> #mstate{}.
 try_stop_slave(NodeName, MState) when is_list(NodeName) ->
     {ok, Node} = wm_conf:select(node, {name, NodeName}),
     try_stop_slave(Node, MState);

@@ -44,6 +44,13 @@ start_link(Args) ->
                      {stop, term(), term()}.
 -spec terminate(term(), term()) -> ok.
 -spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    ?LOG_INFO("Load administration service"),
+    process_flag(trap_exit, true),
+    MState = parse_args(Args, #mstate{}),
+    ?LOG_DEBUG("Module state: ~p", [MState]),
+    {ok, MState}.
+
 handle_call({grid, route, From, To}, _From, MState) ->
     ?LOG_DEBUG("Requested route from ~p to ~p", [From, To]),
     Result = [{atom, R} || R <- get_route(From, To)],
@@ -206,14 +213,7 @@ code_change(_OldVsn, Data, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
-%% @hidden
-init(Args) ->
-    ?LOG_INFO("Load administration service"),
-    process_flag(trap_exit, true),
-    MState = parse_args(Args, #mstate{}),
-    ?LOG_DEBUG("Module state: ~p", [MState]),
-    {ok, MState}.
-
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{root, Root} | T], MState) ->

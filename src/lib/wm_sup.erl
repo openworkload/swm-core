@@ -15,11 +15,13 @@
 %% API functions
 %% ============================================================================
 
+-spec start_link(list()) -> {ok, pid()} | ignore | {error, term()}.
 start_link(Services) when is_list(Services) ->
     supervisor:start_link(?MODULE, Services);
 start_link({Services, Args}) when is_list(Services), is_list(Args) ->
     supervisor:start_link(?MODULE, {Services, Args}).
 
+-spec init({list(), list()}) -> {atom(), term()}.
 init({Services, Args}) ->
     MaxR = wm_conf:g(srv_max_restarts_count, {?DEFAULT_MAXR, integer}),
     MaxT = wm_conf:g(srv_max_restarts_period, {?DEFAULT_MAXT, integer}),
@@ -39,6 +41,7 @@ init(Services) ->
           auto_shutdown => any_significant},
     {ok, {SupFlags, get_children_spec(Services, [])}}.
 
+-spec get_child_pid(atom() | {atom(), node()} | {global, atom()} | {via, module(), any()} | pid()) -> pid().
 get_child_pid(SupRef) ->
     do_get_children_pid(SupRef).
 
@@ -46,6 +49,7 @@ get_child_pid(SupRef) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec get_children_spec([module()], list()) -> list().
 get_children_spec([], Result) ->
     Result;
 get_children_spec([Module | T], Result) ->
@@ -54,6 +58,7 @@ get_children_spec([Module | T], Result) ->
     ChildSpec = {Module, StartFun, transient, ET, worker, [Module]},
     get_children_spec(T, [ChildSpec | Result]).
 
+-spec get_children_spec([module()], list(), list()) -> list().
 get_children_spec([], _, Result) ->
     Result;
 get_children_spec([Module | T], Args, Result) ->
@@ -62,6 +67,7 @@ get_children_spec([Module | T], Args, Result) ->
     ChildSpec = {Module, StartFun, transient, ET, worker, [Module]},
     get_children_spec(T, Args, [ChildSpec | Result]).
 
+-spec do_get_children_pid(atom() | {atom(), node()} | {global, atom()} | {via, module(), any()} | pid()) -> pid().
 do_get_children_pid(SupRef) ->
     % assume wm_sup serves one and only one child
     [{_, Pid, _, _}] = supervisor:which_children(SupRef),

@@ -510,7 +510,7 @@ send_to_min_weight_edge(Msg, Edges, MState) ->
 get_edge_state(Edge, MState) ->
     maps:get(Edge, MState#mstate.edge_states).
 
-set_edge_rejected_if_basic(atom(), #mstate{}) -> #mstate{}.
+-spec set_edge_rejected_if_basic(atom(), #mstate{}) -> #mstate{}.
 set_edge_rejected_if_basic(Edge, MState) ->
     case get_edge_state(Edge, MState) of
         basic ->

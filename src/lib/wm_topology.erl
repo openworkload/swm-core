@@ -9,6 +9,7 @@
          is_direct_child/1]).
 
 -include("wm_log.hrl").
+-include("wm_entity.hrl").
 
 -record(mstate,
         {rh :: map(),            %% Resource Hierarchy
@@ -63,7 +64,7 @@ get_latency(SrcNode, DstNode) ->
     wm_utils:protected_call(?MODULE, {get_latency, SrcNode, DstNode}, 0).
 
 %% @doc Get minimum latency value from local node to nodes specified by names
--spec get_min_latency_to([atom()]) -> pos_integer().
+-spec get_min_latency_to([atom()]) -> {atom(), pos_integer()}.
 get_min_latency_to(NodeNames) ->
     wm_utils:protected_call(?MODULE, {get_min_latency_to, NodeNames}, 0).
 
@@ -101,7 +102,24 @@ reload() ->
 %% Server callbacks
 %% ============================================================================
 
-%% @hidden
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     ?LOG_INFO("Load topology module"),
     process_flag(trap_exit, true),
@@ -193,6 +211,7 @@ code_change(_OldVsn, #mstate{} = MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], #mstate{} = MState) ->
     MState;
 parse_args([{sname, Name} | T], #mstate{} = MState) ->
@@ -200,6 +219,7 @@ parse_args([{sname, Name} | T], #mstate{} = MState) ->
 parse_args([{_, _} | T], #mstate{} = MState) ->
     parse_args(T, MState).
 
+-spec set_management_role(#mstate{}) -> #mstate{}.
 set_management_role(#mstate{} = MState) ->
     ?LOG_DEBUG("Set management role"),
     {ok, NodeName} = wm_self:get_sname(),
@@ -227,6 +247,7 @@ set_management_role(#mstate{} = MState) ->
             MState#mstate{mrole = ManagementRole}
     end.
 
+-spec get_management_role([string()], atom()) -> atom().
 get_management_role([], Role) ->
     Role;
 get_management_role(["grid" | _], _) ->
@@ -246,6 +267,7 @@ get_management_role(["compute" | T], _) ->
 get_management_role([_ | T], Role) ->
     get_management_role(T, Role).
 
+-spec do_make_rh_main(#mstate{}) -> #mstate{}.
 do_make_rh_main(#mstate{mrole = Role} = MState) when Role =/= none ->
     ?LOG_DEBUG("Construct RH for ~p", [MState#mstate.mrole]),
     RH = case MState#mstate.mrole of
@@ -268,10 +290,12 @@ do_make_rh_main(#mstate{} = MState) ->
     ?LOG_INFO("Not ready to make RH"),
     MState.
 
+-spec get_props_res(tuple(), map()) -> map().
 get_props_res(Entity, Map) when is_tuple(Entity) ->
     Map2 = add_properties(wm_entity:get_attr(properties, Entity), Map),
     add_resources(wm_entity:get_attr(resources, Entity), Map2).
 
+-spec do_make_rh(atom(), [tuple()], map(), atom(), #mstate{}) -> map().
 do_make_rh(grid, _, RH, Owner, #mstate{} = MState) ->
     ?LOG_DEBUG("Do make RH for ~p", [Owner]),
     Grids = wm_conf:select(grid, all),
@@ -389,11 +413,13 @@ do_make_rh(node, [Node | T], RH, Owner, #mstate{} = MState) ->
     RH2 = maps:put({node, NodeId}, Map, RH),
     do_make_rh(node, T, RH2, Owner, MState).
 
+-spec add_properties([{term(), term()}], map()) -> map().
 add_properties([], Map) ->
     Map;
 add_properties([{X, Y} | T], Map) ->
     add_properties(T, maps:put({property, X}, Y, Map)).
 
+-spec add_resources([tuple()], map()) -> map().
 add_resources([], Map) ->
     Map;
 add_resources([R | T], Map) ->
@@ -404,9 +430,11 @@ add_resources([R | T], Map) ->
     Map2 = maps:put({resource, Name}, RMap3, Map),
     add_resources(T, Map2).
 
+-spec append_id_to_binary(pos_integer(), binary()) -> binary().
 append_id_to_binary(ID, Binary) ->
     <<Binary/binary, ID:?BINARY_ID_BITS/unsigned-integer>>.
 
+-spec do_get_neighbours_addresses(atom(), #mstate{}) -> [node_address()].
 do_get_neighbours_addresses(SortBy, #mstate{rh = RH}) ->
     %TODO sort the neightbours
     Neightbours = get_my_neighbours([cluster, partition, node], SortBy, RH),
@@ -579,25 +607,7 @@ do_update_latency(Node, #mstate{}) ->
     %TODO Rename latency to roundtrip
     ok.
 
-update_ct(SrcNode, DstNode, IntVal, #mstate{} = MState) ->
-    BinVal = <<IntVal:?BINARY_WEIGHT_BITS>>,
-    X = maps:get(
-            wm_entity:get_attr(id, SrcNode), MState#mstate.ct_map),
-    Y = maps:get(
-            wm_entity:get_attr(id, DstNode), MState#mstate.ct_map),
-    Pos = X * byte_size(MState#mstate.nl) + Y,
-    ?LOG_DEBUG("Update CT: X=~p, Y=~p, Pos=~p", [X, Y, Pos]),
-    CT = replace_in_binary(MState#mstate.ct, Pos, BinVal),
-    MState#mstate{ct = CT}.
-
-replace_in_binary(Bin, Pos, SubBin) ->
-    PosBytes = Pos * ?BITS_IN_BYTE,
-    BinLen = byte_size(Bin),
-    SubLen = byte_size(SubBin),
-    Prefix = binary:part(Bin, 0, PosBytes),
-    Suffix = binary:part(Bin, PosBytes + SubLen, BinLen - PosBytes - SubLen),
-    <<Prefix/binary, SubBin/binary, Suffix/binary>>.
-
+-spec do_get_latency(#node{}, #node{}, #mstate{}) -> pos_integer().
 do_get_latency(SrcNode, DstNode, #mstate{} = MState) ->
     X = maps:get(
             wm_entity:get_attr(id, SrcNode), MState#mstate.ct_map),
@@ -606,6 +616,7 @@ do_get_latency(SrcNode, DstNode, #mstate{} = MState) ->
     Size = round(byte_size(MState#mstate.nl) * ?BITS_IN_BYTE / ?BINARY_WEIGHT_BITS),
     get_integer_by_pos(X, Y, Size, MState#mstate.ct).
 
+-spec get_integer_by_pos(pos_integer(), pos_integer(), pos_integer(), binary()) -> pos_integer().
 get_integer_by_pos(X, Y, MatrixSize, Matrix) ->
     Pos = X * MatrixSize + Y,
     PosBytes = Pos * ?BITS_IN_BYTE,
@@ -613,6 +624,7 @@ get_integer_by_pos(X, Y, MatrixSize, Matrix) ->
     ValBin = binary:part(Matrix, PosBytes, ValLen),
     binary:decode_unsigned(ValBin).
 
+-spec do_get_min_latency(#node{}, [atom()], {atom(), pos_integer()}, #mstate{}) -> {atom(), pos_integer()}.
 do_get_min_latency(_, [], MinWeightNode, _) ->
     MinWeightNode;
 do_get_min_latency(SrcNode, [DstNodeName | T], {}, #mstate{} = MState) ->
@@ -630,6 +642,7 @@ do_get_min_latency(SrcNode, [DstNodeName | T], {MinNode, MinWeight}, #mstate{} =
         end,
     do_get_min_latency(SrcNode, T, MinWeightNode, MState).
 
+-spec get_direct_subdiv(tuple()) -> tuple().
 get_direct_subdiv(Entity) ->
     try
         case element(1, Entity) of
@@ -652,6 +665,7 @@ get_direct_subdiv(Entity) ->
             Entity
     end.
 
+-spec do_get_subdiv(atom(), tuple()) -> tuple().
 do_get_subdiv(partition, Entity) ->
     case element(1, Entity) of
         node ->
@@ -669,10 +683,11 @@ do_get_subdiv(cluster, Entity) ->
             Entity
     end.
 
+-spec do_get_my_subdiv(atom(), #mstate{}) -> tuple() | not_found.
 do_get_my_subdiv(direct, #mstate{} = MState) ->
     case wm_conf:select_node(MState#mstate.sname) of
         {error, _} ->
-            [];
+            not_found;
         {ok, Node} ->
             get_direct_subdiv(Node)
     end;
@@ -684,6 +699,7 @@ do_get_my_subdiv(SubDivName, #mstate{} = MState) ->
             do_get_subdiv(SubDivName, Node)
     end.
 
+-spec do_get_tree_nodes(#mstate{}) -> [tuple()].
 do_get_tree_nodes(#mstate{rh = RH}) when is_map(RH) ->
     F = fun FoldFun({node, ID}, _, IDs) ->
                 [ID | IDs];
@@ -714,7 +730,7 @@ do_get_tree_nodes(#mstate{rh = RH}) ->
 %%       forward the message or the message comes to the grid
 %%       management node and will be logged as error.
 -spec find_rh_path(string(), string(), map()) -> list().
-find_rh_path(FromNodeId, ToNodeId, _RH = undefined) ->
+find_rh_path(_, ToNodeId, _RH = undefined) ->
     ?LOG_DEBUG("RH has not been created yet: assume next node is ~p", [ToNodeId]),
     [ToNodeId];
 find_rh_path(FromNodeId, ToNodeId, RH) ->
@@ -756,6 +772,7 @@ find_rh_path(FromNodeId, ToNodeId, RH) ->
             end
     end.
 
+-spec get_node_rh({{atom(), string()}, map()}, node_id(), {boolean(), map()}) -> map().
 get_node_rh({{Division, Id}, SubRH}, NodeId, {false, LastSubRH}) when Division =/= node ->
     {ok, DivisionEntity} = wm_conf:select(Division, {id, Id}),
     MgrName = wm_entity:get_attr(manager, DivisionEntity),
@@ -788,15 +805,16 @@ get_node_rh({{_, _}, SubRH}, NodeId, {false, LastSubRH}) ->
 get_node_rh({{_, _}, _}, _, {true, LastSubRH}) ->
     {true, LastSubRH}.
 
+-spec find_child_rh_path(node_id(), map(), [node_id()]) -> [node_id()].
 find_child_rh_path(_, RH, _) when map_size(RH) == 0 ->
     [];
 find_child_rh_path(NodeId, RH, Path) ->
     F = fun ({{node, Id}, _})
-                when Id =:= NodeId ->            % searched node is found
+                when Id =:= NodeId ->                              % searched node is found
                 [NodeId | Path];
-            ({{node, _}, _}) ->                                % node does not have children
+            ({{node, _}, _}) ->                                    % node does not have children
                 [];
-            ({{Division, Id}, SubRH}) ->                       % check cluster or partition
+            ({{Division, Id}, SubRH}) ->                           % check cluster or partition
                 {ok, X} = wm_conf:select(Division, {id, Id}),
                 case is_subdiv_manager(NodeId, X) of
                     true ->                                        % searched node (manager) is found
@@ -813,6 +831,7 @@ find_child_rh_path(NodeId, RH, Path) ->
             OnlyOneCorrectPath
     end.
 
+-spec is_subdiv_manager(node_id(), tuple()) -> true | {false, node_id()}.
 is_subdiv_manager(NodeId, Entity) ->
     MgrName = wm_entity:get_attr(manager, Entity),
     {ok, Node} = wm_conf:select_node(MgrName),
@@ -823,6 +842,7 @@ is_subdiv_manager(NodeId, Entity) ->
             {false, OtherId}
     end.
 
+-spec get_parent_id(node_id()) -> {ok, node_id()} | {error, not_found}.
 get_parent_id(NodeId) ->
     case wm_conf:select(node, {id, NodeId}) of
         {error, _} ->
@@ -872,19 +892,6 @@ init_ct_test() ->
           0, 0, 0, 0>>,
     ?LOG_DEBUG("~p", MState#mstate.ct),
     ?assert(MState#mstate.ct == RefCt).
-
-update_ct_test() ->
-    MState = get_mock_ct(),
-    RefNl = <<0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3>>,
-    ?assert(MState#mstate.nl == RefNl),
-    Node1 = wm_entity:set_attr({id, 1}, wm_entity:new(<<"node">>)),
-    Node2 = wm_entity:set_attr({id, 2}, wm_entity:new(<<"node">>)),
-    MState4 = update_ct(Node1, Node2, 3, MState),
-    RefCt =
-        <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 15, 66, 64, 0, 0, 0, 0, 0, 15, 66, 64, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 66, 64, 0, 0, 0, 0, 0, 15, 66, 64, 0, 0, 0, 0, 0, 15, 66, 64, 0, 0, 0, 0, 0,
-          0, 0, 0>>,
-    ?assert(MState4#mstate.ct == RefCt).
 
 get_value_from_cl_test() ->
     CT = <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
