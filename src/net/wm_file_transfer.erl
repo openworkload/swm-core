@@ -113,7 +113,7 @@ create_symlink(ServerRef, Src, Dst) ->
             ok;
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, {Src, Dst}, wm_posix_utils:errno(Reason)};
-        {error, {Src, Dst}, PosixReason} = Error ->
+        {error, {Src, Dst}, _PosixReason} = Error ->
             Error
     end.
 
@@ -132,7 +132,7 @@ open_file(ServerRef, File) ->
             {ok, Fd};
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end.
 
@@ -159,7 +159,7 @@ delete_file(ServerRef, File) ->
             ok;
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end.
 
@@ -182,7 +182,7 @@ create_directory(ServerRef, File) ->
             exist;
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end.
 
@@ -201,7 +201,7 @@ list_directory(ServerRef, File) ->
             {ok, Xs};
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end.
 
@@ -213,7 +213,7 @@ delete_directory(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(Connection
             ok;
         {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end;
 delete_directory(ServerRef, File) ->
@@ -222,7 +222,7 @@ delete_directory(ServerRef, File) ->
             ok;
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end.
 
@@ -246,7 +246,7 @@ get_file_info(ServerRef, File) ->
                             uid = wm_utils:to_integer(Info#file_info.uid)}};
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end.
 
@@ -262,8 +262,7 @@ set_file_info(_ServerRef = {ConnectionRef, Pid}, File, Info) when is_pid(Connect
         ok ->
             ok;
         {error, Reason} ->
-            {error, File, wm_posix_utils:errno(Reason)},
-            ok
+            {error, File, wm_posix_utils:errno(Reason)}
     end;
 set_file_info(ServerRef, File, Info) ->
     case wm_utils:protected_call(ServerRef, {set_file_info, File, Info}) of
@@ -271,7 +270,7 @@ set_file_info(ServerRef, File, Info) ->
             ok;
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end.
 
@@ -283,10 +282,10 @@ file_size(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) an
             {ok, Bytes};
         {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, _Code, Msg} = Error ->
+        {error, Code, _Msg} = Error when is_integer(Code) ->
             %% TODO: investigate why file size can produce {error, 47, "Operation not permitted (POSIX.1-2001)."}
-            {error, File, Msg};
-        {error, File, PosixReason} = Error ->
+            Error;
+        {error, File, _PosixReason} = Error ->
             Error
     end;
 file_size(ServerRef, File) ->
@@ -295,7 +294,7 @@ file_size(ServerRef, File) ->
             {ok, Bytes};
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end.
 
@@ -307,7 +306,7 @@ md5sum(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andal
             {ok, Hash};
         {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end;
 md5sum(ServerRef, File) ->
@@ -319,7 +318,7 @@ md5sum(ServerRef, File) ->
                         {ok, Hash};
                     {error, Reason} -> %% some error occur
                         {error, File, wm_posix_utils:errno(Reason)};
-                    {error, File, PosixReason} = Error ->
+                    {error, File, _PosixReason} = Error ->
                         Error
                 after 30000 ->
                     {error, timeout}
@@ -330,7 +329,7 @@ md5sum(ServerRef, File) ->
             F();
         {error, Reason} -> %% gen_server exception -> {error, Reason}
             {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, PosixReason} = Error ->
+        {error, File, _PosixReason} = Error ->
             Error
     end.
 
@@ -338,28 +337,61 @@ md5sum(ServerRef, File) ->
 %% Server callbacks
 %% ============================================================================
 
-handle_call({create_symlink, Src, Dst}, From, MStats) ->
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    process_flag(trap_exit, true),
+    MState = parse_args(Args, #mstate{}),
+    case MState#mstate.simulation of
+        true ->
+            {ok, MState, hibernate}; %% not used on simulation nodes
+        false ->
+            case ssh_daemon() of
+                {ok, Pid} ->
+                    {ok, MState#mstate{ssh_daemon_pid = Pid}};
+                {error, Reason} ->
+                    {stop, Reason}
+            end
+    end.
+
+handle_call({create_symlink, Src, Dst}, _, MStats) ->
     Result = wm_file_utils:create_symlink(Src, Dst),
     {reply, Result, MStats};
-handle_call({open_file, File}, From, MState) ->
+handle_call({open_file, File}, _, MState) ->
     Result = wm_file_utils:open_file(File),
     {reply, Result, MState};
-handle_call({close_file, Fd}, From, MState) ->
+handle_call({close_file, Fd}, _, MState) ->
     Result = wm_file_utils:close_file(Fd),
-    {reply, ok, MState};
-handle_call({delete_file, File}, From, MState) ->
+    {reply, Result, MState};
+handle_call({delete_file, File}, _, MState) ->
     Result = wm_file_utils:delete_file(File),
     {reply, Result, MState};
-handle_call({create_directory, File}, From, MState) ->
+handle_call({create_directory, File}, _, MState) ->
     Result = wm_file_utils:create_directory(File),
     {reply, Result, MState};
-handle_call({list_directory, File}, From, MState) ->
+handle_call({list_directory, File}, _, MState) ->
     Result = wm_file_utils:list_directory(File),
     {reply, Result, MState};
-handle_call({delete_directory, File}, From, MStats) ->
+handle_call({delete_directory, File}, _, MStats) ->
     Result = wm_file_utils:delete_directory(File),
     {reply, Result, MStats};
-handle_call({file_size, File}, From, MState) ->
+handle_call({file_size, File}, _, MState) ->
     Result = wm_file_utils:get_size(File),
     {reply, Result, MState};
 handle_call({md5sum, File}, From, MState) ->
@@ -385,11 +417,11 @@ handle_call({md5sum, File}, From, MState) ->
             FromPid ! Otherwise
     end,
     {noreply, MState};
-handle_call({get_file_info, File}, From, MState) ->
+handle_call({get_file_info, File}, _, MState) ->
     Result = wm_file_utils:get_file_info(File),
     {reply, Result, MState};
 %% TODO: Due bug in erlang ssh_sftp we have to preventively cast gid/uid into integer
-handle_call({set_file_info, File, Info}, From, MState) ->
+handle_call({set_file_info, File, Info}, _, MState) ->
     Info = Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid), uid = wm_utils:to_integer(Info#file_info.uid)},
     Result = wm_file_utils:set_file_info(File, Info),
     {reply, Result, MState};
@@ -445,7 +477,7 @@ handle_call({enqueue, CallbackModule, Node, Priority, Source, Destination, Opts}
                           {Ref, CallbackModule, _Settings = {Node, Opts, Source, Destination}, Fun, TotalBytes},
                           Q)}};
 handle_call({discontinue, CallbackModule, Ref, CleanDest},
-            From,
+            _,
             MState =
                 #mstate{priority_queue = Q,
                         children = Children,
@@ -458,7 +490,7 @@ handle_call({discontinue, CallbackModule, Ref, CleanDest},
               Pid ->
                   {Ref,
                    _CallbackModule,
-                   _Settings = {Node, Opts, Source, Destination},
+                   _Settings = {Node, Opts, _Source, _Destination},
                    _TotalBytes,
                    _TransferedBytes,
                    History} =
@@ -497,15 +529,15 @@ handle_call({discontinue, CallbackModule, Ref, CleanDest},
                        in(_Priority = 10,
                           {DiscontinueRef, CallbackModule, _Settings2 = undefined, Fun, _TotalBytes2 = 0},
                           NewQ)}};
-handle_call({get_transfer_status, Ref}, From, MState = #mstate{children = Children, rev_children = RevChildren}) ->
+handle_call({get_transfer_status, Ref}, _, MState = #mstate{children = Children, rev_children = RevChildren}) ->
     case maps:get(Ref, RevChildren, undefined) of
         undefined ->
             {reply, error, MState};
         Pid ->
-            {Ref, CallbackModule, _Settings, TotalBytes, TransferedBytes, History} = maps:get(Pid, Children),
+            {Ref, _CallbackModule, _Settings, TotalBytes, TransferedBytes, History} = maps:get(Pid, Children),
             {reply, {ok, TransferedBytes, TotalBytes - TransferedBytes, lists:reverse(History)}, MState}
     end;
-handle_call(get_transfers, From, MState = #mstate{children = Children}) ->
+handle_call(get_transfers, _, MState = #mstate{children = Children}) ->
     Refs =
         lists:map(fun({Ref, _CallbackModule, _Settings, _TotalBytes, _TransferedBytes, _History}) -> Ref end,
                   maps:values(Children)),
@@ -619,22 +651,7 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
-%% @hidden
-init(Args) ->
-    process_flag(trap_exit, true),
-    MState = parse_args(Args, #mstate{}),
-    case MState#mstate.simulation of
-        true ->
-            {ok, MState, hibernate}; %% not used on simulation nodes
-        false ->
-            case ssh_daemon() of
-                {ok, Pid} ->
-                    {ok, MState#mstate{ssh_daemon_pid = Pid}};
-                {error, Reason} ->
-                    {stop, Reason}
-            end
-    end.
-
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
 parse_args([{simulation, true} | T], MState) ->
@@ -661,13 +678,13 @@ parse_files(ServerRef, []) ->
     parse_files(ServerRef, [], []);
 parse_files(ServerRef, <<>>) ->
     parse_files(ServerRef, [], []);
-parse_files(ServerRef, [X | Xs] = File) when is_integer(X) ->
+parse_files(ServerRef, [X | _] = File) when is_integer(X) ->
     parse_files(ServerRef, [File], []);
-parse_files(ServerRef, [X | Xs] = Files) when is_list(X) ->
+parse_files(ServerRef, [X | _] = Files) when is_list(X) ->
     parse_files(ServerRef, Files, []).
 
 -spec parse_files(any(), file:filename() | [file:filename()], [file:filename()]) -> [file:filename()].
-parse_files(ServerRef, [], Acc) ->
+parse_files(_, [], Acc) ->
     Acc;
 parse_files(ServerRef, [File | Files], Acc) ->
     case lists:suffix("/", File) of
@@ -695,7 +712,7 @@ parse_files(ServerRef, [File | Files], Acc) ->
 %% TODO: fix spec
 -spec do_copy_files(any(), any(), [file:filename()], file:filename(), #{}) ->
                        ok | {error, file:filename(), nonempty_string()}.
-do_copy_files(SrcServerRef, DstServerRef, [], Destination, Opts) ->
+do_copy_files(_, _, [], _, _) ->
     ok;
 do_copy_files(SrcServerRef, DstServerRef, [File | Files], Destination, Opts) ->
     ?LOG_DEBUG("Transfer ~p to ~p [~p -> ~p]", [File, Destination, SrcServerRef, DstServerRef]),
@@ -750,11 +767,11 @@ do_copy_files(SrcServerRef, DstServerRef, [File | Files], Destination, Opts) ->
     end.
 
 -spec do_delete_files(any(), [file:filename()]) -> ok.
-do_delete_files(ServerRef, []) ->
+do_delete_files(_, []) ->
     ok;
 do_delete_files(ServerRef, [File | Files]) ->
     case ?MODULE:get_file_info(ServerRef, File) of
-        {ok, Info = #file_info{type = symlink}} ->
+        {ok, #file_info{type = symlink}} ->
             case filelib:is_regular(File) of
                 true ->
                     _ = ?MODULE:delete_file(ServerRef, File),
@@ -763,10 +780,10 @@ do_delete_files(ServerRef, [File | Files]) ->
                     _ = ?MODULE:delete_directory(ServerRef, File),
                     do_delete_files(ServerRef, Files)
             end;
-        {ok, Info = #file_info{type = regular}} ->
+        {ok, #file_info{type = regular}} ->
             _ = ?MODULE:delete_file(ServerRef, File),
             do_delete_files(ServerRef, Files);
-        {ok, Info = #file_info{type = directory}} ->
+        {ok, #file_info{type = directory}} ->
             _ = ?MODULE:delete_directory(ServerRef, File),
             do_delete_files(ServerRef, Files)
     end.
@@ -796,7 +813,7 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                         case ?MODULE:md5sum(DstServerRef, DstFile) of
                             {ok, Hash} ->
                                 St#file{dst_md5_sum = Hash};
-                            Otherwise ->
+                            _ ->
                                 St
                         end
                      end,
@@ -866,17 +883,17 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                        state => just_copied,
                        file => DstFile}}),
     wm_utils:do(St,
-                [fun (St = #file{src_fd = undefined}) ->
-                         St;
-                     (St = #file{src_fd = Fd}) ->
+                [fun (X = #file{src_fd = undefined}) ->
+                         X;
+                     (X = #file{src_fd = Fd}) ->
                          ok = ?MODULE:close_file(SrcServerRef, Fd),
-                         St
+                         X
                  end,
-                 fun (St = #file{dst_fd = undefined}) ->
-                         St;
-                     (St = #file{dst_fd = Fd}) ->
+                 fun (X = #file{dst_fd = undefined}) ->
+                         X;
+                     (X = #file{dst_fd = Fd}) ->
                          ok = ?MODULE:close_file(DstServerRef, Fd),
-                         St
+                         X
                  end]),
     Result.
 
@@ -949,8 +966,8 @@ process_directory(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                             sets:to_list(
                                 sets:subtract(
                                     sets:from_list(DstFiles), sets:from_list(SrcFiles))),
-                        lists:map(fun(File) ->
-                                     File4Delete = filename:join(DstFile, filename:basename(File)),
+                        lists:map(fun(Filename) ->
+                                     File4Delete = filename:join(DstFile, filename:basename(Filename)),
                                      case ?MODULE:get_file_info(DstServerRef, File4Delete) of
                                          {ok, #file_info{type = symlink}} ->
                                              case ?MODULE:delete_file(DstServerRef, File4Delete) of
@@ -1079,7 +1096,7 @@ download_file(ServerRef, SrcFd, DstFd, Size, Opts) ->
                       #{},
                       pos_integer()) ->
                          ok | {error, term()}.
-send_async_read(_, _, _, Size, Opts, Pos) when Size =< 0 orelse Size < Pos - ?BUF_SIZE ->
+send_async_read(_, _, _, Size, _, Pos) when Size =< 0 orelse Size < Pos - ?BUF_SIZE ->
     ok;
 send_async_read(ServerRef, SrcFd, DstFd, Size, Opts, Pos) ->
     case ssh_sftp:apread(ServerRef, SrcFd, Pos, ?BUF_SIZE) of
@@ -1205,6 +1222,6 @@ out({Len, Q}) ->
     end.
 
 -spec delete(fun((term()) -> boolean()), {pos_integer(), [term()]}) -> {pos_integer(), [term()]}.
-delete(Fun, {Len, Q}) ->
+delete(Fun, {_Len, Q}) ->
     WrapperFun = fun({_, _, X}) -> Fun(X) end,
     {length(Q), wm_priority_queue:filter(WrapperFun, Q)}.
