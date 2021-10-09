@@ -3,9 +3,10 @@
 -export([find_my_parents/5, get_current/1]).
 
 -include("../../lib/wm_log.hrl").
+-include("../../lib/wm_entity.hrl").
 
 %% @doc Return current parent address if any
--spec get_current(list()) -> {string(), integer()} | not_found.
+-spec get_current(list()) -> node_address() | not_found.
 get_current(PStack) ->
     case PStack of
         [] ->

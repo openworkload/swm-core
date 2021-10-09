@@ -15,6 +15,7 @@
 %% API functions
 %% ============================================================================
 
+-spec call(module(), fun(), list()) -> term().
 call(Module, Function, Args) ->
     case wm_utils:get_env("SWM_API_HOST") of
         undefined ->
@@ -28,6 +29,7 @@ call(Module, Function, Args) ->
             end
     end.
 
+-spec call(module(), fun(), list(), #node{} | atom()) -> term().
 call(Module, Function, Args, Node) when is_tuple(Node) ->
     ?LOG_DEBUG("m=~p f=~p, a=~P, n=~p", [Module, Function, Args, 3, Node]),
     case wm_tcpclient:connect(get_connection_args(Node)) of
@@ -47,6 +49,7 @@ call(Module, Function, Args, Node) ->
             ?MODULE:call(Module, Function, Args, NodeRec)
     end.
 
+-spec cast(module(), fun(), list()) -> {ok, any()} | {error, term()}.
 cast(Module, Function, Args) ->
     cast(Module, Function, Args, {localhost}).
 
@@ -71,6 +74,7 @@ cast(Module, Function, Args, FinalAddr = {_, _}) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec send_metrics_to_mon(node_address()) -> ok.
 send_metrics_to_mon(DestAddr = {_, _}) ->
     case wm_conf:select_node(DestAddr) of
         {ok, Rec} ->
@@ -80,6 +84,7 @@ send_metrics_to_mon(DestAddr = {_, _}) ->
             ok
     end.
 
+-spec get_connection_args({localhost} | node_address() | {#node{}, pos_integer()} | #node{}) -> map().
 get_connection_args({localhost}) ->
     DefaultCert = filename:join([?DEFAULT_CERT_DIR, "cert.pem"]),
     DefaultKey = filename:join([?DEFAULT_CERT_DIR, "key.pem"]),
@@ -111,6 +116,7 @@ get_connection_args(Node) when is_tuple(Node) ->
     ConnArgs3 = maps:put(cert, Cert, ConnArgs2),
     maps:put(key, Key, ConnArgs3).
 
+-spec get_next_destination(node_address()) -> node_address().
 get_next_destination(FinalAddr = {_, _}) ->
     ?LOG_DEBUG("Find next node when forwarding to ~p", [FinalAddr]),
     case wm_conf:is_my_address(FinalAddr) of
@@ -161,6 +167,7 @@ get_next_destination(FinalAddr = {_, _}) ->
             end
     end.
 
+-spec get_next_relative_destination(#node{}, node_id()) -> node_address() | not_found.
 get_next_relative_destination(FinalNode, MyNodeId) ->
     FinalNodeId = wm_entity:get_attr(id, FinalNode),
     case wm_topology:on_path(MyNodeId, FinalNodeId) of

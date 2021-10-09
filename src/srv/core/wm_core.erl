@@ -33,7 +33,7 @@ start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 %% @doc Get current parent node full name
--spec get_parent() -> {string(), integer()}.
+-spec get_parent() -> node_address() | not_found.
 get_parent() ->
     wm_utils:protected_call(?MODULE, get_parent, none).
 
