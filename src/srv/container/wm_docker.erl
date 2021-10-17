@@ -169,6 +169,7 @@ get_config_map(binds) ->
     RootBin = list_to_binary(wm_utils:get_env("SWM_ROOT")),
     #{<<"Binds">> => [<<"/home:/home">>, <<"/tmp:/tmp">>, <<RootBin/binary, <<":">>/binary, RootBin/binary>>]}.
 
+-spec get_cmd(string()) -> [binary()].
 get_cmd(Porter) ->
     [list_to_binary(wm_utils:unroll_symlink(Porter)), <<"-d">>].
 
@@ -176,14 +177,14 @@ get_cmd(Porter) ->
 get_volumes_from() ->
     [list_to_binary(os:getenv("SWM_DOCKER_VOLUMES_FROM", "swm-core:ro"))].
 
--spec generate_container_json(string()) -> list().
-generate_container_json(Porter) ->
+-spec generate_container_json(#job{}, string()) -> list().
+generate_container_json(#job{request = Request}, Porter) ->
     Term1 = jwalk:set({"Tty"}, #{}, false),
     Term2 = jwalk:set({"OpenStdin"}, Term1, true),
     Term3 = jwalk:set({"AttachStdin"}, Term2, true),
     Term4 = jwalk:set({"AttachStdout"}, Term3, true),
     Term5 = jwalk:set({"AttachStderr"}, Term4, true),
-    Term6 = jwalk:set({"Image"}, Term5, <<"ubuntu:18.04">>),
+    Term6 = jwalk:set({"Image"}, Term5, get_container_image(Request)),
     Term7 = jwalk:set({"Cmd"}, Term6, get_cmd(Porter)),
     Term8 = jwalk:set({"Volumes"}, Term7, get_config_map(volumes)),
     Term9 = jwalk:set({"HostConfig"}, Term8, get_config_map(binds)),
@@ -191,11 +192,25 @@ generate_container_json(Porter) ->
     Term11 = jwalk:set({"VolumesFrom"}, Term10, get_volumes_from()),
     jsx:encode(Term11).
 
+-spec get_container_image([#resource{}]) -> binary().
+get_container_image([]) ->
+    <<"">>;
+get_container_image([#resource{name = "image", properties = Properties}|T]) ->
+    case proplists:get_value(value, Properties) of
+        Value when is_list(Value) ->
+            list_to_binary(Value);
+        _ ->
+            get_container_image(T)
+    end;
+get_container_image([_|T]) ->
+    get_container_image(T).
+
+-spec do_create_container(#job{}, string(), map(), pid(), list()) -> {string(), pid()}.
 do_create_container(Job, Porter, _Envs, Owner, Steps) ->
     ContID = "swmjob-" ++ wm_entity:get_attr(id, Job),
     ?LOG_DEBUG("Create container ~p", [ContID]),
     HttpProcPid = start_http_client(Owner, ContID, "create container " ++ ContID),
-    Body = generate_container_json(Porter),
+    Body = generate_container_json(Job, Porter),
     Path = "/containers/create?name=" ++ ContID,
     Hdrs = [{<<"content-type">>, "application/json"}],
     wm_docker_client:post(Path, Body, Hdrs, HttpProcPid, Steps),
