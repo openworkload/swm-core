@@ -151,7 +151,7 @@ handle_info({gun_response, ConnPid, _, fin, Status, Hdrs}, #mstate{} = MState) -
     notify_requestor(<<>>, NewHdrs, Status, MState),
     ok = gun:flush(ConnPid),
     {noreply, MState#mstate{hdrs = []}};
-handle_info({gun_response, ConnPid, _, nofin, 404, Hdrs}, #mstate{} = MState) ->
+handle_info({gun_response, _, _, nofin, 404, Hdrs}, #mstate{} = MState) ->
     notify_requestor(<<>>, Hdrs, 404, MState),
     shutdown(MState),
     {stop, normal, shutdown_ok, MState};
@@ -291,16 +291,10 @@ notify_requestor(Data, Hdrs, Meta, MState) ->
     Msg = {MState#mstate.steps, Meta, Data, Hdrs, MState#mstate.reqid},
     gen_server:cast(MState#mstate.owner, Msg).
 
-handle_frame(Type, Frame, MState) ->
-    case Type of
-        ?STDOUT_TYPE ->
-            notify_requestor(Frame, [], {stream, Type}, MState);
-        ?STDERR_TYPE ->
-            ?LOG_DEBUG("Docker debug output: ~s", [io_lib:format("~s", [Frame])]);
-        _ ->
-            ?LOG_ERROR("Unexpected frame type ~p: ~p", [Type, Frame])
-    end.
+handle_full_frame(Type, Frame, MState) ->
+    notify_requestor(Frame, [], {stream, Type}, MState).
 
+-spec reset_data_state(#mstate{}) -> #mstate{}.
 reset_data_state(MState = #mstate{}) ->
     MState#mstate{data = <<>>,
                   data_type = -1,
@@ -314,14 +308,14 @@ handle_docker_output(<<Type:8/integer, 0, 0, 0, FrameSize:32/integer, Data/binar
     case byte_size(Data) of
         FrameSize ->  % received whole frame
             ?LOG_DEBUG("[FRAME] received: whole frame"),
-            handle_frame(Type, Data, MState),
+            handle_full_frame(Type, Data, MState),
             reset_data_state(MState);
         DataSize
             when DataSize
                  > FrameSize ->  % received whole frame plus extra data
             <<Frame:FrameSize/binary, ExtraData/binary>> = Data,
             ?LOG_DEBUG("[FRAME] received: whole frame + extra ~p bytes", [byte_size(ExtraData)]),
-            handle_frame(Type, Frame, MState),
+            handle_full_frame(Type, Frame, MState),
             handle_docker_output(ExtraData, reset_data_state(MState));
         PartSize ->  % received a part of frame
             ?LOG_DEBUG("[FRAME] recevied: part of frame"),
@@ -346,6 +340,6 @@ handle_docker_output(Data,
             <<Frame:ExpectedSize/binary, ExtraData/binary>> = Data,
             ?LOG_DEBUG("[FRAME] received: last Handle docker output: ~p + ~p bytes",
                        [byte_size(Frame), byte_size(ExtraData)]),
-            handle_frame(Type, Frame, MState),
+            handle_full_frame(Type, Frame, MState),
             handle_docker_output(ExtraData, reset_data_state(MState))
     end.

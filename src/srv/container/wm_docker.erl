@@ -107,7 +107,6 @@ do_get_unregistered_images() ->
 
 % Example of parsing image structure that comes from Docker:
 %{struct,
-
   %[{<<"Id">>,
   % <<"sha256:73403b9c37ef3b52ec4895d4fc99f03544d41d4c19d8d05bc5">>},
   %{<<"ParentId">>,
@@ -118,7 +117,6 @@ do_get_unregistered_images() ->
   %{<<"Size">>,1911787182},
   %{<<"VirtualSize">>,1911787182},
   %{<<"Labels">>,{struct,[]}}]
-
 %}
 get_images_from_json([], Images) ->
     Images;
@@ -280,7 +278,8 @@ get_finalize_cmd(Job) ->
             ContID = wm_entity:get_attr(container, Job),
             FinScript = os:getenv("SWM_FINALIZE_IN_CONTAINER", ?SWM_FINALIZE_IN_CONTAINER),
             ?LOG_DEBUG("Finalize ~p: ~p ~p ~p", [ContID, FinScript, BUID, BGID]),
-            [list_to_binary(FinScript), BName, BUID, BGID]
+            W = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID,
+            [<<"/bin/bash">>, <<"-c">>, list_to_binary(W)]
     end.
 
 generate_finalize_json(Job, create) ->
@@ -290,11 +289,13 @@ generate_finalize_json(Job, create) ->
     Term4 = jwalk:set({"AttachStdout"}, Term3, false),
     Term5 = jwalk:set({"AttachStderr"}, Term4, false),
     Term6 = jwalk:set({"Cmd"}, Term5, get_finalize_cmd(Job)),
-    jsx:encode(Term6);
+    Term7 = jwalk:set({"User"}, Term6, <<"root">>),
+    jsx:encode(Term7);
 generate_finalize_json(_, start) ->
     Term1 = jwalk:set({"Detach"}, #{}, false),
     Term2 = jwalk:set({"Tty"}, Term1, false),
-    jsx:encode(Term2).
+    Term3 = jwalk:set({"User"}, Term2, <<"root">>),
+    jsx:encode(Term3).
 
 do_create_exec(Job, Steps) ->
     ContID = wm_entity:get_attr(container, Job),

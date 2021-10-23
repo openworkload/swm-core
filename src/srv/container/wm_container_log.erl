@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, print/1]).
+-export([start_link/1, print/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../../lib/wm_log.hrl").
@@ -25,7 +25,7 @@ start_link(Args) ->
 
 -spec print(pid(), string()) -> ok.
 print(Pid, Msg) ->
-    gen_server:call(Pid, {info, Msg}).
+    gen_server:call(Pid, {print, Msg}).
 
 %% ============================================================================
 %% Callbacks
