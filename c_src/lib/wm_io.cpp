@@ -1,41 +1,28 @@
+#include "wm_entity.h"
+#include "wm_io.h"
+
 #include <cstring>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
-#include "wm_entity.h"
-#include "wm_io.h"
-
-#if !defined(WIN32)
 #include <unistd.h>
-#endif
 
 #define LOG_OUT_STREAM stderr
 
 static int g_log_level = SWM_LOG_LEVEL_INFO;
 static FILE *g_log_stream = NULL;
 
-// Need for Erlang libs. They were compiled by old version of VS, while VS 2017
-// omits some extern symbols. Probably, this #ifdef need to be removed in future.
-#if defined(WIN32) && _MSC_VER >= 1700
-FILE _iob[] = { *stdin, *stdout, *stderr };
-extern "C" FILE * __cdecl __iob_func(void) {
-  return _iob;
-}
-extern "C" FILE * __cdecl __imp___iob_func(void) {
-  return _iob;
-}
-#endif
-
-void _print_log_format(const char* tag, const char* message, va_list args) {
+void _print_log_format(const char* tag, const char* message, va_list args, const bool end_line) {
   time_t now;
   time(&now);
   char *date = ctime(&now);
   date[strlen(date) - 1] = '\0';
   fprintf(LOG_OUT_STREAM, "%s [%s] ", date, tag);
   vfprintf(LOG_OUT_STREAM, message, args);
-  fprintf(LOG_OUT_STREAM, "\n");
+  if (end_line) {
+    fprintf(LOG_OUT_STREAM, "\n");
+  }
 }
 
 void swm_log_init(int level, FILE *stream) {
@@ -47,6 +34,40 @@ int swm_get_log_level() {
   return g_log_level;
 }
 
+void swm_logi(const char* message, ...) {
+  va_list args;
+  va_start(args, message);
+  if(message==NULL) {
+    fprintf(LOG_OUT_STREAM, "\n");
+  } else {
+    _print_log_format("INFO", message, args, true);
+  }
+  va_end(args);
+  fflush(LOG_OUT_STREAM);
+}
+
+void swm_loge(const char* message, ...) {
+  va_list args;
+  va_start(args, message);
+  if(message==NULL) {
+    fprintf(LOG_OUT_STREAM, "\n");
+  } else {
+    _print_log_format("ERROR", message, args, true);
+  }
+  va_end(args);
+  fflush(LOG_OUT_STREAM);
+}
+
+void swm_logd(const char* message, const ETERM* eterm) {
+  if(message==NULL) {
+    fprintf(LOG_OUT_STREAM, "\n");
+  } else {
+    _print_log_format("DEBUG", message, {}, false);
+    erl_print_term(LOG_OUT_STREAM, eterm);
+  }
+  fflush(LOG_OUT_STREAM);
+}
+
 void swm_logd(const char* message, ...) {
   if(g_log_level < SWM_LOG_LEVEL_DEBUG1) {
     return;
@@ -56,7 +77,7 @@ void swm_logd(const char* message, ...) {
   if(message==NULL) {
     fprintf(LOG_OUT_STREAM, "\n");
   } else {
-    _print_log_format("DEBUG", message, args);
+    _print_log_format("DEBUG", message, args, true);
   }
   va_end(args);
   fflush(LOG_OUT_STREAM);
@@ -68,8 +89,9 @@ void swm_logdd(const char* message, ...) {
   }
   va_list args;
   va_start(args, message);
-  _print_log_format("DEBUG2", message, args);
+  _print_log_format("DEBUG2", message, args, true);
   va_end(args);
+  fflush(LOG_OUT_STREAM);
 }
 
 bool swm_read_length(std::istream *stream, uint32_t *len) {

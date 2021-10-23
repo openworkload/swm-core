@@ -11,8 +11,9 @@
 -define(DEFAULT_CONTAINER_TYPE, "docker").
 
 -record(mstate,
-        {containers = #{} :: map(),           % ContID => {Owner, Job, HttpPid}
-         execs = #{} :: map(),                % ContID => ExecPid
+        {containers = #{} :: map(),              % ContID => {Owner, Job, HttpPid, LoggerPid}
+         execs = #{} :: map(),                   % ContID => ExecPid
+         spool = "" :: string(),                 % Spool path
          attachment_pid = undefined :: pid()}).  % PID of the process that attaches to container websocket
 
 %% ============================================================================
@@ -78,7 +79,7 @@ handle_call({clear_container, #job{container = ContID} = Job}, _, #mstate{attach
     Module = get_conteinerizer(),
     ok = Module:delete(Job, self()),
     wm_docker_client:stop(AttachmentPid),
-    {reply, ok, MState};
+    {reply, ok, clean_containers_map(ContID, MState)};
 handle_call({register_image, ImageID}, _, #mstate{} = MState) ->
     Module = get_conteinerizer(),
     case Module:get_unregistered_image(ImageID) of
@@ -93,17 +94,21 @@ handle_call({list_images, unregistered}, _, #mstate{} = MState) ->
     Module = get_conteinerizer(),
     Images = Module:get_unregistered_images(),
     {reply, Images, MState};
-handle_call({run, Job, Cmd, Envs, Owner, [create | Steps]}, _, #mstate{} = MState) ->
+handle_call({run, Job, Cmd, Envs, Owner, [create | Steps]}, _, #mstate{spool=Spool} = MState) ->
     Module = get_conteinerizer(),
     {ContID, HttpProcPid} = Module:create(Job, Cmd, Envs, self(), Steps),
     NewJob = wm_entity:set_attr({container, ContID}, Job),
     wm_conf:update([NewJob]),
-    Map = maps:put(ContID, {Owner, NewJob, HttpProcPid}, MState#mstate.containers),
+    JobID = wm_entity:get_attr(id, Job),
+    {ok, LoggerPid} = wm_container_log:start_link([{spool, Spool}, {job_id, JobID}]),
+    Map = maps:put(ContID, {Owner, NewJob, HttpProcPid, LoggerPid}, MState#mstate.containers),
     {reply, {ok, NewJob}, MState#mstate{containers = Map}};
-handle_call({communicate, Job, Owner, [attach_ws | Steps]}, _, #mstate{} = MState) ->
+handle_call({communicate, Job, Owner, [attach_ws | Steps]}, _, #mstate{spool = Spool} = MState) ->
     Module = get_conteinerizer(),
     {ContID, HttpProcPid} = Module:attach_ws(Job, self(), Steps),
-    Map = maps:put(ContID, {Owner, Job, HttpProcPid}, MState#mstate.containers),
+    JobID = wm_entity:get_attr(id, Job),
+    {ok, LoggerPid} = wm_container_log:start_link([{spool, Spool}, {job_id, JobID}]),
+    Map = maps:put(ContID, {Owner, Job, HttpProcPid, LoggerPid}, MState#mstate.containers),
     {reply, ok, MState#mstate{containers = Map}}.
 
 %% Next block of handle_cast serves scenarios defined by list of atoms.
@@ -112,33 +117,33 @@ handle_call({communicate, Job, Owner, [attach_ws | Steps]}, _, #mstate{} = MStat
 handle_cast({[attach | Steps], Status, Data, _, ContID}, #mstate{} = MState) ->
     ?LOG_DEBUG("STEP ATTACH ~p | ~p | ~p | ~w", [Status, ContID, Data, Steps]),
     Module = get_conteinerizer(),
-    {_, Job, _} = maps:get(ContID, MState#mstate.containers),
+    {_, Job, _, _} = maps:get(ContID, MState#mstate.containers),
     {ContID, AttachmentPid} = Module:attach(Job, self(), Steps),
     {noreply, MState#mstate{attachment_pid = AttachmentPid}};
 handle_cast({[attach_ws | Steps], Status, Data, _, ContID}, #mstate{} = MState) ->
     ?LOG_DEBUG("STEP ATTACH WS ~p | ~p | ~p | ~w", [Status, ContID, Data, Steps]),
     Module = get_conteinerizer(),
-    {_, Job, _} = maps:get(ContID, MState#mstate.containers),
+    {_, Job, _, _} = maps:get(ContID, MState#mstate.containers),
     Module:attach_ws(Job, self(), Steps),
     {noreply, MState};
 handle_cast({[start | Steps], Status, Data, _, ContID}, #mstate{} = MState)
     when Status =:= ok; Status =:= 304; Status =:= 101 ->
     ?LOG_DEBUG("STEP START | ~p | ~p | ~w", [ContID, Data, Steps]),
     Module = get_conteinerizer(),
-    {_, Job, _} = maps:get(ContID, MState#mstate.containers),
+    {_, Job, _, _} = maps:get(ContID, MState#mstate.containers),
     Module:start(Job, Steps),
     {noreply, MState};
 handle_cast({[create_exec | Steps], Status, _, _, ContID}, #mstate{} = MState) ->
     ?LOG_DEBUG("STEP CREATE EXEC | ~p | ~p | ~p", [Status, ContID, Steps]),
     Module = get_conteinerizer(),
-    {_, Job, _} = maps:get(ContID, MState#mstate.containers),
+    {_, Job, _, _} = maps:get(ContID, MState#mstate.containers),
     HttpProcPid = Module:create_exec(Job, Steps),
     Map = maps:put(ContID, HttpProcPid, MState#mstate.execs),
     {noreply, MState#mstate{execs = Map}};
 handle_cast({[start_exec | Steps], _, Data, _, ContID}, #mstate{} = MState) ->
     ?LOG_DEBUG("STEP START EXEC ~p | ~w", [ContID, Steps]),
     Module = get_conteinerizer(),
-    {_, Job, _} = maps:get(ContID, MState#mstate.containers),
+    {_, Job, _, _} = maps:get(ContID, MState#mstate.containers),
     HttpProcPid = maps:get(ContID, MState#mstate.execs),
     case jsx:decode(Data) of
         [{<<"Id">>, ExecIdBin}] ->
@@ -151,7 +156,7 @@ handle_cast({[start_exec | Steps], _, Data, _, ContID}, #mstate{} = MState) ->
 handle_cast({[{send, Bin} | Steps], Status, Data, _, ContID}, #mstate{} = MState) ->
     ?LOG_DEBUG("STEP SEND | ~p | ~p | ~p | ~w", [Status, ContID, Data, Steps]),
     Module = get_conteinerizer(),
-    {_, _, HttpProcPid} = maps:get(ContID, MState#mstate.containers),
+    {_, _, HttpProcPid, _} = maps:get(ContID, MState#mstate.containers),
     Module:send(HttpProcPid, Bin, Steps),
     {noreply, MState};
 handle_cast({[return_started | Steps], Status, Data, _, ContID}, #mstate{} = MState) ->
@@ -163,7 +168,6 @@ handle_cast({[return_sent | Steps], Status, Data, _, ContID}, #mstate{} = MState
     send_event_to_owner(sent, ContID, MState),
     {noreply, MState};
 handle_cast({_, {stream, 1}, Data, _, ContID}, #mstate{} = MState) ->
-    %%TODO Do we need to handle the std streams here?
     try
         Term = binary_to_term(Data),
         ?LOG_DEBUG("STDOUT from ~p: ~w", [ContID, Term]),
@@ -183,10 +187,13 @@ handle_cast({_, {stream, 1}, Data, _, ContID}, #mstate{} = MState) ->
             ?LOG_ERROR("Could not convert binary to term: ~p ~p", [E1, E2])
     end,
     {noreply, MState};
-handle_cast({_, {stream, 2}, Data, _, ContID}, #mstate{} = MState) ->
+handle_cast({_, {stream, 2}, Data, _, ContID}, #mstate{containers = ContMap} = MState) ->
+    % Mainly porter log from container
     try
         BinList = binary:split(Data, <<"\n">>, [global]),
-        [?LOG_DEBUG("STDERR from ~p: ~s", [ContID, io_lib:format("~s~n", [binary_to_list(X)])]) || [X] <- BinList]
+        [?LOG_DEBUG("STDERR from ~p: ~s", [ContID, io_lib:format("~s~n", [binary_to_list(X)])]) || [X] <- BinList],
+        {_, _, _, LoggerPid} = maps:get(ContID, ContMap),
+        wm_container_log:print(LoggerPid, Data)
     catch
         E1:E2 ->
             ?LOG_ERROR("Could not convert binary to term: ~p ~p", [E1, E2])
@@ -214,6 +221,8 @@ code_change(_, #mstate{} = MState, _) ->
 
 parse_args([], #mstate{} = MState) ->
     MState;
+parse_args([{spool, Spool} | T], MState) ->
+    parse_args(T, MState#mstate{spool = Spool});
 parse_args([{_, _} | T], #mstate{} = MState) ->
     parse_args(T, MState).
 
@@ -224,7 +233,14 @@ get_conteinerizer() ->
     {module, Module} = code:ensure_loaded(ModNameAtom),
     Module.
 
+-spec clean_containers_map(string(), #mstate{}) -> #mstate{}.
+clean_containers_map(ContID, #mstate{containers = OldMap} = MState) ->
+    OldMap = MState#mstate.containers,
+    {_, _, _, LoggerPid} = maps:get(ContID, OldMap),
+    exit(LoggerPid, shutdown),
+    MState#mstate{containers = maps:remove(ContID, OldMap)}.
+
 send_event_to_owner(Event, ContID, #mstate{} = MState) ->
-    {Owner, Job, _} = maps:get(ContID, MState#mstate.containers),
+    {Owner, Job, _, _} = maps:get(ContID, MState#mstate.containers),
     JobID = wm_entity:get_attr(id, Job),
     gen_fsm:send_event(Owner, {Event, JobID}).
