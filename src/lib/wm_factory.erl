@@ -20,8 +20,7 @@
          mods = maps:new() :: map(),
          reqs = maps:new() :: map(),   % requests came before module initalized
          status = maps:new() :: map(), % modules with finished init()
-         nodes = maps:new() :: map()   % nodes per distributed task
-        }).
+         nodes = maps:new() :: map()}).   % nodes per distributed task
 
 -define(REPEAT_CALL_INTERVAL, 3000).
 -define(NODES_REQUEST_TIMEOUT, 10000).

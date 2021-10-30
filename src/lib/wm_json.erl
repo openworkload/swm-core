@@ -20,5 +20,5 @@ do_decode(S) ->
         mochijson2:decode(S)
     catch
         _:Error ->
-        {error, Error}
+            {error, Error}
     end.

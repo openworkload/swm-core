@@ -107,6 +107,7 @@ do_get_unregistered_images() ->
 
 % Example of parsing image structure that comes from Docker:
 %{struct,
+
   %[{<<"Id">>,
   % <<"sha256:73403b9c37ef3b52ec4895d4fc99f03544d41d4c19d8d05bc5">>},
   %{<<"ParentId">>,
@@ -117,6 +118,7 @@ do_get_unregistered_images() ->
   %{<<"Size">>,1911787182},
   %{<<"VirtualSize">>,1911787182},
   %{<<"Labels">>,{struct,[]}}]
+
 %}
 get_images_from_json([], Images) ->
     Images;
@@ -193,14 +195,14 @@ generate_container_json(#job{request = Request}, Porter) ->
 -spec get_container_image([#resource{}]) -> binary().
 get_container_image([]) ->
     <<"">>;
-get_container_image([#resource{name = "image", properties = Properties}|T]) ->
+get_container_image([#resource{name = "image", properties = Properties} | T]) ->
     case proplists:get_value(value, Properties) of
         Value when is_list(Value) ->
             list_to_binary(Value);
         _ ->
             get_container_image(T)
     end;
-get_container_image([_|T]) ->
+get_container_image([_ | T]) ->
     get_container_image(T).
 
 -spec do_create_container(#job{}, string(), map(), pid(), list()) -> {string(), pid()}.

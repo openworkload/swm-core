@@ -8,12 +8,7 @@
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
 
--record(mstate, {spool = "" :: string(),
-                 fd :: atom(),
-                 logfile = "" :: string(),
-                 job_id = "" :: job_id()
-                }).
-
+-record(mstate, {spool = "" :: string(), fd :: atom(), logfile = "" :: string(), job_id = "" :: job_id()}).
 
 %% ============================================================================
 %% API functions
@@ -52,12 +47,13 @@ print(Pid, Msg) ->
 init(Args) ->
     MState1 = parse_args(Args, #mstate{}),
     MState2 = make_dirs(MState1),
-    MState3 = case open_disk_log(MState2) of
-        {ok, MStateNew} ->
-            MStateNew;
-        {error, _} ->
-            MState2
-    end,
+    MState3 =
+        case open_disk_log(MState2) of
+            {ok, MStateNew} ->
+                MStateNew;
+            {error, _} ->
+                MState2
+        end,
     {ok, MState3}.
 
 handle_call({print, Msg}, _From, MState) ->

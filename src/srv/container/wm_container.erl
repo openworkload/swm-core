@@ -94,7 +94,7 @@ handle_call({list_images, unregistered}, _, #mstate{} = MState) ->
     Module = get_conteinerizer(),
     Images = Module:get_unregistered_images(),
     {reply, Images, MState};
-handle_call({run, Job, Cmd, Envs, Owner, [create | Steps]}, _, #mstate{spool=Spool} = MState) ->
+handle_call({run, Job, Cmd, Envs, Owner, [create | Steps]}, _, #mstate{spool = Spool} = MState) ->
     Module = get_conteinerizer(),
     {ContID, HttpProcPid} = Module:create(Job, Cmd, Envs, self(), Steps),
     NewJob = wm_entity:set_attr({container, ContID}, Job),
