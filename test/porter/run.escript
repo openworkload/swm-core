@@ -87,10 +87,6 @@ test_outputs([{process, _, "F",  0,  0, _},
                {process, _, "R", -1, -1, _},
                {process, _, "R", -1, -1, _},
                {process, _, "R", -1, -1, _},
-               {process, _, "R", -1, -1, _},
-               {process, _, "R", -1, -1, _},
-               {process, _, "R", -1, -1, _},
-               {process, _, "R", -1, -1, _},
                {process, _, "R", -1, -1, _}
               ]) ->
   halt(0);

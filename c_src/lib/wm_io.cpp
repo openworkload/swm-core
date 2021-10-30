@@ -37,7 +37,7 @@ int swm_get_log_level() {
 void swm_logi(const char* message, ...) {
   va_list args;
   va_start(args, message);
-  if(message==NULL) {
+  if (message == NULL) {
     fprintf(LOG_OUT_STREAM, "\n");
   } else {
     _print_log_format("INFO", message, args, true);
@@ -49,7 +49,7 @@ void swm_logi(const char* message, ...) {
 void swm_loge(const char* message, ...) {
   va_list args;
   va_start(args, message);
-  if(message==NULL) {
+  if (message == NULL) {
     fprintf(LOG_OUT_STREAM, "\n");
   } else {
     _print_log_format("ERROR", message, args, true);
@@ -59,22 +59,22 @@ void swm_loge(const char* message, ...) {
 }
 
 void swm_logd(const char* message, const ETERM* eterm) {
-  if(message==NULL) {
-    fprintf(LOG_OUT_STREAM, "\n");
-  } else {
-    _print_log_format("DEBUG", message, {}, false);
+  if (message) {
+    va_list args;
+    _print_log_format("DEBUG", message, args, false);
     erl_print_term(LOG_OUT_STREAM, eterm);
   }
+  fprintf(LOG_OUT_STREAM, "\n");
   fflush(LOG_OUT_STREAM);
 }
 
 void swm_logd(const char* message, ...) {
-  if(g_log_level < SWM_LOG_LEVEL_DEBUG1) {
+  if (g_log_level < SWM_LOG_LEVEL_DEBUG1) {
     return;
   }
   va_list args;
   va_start(args, message);
-  if(message==NULL) {
+  if (message == NULL) {
     fprintf(LOG_OUT_STREAM, "\n");
   } else {
     _print_log_format("DEBUG", message, args, true);
@@ -84,7 +84,7 @@ void swm_logd(const char* message, ...) {
 }
 
 void swm_logdd(const char* message, ...) {
-  if(g_log_level < SWM_LOG_LEVEL_DEBUG2) {
+  if (g_log_level < SWM_LOG_LEVEL_DEBUG2) {
     return;
   }
   va_list args;

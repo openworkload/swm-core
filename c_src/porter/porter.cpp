@@ -1,6 +1,16 @@
+#include "exitcodes.h"
+#include "wm_entity.h"
+#include "wm_io.h"
+#include "wm_job.h"
+#include "wm_process.h"
+#include "wm_entity_utils.h"
+#include "wm_porter_data.h"
+
 #include <erl_interface.h>
 #include <ei.h>
 
+#include <cerrno>
+#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <fcntl.h>
@@ -17,14 +27,6 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-
-#include "exitcodes.h"
-#include "wm_entity.h"
-#include "wm_io.h"
-#include "wm_job.h"
-#include "wm_process.h"
-#include "wm_entity_utils.h"
-#include "wm_porter_data.h"
 
 #define CHILD_WAITING_TIME 5
 #define PROCESS_TUPLE_SIZE 6
@@ -56,10 +58,12 @@ void set_workdir(passwd *pw, SwmJob &job) {
 
 void switch_stdout(const std::string &path) {
   FILE *outfile = fopen(path.c_str(), "w");
-  if (outfile==nullptr) {
+  if (!outfile) {
+    swm_loge("Can't open %s", path.c_str());
     exit(EXIT_FILE_ERROR);
   }
-  if (dup2(fileno(outfile), STDOUT_FILENO) == -1) {
+  if (dup2(fileno(outfile), STDOUT_FILENO) < 0) {
+    swm_loge("Can't duplicate out file descriptor for %s: %s", path.c_str(), std::strerror(errno));
     exit(EXIT_SYSTEM_ERROR);
   }
   fclose(outfile);
@@ -67,10 +71,12 @@ void switch_stdout(const std::string &path) {
 
 void switch_stderr(const std::string &path) {
   FILE *errfile = fopen(path.c_str(), "w");
-  if (errfile==nullptr) {
+  if (!errfile) {
+    swm_loge("Can't open %s", path.c_str());
     exit(EXIT_FILE_ERROR);
   }
-  if (dup2(fileno(errfile), STDERR_FILENO) == -1) {
+  if (dup2(fileno(errfile), STDERR_FILENO) < 0) {
+    swm_loge("Can't duplicate err file descriptor for %s: %s", path.c_str(), std::strerror(errno));
     exit(EXIT_SYSTEM_ERROR);
   }
   fclose(errfile);
@@ -78,27 +84,27 @@ void switch_stderr(const std::string &path) {
 
 void set_io(const SwmJob &job) {
   swm_logd("Set IO");
-  auto out = job.get_job_stdout();
+  auto out_path = job.get_job_stdout();
   static std::string token = "%j";
   const auto id = job.get_id();
   const size_t len = std::string("%j").size();
-  if (out.size()) {
-    const size_t pos = out.find(token);
+  if (out_path.size()) {
+    const size_t pos = out_path.find(token);
     if (pos != std::string::npos) {
-      out.replace(pos, len, id);
+      out_path.replace(pos, len, id);
     }
-    swm_logi("Job stdout=%s", out.c_str());
-    switch_stdout(out);
+    swm_logi("Job stdout: %s", out_path.c_str());
+    switch_stdout(out_path);
   }
 
-  auto err = job.get_job_stderr();
-  if (err.size()) {
-    const size_t pos = err.find(token);
+  auto err_path = job.get_job_stderr();
+  if (err_path.size()) {
+    const size_t pos = err_path.find(token);
     if (pos != std::string::npos) {
-      err.replace(pos, len, id);
+      err_path.replace(pos, len, id);
     }
-    swm_logi("Job stderr=%s", err.c_str());
-    switch_stderr(err);
+    swm_logi("Job stderr: %s", err_path.c_str());
+    switch_stderr(err_path);
   }
 }
 
@@ -158,6 +164,7 @@ int send_process_info(const SwmProcess &proc) {
   ETERM* eproc =erl_mk_tuple(props, PROCESS_TUPLE_SIZE);
   if (swm_get_log_level() >= SWM_LOG_LEVEL_DEBUG1) {
     swm_logd("Process eterm: ", eproc);
+    //erl_print_term(stderr, eproc);
   }
 
   byte *buf = (byte*)malloc(erl_term_len(eproc));
@@ -179,7 +186,7 @@ int send_process_info(const SwmProcess &proc) {
 
 std::string save_script(const std::string &job_id, const uid_t uid, const gid_t gid, const std::string &content) {
   const std::string path = "/tmp/swm-" + job_id + ".sh";
-  std::ofstream file(path);
+  std::ofstream file(path, std::ofstream::out);
   if (!file.is_open()) {
     const auto msg = "Error creating script file: " + path;
     std::perror(msg.c_str());
@@ -188,7 +195,7 @@ std::string save_script(const std::string &job_id, const uid_t uid, const gid_t 
   file << content;
   file.close();
 
-  if (chmod(path.c_str(), S_IRUSR|S_IXUSR) != 0) {
+  if (chmod(path.c_str(), S_IRWXU) != 0) {
     const auto msg = "Could not set permissions to " + path;
     std::perror(msg.c_str());
     exit(EXIT_FAILURE);
@@ -257,7 +264,8 @@ int main(int argc, char* const argv[]) {
     set_uid_gid(pw->pw_uid, pw->pw_gid);
     set_env(pw, info.job);
     set_workdir(pw, info.job);
-    set_io(info.job);
+
+    set_io(info.job);  // do not use logger after this point
 
     extern char** environ;
     char* const argv[] = {
@@ -267,8 +275,8 @@ int main(int argc, char* const argv[]) {
       nullptr
     };
     execve("/bin/sh", &argv[0], environ);
-  }
-  else {  /* This is the parent */
+
+  } else {  /* This is the parent */
     swm_logi("Parent process started, job process pid=%d", child_pid);
 
     int status;
@@ -292,7 +300,7 @@ int main(int argc, char* const argv[]) {
         sleep(CHILD_WAITING_TIME); // give container time to propagate the final info to swm
         exit(EXIT_FAILURE);
       } else if (end_pid == 0) { /* child still running  */
-        swm_logd("Parent process started waiting for child");
+        //swm_logd("Parent process started waiting for child");
         proc.set_state(SWM_JOB_STATE_RUNNING);
         if (send_process_info(proc)) {
           swm_loge("Child process info not sent");
