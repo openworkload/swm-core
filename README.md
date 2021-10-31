@@ -15,10 +15,10 @@ Terminology:
 
 SP consists of 3 main components:
    * [Core](https://github.com/skyworkflows/swm-core) (this repository).
-   * Gate. See the [default cloud gate](https://github.com/skyworkflows/swm-cloud-gate).
-   * Terminal. See the [JupyterLab terminal](https://github.com/skyworkflows/swm-jupyter-term).
+   * Gate. See the [default cloud gate](https://github.com/skyworkflows/swm-cloud-gate) as a gate example.
+   * Terminal. See the [JupyterLab terminal](https://github.com/skyworkflows/swm-jupyter-term) as a terminal example.
 
-The idea here is the following: API of all of those 3 components are well described. Thus each of the components can be replaced to more suitable for the user problem ones. The core component code in located the current repository and can be considered as a reference and prove of concept. The project is started recently and require time to stabilize the components API. Thus one can consider this code for now as highly experimental.
+The idea here is the following: API of the Core and the Gate is well described. Thus each of the components can be replaced to more suitable for the user problem ones. The core component code is located in the current repository and can be considered as a reference and a prove of concept. The project is started recently and requires some time for stabilization of the API. Thus one can consider this code for now as highly experimental.
 
 ## How to run
 
