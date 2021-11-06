@@ -89,7 +89,7 @@ components:
   schemas:
 
     JobToSubmit:
-      title: a submitting Job
+      title: Job to submit
       description: A new job specification to submit
       type: object
       properties:
@@ -105,7 +105,7 @@ components:
           description: Requested number of nodes
 
     Job:
-      title: a Job
+      title: Job
       description: A job information that is known to SkyPort
       type: object
       properties:
@@ -122,4 +122,8 @@ components:
           enum:
             - R
             - Q
+            - W
             - F
+            - E
+            - T
+            - C
