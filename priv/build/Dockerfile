@@ -72,6 +72,14 @@ RUN pip3 install cogapp
 # For pythonic gates and terminals
 RUN pip3 install "apache-libcloud==3.1.0"
 
+# For python package swmclient
+RUN pip3 install openapi-python-client
+
+# Generic python tools for all python code
+RUN pip3 install autoflake
+RUN pip3 install black
+RUN pip3 install isort
+
 # For using docker inside docker container
 RUN DEBIAN_FRONTEND=noninteractive apt-get install docker.io -y
 
