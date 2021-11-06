@@ -1,3 +1,5 @@
+''' Helper functions and data for C++ and Erlang files generation
+'''
 
 exclude = {"malfunction",
            "table",
@@ -86,35 +88,34 @@ printer = {
 
 
 def struct_param_type(r):
-  is_struct = False
-  if '#' in r:
-    if r.startswith('#'):
-      r = r[1:]
-    r = r.replace('{}', '')
-    is_struct = True
-  return ('Swm' + r.title(), r, is_struct)
+    is_struct = False
+    if '#' in r:
+        if r.startswith('#'):
+            r = r[1:]
+        r = r.replace('{}', '')
+        is_struct = True
+    return ('Swm' + r.title(), r, is_struct)
 
 
 def get_tuple_type(pp):
-  tuple_type = ''
-  for tp in pp:
-    tp = tp.strip()
-    if tp == "atom()":
-      tuple_type += '_atom'
-    elif tp == "string()":
-      tuple_type += '_str'
-    elif tp == "any()":
-      tuple_type += '_eterm'
-  return tuple_type
+    tuple_type = ''
+    for tp in pp:
+        tp = tp.strip()
+        if tp == "atom()":
+            tuple_type += '_atom'
+        elif tp == "string()":
+            tuple_type += '_str'
+        elif tp == "any()":
+            tuple_type += '_eterm'
+    return tuple_type
 
 
 def c_struct(pp):
-  s = 'SwmTuple'
-  for p in pp:
-    p = p.strip()
-    if p in type_suffix.keys():
-      p = type_suffix[p]
-    if len(p)>1:
-      s += p.title()
-  return s
-
+    s = 'SwmTuple'
+    for p in pp:
+        p = p.strip()
+        if p in type_suffix.keys():
+            p = type_suffix[p]
+        if len(p)>1:
+            s += p.title()
+    return s
