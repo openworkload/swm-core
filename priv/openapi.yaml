@@ -120,10 +120,10 @@ components:
           type: string
           description: Current job state
           enum:
-            - R
-            - Q
-            - W
-            - F
-            - E
-            - T
-            - C
+            - RUNNING
+            - QUEUED
+            - WAITING
+            - FINISHED
+            - ERROR
+            - TRANSFERRING
+            - CANCELLED
