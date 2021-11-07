@@ -24,6 +24,7 @@ ENV KERL_CONFIGURE_OPTIONS="--without-odbc\
 RUN DEBIAN_FRONTEND=noninteractive apt-get clean
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing
+RUN DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install apt-utils -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install aptitude -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install git -y
@@ -32,6 +33,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install vim -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install sudo -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install mc -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install gcc-8 -y
+
+# For python 3.9
+RUN DEBIAN_FRONTEND=noninteractive apt-get install software-properties-common -y
+RUN DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:deadsnakes/ppa -y
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt-get install python3.9 -y
+RUN DEBIAN_FRONTEND=noninteractive apt-get install python3.9-distutils -y
+RUN DEBIAN_FRONTEND=noninteractive update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 2
+RUN DEBIAN_FRONTEND=noninteractive update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 1
+RUN DEBIAN_FRONTEND=noninteractive update-alternatives --config python3 --skip-auto
 
 # For Erlang Runtime compilation
 RUN DEBIAN_FRONTEND=noninteractive apt-get install autoconf -y
@@ -53,6 +64,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install iputils-ping -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install telnet -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install cmake -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install gnuplot -y
+RUN DEBIAN_FRONTEND=noninteractive apt-get install strace -y
 
 # For documentation build
 RUN DEBIAN_FRONTEND=noninteractive apt-get install texlive-full -y
@@ -66,19 +78,23 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install libpng16* -y
 
 # For cogapp
 RUN DEBIAN_FRONTEND=noninteractive apt-get install python3-pip -y
+RUN python3.9 -m pip install --upgrade pip
 RUN pip3 install --upgrade pip
+RUN pip3 install --upgrade setuptools
 RUN pip3 install cogapp
 
 # For pythonic gates and terminals
 RUN pip3 install "apache-libcloud==3.1.0"
 
-# For python package swmclient
-RUN pip3 install openapi-python-client
-
 # Generic python tools for all python code
 RUN pip3 install autoflake
 RUN pip3 install black
 RUN pip3 install isort
+RUN pip3 install mypy
+RUN pip3 install flake8
+
+# For python package swmclient
+RUN pip3 install openapi-python-client
 
 # For using docker inside docker container
 RUN DEBIAN_FRONTEND=noninteractive apt-get install docker.io -y
