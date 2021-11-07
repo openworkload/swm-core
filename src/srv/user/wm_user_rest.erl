@@ -147,12 +147,12 @@ get_jobs_info(_Req) ->
                ++ "\","
                ++ " \"comment\":\""
                ++ wm_entity:get_attr(comment, Job)
-               ++ "\","
+               ++ "\""
                ++ "}",
            [JobJson | FullJson]
         end,
     Ms = lists:foldl(F, [], Xs),
-    {["{\"jobs\": ["] ++ string:join(Ms, ", ") ++ ["]}"], ?HTTP_CODE_OK}.
+    {["[{\"jobs\": ["] ++ string:join(Ms, ", ") ++ ["]}]"], ?HTTP_CODE_OK}.
 
 -spec submit_job(map()) -> {string(), pos_integer()} | {error, pos_integer()}.
 submit_job(Req) ->
