@@ -186,7 +186,7 @@ open_connection(Remote, Spool) ->
                 ?LOG_DEBUG("Opened connection to ~p:~p, pid=~p", [Server, Port, Pid]),
                 Pid;
             OpenError ->
-                Msg = io_lib:format("Connection opening error: ~p", [OpenError]),
+                Msg = io_lib:format("Connection opening error: ~p, server=~p, port=~p", [OpenError, Server, Port]),
                 ?LOG_WARN(Msg),
                 exit(Msg)
         end,
