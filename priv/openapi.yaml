@@ -120,10 +120,22 @@ components:
           type: string
           description: Current job state
           enum:
-            - RUNNING
-            - QUEUED
-            - WAITING
-            - FINISHED
-            - ERROR
-            - TRANSFERRING
-            - CANCELLED
+            - R
+            - Q
+            - W
+            - F
+            - E
+            - T
+            - C
+        submit_time:
+          type: string
+          description: Job submit time
+        start_time:
+          type: string
+          description: Job start time
+        end_time:
+          type: string
+          description: Job end time
+        comment:
+          type: string
+          description: Job comment string

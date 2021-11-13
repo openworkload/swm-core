@@ -119,7 +119,7 @@ get_flavors_info(Req) ->
            [FlavorJson | FullJson]
         end,
     Ms = lists:foldl(F, [], FlavorNodes),
-    {["{\"flavors\": ["] ++ string:join(Ms, ", ") ++ ["]}"], ?HTTP_CODE_OK}.
+    {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
 
 -spec get_jobs_info(map()) -> {[string()], pos_integer()}.
 get_jobs_info(_Req) ->
@@ -127,7 +127,7 @@ get_jobs_info(_Req) ->
     Xs = gen_server:call(wm_user, {list, [job]}),
     F = fun(Job, FullJson) ->
            JobJson =
-               "{\"ID\":\""
+               "{\"id\":\""
                ++ wm_entity:get_attr(id, Job)
                ++ "\","
                ++ " \"name\":\""
@@ -152,7 +152,7 @@ get_jobs_info(_Req) ->
            [JobJson | FullJson]
         end,
     Ms = lists:foldl(F, [], Xs),
-    {["[{\"jobs\": ["] ++ string:join(Ms, ", ") ++ ["]}]"], ?HTTP_CODE_OK}.
+    {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
 
 -spec submit_job(map()) -> {string(), pos_integer()} | {error, pos_integer()}.
 submit_job(Req) ->
