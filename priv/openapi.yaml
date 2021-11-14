@@ -272,6 +272,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Resource'
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeRole'
 
     Resource:
       title: Resource
@@ -285,3 +289,19 @@ components:
           type: integer
           format: int64
           minimum: 0
+
+    NodeRole:
+      title: Node role
+      description: A node role information
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Role ID
+        name:
+          type: string
+          description: Role name
+        comment:
+          type: string
+          description: Role comment

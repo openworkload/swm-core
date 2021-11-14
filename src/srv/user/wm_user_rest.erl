@@ -61,13 +61,31 @@ get_api_version() ->
 
 -spec get_resources_json(#node{}) -> list().
 get_resources_json(Node) ->
-     lists:foldl(fun(Resource, Acc) ->
-                  PropertiesMap = #{name => list_to_binary(wm_entity:get_attr(name, Resource)),
-                                    count => wm_entity:get_attr(count, Resource)},
-               [PropertiesMap | Acc]
-           end,
-           [],
-           wm_entity:get_attr(resources, Node)).
+    lists:foldl(fun(Resource, Acc) ->
+                   PropertiesMap =
+                       #{name => list_to_binary(wm_entity:get_attr(name, Resource)),
+                         count => wm_entity:get_attr(count, Resource)},
+                   [PropertiesMap | Acc]
+                end,
+                [],
+                wm_entity:get_attr(resources, Node)).
+
+-spec get_roles_json(#node{}) -> list().
+get_roles_json(Node) ->
+    lists:foldl(fun(RoleId, Acc) ->
+                   case wm_conf:select(role, {id, RoleId}) of
+                       {ok, Role} ->
+                           PropertiesMap =
+                               #{id => wm_entity:get_attr(id, Role),
+                                 name => list_to_binary(wm_entity:get_attr(name, Role)),
+                                 comment => list_to_binary(wm_entity:get_attr(comment, Role))},
+                           [PropertiesMap | Acc];
+                       _ ->
+                           Acc
+                   end
+                end,
+                [],
+                wm_entity:get_attr(roles, Node)).
 
 -spec get_nodes_info(map()) -> {[string()], pos_integer()}.
 get_nodes_info(Req) ->
@@ -82,8 +100,8 @@ get_nodes_info(Req) ->
                             api_port => wm_entity:get_attr(api_port, Node),
                             state_power => wm_entity:get_attr(state_power, Node),
                             state_alloc => wm_entity:get_attr(state_alloc, Node),
-                            resources => get_resources_json(Node)
-                           }),
+                            resources => get_resources_json(Node),
+                            roles => get_roles_json(Node)}),
            [binary_to_list(NodeJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], Xs),
