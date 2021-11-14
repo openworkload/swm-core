@@ -197,6 +197,16 @@ components:
           type: string
           format: uuid
           description: Node flavor ID
+        request:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+          description: List of resources that are requested by job
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+          description: List of resources that are actually allocated for job
         comment:
           type: string
           description: Job comment string
@@ -272,10 +282,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Resource'
+          description: List of resources node provides
         roles:
           type: array
           items:
             $ref: '#/components/schemas/NodeRole'
+          description: Roles assigned to node
 
     Resource:
       title: Resource
