@@ -59,34 +59,35 @@ handle_request(Method, Req) ->
 get_api_version() ->
     {["{\"api_version\": "] ++ ?API_VERSION ++ ["}"], ?HTTP_CODE_OK}.
 
+-spec get_resources_json(#node{}) -> list().
+get_resources_json(Node) ->
+     lists:foldl(fun(Resource, Acc) ->
+                  PropertiesMap = #{name => list_to_binary(wm_entity:get_attr(name, Resource)),
+                                    count => wm_entity:get_attr(count, Resource)},
+               [PropertiesMap | Acc]
+           end,
+           [],
+           wm_entity:get_attr(resources, Node)).
+
 -spec get_nodes_info(map()) -> {[string()], pos_integer()}.
 get_nodes_info(Req) ->
     #{limit := Limit} = cowboy_req:match_qs([{limit, int, 100}], Req),
     ?LOG_DEBUG("Handle nodes info HTTP request"),
     Xs = gen_server:call(wm_user, {list, [node], Limit}),
     F = fun(Node, FullJson) ->
-           SubDiv = wm_entity:get_attr(subdivision, Node),
-           SubDivId = wm_entity:get_attr(subdivision_id, Node),
-           Parent = wm_entity:get_attr(parent, Node),
-           Name = atom_to_list(wm_utils:node_to_fullname(Node)),
            NodeJson =
-               "{\"name\":\""
-               ++ Name
-               ++ "\","
-               ++ " \"subname\":\""
-               ++ atom_to_list(SubDiv)
-               ++ "\","
-               ++ " \"subid\":\""
-               ++ io_lib:format("~p", [SubDivId])
-               ++ "\","
-               ++ " \"parent\":\""
-               ++ Parent
-               ++ "\""
-               ++ "}",
-           [NodeJson | FullJson]
+               jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, Node)),
+                            name => list_to_binary(wm_entity:get_attr(name, Node)),
+                            host => list_to_binary(wm_entity:get_attr(host, Node)),
+                            api_port => wm_entity:get_attr(api_port, Node),
+                            state_power => wm_entity:get_attr(state_power, Node),
+                            state_alloc => wm_entity:get_attr(state_alloc, Node),
+                            resources => get_resources_json(Node)
+                           }),
+           [binary_to_list(NodeJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], Xs),
-    {["{\"nodes\": ["] ++ string:join(Ms, ", ") ++ ["]}"], ?HTTP_CODE_OK}.
+    {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
 
 -spec find_resource_count(string(), [#resource{}]) -> pos_integer().
 find_resource_count(Name, Resources) ->

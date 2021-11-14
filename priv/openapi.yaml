@@ -1,12 +1,28 @@
 openapi: 3.0.3
 info:
-  description: SkyPort server
+  title: SkyPort core daemon user API
+  description: |
+    User facing API provided by swm-core daemon
   version: 1.0.0
-  title: OpenAPI SkyPort
   license:
     name: BSD 3-Clause License
 
 paths:
+
+  /user/node:
+    get:
+      summary: List all nodes
+      description: >-
+        Returns a list of node objects
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Node'
 
   /user/flavor:
     get:
@@ -218,3 +234,54 @@ components:
           type: number
           format: currency
           description: Price of a node of this flavor per hour
+
+    Node:
+      title: Node
+      description: A node information
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Node ID
+        name:
+          type: string
+          description: Node name in SkyPort
+        host:
+          type: string
+          format: hostname
+          description: Node system hostname
+        api_port:
+          type: integer
+          format: int64
+          minimum: 0
+        state_power:
+          type: string
+          description: Node power state
+          enum:
+            - up
+            - down
+        state_alloc:
+          type: string
+          description: Node jobs allocation state
+          enum:
+            - idle
+            - stopped
+            - busy
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+
+    Resource:
+      title: Resource
+      description: A resource information
+      type: object
+      properties:
+        name:
+          type: string
+          description: Resource name
+        count:
+          type: integer
+          format: int64
+          minimum: 0
