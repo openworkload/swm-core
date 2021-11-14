@@ -7,6 +7,22 @@ info:
     name: BSD 3-Clause License
 
 paths:
+
+  /user/flavor:
+    get:
+      summary: List all flavors
+      description: >-
+        Returns a list of flavor objects
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Flavor'
+
   /user/job:
     post:
       summary: Submit a new job
@@ -24,7 +40,7 @@ paths:
     get:
       summary: List all jobs
       description: >-
-        Returns list of job object
+        Returns a list of job objects
       responses:
         '200':
           description: successful operation
@@ -139,3 +155,37 @@ components:
         comment:
           type: string
           description: Job comment string
+
+    Flavor:
+      title: Flavor
+      description: A flavor information that is known to SkyPort
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Flavor ID
+        name:
+          type: string
+          description: Flavor name
+        remote_id:
+          type: string
+          description: Related remote object ID configured in swm-core
+        cpus:
+          type: integer
+          format: int64
+          description: CPU cores provided by the nodes of this flavor
+        mem:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Memory amount (in bytes) provided by the nodes of this flavor
+        storage:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Storage size (in bytes) provided by the nodes of this flavor
+        price:
+          type: number
+          format: currency
+          description: Price of a node of this flavor per hour

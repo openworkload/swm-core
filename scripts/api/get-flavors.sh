@@ -9,7 +9,7 @@ HOST=$(hostname -s)
 
 REQUEST=GET
 HEADER="Accept: application/json"
-URL="https://${HOST}:${PORT}/user/flavors"
+URL="https://${HOST}:${PORT}/user/flavor"
 
 curl --request ${REQUEST}\
      --cacert ${CA}\

@@ -112,7 +112,7 @@ fill_flavor_node_params([{<<"mem">>, Value} | T], Node, AccountId) ->
     fill_flavor_node_params(T, wm_entity:set_attr({resources, [NewResource | Resources]}, Node), AccountId);
 fill_flavor_node_params([{<<"storage">>, Value} | T], Node, AccountId) ->
     Resources = wm_entity:get_attr(resources, Node),
-    NewResource = wm_entity:set_attr([{name, "disk"}, {count, Value}], wm_entity:new(resource)),
+    NewResource = wm_entity:set_attr([{name, "storage"}, {count, Value}], wm_entity:new(resource)),
     fill_flavor_node_params(T, wm_entity:set_attr({resources, [NewResource | Resources]}, Node), AccountId);
 fill_flavor_node_params([{<<"price">>, Value} | T], Node, AccountId) ->
     NewNode = wm_entity:set_attr({prices, #{AccountId => Value}}, Node),
@@ -302,7 +302,7 @@ parse_flavors_test() ->
                              {resources,
                               [wm_entity:set_attr([{name, "cpus"}, {count, 1}], wm_entity:new(resource)),
                                wm_entity:set_attr([{name, "mem"}, {count, 100000000}], wm_entity:new(resource)),
-                               wm_entity:set_attr([{name, "disk"}, {count, 12884901888}], wm_entity:new(resource))]},
+                               wm_entity:set_attr([{name, "storage"}, {count, 12884901888}], wm_entity:new(resource))]},
                              {prices, #{"899cd1a8-5f9f-11eb-9812-878c21b6d2b9" => 0.3}},
                              {comment, "Cloud templated node"},
                              {is_template, true}],

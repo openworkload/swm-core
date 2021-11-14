@@ -103,7 +103,7 @@ handle_event(http_started, _, #mstate{} = MState) ->
     ?LOG_INFO("Initialize user REST API resources"),
     wm_http:add_route({api, wm_user_rest}, "/user"),
     wm_http:add_route({api, wm_user_rest}, "/user/node"),
-    wm_http:add_route({api, wm_user_rest}, "/user/flavors"),
+    wm_http:add_route({api, wm_user_rest}, "/user/flavor"),
     wm_http:add_route({api, wm_user_rest}, "/user/job"),
     MState.
 

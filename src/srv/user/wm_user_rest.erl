@@ -39,7 +39,7 @@ handle_request(<<"GET">>, #{path := <<"/user">>} = _) ->
     get_api_version();
 handle_request(<<"GET">>, #{path := <<"/user/node">>} = Req) ->
     get_nodes_info(Req);
-handle_request(<<"GET">>, #{path := <<"/user/flavors">>} = Req) ->
+handle_request(<<"GET">>, #{path := <<"/user/flavor">>} = Req) ->
     get_flavors_info(Req);
 handle_request(<<"GET">>, #{path := <<"/user/job">>} = Req) ->
     get_jobs_info(Req);
@@ -88,16 +88,14 @@ get_nodes_info(Req) ->
     Ms = lists:foldl(F, [], Xs),
     {["{\"nodes\": ["] ++ string:join(Ms, ", ") ++ ["]}"], ?HTTP_CODE_OK}.
 
--spec get_resources_json(#node{}) -> [string()].
-get_resources_json(Node) ->
-    GetResourceJson =
-        fun(Resource, Accum) ->
-           ["{\"name\":\"" ++ wm_entity:get_attr(name, Resource) ++ "\",",
-            "\"count\"" ++ integer_to_list(wm_entity:get_attr(count, Resource)) ++ "\"}"
-            | Accum]
-        end,
-    Resources = wm_entity:get_attr(resources, Node),
-    lists:foldl(GetResourceJson, [], Resources).
+-spec find_resource_count(string(), [#resource{}]) -> term().
+find_resource_count(Name, Resources) ->
+    case lists:keyfind(Name, 2, Resources) of
+        false ->
+            0;
+        Resource ->
+            wm_entity:get_attr(count, Resource)
+    end.
 
 -spec get_flavors_info(map()) -> {[string()], pos_integer()}.
 get_flavors_info(Req) ->
@@ -105,18 +103,24 @@ get_flavors_info(Req) ->
     ?LOG_DEBUG("Handle flavors info HTTP request (limit=~p)", [Limit]),
     FlavorNodes = gen_server:call(wm_user, {list, [flavor], Limit}),
     F = fun(FlavorNode, FullJson) ->
-           FlavorJson =
-               "{\"name\":\""
-               ++ wm_entity:get_attr(name, FlavorNode)
-               ++ "\","
-               ++ " \"remote\":\""
-               ++ wm_entity:get_attr(remote_id, FlavorNode)
-               ++ "\""
-               ++ " \"resources\":\""
-               ++ get_resources_json(FlavorNode)
-               ++ "\""
-               ++ "}",
-           [FlavorJson | FullJson]
+           RemoteId = wm_entity:get_attr(remote_id, FlavorNode),
+           case wm_conf:select(remote, {id, RemoteId}) of
+               {ok, Remote} ->
+                   AccountId = wm_entity:get_attr(account_id, Remote),
+                   Resources = wm_entity:get_attr(resources, FlavorNode),
+                   FlavorJson =
+                       jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, FlavorNode)),
+                                    name => list_to_binary(wm_entity:get_attr(name, FlavorNode)),
+                                    remote_id => list_to_binary(RemoteId),
+                                    cpus => find_resource_count("cpus", Resources),
+                                    mem => find_resource_count("mem", Resources),
+                                    storage => find_resource_count("storage", Resources),
+                                    price => maps:get(AccountId, wm_entity:get_attr(prices, FlavorNode), 0)}),
+                   [binary_to_list(FlavorJson) | FullJson];
+               {error, not_found} ->
+                   ?LOG_WARN("Remote not found when generate JSON: ~p", [RemoteId]),
+                   FullJson
+           end
         end,
     Ms = lists:foldl(F, [], FlavorNodes),
     {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
@@ -127,29 +131,15 @@ get_jobs_info(_Req) ->
     Xs = gen_server:call(wm_user, {list, [job]}),
     F = fun(Job, FullJson) ->
            JobJson =
-               "{\"id\":\""
-               ++ wm_entity:get_attr(id, Job)
-               ++ "\","
-               ++ " \"name\":\""
-               ++ wm_entity:get_attr(name, Job)
-               ++ "\","
-               ++ " \"state\":\""
-               ++ wm_entity:get_attr(state, Job)
-               ++ "\","
-               ++ " \"submit_time\":\""
-               ++ wm_entity:get_attr(submit_time, Job)
-               ++ "\","
-               ++ " \"start_time\":\""
-               ++ wm_entity:get_attr(start_time, Job)
-               ++ "\","
-               ++ " \"end_time\":\""
-               ++ wm_entity:get_attr(end_time, Job)
-               ++ "\","
-               ++ " \"comment\":\""
-               ++ wm_entity:get_attr(comment, Job)
-               ++ "\""
-               ++ "}",
-           [JobJson | FullJson]
+               jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, Job)),
+                            name => list_to_binary(wm_entity:get_attr(name, Job)),
+                            state => list_to_binary( wm_entity:get_attr(state, Job)),
+                            submit_time => list_to_binary(wm_entity:get_attr(submit_time, Job)),
+                            start_time => list_to_binary(wm_entity:get_attr(start_time, Job)),
+                            end_time => list_to_binary(wm_entity:get_attr(end_time, Job)),
+                            comment => list_to_binary(wm_entity:get_attr(comment, Job))
+                           }),
+           [binary_to_list(JobJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], Xs),
     {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
