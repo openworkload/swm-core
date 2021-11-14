@@ -152,6 +152,35 @@ components:
         end_time:
           type: string
           description: Job end time
+        duration:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Job run time
+        exitcode:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Job exit code
+        signal:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Signal if job is terminated
+        node_names:
+          type: array
+          items:
+            type: string
+            format: hostname
+          description: List of node names allocated for job
+        remote_id:
+          type: string
+          format: uuid
+          description: Remote site ID
+        flavor_id:
+          type: string
+          format: uuid
+          description: Node flavor ID
         comment:
           type: string
           description: Job comment string
