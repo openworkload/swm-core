@@ -100,19 +100,20 @@ find_resource_count(Name, Resources) ->
 -spec find_flavor_and_remote_ids(#job{}) -> {node_id(), remote_id()}.
 find_flavor_and_remote_ids(Job) ->
     RrequestedResources = wm_entity:get_attr(request, Job),
-    NodeFlavorName = case lists:keyfind("flavor", 2, RrequestedResources) of
-                        false ->
-                            "";
-                        Resource ->
-                            Properties = wm_entity:get_attr(properties, Resource),
-                            case lists:keyfind(value, 1, Properties) of
-                                false ->
-                                    "";
-                                Property ->
-                                    element(2, Property)
-                            end
-                    end,
-    case wm_conf:select(node, {name, NodeFlavorName}) of 
+    NodeFlavorName =
+        case lists:keyfind("flavor", 2, RrequestedResources) of
+            false ->
+                "";
+            Resource ->
+                Properties = wm_entity:get_attr(properties, Resource),
+                case lists:keyfind(value, 1, Properties) of
+                    false ->
+                        "";
+                    Property ->
+                        element(2, Property)
+                end
+        end,
+    case wm_conf:select(node, {name, NodeFlavorName}) of
         {ok, Node} ->
             {wm_entity:get_attr(id, Node), wm_entity:get_attr(remote_id, Node)};
         _ ->
@@ -158,7 +159,7 @@ get_jobs_info(_Req) ->
            JobJson =
                jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, Job)),
                             name => list_to_binary(wm_entity:get_attr(name, Job)),
-                            state => list_to_binary( wm_entity:get_attr(state, Job)),
+                            state => list_to_binary(wm_entity:get_attr(state, Job)),
                             submit_time => list_to_binary(wm_entity:get_attr(submit_time, Job)),
                             start_time => list_to_binary(wm_entity:get_attr(start_time, Job)),
                             end_time => list_to_binary(wm_entity:get_attr(end_time, Job)),
@@ -168,8 +169,7 @@ get_jobs_info(_Req) ->
                             node_names => JobNodeNames,
                             remote_id => list_to_binary(RemoteId),
                             flavor_id => list_to_binary(FlavorId),
-                            comment => list_to_binary(wm_entity:get_attr(comment, Job))
-                           }),
+                            comment => list_to_binary(wm_entity:get_attr(comment, Job))}),
            [binary_to_list(JobJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], Xs),
