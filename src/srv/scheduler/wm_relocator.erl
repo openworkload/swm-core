@@ -46,9 +46,9 @@ select_remote_site(Job) ->
     ?LOG_DEBUG("Suited template nodes number for job ~p: ~p", [wm_entity:get_attr(id, Job), length(Nodes)]),
     select_remote_site(Job, Nodes).
 
--spec cancel_relocation(#job{}) -> {ok, list()}.
+-spec cancel_relocation(#job{}) -> pos_integer().
 cancel_relocation(Job) ->
-    ok = gen_server:call(?MODULE, {cancel_relocation, Job}).
+    gen_server:call(?MODULE, {cancel_relocation, Job}).
 
 -spec remove_relocation_entities(#job{}) -> ok.
 remove_relocation_entities(Job) ->
@@ -364,7 +364,7 @@ do_cancel_relocation(Job) ->
             ?LOG_DEBUG("No relocation is running => destroy related resources: ~p", [JobId]),
             {ok, TaskId} = wm_factory:new(virtres, {destroy, JobId, undefined}, []),
             RelocationDestraction =
-                wm_entity:set_attr([{id, TaskId}, {job_id, JobId}, {cancaled, true}], wm_entity:new(relocation)),
+                wm_entity:set_attr([{id, TaskId}, {job_id, JobId}, {canceled, true}], wm_entity:new(relocation)),
             remove_relocation_entities(Job),
             wm_conf:update(RelocationDestraction);
         {ok, Relocation} ->

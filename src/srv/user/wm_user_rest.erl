@@ -49,7 +49,8 @@ handle_request(<<"GET">>, #{path := <<"/user/job", _/binary>>} = Req) ->
     get_jobs_info(Req);
 handle_request(<<"POST">>, #{path := <<"/user/job">>} = Req) ->
     submit_job(Req);
-handle_request(<<"DELETE">>, #{path := <<"/user/job">>} = Req) ->
+handle_request(<<"DELETE">>, #{path := <<"/user/job", _/binary>>} = Req) ->
+    ?LOG_DEBUG(">>>>>>>>>>>>> DELETE"),
     delete_job(Req);
 handle_request(Method, Req) ->
     ?LOG_ERROR("Unknown request: ~p ~p", [Method, Req]),
@@ -143,7 +144,7 @@ get_jobs_info(Req) ->
             get_job_stderr(binary_to_list(JobId));
         #{path := <<"/user/job">>} ->
             get_job_list();
-        OtherPath ->
+        _ ->
             {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
     end.
 
@@ -199,6 +200,17 @@ get_job_list() ->
     Ms = lists:foldl(F, [], Xs),
     {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
 
+-spec delete_job(map()) -> {string(), pos_integer()}.
+delete_job(Req) ->
+    ?LOG_DEBUG("Handle job cancellation HTTP request: ~p", [Req]),
+    case Req of
+        #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary>>} ->
+            {string, Msg} = gen_server:call(wm_user, {cancel, [binary_to_list(JobId)]}),
+            {Msg, ?HTTP_CODE_OK};
+        _ ->
+            {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
+    end.
+
 -spec submit_job(map()) -> {string(), pos_integer()} | {error, pos_integer()}.
 submit_job(Req) ->
     ?LOG_DEBUG("Handle job submission HTTP request"),
@@ -251,11 +263,6 @@ get_username_from_cert(CertBin) ->
         {ok, User} ->
             {ok, wm_entity:get_attr(name, User)}
     end.
-
--spec delete_job(map()) -> {string(), pos_integer()}.
-delete_job(Req) ->
-    ?LOG_DEBUG("Handle job deletion HTTP request: ~p", [Req]),
-    unknown_request_reply().
 
 -spec unknown_request_reply() -> {string(), pos_integer()}.
 unknown_request_reply() ->

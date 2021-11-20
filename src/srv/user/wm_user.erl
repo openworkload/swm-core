@@ -103,6 +103,7 @@ handle_event(http_started, _) ->
     wm_http:add_route({api, wm_user_rest}, "/user/flavor"),
     wm_http:add_route({api, wm_user_rest}, "/user/remote"),
     wm_http:add_route({api, wm_user_rest}, "/user/job"),
+    wm_http:add_route({api, wm_user_rest}, "/user/job/:id"),
     wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stdout"),
     wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stderr").
 
@@ -266,7 +267,7 @@ cancel_jobs([JobId | T], Results) ->
             {ok, Job} ->
                 UpdatedJob = wm_entity:set_attr({state, ?JOB_STATE_CANCELLED}, Job),
                 1 = wm_conf:update([UpdatedJob]),
-                ok = wm_relocator:cancel_relocation(Job),
+                wm_relocator:cancel_relocation(Job),
                 %% TODO: free job's nodes if any have been already allocated
                 {cancelled, JobId};
             _ ->

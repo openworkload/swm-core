@@ -106,6 +106,26 @@ paths:
         '404':
           description: Job not found
 
+    delete:
+      summary: Cancels a job
+      description: 'Cancels execution or pending of a job by job ID'
+      parameters:
+        - name: api_key
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          description: Job id to cancel
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '400':
+          description: Invalid job ID
+
   '/user/job/{jobId}/stdout':
     get:
       summary: Job stdout
@@ -155,26 +175,6 @@ paths:
           description: Invalid job ID supplied
         '404':
           description: Job not found
-
-    delete:
-      summary: Cancels a job
-      description: 'Cancels execution or pending of a job by job ID'
-      parameters:
-        - name: api_key
-          in: header
-          required: false
-          schema:
-            type: string
-        - name: jobId
-          in: path
-          description: Job id to cancel
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '400':
-          description: Invalid job ID
 
 externalDocs:
   description: Find out more about SkyPort
