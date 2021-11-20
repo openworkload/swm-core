@@ -8,12 +8,11 @@ PORT=8443
 HOST=$(hostname -s)
 
 REQUEST=GET
-URL="https://${HOST}:${PORT}/user/job"
+URL="https://${HOST}:${PORT}/user/job/$JOB_ID/stderr"
 
 curl --request ${REQUEST}\
      --cacert ${CA}\
      --cert ${CERT}\
      --key ${KEY}\
-     --header "${HEADER}"\
      ${URL}
 echo

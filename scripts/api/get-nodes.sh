@@ -8,13 +8,11 @@ PORT=8443
 HOST=$(hostname -s)
 
 REQUEST=GET
-HEADER="Accept: application/json"
 URL="https://${HOST}:${PORT}/user/node"
 
 curl --request ${REQUEST}\
      --cacert ${CA}\
      --cert ${CERT}\
      --key ${KEY}\
-     --header "${HEADER}"\
      ${URL}
 echo

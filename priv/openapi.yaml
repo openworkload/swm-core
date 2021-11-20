@@ -9,6 +9,21 @@ info:
 
 paths:
 
+  /user/remote:
+    get:
+      summary: List all remote sites
+      description: >-
+        Returns a list of remote site objects
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RemoteSite'
+
   /user/node:
     get:
       summary: List all nodes
@@ -90,8 +105,56 @@ paths:
           description: Invalid job ID supplied
         '404':
           description: Job not found
-      security:
-        - api_key: []
+
+  '/user/job/{jobId}/stdout':
+    get:
+      summary: Job stdout
+      description: Get job standard output content
+      parameters:
+        - name: jobId
+          in: path
+          description: ID of job which stdout to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid job ID supplied
+        '404':
+          description: Job not found
+
+  '/user/job/{jobId}/stderr':
+    get:
+      summary: Job stderr
+      description: Get job standard error content
+      parameters:
+        - name: jobId
+          in: path
+          description: ID of job which stderr to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid job ID supplied
+        '404':
+          description: Job not found
 
     delete:
       summary: Cancels a job
@@ -244,6 +307,39 @@ components:
           type: number
           format: currency
           description: Price of a node of this flavor per hour
+
+    RemoteSite:
+      title: Remote site
+      description: A remote site information
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Remote site ID
+        name:
+          type: string
+          description: Remote site name in SkyPort
+        account_id:
+          type: string
+          description: Account ID
+        server:
+          type: string
+          format: hostname
+          description: Remote site server hostname
+        port:
+          type: integer
+          format: int64
+          minimum: 0
+        kind:
+          type: string
+          description: Remote site kind
+        default_image_id:
+          type: string
+          description: Default image ID
+        default_flavor_id:
+          type: string
+          description: Default flavor ID
 
     Node:
       title: Node

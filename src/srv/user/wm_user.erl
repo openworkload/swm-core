@@ -49,31 +49,26 @@ init(Args) ->
     {ok, MState}.
 
 handle_call({show, JIDs}, _From, MState) ->
-    {ReturnMsg, MStateNew} = handle_request(show, JIDs, MState),
-    {reply, ReturnMsg, MStateNew};
+    {reply, handle_request(show, JIDs, MState), MState};
 handle_call({requeue, JIDs}, _From, MState) ->
-    {ReturnMsg, MStateNew} = handle_request(requeue, JIDs, MState),
-    {reply, ReturnMsg, MStateNew};
+    {reply, handle_request(requeue, JIDs, MState), MState};
 handle_call({cancel, JIDs}, _From, MState) ->
-    %% TODO: free job's nodes if any have been already allocated
-    {ReturnMsg, MStateNew} = handle_request(cancel, JIDs, MState),
-    {reply, ReturnMsg, MStateNew};
+    {reply, handle_request(cancel, JIDs, MState), MState};
 handle_call({submit, JobScriptContent, Filename, Username}, _From, MState) ->
-    Args = {JobScriptContent, Filename, Username},
-    {ReturnMsg, MStateNew} = handle_request(submit, Args, MState),
-    {reply, ReturnMsg, MStateNew};
+    {reply, handle_request(submit, {JobScriptContent, Filename, Username}, MState), MState};
 handle_call({list, TabList}, _From, MState) ->
-    {ReturnMsg, MStateNew} = handle_request(list, TabList, MState),
-    {reply, ReturnMsg, MStateNew};
+    {reply, handle_request(list, TabList, MState), MState};
 handle_call({list, TabList, Limit}, _From, MState) ->
-    {ReturnMsg, MStateNew} = handle_request(list, {TabList, Limit}, MState),
-    {reply, ReturnMsg, MStateNew};
+    {reply, handle_request(list, {TabList, Limit}, MState), MState};
+handle_call({stdout, JobId}, _From, MState) ->
+    {reply, handle_request({output, stdout}, JobId, MState), MState};
 handle_call(Msg, From, MState) ->
     ?LOG_DEBUG("Unknown call message from ~p: ~p", [From, Msg]),
     {reply, ok, MState}.
 
 handle_cast({event, EventType, EventData}, MState) ->
-    {noreply, handle_event(EventType, EventData, MState)};
+    handle_event(EventType, EventData),
+    {noreply, MState};
 handle_cast(Msg, MState) ->
     ?LOG_DEBUG("Unknown cast message: ~p", [Msg]),
     {noreply, MState}.
@@ -99,23 +94,35 @@ parse_args([{spool, Spool} | T], #mstate{} = MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
-handle_event(http_started, _, #mstate{} = MState) ->
+handle_event(http_started, _) ->
     ?LOG_INFO("Initialize user REST API resources"),
     wm_http:add_route({api, wm_user_rest}, "/user"),
     wm_http:add_route({api, wm_user_rest}, "/user/node"),
     wm_http:add_route({api, wm_user_rest}, "/user/flavor"),
+    wm_http:add_route({api, wm_user_rest}, "/user/remote"),
     wm_http:add_route({api, wm_user_rest}, "/user/job"),
-    MState.
+    wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stdout"),
+    wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stderr").
 
--spec handle_request(atom(), any(), #mstate{}) -> {any(), #mstate{}}.
-handle_request(submit, Args, #mstate{spool = Spool} = MState) ->
+-spec handle_request(atom(), any(), #mstate{}) -> any().
+handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
+    ?LOG_DEBUG("Job ~p has been requested: ~p", [OutputType, JobId]),
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, Job} ->
+            FileName = wm_entity:get_attr(OutputType, Job),
+            wm_utils:read_file(
+                filename:join(Spool, "output", JobId, FileName), [binary]);
+        _ ->
+            {error, "job not found"}
+    end;
+handle_request(submit, Args, #mstate{spool = Spool}) ->
     ?LOG_DEBUG("Job submission has been requested: ~n~p", [Args]),
     {JobScriptContent, Filename, Username} = Args,
     case wm_conf:select(user, {name, Username}) of
         {error, not_found} ->
             ?LOG_ERROR("User ~p not found, job submission failed", [Username]),
             R = io_lib:format("User ~p is not registred in the workload manager", [Username]),
-            {{string, [R]}, MState};
+            {string, [R]};
         {ok, User} ->
             % TODO verify user credentials using provided certificate
             JID = wm_utils:uuid(v4),
@@ -128,17 +135,17 @@ handle_request(submit, Args, #mstate{spool = Spool} = MState) ->
                                     {script_content, JobScriptContent},
                                     {user_id, wm_entity:get_attr(id, User)},
                                     {id, JID},
-                                    {job_stdout, JID ++ ".out"},
-                                    {job_stderr, JID ++ ".err"},
+                                    {job_stdout, "stdout.out"},
+                                    {job_stderr, "stderr.err"},
                                     {submit_time, wm_utils:now_iso8601(without_ms)},
                                     {duration, 3600}],
                                    Job1),
             Job3 = set_defaults(Job2, Spool),
             Job4 = ensure_request_is_full(Job3),
             1 = wm_conf:update(Job4),
-            {{string, JID}, MState}
+            {string, JID}
     end;
-handle_request(requeue, Args, MState) ->
+handle_request(requeue, Args, _) ->
     ?LOG_DEBUG("Jobs requeue has been requested: ~p", [Args]),
     Results = requeue_jobs(Args, []),
     RequeuedFiltered =
@@ -158,8 +165,8 @@ handle_request(requeue, Args, MState) ->
                      Results),
     NotFoundIds = lists:map(fun({_, ID}) -> ID end, NotFoundFiltered),
     Msg = "Requeued: " ++ lists:join(", ", RequeuedIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
-    {{string, Msg}, MState};
-handle_request(cancel, Args, MState) ->
+    {string, Msg};
+handle_request(cancel, Args, _) ->
     ?LOG_DEBUG("Jobs cancellation has been requested: ~p", [Args]),
     Results = cancel_jobs(Args, []),
     CancelledFiltered =
@@ -179,25 +186,22 @@ handle_request(cancel, Args, MState) ->
                      Results),
     NotFoundIds = lists:map(fun({_, ID}) -> ID end, NotFoundFiltered),
     Msg = "Cancelled: " ++ lists:join(", ", CancelledIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
-    {{string, Msg}, MState};
-handle_request(list, {[flavor], Limit}, MState) ->
+    {string, Msg};
+handle_request(list, {[flavor], Limit}, _) ->
     Nodes = wm_conf:select(node, {all, Limit}),
     NodesWithRemote = lists:filter(fun(X) -> wm_entity:get_attr(remote_id, X) =/= [] end, Nodes),
-    {NodesWithRemote, MState};
-handle_request(list, {Args, Limit}, MState) ->
+    NodesWithRemote;
+handle_request(list, {Args, Limit}, _) ->
     ?LOG_DEBUG("List of ~p entities with limit ~p has been requested", [Args, Limit]),
     F = fun(X) -> wm_conf:select(X, {all, Limit}) end,
-    Entities = lists:flatten([F(X) || X <- Args]),
-    {Entities, MState};
-handle_request(list, Args, MState) ->
+    lists:flatten([F(X) || X <- Args]);
+handle_request(list, Args, _) ->
     ?LOG_DEBUG("List of ~p entities has been requested", [Args]),
     F = fun(X) -> wm_conf:select(X, all) end,
-    Entities = lists:flatten([F(X) || X <- Args]),
-    {Entities, MState};
-handle_request(show, Args, MState) ->
+    lists:flatten([F(X) || X <- Args]);
+handle_request(show, Args, _) ->
     ?LOG_DEBUG("Job show has been requested: ~p", [Args]),
-    Entities = wm_conf:select(job, Args),
-    {Entities, MState}.
+    wm_conf:select(job, Args).
 
 -spec ensure_request_is_full(#job{}) -> #job{}.
 ensure_request_is_full(Job) ->
@@ -240,36 +244,37 @@ add_missed_mandatory_request_resources(Resources) ->
 -spec requeue_jobs([job_id()], [{atom(), job_id()}]) -> [{atom(), job_id()}].
 requeue_jobs([], Results) ->
     Results;
-requeue_jobs([JobID | T], Results) ->
+requeue_jobs([JobId | T], Results) ->
     Result =
-        case wm_conf:select(job, {id, JobID}) of
+        case wm_conf:select(job, {id, JobId}) of
             {ok, Job} ->
                 UpdatedJob = wm_entity:set_attr({state, ?JOB_STATE_QUEUED}, Job),
                 1 = wm_conf:update([UpdatedJob]),
-                {requeued, JobID};
+                {requeued, JobId};
             _ ->
-                {not_found, JobID}
+                {not_found, JobId}
         end,
     requeue_jobs(T, [Result | Results]).
 
 cancel_jobs([], Results) ->
     Results;
-cancel_jobs([JobID | T], Results) ->
+cancel_jobs([JobId | T], Results) ->
     Result =
-        case wm_conf:select(job, {id, JobID}) of
+        case wm_conf:select(job, {id, JobId}) of
             {ok, Job} ->
                 UpdatedJob = wm_entity:set_attr({state, ?JOB_STATE_CANCELLED}, Job),
                 1 = wm_conf:update([UpdatedJob]),
                 ok = wm_relocator:cancel_relocation(Job),
-                {cancelled, JobID};
+                %% TODO: free job's nodes if any have been already allocated
+                {cancelled, JobId};
             _ ->
-                {not_found, JobID}
+                {not_found, JobId}
         end,
     cancel_jobs(T, [Result | Results]).
 
 -spec set_defaults(#job{}, string()) -> #job{}.
-set_defaults(#job{workdir = [], id = JobID} = Job, Spool) ->
-    set_defaults(wm_entity:set_attr({workdir, Spool ++ "/output/" ++ JobID}, Job), Spool);
+set_defaults(#job{workdir = [], id = JobId} = Job, Spool) ->
+    set_defaults(wm_entity:set_attr({workdir, Spool ++ "/output/" ++ JobId}, Job), Spool);
 set_defaults(#job{account_id = [], user_id = UserId} = Job, Spool) ->
     % If account is not specified by user during job submission then use the user's main account
     {ok, Account} = wm_conf:select(account, {admins, [UserId]}),
