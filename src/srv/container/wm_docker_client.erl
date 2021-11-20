@@ -12,8 +12,6 @@
 -define(HTTP_KEEP_ALIVE, 20000).
 -define(HTTP_RETRIES, 1).
 -define(COMMAND_RETRIES, 3).
--define(STDOUT_TYPE, 1).
--define(STDERR_TYPE, 2).
 
 -record(mstate,
         {owner = undefined :: pid(),
@@ -130,8 +128,9 @@ handle_call({ws_send, Frame, Steps} = Command, _, #mstate{stream = Stream, conn_
     ok = gun:ws_send(ConnPid, Stream, Frame),
     {reply, ok, MState#mstate{steps = Steps, command = Command}};
 handle_call(stop, _, #mstate{} = MState) ->
+    ?LOG_INFO("Docker client is stopped normally"),
     shutdown(MState),
-    {stop, normal, MState};
+    {stop, normal, shutdown_ok, MState};
 handle_call(_, _, #mstate{} = MState) ->
     {reply, not_implemented, MState}.
 
@@ -152,6 +151,7 @@ handle_info({gun_response, ConnPid, _, fin, Status, Hdrs}, #mstate{} = MState) -
     ok = gun:flush(ConnPid),
     {noreply, MState#mstate{hdrs = []}};
 handle_info({gun_response, _, _, nofin, 404, Hdrs}, #mstate{} = MState) ->
+    ?LOG_INFO("NOT FOUND (404) response from docker: ~p", [Hdrs]),
     notify_requestor(<<>>, Hdrs, 404, MState),
     shutdown(MState),
     {stop, normal, MState};
@@ -202,7 +202,8 @@ handle_info({'DOWN', MRef, process, ConnPid, Msg = {undef, [{gun_raw, _, _, _} |
     ?LOG_DEBUG("DOWN (bug in gun?): ~p [~p]", [Msg, ConnPid]),
     shutdown(MState),
     {stop, shutdown, MState};
-handle_info({'DOWN', MRef, process, ConnPid, {shutdown, econnrefused}}, #mstate{mref = MRef, conn_pid = ConnPid} = MState) ->
+handle_info({'DOWN', MRef, process, ConnPid, {shutdown, econnrefused}},
+            #mstate{mref = MRef, conn_pid = ConnPid} = MState) ->
     ?LOG_DEBUG("CAN'T CONNECT TO DOCKER!: [~p]", [ConnPid]),
     shutdown(MState),
     {stop, shutdown, MState};

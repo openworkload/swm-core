@@ -106,20 +106,18 @@ do_get_unregistered_images() ->
     get_images_from_json(ImageStructs, []).
 
 % Example of parsing image structure that comes from Docker:
-%{struct,
-
-  %[{<<"Id">>,
-  % <<"sha256:73403b9c37ef3b52ec4895d4fc99f03544d41d4c19d8d05bc5">>},
-  %{<<"ParentId">>,
-  % <<"sha256:1c391dfeb6a3bd9a71a5a895cf66ec06910b13a1551c4c4367">>},
-  %{<<"RepoTags">>,[<<"swm-build:20.1">>]},
-  %{<<"RepoDigests">>,null},
-  %{<<"Created">>,1476814253},
-  %{<<"Size">>,1911787182},
-  %{<<"VirtualSize">>,1911787182},
-  %{<<"Labels">>,{struct,[]}}]
-
-%}
+% {struct,
+%   [{<<"Id">>,
+%    <<"sha256:73403b9c37ef3b52ec4895d4fc99f03544d41d4c19d8d05bc5">>},
+%   {<<"ParentId">>,
+%    <<"sha256:1c391dfeb6a3bd9a71a5a895cf66ec06910b13a1551c4c4367">>},
+%   {<<"RepoTags">>,[<<"swm-build:20.1">>]},
+%   {<<"RepoDigests">>,null},
+%   {<<"Created">>,1476814253},
+%   {<<"Size">>,1911787182},
+%   {<<"VirtualSize">>,1911787182},
+%   {<<"Labels">>,{struct,[]}}]
+% }
 get_images_from_json([], Images) ->
     Images;
 get_images_from_json([{struct, ImageParams} | T], Images) ->

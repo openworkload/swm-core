@@ -125,7 +125,7 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
             {string, [R]};
         {ok, User} ->
             % TODO verify user credentials using provided certificate
-            JID = wm_utils:uuid(v4),
+            JobId = wm_utils:uuid(v4),
             Cluster = wm_topology:get_subdiv(cluster),
             Job1 = wm_jobscript:parse(JobScriptContent),
             Job2 =
@@ -134,16 +134,16 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
                                     {execution_path, Filename},
                                     {script_content, JobScriptContent},
                                     {user_id, wm_entity:get_attr(id, User)},
-                                    {id, JID},
-                                    {job_stdout, "stdout.out"},
-                                    {job_stderr, "stderr.err"},
+                                    {id, JobId},
+                                    {job_stdout, "stdout.log"},
+                                    {job_stderr, "stderr.log"},
                                     {submit_time, wm_utils:now_iso8601(without_ms)},
                                     {duration, 3600}],
                                    Job1),
             Job3 = set_defaults(Job2, Spool),
             Job4 = ensure_request_is_full(Job3),
             1 = wm_conf:update(Job4),
-            {string, JID}
+            {string, JobId}
     end;
 handle_request(requeue, Args, _) ->
     ?LOG_DEBUG("Jobs requeue has been requested: ~p", [Args]),

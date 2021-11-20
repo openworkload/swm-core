@@ -342,14 +342,30 @@ terminate_msg(Mod, Reason) ->
         Pid when is_pid(Pid) ->
             S = case is_list(Reason) of
                     true ->
-                        io_lib:format("~s", [lists:flatten(Reason)]);
+                        S1 = lists:flatten(
+                                 string:replace(Reason, "\n", "", all)),
+                        S2 = lists:flatten(
+                                 string:replace(S1, "\"", "'", all)),
+                        multiple_to_single_space(S2);
                     false ->
-                        io_lib:format("~p", [Reason])
+                        Reason
                 end,
             ?LOG_INFO("Terminating ~p with reason: ~p", [Mod, S]);
         _ ->
             ok
     end.
+
+multiple_to_single_space(Text) ->
+    multiple_to_single_space(0, Text).
+
+multiple_to_single_space(_, []) ->
+    [];
+multiple_to_single_space(32, [32 | Rest]) ->
+    multiple_to_single_space(32, Rest);
+multiple_to_single_space(32, [Ch | Rest]) ->
+    [Ch] ++ multiple_to_single_space(Ch, Rest);
+multiple_to_single_space(Last, [Ch | Rest]) ->
+    [Ch] ++ multiple_to_single_space(Ch, Rest).
 
 -spec get_job_user(#job{}) -> {ok, #user{}} | {error, not_found}.
 get_job_user(Job) ->

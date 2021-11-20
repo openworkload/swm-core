@@ -44,7 +44,7 @@ register_image(ImageID) ->
 
 -spec clear(#job{}) -> ok.
 clear(Job) ->
-    wm_utils:protected_call(?MODULE, {clear_container, Job}, []).
+    gen_server:call(?MODULE, {clear_container, Job}).
 
 %% ============================================================================
 %% CALLBACKS
@@ -206,6 +206,9 @@ handle_cast({Steps, Status, Data, Hdrs, ContID}, #mstate{} = MState) ->
 handle_cast(_Msg, #mstate{} = MState) ->
     {noreply, MState}.
 
+handle_info({'EXIT', ConnPid, Reason}, #mstate{} = MState) ->
+    ?LOG_DEBUG("Process exited: ~p, ~p", [ConnPid, Reason]),
+    {noreply, MState};
 handle_info(_Info, #mstate{} = MState) ->
     {noreply, MState}.
 
