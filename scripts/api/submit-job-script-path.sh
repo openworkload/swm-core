@@ -3,8 +3,8 @@
 JOB_SCRIPT_PATH=$(mktemp --suffix=.swm)
 cat > ${JOB_SCRIPT_PATH} <<EOF
 #!/bin/bash
+#SWM image ubuntu:18.04
 # SWM relocatable
-#SWM image ubuntu-18.04
 # SWM flavor m1.small
 date
 hostname

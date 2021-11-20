@@ -2,8 +2,8 @@
 
 JOB_SCRIPT_BODY=$(cat <<-EOF
 #!/bin/bash
+#SWM image ubuntu:18.04
 # SWM relocatable
-#SWM image ubuntu-18.04
 # SWM flavor m1.small
 date
 hostname
