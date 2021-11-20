@@ -138,11 +138,13 @@ get_jobs_info(Req) ->
     ?LOG_DEBUG("Handle job info HTTP request"),
     case Req of
         #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary, "/stdout">>} ->
-            get_job_stdout(JobId);
+            get_job_stdout(binary_to_list(JobId));
         #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary, "/stderr">>} ->
-            get_job_stderr(JobId);
+            get_job_stderr(binary_to_list(JobId));
         #{path := <<"/user/job">>} ->
-            get_job_list()
+            get_job_list();
+        OtherPath ->
+            {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
     end.
 
 -spec get_job_stdout(job_id()) -> {[string()], pos_integer()}.
@@ -152,7 +154,7 @@ get_job_stdout(JobId) ->
             {Data, ?HTTP_CODE_OK};
         _ ->
             ?LOG_ERROR("Job stdout not found for job ~p", [JobId]),
-            {error, ?HTTP_CODE_NOT_FOUND}
+            {io_lib:format("Error: stdout for job ~s is not found", [JobId]), ?HTTP_CODE_NOT_FOUND}
     end.
 
 -spec get_job_stderr(job_id()) -> {[string()], pos_integer()}.

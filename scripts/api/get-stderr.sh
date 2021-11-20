@@ -1,5 +1,11 @@
 #!/bin/bash
 
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <JOBID>"
+    exit 1
+fi
+JOB_ID=$1
+
 CERT=~/.swm/cert.pem
 KEY=~/.swm/key.pem
 CA=/opt/swm/spool/secure/cluster/ca-chain-cert.pem

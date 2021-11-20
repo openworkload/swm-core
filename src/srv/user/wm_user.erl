@@ -61,7 +61,9 @@ handle_call({list, TabList}, _From, MState) ->
 handle_call({list, TabList, Limit}, _From, MState) ->
     {reply, handle_request(list, {TabList, Limit}, MState), MState};
 handle_call({stdout, JobId}, _From, MState) ->
-    {reply, handle_request({output, stdout}, JobId, MState), MState};
+    {reply, handle_request({output, job_stdout}, JobId, MState), MState};
+handle_call({stderr, JobId}, _From, MState) ->
+    {reply, handle_request({output, job_stderr}, JobId, MState), MState};
 handle_call(Msg, From, MState) ->
     ?LOG_DEBUG("Unknown call message from ~p: ~p", [From, Msg]),
     {reply, ok, MState}.
@@ -110,8 +112,8 @@ handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
     case wm_conf:select(job, {id, JobId}) of
         {ok, Job} ->
             FileName = wm_entity:get_attr(OutputType, Job),
-            wm_utils:read_file(
-                filename:join(Spool, "output", JobId, FileName), [binary]);
+            FullPath = filename:join([Spool, "output", JobId, FileName]),
+            wm_utils:read_file(FullPath, [binary]);
         _ ->
             {error, "job not found"}
     end;
