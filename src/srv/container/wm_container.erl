@@ -27,7 +27,7 @@ start_link(Args) ->
 -spec run(tuple(), string(), map(), pid()) -> term().
 run(Job, Cmd, Envs, Owner) ->
     Steps = [create, attach, start, create_exec, start_exec, return_started],
-    wm_utils:protected_call(?MODULE, {run, Job, Cmd, Envs, Owner, Steps}, []).
+    gen_server:call(?MODULE, {run, Job, Cmd, Envs, Owner, Steps}).
 
 -spec communicate(tuple(), binary(), pid()) -> term().
 communicate(Job, Bin, Owner) ->

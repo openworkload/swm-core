@@ -131,7 +131,7 @@ handle_call({ws_send, Frame, Steps} = Command, _, #mstate{stream = Stream, conn_
     {reply, ok, MState#mstate{steps = Steps, command = Command}};
 handle_call(stop, _, #mstate{} = MState) ->
     shutdown(MState),
-    {stop, normal, shutdown_ok, MState};
+    {stop, normal, MState};
 handle_call(_, _, #mstate{} = MState) ->
     {reply, not_implemented, MState}.
 
@@ -154,7 +154,7 @@ handle_info({gun_response, ConnPid, _, fin, Status, Hdrs}, #mstate{} = MState) -
 handle_info({gun_response, _, _, nofin, 404, Hdrs}, #mstate{} = MState) ->
     notify_requestor(<<>>, Hdrs, 404, MState),
     shutdown(MState),
-    {stop, normal, shutdown_ok, MState};
+    {stop, normal, MState};
 handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) when Status =:= 304; Status =:= 101 ->
     ?LOG_DEBUG("[HTTP] NOFIN RESPONSE: ~p [~p]", [Status, ConnPid]),
     NewHdrs = MState#mstate.hdrs ++ Hdrs,
@@ -200,6 +200,10 @@ handle_info({gun_down, ConnPid, Proto, Reason, _}, #mstate{} = MState) ->
     {stop, normal, MState};
 handle_info({'DOWN', MRef, process, ConnPid, Msg = {undef, [{gun_raw, _, _, _} | _]}}, #mstate{mref = MRef} = MState) ->
     ?LOG_DEBUG("DOWN (bug in gun?): ~p [~p]", [Msg, ConnPid]),
+    shutdown(MState),
+    {stop, shutdown, MState};
+handle_info({'DOWN', MRef, process, ConnPid, {shutdown, econnrefused}}, #mstate{mref = MRef, conn_pid = ConnPid} = MState) ->
+    ?LOG_DEBUG("CAN'T CONNECT TO DOCKER!: [~p]", [ConnPid]),
     shutdown(MState),
     {stop, shutdown, MState};
 handle_info({'DOWN', MRef, process, ConnPid, Msg}, #mstate{mref = MRef, conn_pid = ConnPid} = MState) ->

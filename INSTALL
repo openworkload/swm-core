@@ -10,8 +10,8 @@ that can be changed). The developer or administrator should ensure
 that the docker daemon listens to this port on the compute nodes
 (usually by default it does not do that by default).
 
-For that purpose this "-H tcp://127.0.0.1:6000" can be added to start
-arguments in docker.service.
+For that purpose this "-H tcp://0.0.0.1:6000" can be added to start
+arguments in docker.service. This is a subject for improvement.
 
 Then do "systemctl daemon-reload" and "systemctl restart docker".
 This should be done on every compute node where the jobs are suppose to run.

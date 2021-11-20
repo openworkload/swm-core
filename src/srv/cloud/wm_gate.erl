@@ -168,7 +168,7 @@ get_auth_headers(Creds) ->
      {<<"username">>, list_to_binary(Username)},
      {<<"password">>, list_to_binary(Password)}].
 
--spec open_connection(#remote{}, string()) -> pid().
+-spec open_connection(#remote{}, string()) -> {ok, pid()} | {error | term()}.
 open_connection(Remote, Spool) ->
     DefaultCA = filename:join([Spool, "secure/cluster/cert.pem"]),
     DefaultKey = filename:join([Spool, "secure/node/key.pem"]),
@@ -193,10 +193,10 @@ open_connection(Remote, Spool) ->
     case gun:await_up(ConnPid) of
         {ok, Protocol} ->
             ?LOG_DEBUG("Connection is UP, protocol: ~p", [Protocol]),
-            ConnPid;
+            {ok, ConnPid};
         {error, Error} ->
             ?LOG_WARN(io_lib:format("Awaiting of connection ~p failed: ~p", [ConnPid, Error])),
-            exit(Error)
+            {error, Error}
     end.
 
 -spec close_connection(pid()) -> ok.
@@ -241,110 +241,139 @@ handle_http_call(Func, Label, CallbackModule, MState = #mstate{children = Childr
 
 -spec do_partition_create(#remote{}, #credential{}, string(), map()) -> {ok, string(), string()} | {error, string()}.
 do_partition_create(Remote, Creds, Spool, Options) ->
-    ConnPid = open_connection(Remote, Spool),
-    Headers =
-        get_auth_headers(Creds)
-        ++ [{<<"partname">>, list_to_binary(maps:get(name, Options, ""))},
-            {<<"tenantname">>, list_to_binary(maps:get(tenant_name, Options, ""))},
-            {<<"imagename">>, list_to_binary(maps:get(image_name, Options, ""))},
-            {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
-            {<<"keyname">>, list_to_binary(maps:get(key_name, Options, ""))},
-            {<<"count">>, integer_to_binary(maps:get(nodes_count, Options, 1))}],
-    StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers),
-    Result =
-        case wait_response_boby(ConnPid, StreamRef) of
-            {ok, BinBody} ->
-                wm_gate_parsers:parse_partition_created(BinBody);
-            {error, Error} ->
-                {error, Error}
-        end,
-    close_connection(ConnPid),
-    Result.
+    case open_connection(Remote, Spool) of
+        {ok, ConnPid} ->
+            Headers =
+                get_auth_headers(Creds)
+                ++ [{<<"partname">>, list_to_binary(maps:get(name, Options, ""))},
+                    {<<"tenantname">>, list_to_binary(maps:get(tenant_name, Options, ""))},
+                    {<<"imagename">>, list_to_binary(maps:get(image_name, Options, ""))},
+                    {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
+                    {<<"keyname">>, list_to_binary(maps:get(key_name, Options, ""))},
+                    {<<"count">>, integer_to_binary(maps:get(nodes_count, Options, 1))}],
+            StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers),
+            Result =
+                case wait_response_boby(ConnPid, StreamRef) of
+                    {ok, BinBody} ->
+                        wm_gate_parsers:parse_partition_created(BinBody);
+                    {error, Error} ->
+                        {error, Error}
+                end,
+            close_connection(ConnPid),
+            Result;
+        {error, Error} ->
+            {error, Error}
+    end.
 
 -spec do_partition_delete(#remote{}, #credential{}, string(), string()) -> {ok, string()} | {error, any()}.
 do_partition_delete(Remote, Creds, PartExtId, Spool) ->
-    ConnPid = open_connection(Remote, Spool),
-    Headers = get_auth_headers(Creds),
-    StreamRef = gun:delete(ConnPid, get_address("partitions/" ++ PartExtId, Remote), Headers),
-    Result =
-        case wait_response_boby(ConnPid, StreamRef) of
-            {ok, BinBody} ->
-                wm_gate_parsers:parse_partition_deleted(BinBody);
-            {error, Error} ->
-                {error, Error}
-        end,
-    close_connection(ConnPid),
-    Result.
+    case open_connection(Remote, Spool) of
+        {ok, ConnPid} ->
+            Headers = get_auth_headers(Creds),
+            StreamRef = gun:delete(ConnPid, get_address("partitions/" ++ PartExtId, Remote), Headers),
+            Result =
+                case wait_response_boby(ConnPid, StreamRef) of
+                    {ok, BinBody} ->
+                        wm_gate_parsers:parse_partition_deleted(BinBody);
+                    {error, Error} ->
+                        {error, Error}
+                end,
+            close_connection(ConnPid),
+            Result;
+        {error, Error} ->
+            {error, Error}
+    end.
 
 -spec fetch_images(#remote{}, #credential{}, string()) -> {ok, [#image{}]} | {error, any()}.
 fetch_images(Remote, Creds, Spool) ->
-    ConnPid = open_connection(Remote, Spool),
-    StreamRef = gun:get(ConnPid, get_address("images", Remote), get_auth_headers(Creds)),
-    Result =
-        case wait_response_boby(ConnPid, StreamRef) of
-            {ok, BinBody} ->
-                RemoteId = wm_entity:get_attr(id, Remote),
-                {ok, Images} = wm_gate_parsers:parse_images(BinBody),
-                {ok, [wm_entity:set_attr({remote_id, RemoteId}, Image) || Image <- Images]};
-            {error, Error} ->
-                {error, Error}
-        end,
-    close_connection(ConnPid),
-    Result.
+    case open_connection(Remote, Spool) of
+        {ok, ConnPid} ->
+            StreamRef = gun:get(ConnPid, get_address("images", Remote), get_auth_headers(Creds)),
+            Result =
+                case wait_response_boby(ConnPid, StreamRef) of
+                    {ok, BinBody} ->
+                        RemoteId = wm_entity:get_attr(id, Remote),
+                        {ok, Images} = wm_gate_parsers:parse_images(BinBody),
+                        {ok, [wm_entity:set_attr({remote_id, RemoteId}, Image) || Image <- Images]};
+                    {error, Error} ->
+                        {error, Error}
+                end,
+            close_connection(ConnPid),
+            Result;
+        {error, Error} ->
+            {error, Error}
+    end.
 
 -spec fetch_image(#remote{}, #credential{}, string(), string()) -> {ok, [#image{}]} | {error, string()}.
 fetch_image(Remote, Creds, ImageID, Spool) ->
-    ConnPid = open_connection(Remote, Spool),
-    StreamRef = gun:get(ConnPid, get_address("images/" ++ ImageID, Remote), get_auth_headers(Creds)),
-    Result =
-        case wait_response_boby(ConnPid, StreamRef) of
-            {ok, BinBody} ->
-                wm_gate_parsers:parse_image(BinBody);
-            {error, Error} ->
-                {error, Error}
-        end,
-    close_connection(ConnPid),
-    Result.
+    case open_connection(Remote, Spool) of
+        {ok, ConnPid} ->
+            StreamRef = gun:get(ConnPid, get_address("images/" ++ ImageID, Remote), get_auth_headers(Creds)),
+            Result =
+                case wait_response_boby(ConnPid, StreamRef) of
+                    {ok, BinBody} ->
+                        wm_gate_parsers:parse_image(BinBody);
+                    {error, Error} ->
+                        {error, Error}
+                end,
+            close_connection(ConnPid),
+            Result;
+        {error, Error} ->
+            {error, Error}
+    end.
 
 -spec fetch_flavors(#remote{}, #credential{}, string()) -> {ok, [#image{}]} | {error, string()}.
 fetch_flavors(Remote, Creds, Spool) ->
     ?LOG_DEBUG("Fetch flavors from ~p", [wm_entity:get_attr(name, Remote)]),
-    ConnPid = open_connection(Remote, Spool),
-    StreamRef = gun:get(ConnPid, get_address("flavors", Remote), get_auth_headers(Creds)),
-    Result =
-        case wait_response_boby(ConnPid, StreamRef) of
-            {ok, BinBody} ->
-                wm_gate_parsers:parse_flavors(BinBody, Remote);
-            {error, Error} ->
-                {error, Error}
-        end,
-    close_connection(ConnPid),
-    Result.
+    case open_connection(Remote, Spool) of
+        {ok, ConnPid} ->
+            StreamRef = gun:get(ConnPid, get_address("flavors", Remote), get_auth_headers(Creds)),
+            Result =
+                case wait_response_boby(ConnPid, StreamRef) of
+                    {ok, BinBody} ->
+                        wm_gate_parsers:parse_flavors(BinBody, Remote);
+                    {error, Error} ->
+                        {error, Error}
+                end,
+            close_connection(ConnPid),
+            Result;
+        {error, Error} ->
+            {error, Error}
+    end.
 
 -spec fetch_partitions(#remote{}, #credential{}, string()) -> {ok, [#image{}]} | {error, string()}.
 fetch_partitions(Remote, Creds, Spool) ->
-    ConnPid = open_connection(Remote, Spool),
-    StreamRef = gun:get(ConnPid, get_address("partitions", Remote), get_auth_headers(Creds)),
-    Result =
-        case wait_response_boby(ConnPid, StreamRef) of
-            {ok, BinBody} ->
-                wm_gate_parsers:parse_partitions(BinBody);
-            {error, Error} ->
-                {error, Error}
-        end,
-    close_connection(ConnPid),
-    Result.
+    case open_connection(Remote, Spool) of
+        {ok, ConnPid} ->
+            StreamRef = gun:get(ConnPid, get_address("partitions", Remote), get_auth_headers(Creds)),
+            Result =
+                case wait_response_boby(ConnPid, StreamRef) of
+                    {ok, BinBody} ->
+                        wm_gate_parsers:parse_partitions(BinBody);
+                    {error, Error} ->
+                        {error, Error}
+                end,
+            close_connection(ConnPid),
+            Result;
+        {error, Error} ->
+            {error, Error}
+    end.
 
 -spec fetch_partition(#remote{}, #credential{}, string(), string()) -> {ok, [#partition{}]} | {error, string()}.
 fetch_partition(Remote, Creds, PartExtIdOrName, Spool) ->
-    ConnPid = open_connection(Remote, Spool),
-    StreamRef = gun:get(ConnPid, get_address("partitions/" ++ PartExtIdOrName, Remote), get_auth_headers(Creds)),
-    Result =
-        case wait_response_boby(ConnPid, StreamRef) of
-            {ok, BinBody} ->
-                wm_gate_parsers:parse_partition(BinBody);
-            {error, Error} ->
-                {error, Error}
-        end,
-    close_connection(ConnPid),
-    Result.
+    case open_connection(Remote, Spool) of
+        {ok, ConnPid} ->
+            StreamRef =
+                gun:get(ConnPid, get_address("partitions/" ++ PartExtIdOrName, Remote), get_auth_headers(Creds)),
+            Result =
+                case wait_response_boby(ConnPid, StreamRef) of
+                    {ok, BinBody} ->
+                        wm_gate_parsers:parse_partition(BinBody);
+                    {error, Error} ->
+                        {error, Error}
+                end,
+            close_connection(ConnPid),
+            Result;
+        {error, Error} ->
+            {error, Error}
+    end.
