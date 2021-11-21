@@ -40,6 +40,8 @@ RUN DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:deadsnakes/ppa -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt-get install python3.9 -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install python3.9-distutils -y
+RUN DEBIAN_FRONTEND=noninteractive apt-get install python3-all-dev -y
+
 RUN DEBIAN_FRONTEND=noninteractive update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 2
 RUN DEBIAN_FRONTEND=noninteractive update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 1
 RUN DEBIAN_FRONTEND=noninteractive update-alternatives --config python3 --skip-auto
@@ -87,11 +89,8 @@ RUN pip3 install cogapp
 RUN pip3 install "apache-libcloud==3.1.0"
 
 # Generic python tools for all python code
-RUN pip3 install autoflake
-RUN pip3 install black
-RUN pip3 install isort
-RUN pip3 install mypy
-RUN pip3 install flake8
+RUN pip3 install pip-tools
+RUN pip3 install virtualenv
 
 # For python package swmclient
 RUN pip3 install openapi-python-client
