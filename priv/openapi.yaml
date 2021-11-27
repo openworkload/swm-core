@@ -110,11 +110,6 @@ paths:
       summary: Cancels a job
       description: 'Cancels execution or pending of a job by job ID'
       parameters:
-        - name: api_key
-          in: header
-          required: false
-          schema:
-            type: string
         - name: jobId
           in: path
           description: Job id to cancel
@@ -125,6 +120,35 @@ paths:
       responses:
         '400':
           description: Invalid job ID
+
+    patch:
+      summary: Update a job
+      description: Modify the job state or properties
+      parameters:
+        - name: modification
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          description: ID of job to update
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid job ID supplied
+        '404':
+          description: Job not found
 
   '/user/job/{jobId}/stdout':
     get:

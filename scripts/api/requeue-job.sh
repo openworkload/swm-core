@@ -1,0 +1,26 @@
+#!/bin/bash
+
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <JOBID>"
+    exit 1
+fi
+JOB_ID=$1
+
+CERT=~/.swm/cert.pem
+KEY=~/.swm/key.pem
+CA=/opt/swm/spool/secure/cluster/ca-chain-cert.pem
+
+PORT=8443
+HOST=$(hostname -s)
+
+REQUEST=PATCH
+HEADER="Modification: requeue"
+URL="https://${HOST}:${PORT}/user/job/$JOB_ID"
+
+curl --request ${REQUEST}\
+     --cacert ${CA}\
+     --cert ${CERT}\
+     --key ${KEY}\
+     --header "${HEADER}"\
+     ${URL}
+echo

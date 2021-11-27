@@ -50,8 +50,9 @@ handle_request(<<"GET">>, #{path := <<"/user/job", _/binary>>} = Req) ->
 handle_request(<<"POST">>, #{path := <<"/user/job">>} = Req) ->
     submit_job(Req);
 handle_request(<<"DELETE">>, #{path := <<"/user/job", _/binary>>} = Req) ->
-    ?LOG_DEBUG(">>>>>>>>>>>>> DELETE"),
     delete_job(Req);
+handle_request(<<"PATCH">>, #{path := <<"/user/job", _/binary>>} = Req) ->
+    update_job(Req);
 handle_request(Method, Req) ->
     ?LOG_ERROR("Unknown request: ~p ~p", [Method, Req]),
     unknown_request_reply().
@@ -207,6 +208,23 @@ delete_job(Req) ->
         #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary>>} ->
             {string, Msg} = gen_server:call(wm_user, {cancel, [binary_to_list(JobId)]}),
             {Msg, ?HTTP_CODE_OK};
+        _ ->
+            {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
+    end.
+
+-spec update_job(map()) -> {string(), pos_integer()}.
+update_job(Req) ->
+    ?LOG_DEBUG("Handle job updating HTTP request: ~p", [Req]),
+    case Req of
+        #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary>>} ->
+            case cowboy_req:header(<<"modification">>, Req) of
+                <<"requeue">> ->
+                    {string, Msg} = gen_server:call(wm_user, {requeue, [binary_to_list(JobId)]}),
+                    {Msg, ?HTTP_CODE_OK};
+                undefined ->
+                    Msg = io_lib:format("Modification is not specified in the headers: ~p", [cowboy_req:headers(Req)]),
+                    {Msg, ?HTTP_CODE_BAD_REQUEST}
+            end;
         _ ->
             {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
     end.
