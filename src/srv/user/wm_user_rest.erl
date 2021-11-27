@@ -122,9 +122,9 @@ get_flavors_info(Req) ->
                        jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, FlavorNode)),
                                     name => list_to_binary(wm_entity:get_attr(name, FlavorNode)),
                                     remote_id => list_to_binary(RemoteId),
-                                    cpus => wm_user_json:find_resource_count("cpus", Resources),
-                                    mem => wm_user_json:find_resource_count("mem", Resources),
-                                    storage => wm_user_json:find_resource_count("storage", Resources),
+                                    resources =>
+                                        wm_user_json:get_resources_json(
+                                            wm_entity:get_attr(resources, FlavorNode)),
                                     price => maps:get(AccountId, wm_entity:get_attr(prices, FlavorNode), 0)}),
                    [binary_to_list(FlavorJson) | FullJson];
                {error, not_found} ->

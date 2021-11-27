@@ -313,20 +313,11 @@ components:
         remote_id:
           type: string
           description: Related remote object ID configured in swm-core
-        cpus:
-          type: integer
-          format: int64
-          description: CPU cores provided by the nodes of this flavor
-        mem:
-          type: integer
-          format: int64
-          minimum: 0
-          description: Memory amount (in bytes) provided by the nodes of this flavor
-        storage:
-          type: integer
-          format: int64
-          minimum: 0
-          description: Storage size (in bytes) provided by the nodes of this flavor
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+          description: List of resources flavor provides
         price:
           type: number
           format: currency
