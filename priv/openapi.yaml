@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: SkyPort core daemon user API
+  title: Sky Port core daemon user API
   description: |
     User facing API provided by swm-core daemon
   version: 1.0.0
@@ -56,15 +56,26 @@ paths:
 
   /user/job:
     post:
-      summary: Submit a new job
+      summary: Submit a new job script
       description: 'A new job is submitted with a specific job script'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                script_content:
+                  type: string
+                  format: binary
       responses:
         '200':
-          description: successful operation of job submission
+          description: successful operation
           content:
-            application/json:
+            application/octet-stream:
               schema:
-                $ref: '#/components/schemas/JobToSubmit'
+                type: string
+                format: binary
         '405':
           description: Invalid input
 
@@ -201,31 +212,15 @@ paths:
           description: Job not found
 
 externalDocs:
-  description: Find out more about SkyPort
+  description: Find out more about Sky Port
   url: 'http://skyworkflows.com'
 
 components:
   schemas:
 
-    JobToSubmit:
-      title: Job to submit
-      description: A new job specification to submit
-      type: object
-      properties:
-        name:
-          type: string
-          description: Job name
-        script:
-          type: string
-          description: Content of job script
-        nodes_number:
-          type: integer
-          format: int64
-          description: Requested number of nodes
-
     Job:
       title: Job
-      description: A job information that is known to SkyPort
+      description: A job information that is known to Sky Port
       type: object
       properties:
         id:
@@ -300,7 +295,7 @@ components:
 
     Flavor:
       title: Flavor
-      description: A flavor information that is known to SkyPort
+      description: A flavor information that is known to Sky Port
       type: object
       properties:
         id:
@@ -334,7 +329,7 @@ components:
           description: Remote site ID
         name:
           type: string
-          description: Remote site name in SkyPort
+          description: Remote site name in Sky Port
         account_id:
           type: string
           description: Account ID
@@ -367,7 +362,7 @@ components:
           description: Node ID
         name:
           type: string
-          description: Node name in SkyPort
+          description: Node name in Sky Port
         host:
           type: string
           format: hostname

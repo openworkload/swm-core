@@ -117,7 +117,6 @@ get_flavors_info(Req) ->
            case wm_conf:select(remote, {id, RemoteId}) of
                {ok, Remote} ->
                    AccountId = wm_entity:get_attr(account_id, Remote),
-                   Resources = wm_entity:get_attr(resources, FlavorNode),
                    FlavorJson =
                        jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, FlavorNode)),
                                     name => list_to_binary(wm_entity:get_attr(name, FlavorNode)),
@@ -143,10 +142,25 @@ get_jobs_info(Req) ->
             get_job_stdout(binary_to_list(JobId));
         #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary, "/stderr">>} ->
             get_job_stderr(binary_to_list(JobId));
+        #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary>>} ->
+            get_one_job(binary_to_list(JobId));
         #{path := <<"/user/job">>} ->
             get_job_list();
+        #{path := Path} ->
+            Msg = io_lib:format("Can't parse the path: ~p", [binary_to_list(Path)]),
+            {Msg, ?HTTP_CODE_NOT_FOUND};
         _ ->
             {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
+    end.
+
+-spec get_one_job(job_id()) -> {[string()], pos_integer()}.
+get_one_job(JobId) ->
+    case gen_server:call(wm_user, {show, [JobId]}) of
+        [Job] ->
+            {job_to_json(Job, <<>>), ?HTTP_CODE_OK};
+        _ ->
+            ?LOG_ERROR("Job not found by ID=~p", [JobId]),
+            {error, ?HTTP_CODE_NOT_FOUND}
     end.
 
 -spec get_job_stdout(job_id()) -> {[string()], pos_integer()}.
@@ -169,36 +183,43 @@ get_job_stderr(JobId) ->
             {error, ?HTTP_CODE_NOT_FOUND}
     end.
 
+-spec job_to_json(#job{}, binary()) -> binary().
+job_to_json(Job, FullJson) ->
+    JobNodes =
+        case wm_entity:get_attr(nodes, Job) of
+            [] ->
+                [];
+            NodeIds ->
+                wm_conf:select_many(node, id, NodeIds)
+        end,
+    JobNodeNames = [list_to_binary(wm_entity:get_attr(name, X)) || X <- JobNodes],
+    {FlavorId, RemoteId} = wm_user_json:find_flavor_and_remote_ids(Job),
+    JobJson =
+        jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, Job)),
+                     name => list_to_binary(wm_entity:get_attr(name, Job)),
+                     state => list_to_binary(wm_entity:get_attr(state, Job)),
+                     submit_time => list_to_binary(wm_entity:get_attr(submit_time, Job)),
+                     start_time => list_to_binary(wm_entity:get_attr(start_time, Job)),
+                     end_time => list_to_binary(wm_entity:get_attr(end_time, Job)),
+                     duration => wm_entity:get_attr(duration, Job),
+                     exitcode => wm_entity:get_attr(exitcode, Job),
+                     signal => wm_entity:get_attr(signal, Job),
+                     node_names => JobNodeNames,
+                     remote_id => list_to_binary(RemoteId),
+                     flavor_id => list_to_binary(FlavorId),
+                     request =>
+                         wm_user_json:get_resources_json(
+                             wm_entity:get_attr(request, Job)),
+                     resources =>
+                         wm_user_json:get_resources_json(
+                             wm_entity:get_attr(resources, Job)),
+                     comment => list_to_binary(wm_entity:get_attr(comment, Job))}),
+    [binary_to_list(JobJson) | FullJson].
+
 -spec get_job_list() -> {[string()], pos_integer()}.
 get_job_list() ->
     Xs = gen_server:call(wm_user, {list, [job]}),
-    F = fun(Job, FullJson) ->
-           JobNodes = wm_conf:select_many(node, id, wm_entity:get_attr(nodes, Job)),
-           JobNodeNames = [list_to_binary(wm_entity:get_attr(name, X)) || X <- JobNodes],
-           {FlavorId, RemoteId} = wm_user_json:find_flavor_and_remote_ids(Job),
-           JobJson =
-               jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, Job)),
-                            name => list_to_binary(wm_entity:get_attr(name, Job)),
-                            state => list_to_binary(wm_entity:get_attr(state, Job)),
-                            submit_time => list_to_binary(wm_entity:get_attr(submit_time, Job)),
-                            start_time => list_to_binary(wm_entity:get_attr(start_time, Job)),
-                            end_time => list_to_binary(wm_entity:get_attr(end_time, Job)),
-                            duration => wm_entity:get_attr(duration, Job),
-                            exitcode => wm_entity:get_attr(exitcode, Job),
-                            signal => wm_entity:get_attr(signal, Job),
-                            node_names => JobNodeNames,
-                            remote_id => list_to_binary(RemoteId),
-                            flavor_id => list_to_binary(FlavorId),
-                            request =>
-                                wm_user_json:get_resources_json(
-                                    wm_entity:get_attr(request, Job)),
-                            resources =>
-                                wm_user_json:get_resources_json(
-                                    wm_entity:get_attr(resources, Job)),
-                            comment => list_to_binary(wm_entity:get_attr(comment, Job))}),
-           [binary_to_list(JobJson) | FullJson]
-        end,
-    Ms = lists:foldl(F, [], Xs),
+    Ms = lists:foldl(fun job_to_json/2, [], Xs),
     {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
 
 -spec delete_job(map()) -> {string(), pos_integer()}.

@@ -18,14 +18,12 @@ PORT=8443
 HOST=$(hostname -s)
 
 REQUEST=POST
-HEADER="Accept: application/json"
 URL="https://${HOST}:${PORT}/user/job"
 
 curl --request ${REQUEST}\
      --cacert ${CA}\
      --cert ${CERT}\
      --key ${KEY}\
-     --header "${HEADER}"\
      --data "${JOB_SCRIPT_BODY}" \
      ${URL}
 echo

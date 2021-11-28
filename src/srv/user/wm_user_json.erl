@@ -59,19 +59,18 @@ find_resource_count(Name, Resources) ->
 
 -spec find_flavor_and_remote_ids(#job{}) -> {node_id(), remote_id()}.
 find_flavor_and_remote_ids(Job) ->
-    RrequestedResources = wm_entity:get_attr(request, Job),
-    NodeFlavorName =
-        case lists:keyfind("flavor", 2, RrequestedResources) of
-            false ->
-                "";
-            Resource ->
-                find_value_property(Resource)
-        end,
-    case wm_conf:select(node, {name, NodeFlavorName}) of
-        {ok, Node} ->
-            {wm_entity:get_attr(id, Node), wm_entity:get_attr(remote_id, Node)};
-        _ ->
-            {"", ""}
+    RequestedResources = wm_entity:get_attr(request, Job),
+    case lists:keyfind("flavor", 2, RequestedResources) of
+        false ->
+            {"", ""};
+        Resource ->
+            Value = find_value_property(Resource),
+            case wm_conf:select(node, {name, Value}) of
+                {ok, Node} ->
+                    {wm_entity:get_attr(id, Node), wm_entity:get_attr(remote_id, Node)};
+                _ ->
+                    {"", ""}
+            end
     end.
 
 -spec find_value_property(#resource{}) -> string().

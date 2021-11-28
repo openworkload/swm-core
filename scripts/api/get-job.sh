@@ -1,14 +1,10 @@
 #!/bin/bash
 
-JOB_SCRIPT_PATH=$(mktemp --suffix=.swm)
-cat > ${JOB_SCRIPT_PATH} <<EOF
-#!/bin/bash
-#SWM image ubuntu:18.04
-# SWM relocatable
-# SWM flavor m1.small
-date
-hostname
-EOF
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <JOBID>"
+    exit 1
+fi
+JOB_ID=$1
 
 CERT=~/.swm/cert.pem
 KEY=~/.swm/key.pem
@@ -17,8 +13,8 @@ CA=/opt/swm/spool/secure/cluster/ca-chain-cert.pem
 PORT=8443
 HOST=$(hostname -s)
 
-REQUEST=POST
-URL="https://${HOST}:${PORT}/user/job?path=${JOB_SCRIPT_PATH}"
+REQUEST=GET
+URL="https://${HOST}:${PORT}/user/job/$JOB_ID"
 
 curl --request ${REQUEST}\
      --cacert ${CA}\
