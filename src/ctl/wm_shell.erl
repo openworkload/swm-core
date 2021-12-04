@@ -2,7 +2,7 @@
 
 -export([start_link/1, init/1]).
 
--record(mstate, {mode = "" :: string(), entity = "" :: string(), parent :: atom(), args_line, spool, root}).
+-record(mstate, {mode = "" :: string(), entity = "" :: string(), args_line, spool, root}).
 
 %% ============================================================================
 %% Module API
@@ -39,12 +39,7 @@ process(Line, #mstate{} = MState) ->
         {exit, NewState} ->
             NewState;
         _ ->
-            case MState#mstate.parent of
-                wmctl ->
-                    do_wmctl(prepend_mode(Commands, MState), MState);
-                wmjob ->
-                    do_wmjob(prepend_mode(Commands, MState), MState)
-            end
+            do_wmctl(prepend_mode(Commands, MState), MState)
     end.
 
 apply_control_args(Args) ->
@@ -55,20 +50,6 @@ apply_control_args(Args) ->
             ok
     end.
 
-do_wmjob([], #mstate{} = MState) ->
-    MState;
-do_wmjob(Commands, #mstate{} = MState) ->
-    ArgsDict = wm_args:normalize(Commands),
-    case hd(Commands) of
-        [] ->
-            enter_mode(MState#mstate.parent, [], MState);
-        Verb ->
-            Aliases = aliases(MState#mstate.parent, Verb),
-            ConnArgs = wm_args:get_conn_args(),
-            Entity = wm_job:top_mode(ArgsDict, Aliases, ConnArgs),
-            MState#mstate{entity = Entity}
-    end.
-
 do_wmctl([], #mstate{} = MState) ->
     MState;
 do_wmctl(Commands, #mstate{} = MState) when is_list(Commands) ->
@@ -76,12 +57,12 @@ do_wmctl(Commands, #mstate{} = MState) when is_list(Commands) ->
     ArgsDict = wm_args:normalize(Commands),
     case Tail of
         [] ->
-            enter_mode(MState#mstate.parent, Mode, MState);
+            enter_mode(Mode, MState);
         _ ->
             ConnArgs = wm_args:get_conn_args(),
             Args = {ArgsDict, MState#mstate.entity},
             Entity =
-                case aliases(MState#mstate.parent, Mode) of
+                case aliases(Mode) of
                     "grid" ->
                         wm_ctl:grid(Args, ConnArgs);
                     "cluster" ->
@@ -109,7 +90,7 @@ do_wmctl(Commands, #mstate{} = MState) when is_list(Commands) ->
                         MState#mstate.entity
                 end,
             NewMState = MState#mstate{entity = Entity},
-            enter_mode(MState#mstate.parent, Mode, NewMState)
+            enter_mode(Mode, NewMState)
     end.
 
 prepend_mode([], _) ->
@@ -130,11 +111,11 @@ prepend_mode([X | T], #mstate{} = MState) ->
 check_exit([], _) ->
     ok;
 check_exit([Commands | _], #mstate{} = MState) ->
-    case aliases(MState#mstate.parent, Commands) of
+    case aliases(Commands) of
         "exit" ->
             case MState#mstate.entity of
                 "" ->
-                    {exit, enter_mode(MState#mstate.parent, "", MState)};
+                    {exit, enter_mode("", MState)};
                 _ ->
                     {exit, MState#mstate{entity = ""}}
             end;
@@ -142,27 +123,11 @@ check_exit([Commands | _], #mstate{} = MState) ->
             ok
     end.
 
-enter_mode(wmjob, Mode, #mstate{} = MState) ->
-    case aliases(MState#mstate.parent, Mode) of
-        "exit" ->
-            enter_mode(wmjob, "", MState);
-        "show" ->
-            io:format("not implemented"),
-            MState;
-        _ ->
-            case lists:member(Mode, get_job_modes()) of
-                true ->
-                    MState#mstate{mode = Mode};
-                false ->
-                    io:format("Command not found: ~s~n", [Mode]),
-                    MState
-            end
-    end;
-enter_mode(wmctl, Mode, #mstate{} = MState) ->
+enter_mode(Mode, #mstate{} = MState) ->
     ConnArgs = maps:new(),
-    case aliases(MState#mstate.parent, Mode) of
+    case aliases(Mode) of
         "exit" ->
-            enter_mode(wmctl, "", MState);
+            enter_mode("", MState);
         "show" ->
             wm_ctl:overview(grid, ConnArgs),
             io:format("~n"),
@@ -181,18 +146,8 @@ enter_mode(wmctl, Mode, #mstate{} = MState) ->
 get_ctl_modes() ->
     ["", "grid", "cluster", "partition", "node", "user", "queue", "scheduler", "image", "global", "remote"].
 
-get_job_modes() ->
-    [""].
-
-aliases(_, []) ->
-    [];
-aliases(Parent, X) ->
-    case Parent of
-        wmctl ->
-            get_alias([["exit", ".."], ["quit", "q"], ["list", "l"], ["show", "s"]], X);
-        wmjob ->
-            get_alias([["exit", ".."], ["quit", "q"], ["list", "l"]], X)
-    end.
+aliases(X) ->
+    get_alias([["exit", ".."], ["quit", "q"], ["list", "l"], ["show", "s"]], X).
 
 get_alias([], X) ->
     X;
@@ -227,8 +182,6 @@ parse_args([{"SWM_SPOOL", P} | T], #mstate{} = MState) ->
     parse_args(T, MState#mstate{spool = P});
 parse_args([{"SWM_ROOT", P} | T], #mstate{} = MState) ->
     parse_args(T, MState#mstate{root = P});
-parse_args([{parent, P} | T], #mstate{} = MState) ->
-    parse_args(T, MState#mstate{parent = P});
 parse_args([{args_line, Args} | T], #mstate{} = MState) ->
     parse_args(T, MState#mstate{args_line = Args});
 parse_args([{_, _} | T], #mstate{} = MState) ->
