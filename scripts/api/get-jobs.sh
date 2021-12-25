@@ -14,6 +14,5 @@ curl --request ${REQUEST}\
      --cacert ${CA}\
      --cert ${CERT}\
      --key ${KEY}\
-     --header "${HEADER}"\
      ${URL}
 echo

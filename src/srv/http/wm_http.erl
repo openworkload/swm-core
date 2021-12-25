@@ -10,7 +10,6 @@
 
 -record(mstate, {routes = #{} :: map(), spool :: string()}).
 
--define(DEFAULT_HTTP_PORT, 8008).
 -define(DEFAULT_HTTPS_PORT, 8443).
 
 %% ============================================================================
@@ -59,8 +58,6 @@ init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     MState2 = MState#mstate{routes = #{"/" => {api, wm_http_top}}},
-    % http://localhost:8008/ui/connections.html
-    %"/ui/[...]" => {static, wm_utils:priv(Default = "priv") ++ "/webui"}
     Dispatch = dispatch_rules(MState2#mstate.routes, []),
     Port = wm_conf:g(https_port, {?DEFAULT_HTTPS_PORT, integer}),
     CA = filename:join([MState2#mstate.spool, "secure/cluster/cert.pem"]),
