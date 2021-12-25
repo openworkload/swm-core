@@ -36,6 +36,7 @@ if [ "$?" = "1" ]; then
     --net bridge\
     -p 10000:10000\
     -p 10011:10011\
+    -p 8443:8443\
     ${IMAGE_NAME}\
     runuser -u ${USER} /bin/bash
 else
