@@ -188,7 +188,22 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term9 = jwalk:set({"HostConfig"}, Term8, get_config_map(binds)),
     Term10 = jwalk:set({"StdinOnce"}, Term9, false),
     Term11 = jwalk:set({"VolumesFrom"}, Term10, get_volumes_from()),
-    jsx:encode(Term11).
+    Term12 = jwalk:set({"ExposedPorts"}, Term11, get_container_ports(Request)),
+    jsx:encode(Term12).
+
+-spec get_container_ports([#resource{}]) -> map().
+get_container_ports([]) ->
+    #{};
+get_container_ports([#resource{name = "ports", properties = Properties} | T]) ->
+    case proplists:get_value(value, Properties) of
+        Value when is_list(Value) ->
+            Ports = string:split(Value, ",", all),
+            lists:foldl(fun(Port, Map) -> maps:put(list_to_binary(Port), #{}, Map) end, #{}, Ports);
+        _ ->
+            get_container_ports(T)
+    end;
+get_container_ports([_ | T]) ->
+    get_container_ports(T).
 
 -spec get_container_image([#resource{}]) -> binary().
 get_container_image([]) ->
@@ -274,7 +289,6 @@ get_finalize_cmd(Job) ->
             GID = wm_posix_utils:get_system_gid(Username),
             BUID = list_to_binary(UID),
             BGID = list_to_binary(GID),
-            BName = list_to_binary(Username),
             ContID = wm_entity:get_attr(container, Job),
             FinScript = os:getenv("SWM_FINALIZE_IN_CONTAINER", ?SWM_FINALIZE_IN_CONTAINER),
             ?LOG_DEBUG("Finalize ~p: ~p ~p ~p", [ContID, FinScript, BUID, BGID]),

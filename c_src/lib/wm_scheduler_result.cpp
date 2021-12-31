@@ -9,8 +9,8 @@
 #include <erl_interface.h>
 #include <ei.h>
 
-#include "wm_timetable.h"
 #include "wm_metric.h"
+#include "wm_timetable.h"
 
 using namespace swm;
 
