@@ -452,10 +452,6 @@
       "default": "Q",
       "type": "string()"
     },
-    "job_class": {
-      "default": [],
-      "type": "[atom()]"
-    },
     "start_time": {
       "default": "",
       "type": "string()"
@@ -512,10 +508,6 @@
       "default": [],
       "type": "[{atom(), string()}]"
     },
-    "steps": {
-      "default": [],
-      "type": "[string()]"
-    },
     "projects": {
       "default": [],
       "type": "[pos_integer()]"
@@ -525,10 +517,6 @@
       "type": "account_id()"
     },
     "gang_id": {
-      "default": "",
-      "type": "string()"
-    },
-    "task_id": {
       "default": "",
       "type": "string()"
     },

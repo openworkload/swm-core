@@ -460,8 +460,6 @@ get_type(job, Attr) when is_atom(Attr) ->
             {list, string};
         state ->
             string;
-        job_class ->
-            {list, atom};
         start_time ->
             string;
         submit_time ->
@@ -490,15 +488,11 @@ get_type(job, Attr) when is_atom(Attr) ->
             {list, {string, string}};
         deps ->
             {list, {atom, string}};
-        steps ->
-            {list, string};
         projects ->
             {list, integer};
         account_id ->
             string;
         gang_id ->
-            string;
-        task_id ->
             string;
         execution_path ->
             string;

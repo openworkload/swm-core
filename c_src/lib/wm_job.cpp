@@ -47,158 +47,143 @@ SwmJob::SwmJob(ETERM *term) {
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_atom(term, 7, job_class)) {
+  if(eterm_to_str(term, 7, start_time)) {
     std::cerr << "Could not initialize job paremeter at position 7" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 8, start_time)) {
+  if(eterm_to_str(term, 8, submit_time)) {
     std::cerr << "Could not initialize job paremeter at position 8" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 9, submit_time)) {
+  if(eterm_to_str(term, 9, end_time)) {
     std::cerr << "Could not initialize job paremeter at position 9" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 10, end_time)) {
+  if(eterm_to_uint64_t(term, 10, duration)) {
     std::cerr << "Could not initialize job paremeter at position 10" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_uint64_t(term, 11, duration)) {
+  if(eterm_to_str(term, 11, job_stdin)) {
     std::cerr << "Could not initialize job paremeter at position 11" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 12, job_stdin)) {
+  if(eterm_to_str(term, 12, job_stdout)) {
     std::cerr << "Could not initialize job paremeter at position 12" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 13, job_stdout)) {
+  if(eterm_to_str(term, 13, job_stderr)) {
     std::cerr << "Could not initialize job paremeter at position 13" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 14, job_stderr)) {
+  if(eterm_to_str(term, 14, input_files)) {
     std::cerr << "Could not initialize job paremeter at position 14" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 15, input_files)) {
+  if(eterm_to_str(term, 15, output_files)) {
     std::cerr << "Could not initialize job paremeter at position 15" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 16, output_files)) {
+  if(eterm_to_str(term, 16, workdir)) {
     std::cerr << "Could not initialize job paremeter at position 16" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 17, workdir)) {
+  if(eterm_to_str(term, 17, user_id)) {
     std::cerr << "Could not initialize job paremeter at position 17" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 18, user_id)) {
+  if(eterm_to_str(term, 18, hooks)) {
     std::cerr << "Could not initialize job paremeter at position 18" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 19, hooks)) {
+  if(eterm_to_tuple_str_str(term, 19, env)) {
     std::cerr << "Could not initialize job paremeter at position 19" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_tuple_str_str(term, 20, env)) {
+  if(eterm_to_tuple_atom_str(term, 20, deps)) {
     std::cerr << "Could not initialize job paremeter at position 20" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_tuple_atom_str(term, 21, deps)) {
+  if(eterm_to_uint64_t(term, 21, projects)) {
     std::cerr << "Could not initialize job paremeter at position 21" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 22, steps)) {
+  if(eterm_to_str(term, 22, account_id)) {
     std::cerr << "Could not initialize job paremeter at position 22" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_uint64_t(term, 23, projects)) {
+  if(eterm_to_str(term, 23, gang_id)) {
     std::cerr << "Could not initialize job paremeter at position 23" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 24, account_id)) {
+  if(eterm_to_str(term, 24, execution_path)) {
     std::cerr << "Could not initialize job paremeter at position 24" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 25, gang_id)) {
+  if(eterm_to_str(term, 25, script_content)) {
     std::cerr << "Could not initialize job paremeter at position 25" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 26, task_id)) {
+  if(eterm_to_resource(term, 26, request)) {
     std::cerr << "Could not initialize job paremeter at position 26" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 27, execution_path)) {
+  if(eterm_to_resource(term, 27, resources)) {
     std::cerr << "Could not initialize job paremeter at position 27" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 28, script_content)) {
+  if(eterm_to_str(term, 28, container)) {
     std::cerr << "Could not initialize job paremeter at position 28" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_resource(term, 29, request)) {
+  if(eterm_to_atom(term, 29, relocatable)) {
     std::cerr << "Could not initialize job paremeter at position 29" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_resource(term, 30, resources)) {
+  if(eterm_to_uint64_t(term, 30, exitcode)) {
     std::cerr << "Could not initialize job paremeter at position 30" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_str(term, 31, container)) {
+  if(eterm_to_uint64_t(term, 31, signal)) {
     std::cerr << "Could not initialize job paremeter at position 31" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_atom(term, 32, relocatable)) {
+  if(eterm_to_uint64_t(term, 32, priority)) {
     std::cerr << "Could not initialize job paremeter at position 32" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_uint64_t(term, 33, exitcode)) {
+  if(eterm_to_str(term, 33, comment)) {
     std::cerr << "Could not initialize job paremeter at position 33" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
-  if(eterm_to_uint64_t(term, 34, signal)) {
+  if(eterm_to_uint64_t(term, 34, revision)) {
     std::cerr << "Could not initialize job paremeter at position 34" << std::endl;
-    erl_print_term(stderr, term);
-    return;
-  }
-  if(eterm_to_uint64_t(term, 35, priority)) {
-    std::cerr << "Could not initialize job paremeter at position 35" << std::endl;
-    erl_print_term(stderr, term);
-    return;
-  }
-  if(eterm_to_str(term, 36, comment)) {
-    std::cerr << "Could not initialize job paremeter at position 36" << std::endl;
-    erl_print_term(stderr, term);
-    return;
-  }
-  if(eterm_to_uint64_t(term, 37, revision)) {
-    std::cerr << "Could not initialize job paremeter at position 37" << std::endl;
     erl_print_term(stderr, term);
     return;
   }
@@ -224,10 +209,6 @@ void SwmJob::set_nodes(const std::vector<std::string> &new_val) {
 
 void SwmJob::set_state(const std::string &new_val) {
   state = new_val;
-}
-
-void SwmJob::set_job_class(const std::vector<std::string> &new_val) {
-  job_class = new_val;
 }
 
 void SwmJob::set_start_time(const std::string &new_val) {
@@ -286,10 +267,6 @@ void SwmJob::set_deps(const std::vector<SwmTupleAtomStr> &new_val) {
   deps = new_val;
 }
 
-void SwmJob::set_steps(const std::vector<std::string> &new_val) {
-  steps = new_val;
-}
-
 void SwmJob::set_projects(const std::vector<uint64_t> &new_val) {
   projects = new_val;
 }
@@ -300,10 +277,6 @@ void SwmJob::set_account_id(const std::string &new_val) {
 
 void SwmJob::set_gang_id(const std::string &new_val) {
   gang_id = new_val;
-}
-
-void SwmJob::set_task_id(const std::string &new_val) {
-  task_id = new_val;
 }
 
 void SwmJob::set_execution_path(const std::string &new_val) {
@@ -370,10 +343,6 @@ std::string SwmJob::get_state() const {
   return state;
 }
 
-std::vector<std::string> SwmJob::get_job_class() const {
-  return job_class;
-}
-
 std::string SwmJob::get_start_time() const {
   return start_time;
 }
@@ -430,10 +399,6 @@ std::vector<SwmTupleAtomStr> SwmJob::get_deps() const {
   return deps;
 }
 
-std::vector<std::string> SwmJob::get_steps() const {
-  return steps;
-}
-
 std::vector<uint64_t> SwmJob::get_projects() const {
   return projects;
 }
@@ -444,10 +409,6 @@ std::string SwmJob::get_account_id() const {
 
 std::string SwmJob::get_gang_id() const {
   return gang_id;
-}
-
-std::string SwmJob::get_task_id() const {
-  return task_id;
 }
 
 std::string SwmJob::get_execution_path() const {
@@ -535,15 +496,6 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     std::cerr << "]" << separator;
   }
     std::cerr << prefix << state << separator;
-  if(job_class.empty()) {
-    std::cerr << prefix << "job_class: []" << separator;
-  } else {
-    std::cerr << prefix << "job_class" << ": [";
-    for(const auto &q: job_class) {
-      std::cerr << q << ",";
-    }
-    std::cerr << "]" << separator;
-  }
     std::cerr << prefix << start_time << separator;
     std::cerr << prefix << submit_time << separator;
     std::cerr << prefix << end_time << separator;
@@ -598,15 +550,6 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-  if(steps.empty()) {
-    std::cerr << prefix << "steps: []" << separator;
-  } else {
-    std::cerr << prefix << "steps" << ": [";
-    for(const auto &q: steps) {
-      std::cerr << q << ",";
-    }
-    std::cerr << "]" << separator;
-  }
   if(projects.empty()) {
     std::cerr << prefix << "projects: []" << separator;
   } else {
@@ -618,7 +561,6 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
   }
     std::cerr << prefix << account_id << separator;
     std::cerr << prefix << gang_id << separator;
-    std::cerr << prefix << task_id << separator;
     std::cerr << prefix << execution_path << separator;
     std::cerr << prefix << script_content << separator;
   if(request.empty()) {

@@ -192,7 +192,8 @@ job_to_json(Job, FullJson) ->
             NodeIds ->
                 wm_conf:select_many(node, id, NodeIds)
         end,
-    JobNodeNames = [list_to_binary(wm_entity:get_attr(name, X)) || X <- JobNodes],
+    JobNodeHostnames = [list_to_binary(wm_entity:get_attr(host, X)) || X <- JobNodes],
+    JobNodeIps = nodes_to_ips(JobNodes),
     {FlavorId, RemoteId} = wm_user_json:find_flavor_and_remote_ids(Job),
     JobJson =
         jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, Job)),
@@ -204,7 +205,8 @@ job_to_json(Job, FullJson) ->
                      duration => wm_entity:get_attr(duration, Job),
                      exitcode => wm_entity:get_attr(exitcode, Job),
                      signal => wm_entity:get_attr(signal, Job),
-                     node_names => JobNodeNames,
+                     node_names => JobNodeHostnames,
+                     node_ips => JobNodeIps,
                      remote_id => list_to_binary(RemoteId),
                      flavor_id => list_to_binary(FlavorId),
                      request =>
@@ -215,6 +217,20 @@ job_to_json(Job, FullJson) ->
                              wm_entity:get_attr(resources, Job)),
                      comment => list_to_binary(wm_entity:get_attr(comment, Job))}),
     [binary_to_list(JobJson) | FullJson].
+
+-spec nodes_to_ips([#node{}]) -> [string()].
+nodes_to_ips(Nodes) ->
+    Hostnames = [wm_entity:get_attr(host, Node) || Node <- Nodes],
+    lists:map(fun(Hostname) ->
+                 case inet:getaddr(Hostname, inet) of
+                     {ok, IP} ->
+                         list_to_binary(inet:ntoa(IP));
+                     _ ->
+                         ?LOG_WARN("Can't resolve job hostname ~p => use localhost", [Hostname]),
+                         <<"127.0.0.1">>
+                 end
+              end,
+              Hostnames).
 
 -spec get_job_list() -> {[string()], pos_integer()}.
 get_job_list() ->

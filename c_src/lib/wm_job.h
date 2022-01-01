@@ -32,7 +32,6 @@ class SwmJob:SwmEntity {
   void set_cluster_id(const std::string&);
   void set_nodes(const std::vector<std::string>&);
   void set_state(const std::string&);
-  void set_job_class(const std::vector<std::string>&);
   void set_start_time(const std::string&);
   void set_submit_time(const std::string&);
   void set_end_time(const std::string&);
@@ -47,11 +46,9 @@ class SwmJob:SwmEntity {
   void set_hooks(const std::vector<std::string>&);
   void set_env(const std::vector<SwmTupleStrStr>&);
   void set_deps(const std::vector<SwmTupleAtomStr>&);
-  void set_steps(const std::vector<std::string>&);
   void set_projects(const std::vector<uint64_t>&);
   void set_account_id(const std::string&);
   void set_gang_id(const std::string&);
-  void set_task_id(const std::string&);
   void set_execution_path(const std::string&);
   void set_script_content(const std::string&);
   void set_request(const std::vector<SwmResource>&);
@@ -69,7 +66,6 @@ class SwmJob:SwmEntity {
   std::string get_cluster_id() const;
   std::vector<std::string> get_nodes() const;
   std::string get_state() const;
-  std::vector<std::string> get_job_class() const;
   std::string get_start_time() const;
   std::string get_submit_time() const;
   std::string get_end_time() const;
@@ -84,11 +80,9 @@ class SwmJob:SwmEntity {
   std::vector<std::string> get_hooks() const;
   std::vector<SwmTupleStrStr> get_env() const;
   std::vector<SwmTupleAtomStr> get_deps() const;
-  std::vector<std::string> get_steps() const;
   std::vector<uint64_t> get_projects() const;
   std::string get_account_id() const;
   std::string get_gang_id() const;
-  std::string get_task_id() const;
   std::string get_execution_path() const;
   std::string get_script_content() const;
   std::vector<SwmResource> get_request() const;
@@ -107,7 +101,6 @@ class SwmJob:SwmEntity {
   std::string cluster_id;
   std::vector<std::string> nodes;
   std::string state;
-  std::vector<std::string> job_class;
   std::string start_time;
   std::string submit_time;
   std::string end_time;
@@ -122,11 +115,9 @@ class SwmJob:SwmEntity {
   std::vector<std::string> hooks;
   std::vector<SwmTupleStrStr> env;
   std::vector<SwmTupleAtomStr> deps;
-  std::vector<std::string> steps;
   std::vector<uint64_t> projects;
   std::string account_id;
   std::string gang_id;
-  std::string task_id;
   std::string execution_path;
   std::string script_content;
   std::vector<SwmResource> request;

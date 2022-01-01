@@ -264,13 +264,19 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: Signal if job is terminated
+          description: Signal if job is terminated with a signal
         node_names:
           type: array
           items:
             type: string
             format: hostname
-          description: List of node names allocated for job
+          description: List of hostnames of nodes allocated for job
+        node_ips:
+          type: array
+          items:
+            type: string
+            format: ipv4
+          description: List of node IP addresses allocated for job
         remote_id:
           type: string
           format: uuid
@@ -291,7 +297,7 @@ components:
           description: List of resources that are actually allocated for job
         comment:
           type: string
-          description: Job comment string
+          description: A comment associated with job
 
     Flavor:
       title: Flavor
