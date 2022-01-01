@@ -53,7 +53,7 @@ def run(exe, args, env, exit_on_fail = True, verbose = True, user = None):
         return list(filter(None, x.decode("utf-8", "strict").split("\n")))
 
     cmdline = exe + ' ' + ' '.join(args)
-    if user:
+    if user == "root":
         cmdline = f"runuser -u {user} {cmdline}"
     LOG.info("Run " + "'" + cmdline + "'")
     filename = os.path.basename(exe)

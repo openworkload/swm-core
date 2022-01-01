@@ -15,7 +15,7 @@ export SWM_VERSION_DIR=${SWM_ROOT}
 echo
 echo "=============== SETUP CLUSTER HEAD ================"
 export SWM_API_PORT=10011
-${ROOT_DIR}/scripts/setup.linux -x -t -v $SWM_VERSION -p $SWM_ROOT -s $SWM_SPOOL -c $CONFIG_BASE -d cluster
+${ROOT_DIR}/scripts/setup.linux -x -t -v $SWM_VERSION -p $SWM_ROOT -s $SWM_SPOOL -c $CONFIG_BASE -d cluster -u $USER
 EXIT_CODE=$?
 if [ "$EXIT_CODE" != "0" ]; then
   echo "Cluster setup command failed with code $EXIT_CODE"
@@ -83,6 +83,8 @@ function import_config() {
 }
 
 # TODO: create sym links to porter and other scripts in /opt/swm from sources
+echo "Create symlink ~/.swm/spool --> /opt/swm/spool"
+ln -s /opt/swm/spool ~/.swm/spool
 
 echo
 echo "Stop swm"
