@@ -15,6 +15,8 @@ case "$(uname -s)" in
   Darwin*)    USER=root;;
 esac
 
+JUPUTER_HUB_API_PORT=8081
+JUPUTER_HUB_PORT=8000
 RUNNING=$(${DOCKER} inspect -f '{{.State.Running}}' ${CONTAINER_NAME})
 if [ "$?" = "1" ]; then
   ${DOCKER} run\
@@ -37,6 +39,8 @@ if [ "$?" = "1" ]; then
     -p 10000:10000\
     -p 10011:10011\
     -p 8443:8443\
+    -p $JUPUTER_HUB_PORT:$JUPUTER_HUB_PORT\
+    -p $JUPUTER_HUB_API_PORT:$JUPUTER_HUB_API_PORT\
     ${IMAGE_NAME}\
     runuser -u ${USER} /bin/bash
 else

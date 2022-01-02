@@ -7,6 +7,7 @@ JOB_SCRIPT_BODY=$(cat <<-EOF
 # SWM flavor m1.small
 date
 hostname
+sleep 100000
 EOF
 )
 

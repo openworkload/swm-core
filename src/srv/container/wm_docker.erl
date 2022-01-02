@@ -191,6 +191,12 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term12 = jwalk:set({"ExposedPorts"}, Term11, get_container_ports(Request)),
     jsx:encode(Term12).
 
+-spec get_extra_hosts() -> [string()].
+get_extra_hosts() ->
+    IP = os:cmd("route -n | awk '/UG[ \t]/{print $2}' | tr -d '\n'"),  % docker host IP
+    HostAndIp = "swm_server_host:" ++ IP,
+    [list_to_binary(HostAndIp)].
+
 -spec get_container_ports([#resource{}]) -> map().
 get_container_ports([]) ->
     #{};
@@ -291,8 +297,9 @@ get_finalize_cmd(Job) ->
             BGID = list_to_binary(GID),
             ContID = wm_entity:get_attr(container, Job),
             FinScript = os:getenv("SWM_FINALIZE_IN_CONTAINER", ?SWM_FINALIZE_IN_CONTAINER),
-            ?LOG_DEBUG("Finalize ~p: ~p ~p ~p", [ContID, FinScript, BUID, BGID]),
-            W = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID,
+            HostIP = os:cmd("route -n | awk '/UG[ \t]/{print $2}' | tr -d '\n'"),  % docker host IP
+            ?LOG_DEBUG("Finalize ~p: ~p ~p ~p ~p", [ContID, FinScript, BUID, BGID, HostIP]),
+            W = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID ++ " " ++ HostIP,
             [<<"/bin/bash">>, <<"-c">>, list_to_binary(W)]
     end.
 

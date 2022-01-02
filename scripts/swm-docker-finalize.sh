@@ -5,11 +5,12 @@ set -x
 LOG=/tmp/swm-docker-finalize.log
 PROGRAM_NAME=$0
 
-if [ $# -eq 3 ]; then
+if [ $# -eq 4 ]; then
 
     USER_NAME=$1
     UID=$2
     GID=$3
+    SWM_SERVER_IP=$4
 
     echo >> $LOG
     date -u +"%Y-%m-%dT%H:%M:%SZ" >> $LOG
@@ -53,6 +54,10 @@ if [ $# -eq 3 ]; then
         echo "Could not add user ${USER_NAME} with uid=$UID" >> $LOG
         exit 2
     fi
+
+    echo "Add SWM server IP $SWM_SERVER_IP to /etc/hosts"
+    echo >> /etc/hosts
+    echo "$SWM_SERVER_IP swm_server_host" >> /etc/hosts
 
 else
     MSG="Usage: ${PROGRAM_NAME} USER_NAME UID GID"
