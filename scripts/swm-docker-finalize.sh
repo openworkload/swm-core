@@ -43,8 +43,8 @@ if [ $# -eq 4 ]; then
         echo "New user will be added: ${USER_NAME}" >> $LOG
         adduser --uid $UID\
                 --gid $GID\
-                --system\
                 --no-create-home\
+                --home=/home/${USER_NAME}\
                 --disabled-password\
                 ${USER_NAME} 2>&1 >> $LOG
     fi

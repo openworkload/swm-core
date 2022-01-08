@@ -895,9 +895,11 @@
       "type": "account_id()"
     },
     "default_image_id": {
+      "default": "",
       "type": "image_id()"
     },
     "default_flavor_id": {
+      "default": "",
       "type": "node_id()"
     },
     "name": {

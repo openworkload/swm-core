@@ -31,6 +31,7 @@ DOCKER_SOCKET=/var/run/docker.sock
 X11_SOCKET=/tmp/.X11-unix
 HOST_SPOOL=${HOME}/.swm-spool
 
+HOST_IP=$(ip addr list ${BRIDGE} |grep "inet " |cut -d' ' -f6|cut -d/ -f1)
 RUNNING=$(${DOCKER} inspect -f '{{.State.Running}}' ${CONTAINER_NAME})
 INSPECTATION_CODE=$?
 
@@ -55,6 +56,7 @@ if [ $INTERACTIVE ]; then
             --name ${CONTAINER_NAME}\
             --hostname $(hostname)\
             --domainname=skyworkflows.com\
+            --add-host host:${HOST_IP}\
             --workdir ${PWD}\
             --tty\
             --interactive\

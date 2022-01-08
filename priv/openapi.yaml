@@ -389,6 +389,7 @@ components:
           enum:
             - idle
             - stopped
+            - offline
             - busy
         resources:
           type: array

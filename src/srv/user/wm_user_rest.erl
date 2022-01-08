@@ -220,9 +220,17 @@ job_to_json(Job, FullJson) ->
 
 -spec nodes_to_ips([#node{}]) -> [string()].
 nodes_to_ips(Nodes) ->
+    {ok, SelfHostname} = inet:gethostname(),
     Hostnames = [wm_entity:get_attr(host, Node) || Node <- Nodes],
     lists:map(fun(Hostname) ->
-                 case inet:getaddr(Hostname, inet) of
+                 HostnameToResolve =
+                     case hd(string:split(Hostname, ".")) of
+                         SelfHostname ->
+                             "host";
+                         _ ->
+                             Hostname
+                     end,
+                 case inet:getaddr(HostnameToResolve, inet) of
                      {ok, IP} ->
                          list_to_binary(inet:ntoa(IP));
                      _ ->
