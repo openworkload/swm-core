@@ -114,22 +114,22 @@ get_flavors_info(Req) ->
     FlavorNodes = gen_server:call(wm_user, {list, [flavor], Limit}),
     F = fun(FlavorNode, FullJson) ->
            RemoteId = wm_entity:get_attr(remote_id, FlavorNode),
-           case wm_conf:select(remote, {id, RemoteId}) of
-               {ok, Remote} ->
-                   AccountId = wm_entity:get_attr(account_id, Remote),
-                   FlavorJson =
-                       jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, FlavorNode)),
-                                    name => list_to_binary(wm_entity:get_attr(name, FlavorNode)),
-                                    remote_id => list_to_binary(RemoteId),
-                                    resources =>
-                                        wm_user_json:get_resources_json(
-                                            wm_entity:get_attr(resources, FlavorNode)),
-                                    price => maps:get(AccountId, wm_entity:get_attr(prices, FlavorNode), 0)}),
-                   [binary_to_list(FlavorJson) | FullJson];
-               {error, not_found} ->
-                   ?LOG_WARN("Remote not found when generate JSON: ~p", [RemoteId]),
-                   FullJson
-           end
+           AccountId =
+               case wm_conf:select(remote, {id, RemoteId}) of
+                   {ok, Remote} ->
+                       wm_entity:get_attr(account_id, Remote);
+                   {error, not_found} ->
+                       ""
+               end,
+           FlavorJson =
+               jsx:encode(#{id => list_to_binary(wm_entity:get_attr(id, FlavorNode)),
+                            name => list_to_binary(wm_entity:get_attr(name, FlavorNode)),
+                            remote_id => list_to_binary(RemoteId),
+                            resources =>
+                                wm_user_json:get_resources_json(
+                                    wm_entity:get_attr(resources, FlavorNode)),
+                            price => maps:get(AccountId, wm_entity:get_attr(prices, FlavorNode), 0)}),
+           [binary_to_list(FlavorJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], FlavorNodes),
     {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.

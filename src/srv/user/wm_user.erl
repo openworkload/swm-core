@@ -192,8 +192,7 @@ handle_request(cancel, Args, _) ->
     {string, Msg};
 handle_request(list, {[flavor], Limit}, _) ->
     Nodes = wm_conf:select(node, {all, Limit}),
-    NodesWithRemote = lists:filter(fun(X) -> wm_entity:get_attr(remote_id, X) =/= [] end, Nodes),
-    NodesWithRemote;
+    lists:filter(fun(X) -> wm_entity:get_attr(is_template, X) == true end, Nodes);
 handle_request(list, {Args, Limit}, _) ->
     ?LOG_DEBUG("List of ~p entities with limit ~p has been requested", [Args, Limit]),
     F = fun(X) -> wm_conf:select(X, {all, Limit}) end,
@@ -280,13 +279,14 @@ set_defaults(#job{workdir = [], id = JobId} = Job, Spool) ->
     set_defaults(wm_entity:set_attr({workdir, Spool ++ "/output/" ++ JobId}, Job), Spool);
 set_defaults(#job{account_id = [], user_id = UserId} = Job, Spool) ->
     % If account is not specified by user during job submission then use the user's main account
-    AccountId = case wm_conf:select(account, {admins, [UserId]}) of
-        {ok, Accounts} when is_list(Accounts) ->
-            %TODO Handle case: multiple accounts are administrated by same user
-            wm_entity:get_attr(id, hd(Accounts));
-        {ok, Account} ->
-            wm_entity:get_attr(id, Account)
-    end,
+    AccountId =
+        case wm_conf:select(account, {admins, [UserId]}) of
+            {ok, Accounts} when is_list(Accounts) ->
+                %TODO Handle case: multiple accounts are administrated by same user
+                wm_entity:get_attr(id, hd(Accounts));
+            {ok, Account} ->
+                wm_entity:get_attr(id, Account)
+        end,
     set_defaults(wm_entity:set_attr({account_id, AccountId}, Job), Spool);
 set_defaults(Job, _) ->
     Job.
