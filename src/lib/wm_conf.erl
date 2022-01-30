@@ -329,7 +329,6 @@ handle_call({select_api_port, NodeName}, _From, MState) ->
             {reply, {port, Port}, MState}
     end;
 handle_call({set, Records}, _From, MState) ->
-    ?LOG_DEBUG("Set ~p", [Records]),
     wm_db:ensure_tables_exist(Records),
     {reply, wm_db:update(Records), MState}.
 

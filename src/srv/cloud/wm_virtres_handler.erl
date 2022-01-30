@@ -111,9 +111,9 @@ delete_partition(PartId, Remote) ->
             {error, Error}
     end.
 
--spec spawn_partition(job_id(), #remote{}) -> {ok, string()} | {error, any()}.
-spawn_partition(JobId, Remote) ->
-    {ok, Job} = wm_conf:select(job, {id, JobId}),
+-spec spawn_partition(#job{}, #remote{}) -> {ok, string()} | {error, any()}.
+spawn_partition(Job, Remote) ->
+    JobId = wm_entity:get_atte(id, Job),
     PartName = get_partition_name(JobId),
     Options =
         #{name => PartName,

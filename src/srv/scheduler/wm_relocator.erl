@@ -317,7 +317,7 @@ start_new_virtres_processes() ->
                     ?LOG_DEBUG("Too many relocations (~p) when max=~p", [RelocationsNum, Max])
             end;
         {error, not_found} ->
-            ?LOG_DEBUG("No queued jobs found => nothing to relocate")
+            ok
     end,
     ok.
 

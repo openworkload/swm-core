@@ -266,8 +266,9 @@ cancel_jobs([JobId | T], Results) ->
             {ok, Job} ->
                 UpdatedJob = wm_entity:set_attr({state, ?JOB_STATE_CANCELLED}, Job),
                 1 = wm_conf:update([UpdatedJob]),
-                wm_relocator:cancel_relocation(Job),
-                %% TODO: free job's nodes if any have been already allocated
+                Process = wm_entity:set_attr([{state, ?JOB_STATE_CANCELLED}], wm_entity:new(process)),
+                EndTime = wm_utils:now_iso8601(without_ms),
+                wm_event:announce(job_cancelled, {JobId, Process, EndTime, node()}),
                 {cancelled, JobId};
             _ ->
                 {not_found, JobId}

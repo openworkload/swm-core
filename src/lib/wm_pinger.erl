@@ -153,7 +153,7 @@ code_change(_OldVsn, MState, _Extra) ->
 
 -spec do_wakeup(#mstate{}) -> #mstate{}.
 do_wakeup(MState = #mstate{nodes = Nodes}) ->
-    ?LOG_DEBUG("Nodes to ping: ~p", [Nodes]),
+    %?LOG_DEBUG("Nodes to ping: ~p", [Nodes]),
     NextS = wm_conf:g(pinger_period, {?DEFAULT_PINGER_PERIOD, integer}),
     Next = NextS * ?MICROSECONDS_IN_SECOND,
     Now1 = wm_utils:timestamp(second),

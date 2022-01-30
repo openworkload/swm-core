@@ -174,7 +174,8 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term11 = jwalk:set({"VolumesFrom"}, Term10, get_volumes_from()),
     Term12 = jwalk:set({"ExposedPorts"}, Term11, get_container_exposed_ports(Request)),
     Term13 = jwalk:set({"WorkingDir"}, Term12, <<"/tmp">>),
-    jsx:encode(Term13).
+    Term14 = jwalk:set({"AutoRemove"}, Term13, true),
+    jsx:encode(Term14).
 
 -spec get_volumes() -> map().
 get_volumes() ->

@@ -61,8 +61,12 @@ init(Args) ->
 handle_sync_event(_Event, _From, State, MState) ->
     {reply, State, State, MState}.
 
-handle_event(_Event, State, MState) ->
-    {next_state, State, MState}.
+handle_event({job_finished, Process}, _, #mstate{job = Job} = MState) ->
+    JobId = wm_entity:get_attr(id, Job),
+    ?LOG_DEBUG("Received event that job ~p is finished, process=~p", [JobId, Process]),
+    do_complete(Process, MState),
+    ?LOG_DEBUG("Job finished => exit"),
+    {stop, normal, MState}.
 
 handle_info({exit_status, ExitCode, _}, State, #mstate{} = MState) ->
     %TODO: get rid of this and use {completed, Exit, Signal}
@@ -276,7 +280,7 @@ do_announce_completed(Process, MState) ->
     EndTime = wm_utils:now_iso8601(without_ms),
     JobID = wm_entity:get_attr(id, MState#mstate.job),
     case wm_entity:get_attr(state, Process) of
-        ?JOB_STATE_FINISHED ->
+        X when X == ?JOB_STATE_FINISHED orelse X == ?JOB_STATE_CANCELLED ->
             EventData = {MState#mstate.task_id, {JobID, Process, EndTime, node()}},
             wm_event:announce(wm_proc_done, EventData);
         _ ->

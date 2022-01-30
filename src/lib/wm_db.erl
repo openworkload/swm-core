@@ -447,7 +447,6 @@ get_records(TabName) ->
 do_update([], Result) ->
     Result;
 do_update([{Rec, false} | T], Result) ->
-    ?LOG_DEBUG("Update DB with record: ~P (no revision change)", [Rec, 10]),
     F = fun() -> ok = mnesia:write(Rec) end,
     transaction(F),
     do_update(T, Result + 1);

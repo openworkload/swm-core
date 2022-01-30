@@ -156,7 +156,7 @@ do_cast_subscribers(EventType, EventData) ->
         true ->
             case wm_db:get_many(subscriber, event, [EventType]) of
                 [] ->
-                    ?LOG_DEBUG("No subscribers found for event: ~p", [EventType]);
+                    ?LOG_DEBUG("No subscribers found for event: '~p'", [EventType]);
                 Subscribers1 ->
                     F1 = fun(S) ->
                             Ref = wm_entity:get_attr(ref, S),
@@ -167,7 +167,7 @@ do_cast_subscribers(EventType, EventData) ->
             end,
             case wm_db:get_many(subscriber, event, [any_event]) of
                 [] ->
-                    ?LOG_DEBUG("No subscribers found for any event");
+                    ok;
                 Subscribers2 ->
                     F2 = fun(S) ->
                             Ref = wm_entity:get_attr(ref, S),

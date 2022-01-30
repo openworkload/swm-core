@@ -69,6 +69,7 @@ init(Args) ->
     ?LOG_INFO("Compute node management service has been started"),
     wm_event:subscribe(job_start_time, node(), ?MODULE),
     wm_event:subscribe(job_arrived, node(), ?MODULE),
+    wm_event:subscribe(job_cancelled, node(), ?MODULE),
     wm_event:subscribe(wm_proc_done, node(), ?MODULE),
     wm_event:subscribe(wm_commit_done, node(), ?MODULE),
     wm_event:subscribe(wm_commit_failed, node(), ?MODULE),
@@ -115,7 +116,18 @@ handle_event(wm_proc_done, {ProcID, {JobID, Process, EndTime, Node}}, MState) ->
     wm_event:announce(job_finished, {JobID, Process, EndTime, Node}),
     PsMap = maps:remove(JobID, MState#mstate.processes),
     MState#mstate{processes = PsMap};
+handle_event(job_cancelled, {JobID, Process, EndTime, Node}, MState) ->
+    ?LOG_DEBUG("Job cancelled: ~p, process: ~p", [JobID, Process]),
+    update_job(JobID, process, Process),
+    update_job(JobID, end_time, EndTime),
+    set_nodes_alloc_state(onprem, idle, JobID),
+    event_to_parent({event, job_finished, {JobID, Process, EndTime, Node}}),
+    wm_event:announce(job_finished, {JobID, Process, EndTime, Node}),
+    JobProcesses = maps:get(JobID, MState#mstate.processes, maps:new()),
+    maps:map(fun(ProcId, _) -> ok = wm_factory:send_event_locally({job_finished, Process}, proc, ProcId) end, JobProcesses),
+    MState;
 handle_event(job_finished, {JobID, Process, EndTime, Node}, MState) ->
+    ?LOG_DEBUG("Job finished: ~p, process: ~p", [JobID, Process]),
     update_job(JobID, process, Process),
     update_job(JobID, end_time, EndTime),
     set_nodes_alloc_state(onprem, idle, JobID),
@@ -210,13 +222,13 @@ update_job(JobID, process, Process) ->
 update_job(JobID, Attr, NewState) ->
     case wm_conf:select(job, {id, JobID}) of
         {ok, Job1} ->
-            case wm_entity:get_attr(Attr, Job1) of
-                "F" ->
+            case wm_entity:get_attr(state, Job1) of
+                ?JOB_STATE_FINISHED ->
                     ?LOG_DEBUG("Job ~p is finished: ~p won't be changed", [JobID, Attr]);
                 OldState ->
-                    ?LOG_DEBUG("Job ~p ~p ~p -> ~p", [JobID, Attr, OldState, NewState]),
+                    ?LOG_DEBUG("Job update: id=~p, ~p: ~p -> ~p", [JobID, Attr, OldState, NewState]),
                     Job2 = wm_entity:set_attr({Attr, NewState}, Job1),
-                    wm_conf:update([Job2])
+                    1 = wm_conf:update([Job2])
             end;
         _ ->
             ok
