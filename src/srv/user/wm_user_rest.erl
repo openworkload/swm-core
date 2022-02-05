@@ -13,6 +13,7 @@
 -define(JOB_SUBMISSION_SCRIPT_SIZE_MAX, 16000000).
 -define(JOB_SUBMISSION_SCRIPT_WAIT_TIME, 15000).
 -define(JOB_ID_SIZE, 36).
+-define(SUBMISSION_HEADER, "\r\nContent-Disposition: form-data; name=\"script_content\"\r\n\r\n").
 
 -record(mstate, {}).
 
@@ -296,6 +297,18 @@ submit_job(Req) ->
     end.
 
 -spec do_submit_jobscript(string(), binary(), binary()) -> {string(), pos_integer()} | {error, pos_integer()}.
+do_submit_jobscript(JobScriptPath, <<"--", Boundary:32/binary, ?SUBMISSION_HEADER, Tail/bitstring>>, CertBin) ->
+    % Parse multipart request body, see https://swagger.io/docs/specification/describing-request-body/file-upload
+    TailStr = binary_to_list(Tail),
+    BoundaryStr = binary_to_list(Boundary),
+    case string:rstr(TailStr, "\r\n--" ++ BoundaryStr) of
+      0 ->
+          ?LOG_WARN("Wrong HTTP body format: ~p", [TailStr]),
+          {error, ?HTTP_CODE_BAD_REQUEST};
+      JobScriptContentEndPosition ->
+          NewJobScriptContent = string:substr(TailStr, 1, JobScriptContentEndPosition - 1),
+          do_submit_jobscript(JobScriptPath, NewJobScriptContent, CertBin)
+    end;
 do_submit_jobscript(JobScriptPath, JobScriptContent, CertBin) ->
     case get_username_from_cert(CertBin) of
         {error, Error} ->

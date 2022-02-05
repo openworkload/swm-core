@@ -10,8 +10,10 @@
 %% ============================================================================
 
 -spec parse(string()) -> tuple().
-parse(JobScriptContent) ->
-    Lines = string:tokens(binary_to_list(JobScriptContent), "\n"),
+parse(JobScriptContent) when is_binary(JobScriptContent) ->
+  parse(binary_to_list(JobScriptContent));
+parse(JobScriptContent) when is_list(JobScriptContent) ->
+    Lines = string:tokens(JobScriptContent, "\n"),
     Job1 = wm_entity:new(job),
     Job2 = do_parse(Lines, Job1),
     ?LOG_DEBUG("Parsed job: ~p", [Job2]),

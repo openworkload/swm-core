@@ -59,6 +59,7 @@ paths:
       summary: Submit a new job script
       description: 'A new job is submitted with a specific job script'
       requestBody:
+        description: Job script content
         required: true
         content:
           multipart/form-data:
