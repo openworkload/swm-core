@@ -104,7 +104,7 @@ start_downloading(PartMgrNodeID, JobId) ->
 delete_partition(PartId, Remote) ->
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
-            PartName = wm_entity:get_atter(name, Partition),
+            PartName = wm_entity:get_attr(name, Partition),
             {ok, Creds} = get_credentials(Remote),
             wm_gate:delete_partition(self(), Remote, Creds, PartName);
         {error, Error} ->
@@ -113,7 +113,7 @@ delete_partition(PartId, Remote) ->
 
 -spec spawn_partition(#job{}, #remote{}) -> {ok, string()} | {error, any()}.
 spawn_partition(Job, Remote) ->
-    JobId = wm_entity:get_atte(id, Job),
+    JobId = wm_entity:get_attr(id, Job),
     PartName = get_partition_name(JobId),
     Options =
         #{name => PartName,

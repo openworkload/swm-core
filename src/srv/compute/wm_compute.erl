@@ -204,8 +204,7 @@ handle_timetable([X | T], MState) ->
 start_job_processes(JobNodes, JobID, MState) ->
     ?LOG_DEBUG("Start process for job ~p", [JobID]),
     %TODO Calculate number of processes for this node and start/follow all of them with separate wm_procs
-    {ok, Job} = wm_conf:select(job, {id, JobID}),
-    {ok, ProcID} = wm_factory:new(proc, Job, JobNodes),
+    {ok, ProcID} = wm_factory:new(proc, JobID, JobNodes),
     add_proc(JobID, ProcID, JobNodes, MState).
 
 -spec add_proc(job_id(), string(), [#node{}], #mstate{}) -> #mstate{}.
@@ -219,17 +218,14 @@ update_job(JobID, process, Process) ->
     update_job(JobID, state, wm_entity:get_attr(state, Process)),
     update_job(JobID, exitcode, wm_entity:get_attr(exitcode, Process)),
     update_job(JobID, signal, wm_entity:get_attr(signal, Process));
-update_job(JobID, Attr, NewState) ->
+update_job(JobID, Attr, NewValue) ->
     case wm_conf:select(job, {id, JobID}) of
         {ok, Job1} ->
-            case wm_entity:get_attr(state, Job1) of
-                ?JOB_STATE_FINISHED ->
-                    ?LOG_DEBUG("Job ~p is finished: ~p won't be changed", [JobID, Attr]);
-                OldState ->
-                    ?LOG_DEBUG("Job update: id=~p, ~p: ~p -> ~p", [JobID, Attr, OldState, NewState]),
-                    Job2 = wm_entity:set_attr({Attr, NewState}, Job1),
-                    1 = wm_conf:update([Job2])
-            end;
+            OldValue = wm_entity:get_attr(Attr, Job1),
+            ?LOG_DEBUG("Job update: id=~p, ~p: ~p -> ~p", [JobID, Attr, OldValue, NewValue]),
+            Job2 = wm_entity:set_attr({Attr, NewValue}, Job1),
+            1 = wm_conf:update([Job2]),
+            ok;
         _ ->
             ok
     end.

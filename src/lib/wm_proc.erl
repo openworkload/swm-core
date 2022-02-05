@@ -14,7 +14,7 @@
 -define(SWM_EXEC_METHOD, "docker").
 -define(SWM_PORTER_IN_CONTAINER, "/opt/swm/current/bin/swm-porter").
 
--record(mstate, {task_id :: string(), job :: #job{}}).
+-record(mstate, {task_id :: string(), job_id :: job_id()}).
 
 %% ============================================================================
 %% Module API
@@ -54,15 +54,14 @@ start_link(Args) ->
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
-    ?LOG_INFO("Process manager has been started (~p)", [get_id(MState)]),
-    wm_factory:notify_initiated(proc, get_id(MState)),
+    ?LOG_INFO("Process manager has been started (~p)", [MState#mstate.task_id]),
+    wm_factory:notify_initiated(proc, MState#mstate.task_id),
     {ok, sleeping, MState}.
 
 handle_sync_event(_Event, _From, State, MState) ->
     {reply, State, State, MState}.
 
-handle_event({job_finished, Process}, _, #mstate{job = Job} = MState) ->
-    JobId = wm_entity:get_attr(id, Job),
+handle_event({job_finished, Process}, _, #mstate{job_id = JobId} = MState) ->
     ?LOG_DEBUG("Received event that job ~p is finished, process=~p", [JobId, Process]),
     do_complete(Process, MState),
     ?LOG_DEBUG("Job finished => exit"),
@@ -77,15 +76,15 @@ handle_info({output, BinOut, From}, State, #mstate{} = MState) ->
     ?LOG_DEBUG("Porter output: ~p (from ~p)", [Process, From]),
     do_announce_completed(Process, MState),
     {next_state, State, MState};
-handle_info({'EXIT', Proc, normal}, State, #mstate{} = MState) ->
-    ?LOG_DEBUG("Process ~p has finished normally (~p)", [Proc, get_id(MState)]),
+handle_info({'EXIT', Proc, normal}, State, #mstate{task_id = TaskId} = MState) ->
+    ?LOG_DEBUG("Process ~p has finished normally (~p)", [Proc, TaskId]),
     {next_state, State, MState}.
 
 code_change(_, State, MState, _) ->
     {ok, State, MState}.
 
-terminate(Status, State, MState) ->
-    Msg = io_lib:format("proc ~p has been terminated (status=~p, state=~p)", [get_id(MState), Status, State]),
+terminate(Status, State, #mstate{task_id = TaskId} = MState) ->
+    Msg = io_lib:format("proc ~p has been terminated (status=~p, state=~p)", [TaskId, Status, State]),
     wm_utils:terminate_msg(?MODULE, Msg).
 
 %% ============================================================================
@@ -93,30 +92,31 @@ terminate(Status, State, MState) ->
 %% ============================================================================
 
 -spec sleeping(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-sleeping(activate, MState) ->
-    ?LOG_DEBUG("Received 'activate' [sleeping] (~p)", [get_id(MState)]),
-    MState2 = execute(MState),
-    {next_state, running, MState2}.
+sleeping(activate, #mstate{task_id = TaskId} = MState) ->
+    ?LOG_DEBUG("Received 'activate' [sleeping] (~p)", [TaskId]),
+    execute(MState),
+    {next_state, running, MState}.
 
 -spec running(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-running({started, JobID}, #mstate{} = MState) ->
-    ?LOG_DEBUG("Job ~p has been started", [JobID]),
-    wm_event:announce(proc_started, {JobID, node()}),
-    case wm_utils:get_job_user(MState#mstate.job) of
+running({started, JobId}, #mstate{} = MState) ->
+    ?LOG_DEBUG("Job ~p has been started", [JobId]),
+    wm_event:announce(proc_started, {JobId, node()}),
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    case wm_utils:get_job_user(Job) of
         {ok, User} ->
             init_porter(User, MState);
         Error ->
-            ?LOG_ERROR("Didn't find user for job ~p: ~p", [MState#mstate.job, Error])
+            ?LOG_ERROR("Didn't find user for job ~p: ~p", [Job, Error])
     end,
     {next_state, running, MState};
-running({sent, JobID}, #mstate{} = MState) ->
-    ?LOG_DEBUG("Message to ~p has been sent", [JobID]),
+running({sent, JobId}, #mstate{} = MState) ->
+    ?LOG_DEBUG("Message to ~p has been sent", [JobId]),
     {next_state, running, MState};
-running({{process, Process}, _JobID}, #mstate{} = MState) ->
+running({{process, Process}, _JobId}, #mstate{} = MState) ->
     do_check(Process, MState).
 
 -spec finished(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-finished({{process, Process}, _JobID}, #mstate{} = MState) ->
+finished({{process, Process}, _JobId}, #mstate{} = MState) ->
     do_check(Process, MState);
 finished({completed, Process}, #mstate{} = MState) ->
     do_complete(Process, MState),
@@ -124,7 +124,7 @@ finished({completed, Process}, #mstate{} = MState) ->
     {stop, normal, MState}.
 
 -spec error(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-error({{process, Process}, _JobID}, #mstate{} = MState) ->
+error({{process, Process}, _JobId}, #mstate{} = MState) ->
     do_check(Process, MState).
 
 %% ============================================================================
@@ -134,19 +134,19 @@ error({{process, Process}, _JobID}, #mstate{} = MState) ->
 -spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
-parse_args([{extra, Job} | T], MState) ->
-    parse_args(T, MState#mstate{job = Job});
-parse_args([{task_id, ID} | T], MState) ->
-    parse_args(T, MState#mstate{task_id = ID});
+parse_args([{extra, JobId} | T], MState) ->
+    parse_args(T, MState#mstate{job_id = JobId});
+parse_args([{task_id, TaskId} | T], MState) ->
+    parse_args(T, MState#mstate{task_id = TaskId});
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
--spec execute(#mstate{}) -> #mstate{}.
-execute(MState) ->
-    Job = MState#mstate.job,
+-spec execute(#mstate{}) -> ok.
+execute(#mstate{job_id = JobId} = MState) ->
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
     case wm_utils:get_job_user(Job) of
         {error, not_found} ->
-            MState;
+            ok;
         {ok, User} ->
             Path = wm_entity:get_attr(execution_path, Job),
             ProcEnvs =
@@ -162,11 +162,12 @@ execute(MState) ->
             case wm_conf:g(execution_method, {?SWM_EXEC_METHOD, string}) of
                 "native" ->
                     run_native_process(Job, Porter, ProcEnvs, User),
-                    MState;
+                    ok;
                 "docker" ->
                     ok = ensure_workdir_exists(Job),
                     {ok, NewJob} = wm_container:run(Job, Porter, ProcEnvs, self()),
-                    MState#mstate{job = NewJob}
+                    1 = wm_conf:update([NewJob]),
+                    ok
             end
     end.
 
@@ -188,9 +189,8 @@ get_porter_path() ->
     wm_utils:unroll_symlink(Porter2).
 
 -spec run_native_process(#job{}, string(), list(), #user{}) -> ok.
-run_native_process(Job, Porter, ProcEnvs, User) ->
+run_native_process(#job{id = JobId} = Job, Porter, ProcEnvs, User) ->
     WmPortArgs = [{exec, Porter ++ " -d"}],
-    JobID = wm_entity:get_attr(id, Job),
     case wm_port:start_link(WmPortArgs) of
         {ok, Pid} ->
             T = wm_conf:g(proc_start_timeout, {?SWM_PROC_START_TIMEOUT, integer}),
@@ -201,11 +201,11 @@ run_native_process(Job, Porter, ProcEnvs, User) ->
                     wm_port:subscribe(Pid),
                     BinIn = prepare_porter_input(Job, User),
                     wm_port:cast(Pid, BinIn),
-                    ?LOG_DEBUG("Job ~p has been started for user ~p", [JobID, User]),
-                    wm_event:announce(proc_started, {JobID, node()});
+                    ?LOG_DEBUG("Job ~p has been started for user ~p", [JobId, User]),
+                    wm_event:announce(proc_started, {JobId, node()});
                 Error ->
                     ?LOG_ERROR("Could not start ~p: ~p", [Porter, Error]),
-                    wm_event:announce(proc_failed, {JobID, node()})
+                    wm_event:announce(proc_failed, {JobId, node()})
             end;
         {error, ErrorMsg} ->
             ?LOG_ERROR("Cannot start wm_port with args ~p: ~p", [WmPortArgs, ErrorMsg])
@@ -228,12 +228,12 @@ prepare_porter_input(Job, User) ->
       JobBin/binary>>.
 
 -spec do_check(#process{}, #mstate{}) -> #mstate{}.
-do_check(Process, MState) ->
+do_check(Process, #mstate{task_id = TaskId} = MState) ->
     Pid = wm_entity:get_attr(pid, Process),
     State = wm_entity:get_attr(state, Process),
     ExitCode = wm_entity:get_attr(exitcode, Process),
     Signal = wm_entity:get_attr(signal, Process),
-    ?LOG_DEBUG("Process update: pid=~p state=~p exit=~p sig=~p [~p]", [Pid, State, ExitCode, Signal, get_id(MState)]),
+    ?LOG_DEBUG("Process update: pid=~p state=~p exit=~p sig=~p [~p]", [Pid, State, ExitCode, Signal, TaskId]),
     case State of
         ?JOB_STATE_RUNNING ->
             {next_state, running, MState};
@@ -245,27 +245,22 @@ do_check(Process, MState) ->
             {next_state, error, MState}
     end.
 
--spec get_id(#mstate{}) -> string().
-get_id(MState) ->
-    MState#mstate.task_id.
-
 -spec init_porter(#user{}, #mstate{}) -> ok.
-init_porter(User, MState) ->
-    JobID = wm_entity:get_attr(id, MState#mstate.job),
-    ?LOG_DEBUG("Init porter for ~p", [JobID]),
-    BinIn = prepare_porter_input(MState#mstate.job, User),
+init_porter(User, #mstate{job_id = JobId}) ->
+    ?LOG_DEBUG("Init porter for ~p", [JobId]),
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    BinIn = prepare_porter_input(Job, User),
     ?LOG_DEBUG("Porter input size for user ~p: ~p", [User, byte_size(BinIn)]),
-    wm_container:communicate(MState#mstate.job, BinIn, self()).
-
+    wm_container:communicate(Job, BinIn, self()).
 -spec do_complete(#process{}, #mstate{}) -> #mstate{}.
-do_complete(Process, MState) ->
+do_complete(Process, #mstate{job_id = JobId} = MState) ->
     Exit = wm_entity:get_attr(pid, Process),
     State = wm_entity:get_attr(state, Process),
     Sig = wm_entity:get_attr(signal, Process),
     Comment = wm_entity:get_attr(comment, Process),
-    JobID = wm_entity:get_attr(id, MState#mstate.job),
-    ?LOG_INFO("Job ~p has finished (~p/~p/~p)", [JobID, State, Exit, Sig]),
-    Job2 = wm_entity:set_attr({exitcode, Exit}, MState#mstate.job),
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    ?LOG_INFO("Job ~p has finished (~p/~p/~p)", [JobId, State, Exit, Sig]),
+    Job2 = wm_entity:set_attr({exitcode, Exit}, Job),
     Job3 = wm_entity:set_attr({signal, Sig}, Job2),
     Job4 = wm_entity:set_attr({comment, Comment}, Job3),
     Job5 = wm_entity:set_attr({state, State}, Job4),
@@ -276,12 +271,11 @@ do_complete(Process, MState) ->
     do_announce_completed(Process, MState).
 
 -spec do_announce_completed(#process{}, #mstate{}) -> ok.
-do_announce_completed(Process, MState) ->
+do_announce_completed(Process, #mstate{job_id = JobId} = MState) ->
     EndTime = wm_utils:now_iso8601(without_ms),
-    JobID = wm_entity:get_attr(id, MState#mstate.job),
     case wm_entity:get_attr(state, Process) of
         X when X == ?JOB_STATE_FINISHED orelse X == ?JOB_STATE_CANCELLED ->
-            EventData = {MState#mstate.task_id, {JobID, Process, EndTime, node()}},
+            EventData = {MState#mstate.task_id, {JobId, Process, EndTime, node()}},
             wm_event:announce(wm_proc_done, EventData);
         _ ->
             ok
