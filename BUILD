@@ -19,9 +19,9 @@ install kerl from https://github.com/yrashk/kerl
 sudo apt-get install libgtk-3-dev build-essential libncurses5-dev openssl libssl-dev fop xsltproc unixodbc-dev # for erlang distribution build
 KERL_CONFIGURE_OPTIONS="--disable-hipe --enable-smp-support --enable-threads  --enable-kernel-poll --with-ssl"
 kerl update releases
-kerl build 22.3 22_3_SSL
+kerl build 24.2 24_2_SSL
 mkdir -p /usr/erlang
-kerl install 22_3_SSL /usr/erlang
+kerl install 24_2_SSL /usr/erlang
 . /usr/erlang/activate
 ```
 

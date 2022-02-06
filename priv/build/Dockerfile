@@ -3,16 +3,16 @@
 # everything required for SWM build (including Erlang).               #
 # Example:                                                            #
 # cd ~/projects/swm-core/priv/build                                   #
-# docker build -t swm-build:22.3 .                                    #
+# docker build -t swm-build:24.2 .                                    #
 # cd ~projects/swm-core                                               #
-# docker run -v `pwd`:/tmp/swm -ti swm-build:22.3 \                   #
+# docker run -v `pwd`:/tmp/swm -ti swm-build:24.2 \                   #
 #  /bin/bash -c "make && make release"                                #
 #######################################################################
 
 FROM ubuntu:18.04
 
-ENV ERL_VER="22.3"
-ENV ERL_TAG="22_3_SSL"
+ENV ERL_VER="24.2"
+ENV ERL_TAG="24_2_SSL"
 ENV KERL_CONFIGURE_OPTIONS="--without-odbc\
                             --disable-hipe\
                             --enable-smp-support\

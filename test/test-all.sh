@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-IMAGE_TAG="22.3"
+IMAGE_TAG="24.2"
 IMAGE=swm-build:${IMAGE_TAG}
 
 case "$(uname -s)" in
