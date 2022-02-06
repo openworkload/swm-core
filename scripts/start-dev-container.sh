@@ -3,7 +3,7 @@
 set -x
 
 DOCKER=docker
-IMAGE_NAME=swm-build:22.3
+IMAGE_NAME=swm-build:24.2
 DOCKER_SOCKET=/var/run/docker.sock
 X11_SOCKET=/tmp/.X11-unix
 CONTAINER_NAME=swm-dev
