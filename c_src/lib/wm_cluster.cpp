@@ -1,12 +1,9 @@
-
-
 #include "wm_entity_utils.h"
 
 #include <iostream>
 
 #include "wm_cluster.h"
 
-#include <erl_interface.h>
 #include <ei.h>
 
 #include "wm_resource.h"
@@ -17,66 +14,86 @@ using namespace swm;
 SwmCluster::SwmCluster() {
 }
 
-SwmCluster::SwmCluster(ETERM *term) {
-  if(!term) {
-    std::cerr << "Cannot convert ETERM to SwmCluster: empty" << std::endl;
+SwmCluster::SwmCluster(const char* buf) {
+  if (!buf) {
+    std::cerr << "Cannot convert ei buffer into SwmCluster: empty" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 2, id)) {
-    std::cerr << "Could not initialize cluster paremeter at position 2" << std::endl;
-    erl_print_term(stderr, term);
+
+  int term_size = 0;
+  int index = 0;
+
+  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
+    std::cerr << "Cannot decode SwmCluster header from ei buffer" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 3, name)) {
-    std::cerr << "Could not initialize cluster paremeter at position 3" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->id)) {
+    std::cerr << "Could not initialize cluster property at position=2" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_atom(term, 4, state)) {
-    std::cerr << "Could not initialize cluster paremeter at position 4" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->name)) {
+    std::cerr << "Could not initialize cluster property at position=3" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 5, manager)) {
-    std::cerr << "Could not initialize cluster paremeter at position 5" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_atom(buf, index, this->state)) {
+    std::cerr << "Could not initialize cluster property at position=4" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 6, partitions)) {
-    std::cerr << "Could not initialize cluster paremeter at position 6" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->manager)) {
+    std::cerr << "Could not initialize cluster property at position=5" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 7, hooks)) {
-    std::cerr << "Could not initialize cluster paremeter at position 7" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->partitions)) {
+    std::cerr << "Could not initialize cluster property at position=6" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 8, scheduler)) {
-    std::cerr << "Could not initialize cluster paremeter at position 8" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->hooks)) {
+    std::cerr << "Could not initialize cluster property at position=7" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_resource(term, 9, resources)) {
-    std::cerr << "Could not initialize cluster paremeter at position 9" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->scheduler)) {
+    std::cerr << "Could not initialize cluster property at position=8" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_tuple_atom_eterm(term, 10, properties)) {
-    std::cerr << "Could not initialize cluster paremeter at position 10" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_resource(buf, index, this->resources)) {
+    std::cerr << "Could not initialize cluster property at position=9" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 11, comment)) {
-    std::cerr << "Could not initialize cluster paremeter at position 11" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_tuple_atom_eterm(buf, index, this->properties)) {
+    std::cerr << "Could not initialize cluster property at position=10" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 12, revision)) {
-    std::cerr << "Could not initialize cluster paremeter at position 12" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->comment)) {
+    std::cerr << "Could not initialize cluster property at position=11" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
+
+  if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
+    std::cerr << "Could not initialize cluster property at position=12" << std::endl;
+    ei_print_term(stderr, buf, index);
+    return;
+  }
+
 }
 
 
@@ -170,27 +187,45 @@ uint64_t SwmCluster::get_revision() const {
 }
 
 
-int swm::eterm_to_cluster(ETERM* term, int pos, std::vector<SwmCluster> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if(!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a cluster list" << std::endl;
+int swm::ei_buffer_to_cluster(const char* buf, const int pos, std::vector<SwmCluster> &array) {
+  int term_size = 0
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << pos << std::endl;
     return -1;
   }
-  if(ERL_IS_EMPTY_LIST(elist)) {
+  if (term_type != ERL_LIST_EXT) {
+      std::cerr << "Could not parse term: not a cluster list at position " << pos << std::endl;
+      return -1;
+  }
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {
+    std::cerr << "Could not parse list for cluster at position " << pos << std::endl;
+    return -1;
+  }
+  if (list_size == 0) {
     return 0;
   }
-  const size_t sz = erl_length(elist);
-  array.reserve(sz);
-  for(size_t i=0; i<sz; ++i) {
-    ETERM* e = erl_hd(elist);
-    array.push_back(SwmCluster(e));
-    elist = erl_tl(elist);
+  array.reserve(list_size);
+  for (size_t i=0; i<list_size; ++i) {
+    ei_term term;
+    if (ei_decode_ei_term(buf, pos, &term) < 0) {
+      std::cerr << "Could not decode list element at position " << pos << std::endl;
+      return -1;
+    }
+    array.push_back(SwmCluster(term));
   }
   return 0;
 }
 
 
-int swm::eterm_to_cluster(ETERM* eterm, SwmCluster &obj) {
+int swm::eterm_to_cluster(char* buf, SwmCluster &obj) {
+  ei_term term;
+  if (ei_decode_ei_term(buf, 0, &term) < 0) {
+    std::cerr << "Could not decode element for " << cluster << std::endl;
+    return -1;
+  }
   obj = SwmCluster(eterm);
   return 0;
 }
@@ -201,39 +236,39 @@ void SwmCluster::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << name << separator;
     std::cerr << prefix << state << separator;
     std::cerr << prefix << manager << separator;
-  if(partitions.empty()) {
+  if (partitions.empty()) {
     std::cerr << prefix << "partitions: []" << separator;
   } else {
     std::cerr << prefix << "partitions" << ": [";
-    for(const auto &q: partitions) {
+    for (const auto &q: partitions) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
-  if(hooks.empty()) {
+  if (hooks.empty()) {
     std::cerr << prefix << "hooks: []" << separator;
   } else {
     std::cerr << prefix << "hooks" << ": [";
-    for(const auto &q: hooks) {
+    for (const auto &q: hooks) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
     std::cerr << prefix << scheduler << separator;
-  if(resources.empty()) {
+  if (resources.empty()) {
     std::cerr << prefix << "resources: []" << separator;
   } else {
     std::cerr << prefix << "resources" << ": [";
-    for(const auto &q: resources) {
+    for (const auto &q: resources) {
       q.print(prefix, separator);
     }
     std::cerr << "]" << separator;
   }
-  if(properties.empty()) {
+  if (properties.empty()) {
     std::cerr << prefix << "properties: []" << separator;
   } else {
     std::cerr << prefix << "properties" << ": [";
-    for(const auto &q: properties) {
+    for (const auto &q: properties) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;

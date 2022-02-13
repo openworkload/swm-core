@@ -1,16 +1,13 @@
-
-
 #include "wm_entity_utils.h"
 
 #include <iostream>
 
 #include "wm_scheduler_result.h"
 
-#include <erl_interface.h>
 #include <ei.h>
 
-#include "wm_metric.h"
 #include "wm_timetable.h"
+#include "wm_metric.h"
 
 using namespace swm;
 
@@ -18,46 +15,62 @@ using namespace swm;
 SwmSchedulerResult::SwmSchedulerResult() {
 }
 
-SwmSchedulerResult::SwmSchedulerResult(ETERM *term) {
-  if(!term) {
-    std::cerr << "Cannot convert ETERM to SwmSchedulerResult: empty" << std::endl;
+SwmSchedulerResult::SwmSchedulerResult(const char* buf) {
+  if (!buf) {
+    std::cerr << "Cannot convert ei buffer into SwmSchedulerResult: empty" << std::endl;
     return;
   }
-  if(eterm_to_timetable(term, 2, timetable)) {
-    std::cerr << "Could not initialize scheduler_result paremeter at position 2" << std::endl;
-    erl_print_term(stderr, term);
+
+  int term_size = 0;
+  int index = 0;
+
+  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
+    std::cerr << "Cannot decode SwmSchedulerResult header from ei buffer" << std::endl;
     return;
   }
-  if(eterm_to_metric(term, 3, metrics)) {
-    std::cerr << "Could not initialize scheduler_result paremeter at position 3" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_timetable(buf, index, this->timetable)) {
+    std::cerr << "Could not initialize scheduler_result property at position=2" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 4, request_id)) {
-    std::cerr << "Could not initialize scheduler_result paremeter at position 4" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_metric(buf, index, this->metrics)) {
+    std::cerr << "Could not initialize scheduler_result property at position=3" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 5, status)) {
-    std::cerr << "Could not initialize scheduler_result paremeter at position 5" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->request_id)) {
+    std::cerr << "Could not initialize scheduler_result property at position=4" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_double(term, 6, astro_time)) {
-    std::cerr << "Could not initialize scheduler_result paremeter at position 6" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->status)) {
+    std::cerr << "Could not initialize scheduler_result property at position=5" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_double(term, 7, idle_time)) {
-    std::cerr << "Could not initialize scheduler_result paremeter at position 7" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_double(buf, index, this->astro_time)) {
+    std::cerr << "Could not initialize scheduler_result property at position=6" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_double(term, 8, work_time)) {
-    std::cerr << "Could not initialize scheduler_result paremeter at position 8" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_double(buf, index, this->idle_time)) {
+    std::cerr << "Could not initialize scheduler_result property at position=7" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
+
+  if (ei_buffer_to_double(buf, index, this->work_time)) {
+    std::cerr << "Could not initialize scheduler_result property at position=8" << std::endl;
+    ei_print_term(stderr, buf, index);
+    return;
+  }
+
 }
 
 
@@ -119,47 +132,65 @@ double SwmSchedulerResult::get_work_time() const {
 }
 
 
-int swm::eterm_to_scheduler_result(ETERM* term, int pos, std::vector<SwmSchedulerResult> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if(!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a scheduler_result list" << std::endl;
+int swm::ei_buffer_to_scheduler_result(const char* buf, const int pos, std::vector<SwmSchedulerResult> &array) {
+  int term_size = 0
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << pos << std::endl;
     return -1;
   }
-  if(ERL_IS_EMPTY_LIST(elist)) {
+  if (term_type != ERL_LIST_EXT) {
+      std::cerr << "Could not parse term: not a scheduler_result list at position " << pos << std::endl;
+      return -1;
+  }
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {
+    std::cerr << "Could not parse list for scheduler_result at position " << pos << std::endl;
+    return -1;
+  }
+  if (list_size == 0) {
     return 0;
   }
-  const size_t sz = erl_length(elist);
-  array.reserve(sz);
-  for(size_t i=0; i<sz; ++i) {
-    ETERM* e = erl_hd(elist);
-    array.push_back(SwmSchedulerResult(e));
-    elist = erl_tl(elist);
+  array.reserve(list_size);
+  for (size_t i=0; i<list_size; ++i) {
+    ei_term term;
+    if (ei_decode_ei_term(buf, pos, &term) < 0) {
+      std::cerr << "Could not decode list element at position " << pos << std::endl;
+      return -1;
+    }
+    array.push_back(SwmSchedulerResult(term));
   }
   return 0;
 }
 
 
-int swm::eterm_to_scheduler_result(ETERM* eterm, SwmSchedulerResult &obj) {
+int swm::eterm_to_scheduler_result(char* buf, SwmSchedulerResult &obj) {
+  ei_term term;
+  if (ei_decode_ei_term(buf, 0, &term) < 0) {
+    std::cerr << "Could not decode element for " << scheduler_result << std::endl;
+    return -1;
+  }
   obj = SwmSchedulerResult(eterm);
   return 0;
 }
 
 
 void SwmSchedulerResult::print(const std::string &prefix, const char separator) const {
-  if(timetable.empty()) {
+  if (timetable.empty()) {
     std::cerr << prefix << "timetable: []" << separator;
   } else {
     std::cerr << prefix << "timetable" << ": [";
-    for(const auto &q: timetable) {
+    for (const auto &q: timetable) {
       q.print(prefix, separator);
     }
     std::cerr << "]" << separator;
   }
-  if(metrics.empty()) {
+  if (metrics.empty()) {
     std::cerr << prefix << "metrics: []" << separator;
   } else {
     std::cerr << prefix << "metrics" << ": [";
-    for(const auto &q: metrics) {
+    for (const auto &q: metrics) {
       q.print(prefix, separator);
     }
     std::cerr << "]" << separator;

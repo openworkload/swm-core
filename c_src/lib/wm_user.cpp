@@ -1,12 +1,9 @@
-
-
 #include "wm_entity_utils.h"
 
 #include <iostream>
 
 #include "wm_user.h"
 
-#include <erl_interface.h>
 #include <ei.h>
 
 
@@ -16,51 +13,68 @@ using namespace swm;
 SwmUser::SwmUser() {
 }
 
-SwmUser::SwmUser(ETERM *term) {
-  if(!term) {
-    std::cerr << "Cannot convert ETERM to SwmUser: empty" << std::endl;
+SwmUser::SwmUser(const char* buf) {
+  if (!buf) {
+    std::cerr << "Cannot convert ei buffer into SwmUser: empty" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 2, id)) {
-    std::cerr << "Could not initialize user paremeter at position 2" << std::endl;
-    erl_print_term(stderr, term);
+
+  int term_size = 0;
+  int index = 0;
+
+  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
+    std::cerr << "Cannot decode SwmUser header from ei buffer" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 3, name)) {
-    std::cerr << "Could not initialize user paremeter at position 3" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->id)) {
+    std::cerr << "Could not initialize user property at position=2" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 4, acl)) {
-    std::cerr << "Could not initialize user paremeter at position 4" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->name)) {
+    std::cerr << "Could not initialize user property at position=3" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 5, groups)) {
-    std::cerr << "Could not initialize user paremeter at position 5" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->acl)) {
+    std::cerr << "Could not initialize user property at position=4" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 6, projects)) {
-    std::cerr << "Could not initialize user paremeter at position 6" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->groups)) {
+    std::cerr << "Could not initialize user property at position=5" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_int64_t(term, 7, priority)) {
-    std::cerr << "Could not initialize user paremeter at position 7" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->projects)) {
+    std::cerr << "Could not initialize user property at position=6" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 8, comment)) {
-    std::cerr << "Could not initialize user paremeter at position 8" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_int64_t(buf, index, this->priority)) {
+    std::cerr << "Could not initialize user property at position=7" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 9, revision)) {
-    std::cerr << "Could not initialize user paremeter at position 9" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->comment)) {
+    std::cerr << "Could not initialize user property at position=8" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
+
+  if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
+    std::cerr << "Could not initialize user property at position=9" << std::endl;
+    ei_print_term(stderr, buf, index);
+    return;
+  }
+
 }
 
 
@@ -130,27 +144,45 @@ uint64_t SwmUser::get_revision() const {
 }
 
 
-int swm::eterm_to_user(ETERM* term, int pos, std::vector<SwmUser> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if(!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a user list" << std::endl;
+int swm::ei_buffer_to_user(const char* buf, const int pos, std::vector<SwmUser> &array) {
+  int term_size = 0
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << pos << std::endl;
     return -1;
   }
-  if(ERL_IS_EMPTY_LIST(elist)) {
+  if (term_type != ERL_LIST_EXT) {
+      std::cerr << "Could not parse term: not a user list at position " << pos << std::endl;
+      return -1;
+  }
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {
+    std::cerr << "Could not parse list for user at position " << pos << std::endl;
+    return -1;
+  }
+  if (list_size == 0) {
     return 0;
   }
-  const size_t sz = erl_length(elist);
-  array.reserve(sz);
-  for(size_t i=0; i<sz; ++i) {
-    ETERM* e = erl_hd(elist);
-    array.push_back(SwmUser(e));
-    elist = erl_tl(elist);
+  array.reserve(list_size);
+  for (size_t i=0; i<list_size; ++i) {
+    ei_term term;
+    if (ei_decode_ei_term(buf, pos, &term) < 0) {
+      std::cerr << "Could not decode list element at position " << pos << std::endl;
+      return -1;
+    }
+    array.push_back(SwmUser(term));
   }
   return 0;
 }
 
 
-int swm::eterm_to_user(ETERM* eterm, SwmUser &obj) {
+int swm::eterm_to_user(char* buf, SwmUser &obj) {
+  ei_term term;
+  if (ei_decode_ei_term(buf, 0, &term) < 0) {
+    std::cerr << "Could not decode element for " << user << std::endl;
+    return -1;
+  }
   obj = SwmUser(eterm);
   return 0;
 }
@@ -160,20 +192,20 @@ void SwmUser::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << id << separator;
     std::cerr << prefix << name << separator;
     std::cerr << prefix << acl << separator;
-  if(groups.empty()) {
+  if (groups.empty()) {
     std::cerr << prefix << "groups: []" << separator;
   } else {
     std::cerr << prefix << "groups" << ": [";
-    for(const auto &q: groups) {
+    for (const auto &q: groups) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
-  if(projects.empty()) {
+  if (projects.empty()) {
     std::cerr << prefix << "projects: []" << separator;
   } else {
     std::cerr << prefix << "projects" << ": [";
-    for(const auto &q: projects) {
+    for (const auto &q: projects) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;

@@ -13,7 +13,7 @@ class SwmResource:SwmEntity {
 
  public:
   SwmResource();
-  SwmResource(ETERM*);
+  SwmResource(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -44,7 +44,7 @@ class SwmResource:SwmEntity {
 
 };
 
-int eterm_to_resource(ETERM*, int, std::vector<SwmResource>&);
-int eterm_to_resource(ETERM*, SwmResource&);
+int ei_buffer_to_resource(const char*, int, std::vector<SwmResource>&);
+int ei_buffer_to_resource(const char*, SwmResource&);
 
 } // namespace swm

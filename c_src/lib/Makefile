@@ -9,8 +9,7 @@ CFLAGS=-I${_KERL_ACTIVE_DIR}/usr/include\
        -Wconversion\
        -g\
        -std=c++14
-LIBS=-lerl_interface\
-     -lei\
+LIBS=-lei\
      -lnsl\
      -lpthread
 

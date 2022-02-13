@@ -1,12 +1,9 @@
-
-
 #include "wm_entity_utils.h"
 
 #include <iostream>
 
 #include "wm_job.h"
 
-#include <erl_interface.h>
 #include <ei.h>
 
 #include "wm_resource.h"
@@ -17,176 +14,218 @@ using namespace swm;
 SwmJob::SwmJob() {
 }
 
-SwmJob::SwmJob(ETERM *term) {
-  if(!term) {
-    std::cerr << "Cannot convert ETERM to SwmJob: empty" << std::endl;
+SwmJob::SwmJob(const char* buf) {
+  if (!buf) {
+    std::cerr << "Cannot convert ei buffer into SwmJob: empty" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 2, id)) {
-    std::cerr << "Could not initialize job paremeter at position 2" << std::endl;
-    erl_print_term(stderr, term);
+
+  int term_size = 0;
+  int index = 0;
+
+  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
+    std::cerr << "Cannot decode SwmJob header from ei buffer" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 3, name)) {
-    std::cerr << "Could not initialize job paremeter at position 3" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->id)) {
+    std::cerr << "Could not initialize job property at position=2" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 4, cluster_id)) {
-    std::cerr << "Could not initialize job paremeter at position 4" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->name)) {
+    std::cerr << "Could not initialize job property at position=3" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 5, nodes)) {
-    std::cerr << "Could not initialize job paremeter at position 5" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->cluster_id)) {
+    std::cerr << "Could not initialize job property at position=4" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 6, state)) {
-    std::cerr << "Could not initialize job paremeter at position 6" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->nodes)) {
+    std::cerr << "Could not initialize job property at position=5" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 7, start_time)) {
-    std::cerr << "Could not initialize job paremeter at position 7" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->state)) {
+    std::cerr << "Could not initialize job property at position=6" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 8, submit_time)) {
-    std::cerr << "Could not initialize job paremeter at position 8" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->start_time)) {
+    std::cerr << "Could not initialize job property at position=7" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 9, end_time)) {
-    std::cerr << "Could not initialize job paremeter at position 9" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->submit_time)) {
+    std::cerr << "Could not initialize job property at position=8" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 10, duration)) {
-    std::cerr << "Could not initialize job paremeter at position 10" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->end_time)) {
+    std::cerr << "Could not initialize job property at position=9" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 11, job_stdin)) {
-    std::cerr << "Could not initialize job paremeter at position 11" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->duration)) {
+    std::cerr << "Could not initialize job property at position=10" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 12, job_stdout)) {
-    std::cerr << "Could not initialize job paremeter at position 12" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->job_stdin)) {
+    std::cerr << "Could not initialize job property at position=11" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 13, job_stderr)) {
-    std::cerr << "Could not initialize job paremeter at position 13" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->job_stdout)) {
+    std::cerr << "Could not initialize job property at position=12" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 14, input_files)) {
-    std::cerr << "Could not initialize job paremeter at position 14" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->job_stderr)) {
+    std::cerr << "Could not initialize job property at position=13" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 15, output_files)) {
-    std::cerr << "Could not initialize job paremeter at position 15" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->input_files)) {
+    std::cerr << "Could not initialize job property at position=14" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 16, workdir)) {
-    std::cerr << "Could not initialize job paremeter at position 16" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->output_files)) {
+    std::cerr << "Could not initialize job property at position=15" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 17, user_id)) {
-    std::cerr << "Could not initialize job paremeter at position 17" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->workdir)) {
+    std::cerr << "Could not initialize job property at position=16" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 18, hooks)) {
-    std::cerr << "Could not initialize job paremeter at position 18" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->user_id)) {
+    std::cerr << "Could not initialize job property at position=17" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_tuple_str_str(term, 19, env)) {
-    std::cerr << "Could not initialize job paremeter at position 19" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->hooks)) {
+    std::cerr << "Could not initialize job property at position=18" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_tuple_atom_str(term, 20, deps)) {
-    std::cerr << "Could not initialize job paremeter at position 20" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_tuple_str_str(buf, index, this->env)) {
+    std::cerr << "Could not initialize job property at position=19" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 21, projects)) {
-    std::cerr << "Could not initialize job paremeter at position 21" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_tuple_atom_str(buf, index, this->deps)) {
+    std::cerr << "Could not initialize job property at position=20" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 22, account_id)) {
-    std::cerr << "Could not initialize job paremeter at position 22" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->projects)) {
+    std::cerr << "Could not initialize job property at position=21" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 23, gang_id)) {
-    std::cerr << "Could not initialize job paremeter at position 23" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->account_id)) {
+    std::cerr << "Could not initialize job property at position=22" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 24, execution_path)) {
-    std::cerr << "Could not initialize job paremeter at position 24" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->gang_id)) {
+    std::cerr << "Could not initialize job property at position=23" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 25, script_content)) {
-    std::cerr << "Could not initialize job paremeter at position 25" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->execution_path)) {
+    std::cerr << "Could not initialize job property at position=24" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_resource(term, 26, request)) {
-    std::cerr << "Could not initialize job paremeter at position 26" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->script_content)) {
+    std::cerr << "Could not initialize job property at position=25" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_resource(term, 27, resources)) {
-    std::cerr << "Could not initialize job paremeter at position 27" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_resource(buf, index, this->request)) {
+    std::cerr << "Could not initialize job property at position=26" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 28, container)) {
-    std::cerr << "Could not initialize job paremeter at position 28" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_resource(buf, index, this->resources)) {
+    std::cerr << "Could not initialize job property at position=27" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_atom(term, 29, relocatable)) {
-    std::cerr << "Could not initialize job paremeter at position 29" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->container)) {
+    std::cerr << "Could not initialize job property at position=28" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 30, exitcode)) {
-    std::cerr << "Could not initialize job paremeter at position 30" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_atom(buf, index, this->relocatable)) {
+    std::cerr << "Could not initialize job property at position=29" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 31, signal)) {
-    std::cerr << "Could not initialize job paremeter at position 31" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->exitcode)) {
+    std::cerr << "Could not initialize job property at position=30" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 32, priority)) {
-    std::cerr << "Could not initialize job paremeter at position 32" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->signal)) {
+    std::cerr << "Could not initialize job property at position=31" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 33, comment)) {
-    std::cerr << "Could not initialize job paremeter at position 33" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->priority)) {
+    std::cerr << "Could not initialize job property at position=32" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 34, revision)) {
-    std::cerr << "Could not initialize job paremeter at position 34" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->comment)) {
+    std::cerr << "Could not initialize job property at position=33" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
+
+  if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
+    std::cerr << "Could not initialize job property at position=34" << std::endl;
+    ei_print_term(stderr, buf, index);
+    return;
+  }
+
 }
 
 
@@ -456,27 +495,45 @@ uint64_t SwmJob::get_revision() const {
 }
 
 
-int swm::eterm_to_job(ETERM* term, int pos, std::vector<SwmJob> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if(!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a job list" << std::endl;
+int swm::ei_buffer_to_job(const char* buf, const int pos, std::vector<SwmJob> &array) {
+  int term_size = 0
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << pos << std::endl;
     return -1;
   }
-  if(ERL_IS_EMPTY_LIST(elist)) {
+  if (term_type != ERL_LIST_EXT) {
+      std::cerr << "Could not parse term: not a job list at position " << pos << std::endl;
+      return -1;
+  }
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {
+    std::cerr << "Could not parse list for job at position " << pos << std::endl;
+    return -1;
+  }
+  if (list_size == 0) {
     return 0;
   }
-  const size_t sz = erl_length(elist);
-  array.reserve(sz);
-  for(size_t i=0; i<sz; ++i) {
-    ETERM* e = erl_hd(elist);
-    array.push_back(SwmJob(e));
-    elist = erl_tl(elist);
+  array.reserve(list_size);
+  for (size_t i=0; i<list_size; ++i) {
+    ei_term term;
+    if (ei_decode_ei_term(buf, pos, &term) < 0) {
+      std::cerr << "Could not decode list element at position " << pos << std::endl;
+      return -1;
+    }
+    array.push_back(SwmJob(term));
   }
   return 0;
 }
 
 
-int swm::eterm_to_job(ETERM* eterm, SwmJob &obj) {
+int swm::eterm_to_job(char* buf, SwmJob &obj) {
+  ei_term term;
+  if (ei_decode_ei_term(buf, 0, &term) < 0) {
+    std::cerr << "Could not decode element for " << job << std::endl;
+    return -1;
+  }
   obj = SwmJob(eterm);
   return 0;
 }
@@ -486,11 +543,11 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << id << separator;
     std::cerr << prefix << name << separator;
     std::cerr << prefix << cluster_id << separator;
-  if(nodes.empty()) {
+  if (nodes.empty()) {
     std::cerr << prefix << "nodes: []" << separator;
   } else {
     std::cerr << prefix << "nodes" << ": [";
-    for(const auto &q: nodes) {
+    for (const auto &q: nodes) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -503,58 +560,58 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << job_stdin << separator;
     std::cerr << prefix << job_stdout << separator;
     std::cerr << prefix << job_stderr << separator;
-  if(input_files.empty()) {
+  if (input_files.empty()) {
     std::cerr << prefix << "input_files: []" << separator;
   } else {
     std::cerr << prefix << "input_files" << ": [";
-    for(const auto &q: input_files) {
+    for (const auto &q: input_files) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
-  if(output_files.empty()) {
+  if (output_files.empty()) {
     std::cerr << prefix << "output_files: []" << separator;
   } else {
     std::cerr << prefix << "output_files" << ": [";
-    for(const auto &q: output_files) {
+    for (const auto &q: output_files) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
     std::cerr << prefix << workdir << separator;
     std::cerr << prefix << user_id << separator;
-  if(hooks.empty()) {
+  if (hooks.empty()) {
     std::cerr << prefix << "hooks: []" << separator;
   } else {
     std::cerr << prefix << "hooks" << ": [";
-    for(const auto &q: hooks) {
+    for (const auto &q: hooks) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
-  if(env.empty()) {
+  if (env.empty()) {
     std::cerr << prefix << "env: []" << separator;
   } else {
     std::cerr << prefix << "env" << ": [";
-    for(const auto &q: env) {
+    for (const auto &q: env) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
-  if(deps.empty()) {
+  if (deps.empty()) {
     std::cerr << prefix << "deps: []" << separator;
   } else {
     std::cerr << prefix << "deps" << ": [";
-    for(const auto &q: deps) {
+    for (const auto &q: deps) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
-  if(projects.empty()) {
+  if (projects.empty()) {
     std::cerr << prefix << "projects: []" << separator;
   } else {
     std::cerr << prefix << "projects" << ": [";
-    for(const auto &q: projects) {
+    for (const auto &q: projects) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -563,20 +620,20 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << gang_id << separator;
     std::cerr << prefix << execution_path << separator;
     std::cerr << prefix << script_content << separator;
-  if(request.empty()) {
+  if (request.empty()) {
     std::cerr << prefix << "request: []" << separator;
   } else {
     std::cerr << prefix << "request" << ": [";
-    for(const auto &q: request) {
+    for (const auto &q: request) {
       q.print(prefix, separator);
     }
     std::cerr << "]" << separator;
   }
-  if(resources.empty()) {
+  if (resources.empty()) {
     std::cerr << prefix << "resources: []" << separator;
   } else {
     std::cerr << prefix << "resources" << ": [";
-    for(const auto &q: resources) {
+    for (const auto &q: resources) {
       q.print(prefix, separator);
     }
     std::cerr << "]" << separator;

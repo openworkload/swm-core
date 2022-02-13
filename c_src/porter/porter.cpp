@@ -6,7 +6,6 @@
 #include "wm_entity_utils.h"
 #include "wm_porter_data.h"
 
-#include <erl_interface.h>
 #include <ei.h>
 
 #include <cerrno>
@@ -218,7 +217,7 @@ int main(int argc, char* const argv[]) {
   swm_logd("Porter has started");
 
   parse_opts(argc, argv);
-  erl_init(nullptr, 0);
+  ei_init();
 
   byte* data[SWM_DATA_TYPES_COUNT];
   if (get_porter_data(&std::cin, data)) {

@@ -12,7 +12,7 @@ class SwmProject:SwmEntity {
 
  public:
   SwmProject();
-  SwmProject(ETERM*);
+  SwmProject(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -43,7 +43,7 @@ class SwmProject:SwmEntity {
 
 };
 
-int eterm_to_project(ETERM*, int, std::vector<SwmProject>&);
-int eterm_to_project(ETERM*, SwmProject&);
+int ei_buffer_to_project(const char*, int, std::vector<SwmProject>&);
+int ei_buffer_to_project(const char*, SwmProject&);
 
 } // namespace swm

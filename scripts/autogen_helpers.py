@@ -1,4 +1,4 @@
-''' Helper functions and data for C++ and Erlang files generation
+''' Helper functions and data for C++ and Erlang files generation.
 '''
 
 exclude = {"malfunction",
@@ -8,7 +8,7 @@ exclude = {"malfunction",
            "test"
 }
 
-types = {
+types_map = {
      "atom()": "std::string",
      "any()": "ETERM*",
      "map()": "ETERM*",
@@ -34,7 +34,7 @@ types = {
      "hook_id()": "std::string"
 }
 
-type_suffix = {
+type_suffix_map = {
      "atom()": "atom",
      "any()": "eterm",
      "map()": "eterm",
@@ -88,13 +88,13 @@ printer = {
 
 
 def struct_param_type(r):
-    is_struct = False
+    is_tuple = False
     if '#' in r:
         if r.startswith('#'):
             r = r[1:]
         r = r.replace('{}', '')
-        is_struct = True
-    return ('Swm' + r.title(), r, is_struct)
+        is_tuple = True
+    return ('Swm' + r.title(), r, is_tuple)
 
 
 def get_tuple_type(pp):
@@ -114,8 +114,8 @@ def c_struct(pp):
     s = 'SwmTuple'
     for p in pp:
         p = p.strip()
-        if p in type_suffix.keys():
-            p = type_suffix[p]
+        if p in type_suffix_map.keys():
+            p = type_suffix_map[p]
         if len(p)>1:
             s += p.title()
     return s

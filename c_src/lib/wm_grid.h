@@ -13,7 +13,7 @@ class SwmGrid:SwmEntity {
 
  public:
   SwmGrid();
-  SwmGrid(ETERM*);
+  SwmGrid(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -56,7 +56,7 @@ class SwmGrid:SwmEntity {
 
 };
 
-int eterm_to_grid(ETERM*, int, std::vector<SwmGrid>&);
-int eterm_to_grid(ETERM*, SwmGrid&);
+int ei_buffer_to_grid(const char*, int, std::vector<SwmGrid>&);
+int ei_buffer_to_grid(const char*, SwmGrid&);
 
 } // namespace swm

@@ -12,7 +12,7 @@ class SwmImage:SwmEntity {
 
  public:
   SwmImage();
-  SwmImage(ETERM*);
+  SwmImage(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -55,7 +55,7 @@ class SwmImage:SwmEntity {
 
 };
 
-int eterm_to_image(ETERM*, int, std::vector<SwmImage>&);
-int eterm_to_image(ETERM*, SwmImage&);
+int ei_buffer_to_image(const char*, int, std::vector<SwmImage>&);
+int ei_buffer_to_image(const char*, SwmImage&);
 
 } // namespace swm

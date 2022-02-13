@@ -1,5 +1,3 @@
-
-
 #include "wm_entity_utils.h"
 
 #include <iostream>
@@ -12,8 +10,8 @@
     cog.error("No WM_ENTITY_NAME defined")
     sys.exit(1)
 
-  ClassName = "Swm" + WM_ENTITY_NAME.title().replace('_', '')
-  cog.msg("genareting %s code" % ClassName)
+  class_name = "Swm" + WM_ENTITY_NAME.title().replace('_', '')
+  cog.msg("genareting %s code" % class_name)
 
   import json, collections
   json_data=open('./priv/schema.json')
@@ -27,23 +25,23 @@
     suffix = schema_type
     camel_type = suffix
     is_array = False
-    is_struct = False
+    is_tuple = False
     if schema_type.startswith('#'):
-      (camel_type, suffix, is_struct) = struct_param_type(suffix)
+      (camel_type, suffix, is_tuple) = struct_param_type(suffix)
     elif '{' in schema_type and '{}' not in schema_type:
       pp = schema_type[schema_type.find('{') + 1 : schema_type.find('}')].split(',')
       suffix = 'tuple' + get_tuple_type(pp)
     if '[' in schema_type:
       suffix = schema_type[schema_type.find('[') + 1 : schema_type.find(']')]
-      if suffix in type_suffix.keys():
-        suffix = type_suffix[suffix]
-      (tmp1, tmp2, is_struct) = struct_param_type(suffix)
-      (suffix, camel_type, _tmp1, _tmp2) = transform(suffix)
+      if suffix in type_suffix_map.keys():
+        suffix = type_suffix_map[suffix]
+      (tmp1, tmp2, is_tuple) = struct_param_type(suffix)
+      suffix, camel_type, _, _ = transform(suffix)
       is_array = True
     else:
-      if suffix in type_suffix.keys():
-        suffix = type_suffix[suffix]
-    return (suffix, camel_type, is_array, is_struct)
+      if suffix in type_suffix_map.keys():
+        suffix = type_suffix_map[suffix]
+    return (suffix, camel_type, is_array, is_tuple)
 
 
   def get_final_type(schema_type):
@@ -55,108 +53,131 @@
       final_type = c_struct(pp)
     if '[' in schema_type:
       final_type = schema_type[schema_type.find('[') + 1 : schema_type.find(']')]
-      if final_type in types.keys():
-        final_type = types[final_type]
+      if final_type in types_map.keys():
+        final_type = types_map[final_type]
       param_type = get_final_type(final_type)
       final_type = 'std::vector<' + param_type + '>'
     else:
-      if final_type in types.keys():
-        final_type = types[final_type]
+      if final_type in types_map.keys():
+        final_type = types_map[final_type]
     return final_type
 
 
-  def out_init_ctor(x,y):
+  def out_init_ctor(entity_name, entity_properties):
     outputs = []
-    outputs.append("%s::%s() {" % (ClassName, ClassName))
+    outputs.append("%s::%s() {" % (class_name, class_name))
     outputs.append("}")
     outputs.append("")
-    outputs.append("%s::%s(ETERM *term) {" % (ClassName, ClassName))
-    outputs.append("  if(!term) {")
-    outputs.append("    std::cerr << \"Cannot convert ETERM to %s: empty\" << std::endl;" % ClassName)
+
+    outputs.append("%s::%s(const char* buf) {" % (class_name, class_name))
+    outputs.append("  if (!buf) {")
+    outputs.append(f'    std::cerr << "Cannot convert ei buffer into {class_name}: empty" << std::endl;')
     outputs.append("    return;")
     outputs.append("  }")
+    outputs.append("")
+    outputs.append("  int term_size = 0;")
+    outputs.append("  int index = 0;")
+    outputs.append("")
+    outputs.append("  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {")
+    outputs.append(f'    std::cerr << "Cannot decode {class_name} header from ei buffer" << std::endl;')
+    outputs.append("    return;")
+    outputs.append("  }")
+    outputs.append("")
+
     pos = 2
     includes = set()
-    for z,k in y.items():
-      is_array = False
-      is_struct = False
-      if k["type"] in type_suffix.keys():
-        ts = type_suffix[k["type"]]
+    for prop_name, prop_meta in entity_properties.items():
+      is_tuple = False
+      prop_type = prop_meta["type"]
+      if prop_type in type_suffix_map.keys():
+        type_suffix = type_suffix_map[prop_type]
       else:
-        (ts, camel_type, is_array, is_struct) = transform(k["type"])
-      if is_struct and not is_array:
-        term = "erl_element(" + str(pos) + ", term)"
-      else:
-        term = "term, " + str(pos)
-      if is_array:
-        outputs.append("  if(eterm_to_" + ts + "(" + term + ", " + z + ")) {")
-      else:
-        outputs.append("  if(eterm_to_" + ts + "(" + term + ", " + z + ")" + ") {")
-      outputs.append("    std::cerr << \"Could not initialize " + x + " paremeter at position " + str(pos) + "\" << std::endl;")
-      outputs.append("    erl_print_term(stderr, term);")
+        type_suffix, camel_type, _, is_tuple = transform(prop_type)
+
+      outputs.append(f'  if (ei_buffer_to_{type_suffix}(buf, index, this->{prop_name})) {{')
+      outputs.append(f'    std::cerr << "Could not initialize {entity_name} property at position={pos}" << std::endl;')
+      outputs.append("    ei_print_term(stderr, buf, index);")
       outputs.append("    return;")
       outputs.append("  }")
+      outputs.append("")
       pos += 1
 
-      if is_struct:
-        includes.add(ts)
+      if is_tuple:
+        includes.add(type_suffix)
 
     outputs.append("}")
     outputs.append("")
     return (includes, outputs)
 
 
-  def out_init_array_fun(x,y):
-    struct_type = x.title().replace('_', '')
-    cog.out("int swm::eterm_to_%s(" % WM_ENTITY_NAME)
-    cog.out("ETERM* term, ")
-    cog.out("int pos, ")
+  def out_init_array_fun(entity_name):
+    struct_type = entity_name.title().replace('_', '')
+    cog.out("int swm::ei_buffer_to_%s(" % WM_ENTITY_NAME)
+    cog.out("const char* buf, ")
+    cog.out("const int pos, ")
     cog.out("std::vector<Swm" + struct_type + "> &array")
-    cog.out(") {")
-    cog.outl()
-    cog.outl("  ETERM* elist = erl_element(pos, term);");
-    cog.outl("  if(!ERL_IS_LIST(elist)) {");
-    cog.outl("    std::cerr << \"Could not parse eterm: not a " + x + " list\" << std::endl;");
+    cog.outl(") {")
+    cog.outl("  int term_size = 0");
+    cog.outl("  int term_type = 0;");
+    cog.outl("  const int parsed = ei_get_type(buf, index, &term_type, &term_size);");
+    cog.outl("  if (parsed < 0) {");
+    cog.outl("    std::cerr << \"Could not get term type at position \" << pos << std::endl;");
     cog.outl("    return -1;");
     cog.outl("  }");
-    cog.outl("  if(ERL_IS_EMPTY_LIST(elist)) {");
+    cog.outl("  if (term_type != ERL_LIST_EXT) {");
+    cog.outl("      std::cerr << \"Could not parse term: not a " + entity_name + " list at position \" << pos << std::endl;");
+    cog.outl("      return -1;");
+    cog.outl("  }");
+    cog.outl("  int list_size = 0;");
+    cog.outl("  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {");
+    cog.outl("    std::cerr << \"Could not parse list for " + entity_name + " at position \" << pos << std::endl;");
+    cog.outl("    return -1;");
+    cog.outl("  }");
+    cog.outl("  if (list_size == 0) {");
     cog.outl("    return 0;");
     cog.outl("  }");
-    cog.outl("  const size_t sz = erl_length(elist);");
-    cog.outl("  array.reserve(sz);");
-    cog.outl("  for(size_t i=0; i<sz; ++i) {");
-    cog.outl("    ETERM* e = erl_hd(elist);");
-    cog.outl("    array.push_back(Swm%s(e));" % struct_type);
-    cog.outl("    elist = erl_tl(elist);");
+    cog.outl("  array.reserve(list_size);");
+    cog.outl("  for (size_t i=0; i<list_size; ++i) {");
+    cog.outl("    ei_term term;");
+    cog.outl("    if (ei_decode_ei_term(buf, pos, &term) < 0) {");
+    cog.outl("      std::cerr << \"Could not decode list element at position \" << pos << std::endl;");
+    cog.outl("      return -1;");
+    cog.outl("    }");
+    cog.outl("    array.push_back(Swm%s(term));" % struct_type);
     cog.outl("  }");
     cog.outl("  return 0;");
     cog.outl("}")
     cog.outl()
 
 
-  def out_convert_fun(x,y):
-    struct_type = x.title().replace('_', '')
+  def out_convert_fun(entity_name):
+    struct_type = entity_name.title().replace('_', '')
     cog.out("int swm::eterm_to_%s(" % WM_ENTITY_NAME)
-    cog.out("ETERM* eterm, ")
+    cog.out("char* buf, ")
     cog.out("Swm" + struct_type + " &obj")
     cog.outl(") {")
+    cog.outl("  ei_term term;");
+    cog.outl("  if (ei_decode_ei_term(buf, 0, &term) < 0) {");
+    cog.outl("    std::cerr << \"Could not decode element for \" << " + WM_ENTITY_NAME + " << std::endl;");
+    cog.outl("    return -1;");
+    cog.outl("  }");
     cog.outl("  obj = Swm%s(eterm);" % struct_type);
     cog.outl("  return 0;");
     cog.outl("}")
     cog.outl()
 
 
-  def out_print_funs(x,y):
-    cog.out("void %s::print(const std::string &prefix, const char separator) const {\n" % ClassName)
-    for name,k in y.items():
-      (ts, camel_type, is_array, is_struct) = transform(k["type"])
+  def out_print_funs(entity_name, entity_properties):
+    cog.out("void %s::print(const std::string &prefix, const char separator) const {\n" % class_name)
+    for name, prop_meta in entity_properties.items():
+      _, camel_type, is_array, is_tuple = transform(prop_meta["type"])
       if is_array:
-        cog.outl("  if(" + name + ".empty()) {")
+        cog.outl("  if (" + name + ".empty()) {")
         cog.outl("    std::cerr << prefix << \"" + name + ": []\" << separator;");
         cog.outl("  } else {")
         cog.outl("    std::cerr << prefix << \"" + name + "\" << \": [\";");
-        cog.outl("    for(const auto &q: " + name + ") {")
-        if is_struct:
+        cog.outl("    for (const auto &q: " + name + ") {")
+        if is_tuple:
           cog.outl("      q.print(prefix, separator);")
         else:
           cog.outl("      std::cerr << q << \",\";")
@@ -164,7 +185,7 @@
         cog.outl("    std::cerr << \"]\" << separator;");
         cog.outl("  }")
       else:
-        if is_struct:
+        if is_tuple:
           cog.outl("  " + name + ".print(prefix, separator);")
         else:
           cog.outl("    std::cerr << prefix << " + name + " << separator;")
@@ -172,26 +193,26 @@
     cog.outl("}\n")
 
 
-  def out_setters(x,y):
+  def out_setters(entity_name, entity_properties):
     need_setters = []
-    for z,k in y.items():
-      if k["type"] in types.keys():
-        type_str = types[k["type"]]
+    for prop_name, prop_meta in entity_properties.items():
+      if prop_meta["type"] in types_map.keys():
+        type_str = types_map[prop_meta["type"]]
       else:
-        type_str = get_final_type(k["type"])
-      need_setters.append((z, type_str))
+        type_str = get_final_type(prop_meta["type"])
+      need_setters.append((prop_name, type_str))
     cog.outl()
-    for (x,t) in need_setters:
-      cog.outl("void %s::set_%s(const %s &new_val) {" % (ClassName, x, t))
-      if t == "ETERM*":
-         cog.outl("  %s = const_cast<ETERM*>(new_val);" % x)
+    for x, t in need_setters:
+      cog.outl("void %s::set_%s(const %s &new_val) {" % (class_name, x, t))
+      if t == "const char*":
+         cog.outl("  %s = const_cast<const char*>(new_val);" % x)
       else:
          cog.outl("  %s = new_val;" % x)
       cog.outl("}")
       cog.outl()
-    for (x,t) in need_setters:
-      cog.outl("%s %s::get_%s() const {" % (t, ClassName, x))
-      cog.outl("  return %s;" % x)
+    for x, t in need_setters:
+      cog.outl("%s %s::get_%s() const {" % (t, class_name, x))
+      cog.outl(f"  return {x};")
       cog.outl("}")
       cog.outl()
 
@@ -201,21 +222,19 @@
       del data[e]
 
     if WM_ENTITY_NAME in data:
-      x = WM_ENTITY_NAME
-      y = data[WM_ENTITY_NAME]
+      entity_name = WM_ENTITY_NAME
+      entity_properties = data[WM_ENTITY_NAME]
     else:
-      cog.error("No entity '%s' found" % WM_ENTITY_NAME)
-      import sys
+      cog.error(f"No entity '{WM_ENTITY_NAME}' found")
       sys.exit(1)
 
 
-    cog.outl("#include \"wm_%s.h\"" % WM_ENTITY_NAME)
+    cog.outl('#include "wm_%s.h"' % WM_ENTITY_NAME)
     cog.outl()
-    cog.outl("#include <erl_interface.h>")
-    cog.outl("#include <ei.h>")
+    cog.outl('#include <ei.h>')
     cog.outl()
 
-    (includes, outputs) = out_init_ctor(x,y)
+    includes, outputs = out_init_ctor(entity_name, entity_properties)
     for include in includes:
       cog.outl('#include "wm_' + include + '.h"')
 
@@ -228,16 +247,16 @@
       cog.outl(output)
     cog.outl()
 
-    out_setters(x,y)
+    out_setters(entity_name, entity_properties)
     cog.outl()
 
-    out_init_array_fun(x,y)
+    out_init_array_fun(entity_name)
     cog.outl()
 
-    out_convert_fun(x,y)
+    out_convert_fun(entity_name)
     cog.outl()
 
-    out_print_funs(x,y)
+    out_print_funs(entity_name, entity_properties)
     cog.outl()
 
 

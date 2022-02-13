@@ -1,12 +1,9 @@
-
-
 #include "wm_entity_utils.h"
 
 #include <iostream>
 
 #include "wm_remote.h"
 
-#include <erl_interface.h>
 #include <ei.h>
 
 
@@ -16,56 +13,74 @@ using namespace swm;
 SwmRemote::SwmRemote() {
 }
 
-SwmRemote::SwmRemote(ETERM *term) {
-  if(!term) {
-    std::cerr << "Cannot convert ETERM to SwmRemote: empty" << std::endl;
+SwmRemote::SwmRemote(const char* buf) {
+  if (!buf) {
+    std::cerr << "Cannot convert ei buffer into SwmRemote: empty" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 2, id)) {
-    std::cerr << "Could not initialize remote paremeter at position 2" << std::endl;
-    erl_print_term(stderr, term);
+
+  int term_size = 0;
+  int index = 0;
+
+  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
+    std::cerr << "Cannot decode SwmRemote header from ei buffer" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 3, account_id)) {
-    std::cerr << "Could not initialize remote paremeter at position 3" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->id)) {
+    std::cerr << "Could not initialize remote property at position=2" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 4, default_image_id)) {
-    std::cerr << "Could not initialize remote paremeter at position 4" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->account_id)) {
+    std::cerr << "Could not initialize remote property at position=3" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 5, default_flavor_id)) {
-    std::cerr << "Could not initialize remote paremeter at position 5" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->default_image_id)) {
+    std::cerr << "Could not initialize remote property at position=4" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_atom(term, 6, name)) {
-    std::cerr << "Could not initialize remote paremeter at position 6" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->default_flavor_id)) {
+    std::cerr << "Could not initialize remote property at position=5" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_atom(term, 7, kind)) {
-    std::cerr << "Could not initialize remote paremeter at position 7" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_atom(buf, index, this->name)) {
+    std::cerr << "Could not initialize remote property at position=6" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 8, server)) {
-    std::cerr << "Could not initialize remote paremeter at position 8" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_atom(buf, index, this->kind)) {
+    std::cerr << "Could not initialize remote property at position=7" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 9, port)) {
-    std::cerr << "Could not initialize remote paremeter at position 9" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->server)) {
+    std::cerr << "Could not initialize remote property at position=8" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 10, revision)) {
-    std::cerr << "Could not initialize remote paremeter at position 10" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_uint64_t(buf, index, this->port)) {
+    std::cerr << "Could not initialize remote property at position=9" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
+
+  if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
+    std::cerr << "Could not initialize remote property at position=10" << std::endl;
+    ei_print_term(stderr, buf, index);
+    return;
+  }
+
 }
 
 
@@ -143,27 +158,45 @@ uint64_t SwmRemote::get_revision() const {
 }
 
 
-int swm::eterm_to_remote(ETERM* term, int pos, std::vector<SwmRemote> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if(!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a remote list" << std::endl;
+int swm::ei_buffer_to_remote(const char* buf, const int pos, std::vector<SwmRemote> &array) {
+  int term_size = 0
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << pos << std::endl;
     return -1;
   }
-  if(ERL_IS_EMPTY_LIST(elist)) {
+  if (term_type != ERL_LIST_EXT) {
+      std::cerr << "Could not parse term: not a remote list at position " << pos << std::endl;
+      return -1;
+  }
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {
+    std::cerr << "Could not parse list for remote at position " << pos << std::endl;
+    return -1;
+  }
+  if (list_size == 0) {
     return 0;
   }
-  const size_t sz = erl_length(elist);
-  array.reserve(sz);
-  for(size_t i=0; i<sz; ++i) {
-    ETERM* e = erl_hd(elist);
-    array.push_back(SwmRemote(e));
-    elist = erl_tl(elist);
+  array.reserve(list_size);
+  for (size_t i=0; i<list_size; ++i) {
+    ei_term term;
+    if (ei_decode_ei_term(buf, pos, &term) < 0) {
+      std::cerr << "Could not decode list element at position " << pos << std::endl;
+      return -1;
+    }
+    array.push_back(SwmRemote(term));
   }
   return 0;
 }
 
 
-int swm::eterm_to_remote(ETERM* eterm, SwmRemote &obj) {
+int swm::eterm_to_remote(char* buf, SwmRemote &obj) {
+  ei_term term;
+  if (ei_decode_ei_term(buf, 0, &term) < 0) {
+    std::cerr << "Could not decode element for " << remote << std::endl;
+    return -1;
+  }
   obj = SwmRemote(eterm);
   return 0;
 }

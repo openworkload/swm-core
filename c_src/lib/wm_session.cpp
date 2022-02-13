@@ -1,13 +1,10 @@
-
+#include "wm_session.h"
 
 #include "wm_entity_utils.h"
 
-#include <iostream>
-
-#include "wm_session.h"
-
-#include <erl_interface.h>
 #include <ei.h>
+
+#include <iostream>
 
 
 using namespace swm;
