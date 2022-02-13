@@ -11,7 +11,7 @@
 
 -spec parse(string()) -> tuple().
 parse(JobScriptContent) when is_binary(JobScriptContent) ->
-  parse(binary_to_list(JobScriptContent));
+    parse(binary_to_list(JobScriptContent));
 parse(JobScriptContent) when is_list(JobScriptContent) ->
     Lines = string:tokens(JobScriptContent, "\n"),
     Job1 = wm_entity:new(job),

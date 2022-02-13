@@ -252,6 +252,7 @@ init_porter(User, #mstate{job_id = JobId}) ->
     BinIn = prepare_porter_input(Job, User),
     ?LOG_DEBUG("Porter input size for user ~p: ~p", [User, byte_size(BinIn)]),
     wm_container:communicate(Job, BinIn, self()).
+
 -spec do_complete(#process{}, #mstate{}) -> #mstate{}.
 do_complete(Process, #mstate{job_id = JobId} = MState) ->
     Exit = wm_entity:get_attr(pid, Process),

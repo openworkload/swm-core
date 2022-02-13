@@ -124,7 +124,8 @@ handle_event(job_cancelled, {JobID, Process, EndTime, Node}, MState) ->
     event_to_parent({event, job_finished, {JobID, Process, EndTime, Node}}),
     wm_event:announce(job_finished, {JobID, Process, EndTime, Node}),
     JobProcesses = maps:get(JobID, MState#mstate.processes, maps:new()),
-    maps:map(fun(ProcId, _) -> ok = wm_factory:send_event_locally({job_finished, Process}, proc, ProcId) end, JobProcesses),
+    maps:map(fun(ProcId, _) -> ok = wm_factory:send_event_locally({job_finished, Process}, proc, ProcId) end,
+             JobProcesses),
     MState;
 handle_event(job_finished, {JobID, Process, EndTime, Node}, MState) ->
     ?LOG_DEBUG("Job finished: ~p, process: ~p", [JobID, Process]),
