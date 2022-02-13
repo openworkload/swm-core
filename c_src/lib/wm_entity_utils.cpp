@@ -1,9 +1,6 @@
 
 #include "wm_entity_utils.h"
 
-#include <erl_interface.h>
-#include <ei.h>
-
 #include <iostream>
 
 

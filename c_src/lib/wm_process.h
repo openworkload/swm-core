@@ -12,7 +12,7 @@ class SwmProcess:SwmEntity {
 
  public:
   SwmProcess();
-  SwmProcess(ETERM*);
+  SwmProcess(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -37,7 +37,7 @@ class SwmProcess:SwmEntity {
 
 };
 
-int eterm_to_process(ETERM*, int, std::vector<SwmProcess>&);
-int eterm_to_process(ETERM*, SwmProcess&);
+int ei_buffer_to_process(const char*, int, std::vector<SwmProcess>&);
+int ei_buffer_to_process(const char*, SwmProcess&);
 
 } // namespace swm

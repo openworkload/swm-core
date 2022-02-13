@@ -13,7 +13,7 @@ class SwmNode:SwmEntity {
 
  public:
   SwmNode();
-  SwmNode(ETERM*);
+  SwmNode(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -80,7 +80,7 @@ class SwmNode:SwmEntity {
 
 };
 
-int eterm_to_node(ETERM*, int, std::vector<SwmNode>&);
-int eterm_to_node(ETERM*, SwmNode&);
+int ei_buffer_to_node(const char*, int, std::vector<SwmNode>&);
+int ei_buffer_to_node(const char*, SwmNode&);
 
 } // namespace swm

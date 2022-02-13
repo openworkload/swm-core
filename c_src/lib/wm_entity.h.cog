@@ -45,14 +45,14 @@
       s = c_struct(pp)
     if '[' in t:
       s = t[t.find('[') + 1 : t.find(']')]
-      if s in types.keys():
-        s = types[s]
+      if s in types_map.keys():
+        s = types_map[s]
       (param_type, to_defines) = transform(s)
       defines.extend(to_defines)
       s = 'std::vector<' + param_type + '>'
     else:
-      if s in types.keys():
-        s = types[s]
+      if s in types_map.keys():
+        s = types_map[s]
     return (s, defines)
 
 
@@ -61,8 +61,8 @@
     defines = []
     need_setters = []
     for z,k in y.items():
-      if k["type"] in types.keys():
-        type_str = types[k["type"]]
+      if k["type"] in types_map.keys():
+        type_str = types_map[k["type"]]
       else:
         (type_str, to_defines) = transform(k["type"])
         defines.extend(to_defines)
@@ -102,13 +102,13 @@
 
   def out_init_ctor(x,y):
     cog.outl("  %s();" % ClassName)
-    cog.outl("  %s(ETERM*);" % ClassName)
+    cog.outl("  %s(const char*);" % ClassName)
 
 
   def out_convert(x,y):
-    cog.outl("int eterm_to_%s(ETERM*, int, std::vector<%s>&);" %\
+    cog.outl("int ei_buffer_to_%s(const char*, int, std::vector<%s>&);" %\
              (x, ClassName))
-    cog.outl("int eterm_to_%s(ETERM*, %s&);" %\
+    cog.outl("int ei_buffer_to_%s(const char*, %s&);" %\
              (x, ClassName))
 
   def out_print_funs(x,y):

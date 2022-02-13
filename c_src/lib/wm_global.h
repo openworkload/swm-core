@@ -12,7 +12,7 @@ class SwmGlobal:SwmEntity {
 
  public:
   SwmGlobal();
-  SwmGlobal(ETERM*);
+  SwmGlobal(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -34,7 +34,7 @@ class SwmGlobal:SwmEntity {
 
 };
 
-int eterm_to_global(ETERM*, int, std::vector<SwmGlobal>&);
-int eterm_to_global(ETERM*, SwmGlobal&);
+int ei_buffer_to_global(const char*, int, std::vector<SwmGlobal>&);
+int ei_buffer_to_global(const char*, SwmGlobal&);
 
 } // namespace swm

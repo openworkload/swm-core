@@ -12,7 +12,7 @@ class SwmQueue:SwmEntity {
 
  public:
   SwmQueue();
-  SwmQueue(ETERM*);
+  SwmQueue(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -55,7 +55,7 @@ class SwmQueue:SwmEntity {
 
 };
 
-int eterm_to_queue(ETERM*, int, std::vector<SwmQueue>&);
-int eterm_to_queue(ETERM*, SwmQueue&);
+int ei_buffer_to_queue(const char*, int, std::vector<SwmQueue>&);
+int ei_buffer_to_queue(const char*, SwmQueue&);
 
 } // namespace swm

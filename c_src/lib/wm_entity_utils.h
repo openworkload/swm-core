@@ -1,10 +1,12 @@
 
 #pragma once
 
-#include <erl_interface.h>
+#include <ei.h>
 
 #include <string>
 #include <vector>
+
+#define ETERM char
 
 namespace swm {
 

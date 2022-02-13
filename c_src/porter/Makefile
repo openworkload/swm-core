@@ -8,8 +8,7 @@ CFLAGS=-I${_KERL_ACTIVE_DIR}/usr/include\
        -std=c++14\
        -Wno-deprecated-declarations
 LDFLAGS=-L${_KERL_ACTIVE_DIR}/usr/lib
-LIBS=-lerl_interface\
-     -lei\
+LIBS=-lei\
      -lpthread
 
 SRCS=$(shell echo *.cpp)

@@ -13,7 +13,7 @@ class SwmCluster:SwmEntity {
 
  public:
   SwmCluster();
-  SwmCluster(ETERM*);
+  SwmCluster(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -56,7 +56,7 @@ class SwmCluster:SwmEntity {
 
 };
 
-int eterm_to_cluster(ETERM*, int, std::vector<SwmCluster>&);
-int eterm_to_cluster(ETERM*, SwmCluster&);
+int ei_buffer_to_cluster(const char*, int, std::vector<SwmCluster>&);
+int ei_buffer_to_cluster(const char*, SwmCluster&);
 
 } // namespace swm

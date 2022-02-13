@@ -13,7 +13,7 @@ class SwmHook:SwmEntity {
 
  public:
   SwmHook();
-  SwmHook(ETERM*);
+  SwmHook(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -44,7 +44,7 @@ class SwmHook:SwmEntity {
 
 };
 
-int eterm_to_hook(ETERM*, int, std::vector<SwmHook>&);
-int eterm_to_hook(ETERM*, SwmHook&);
+int ei_buffer_to_hook(const char*, int, std::vector<SwmHook>&);
+int ei_buffer_to_hook(const char*, SwmHook&);
 
 } // namespace swm

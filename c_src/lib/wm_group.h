@@ -12,7 +12,7 @@ class SwmGroup:SwmEntity {
 
  public:
   SwmGroup();
-  SwmGroup(ETERM*);
+  SwmGroup(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -40,7 +40,7 @@ class SwmGroup:SwmEntity {
 
 };
 
-int eterm_to_group(ETERM*, int, std::vector<SwmGroup>&);
-int eterm_to_group(ETERM*, SwmGroup&);
+int ei_buffer_to_group(const char*, int, std::vector<SwmGroup>&);
+int ei_buffer_to_group(const char*, SwmGroup&);
 
 } // namespace swm

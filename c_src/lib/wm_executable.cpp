@@ -1,12 +1,9 @@
-
-
 #include "wm_entity_utils.h"
 
 #include <iostream>
 
 #include "wm_executable.h"
 
-#include <erl_interface.h>
 #include <ei.h>
 
 
@@ -16,36 +13,50 @@ using namespace swm;
 SwmExecutable::SwmExecutable() {
 }
 
-SwmExecutable::SwmExecutable(ETERM *term) {
-  if(!term) {
-    std::cerr << "Cannot convert ETERM to SwmExecutable: empty" << std::endl;
+SwmExecutable::SwmExecutable(const char* buf) {
+  if (!buf) {
+    std::cerr << "Cannot convert ei buffer into SwmExecutable: empty" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 2, name)) {
-    std::cerr << "Could not initialize executable paremeter at position 2" << std::endl;
-    erl_print_term(stderr, term);
+
+  int term_size = 0;
+  int index = 0;
+
+  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
+    std::cerr << "Cannot decode SwmExecutable header from ei buffer" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 3, path)) {
-    std::cerr << "Could not initialize executable paremeter at position 3" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->name)) {
+    std::cerr << "Could not initialize executable property at position=2" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 4, user)) {
-    std::cerr << "Could not initialize executable paremeter at position 4" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->path)) {
+    std::cerr << "Could not initialize executable property at position=3" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 5, comment)) {
-    std::cerr << "Could not initialize executable paremeter at position 5" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->user)) {
+    std::cerr << "Could not initialize executable property at position=4" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 6, revision)) {
-    std::cerr << "Could not initialize executable paremeter at position 6" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->comment)) {
+    std::cerr << "Could not initialize executable property at position=5" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
+
+  if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
+    std::cerr << "Could not initialize executable property at position=6" << std::endl;
+    ei_print_term(stderr, buf, index);
+    return;
+  }
+
 }
 
 
@@ -91,27 +102,45 @@ uint64_t SwmExecutable::get_revision() const {
 }
 
 
-int swm::eterm_to_executable(ETERM* term, int pos, std::vector<SwmExecutable> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if(!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a executable list" << std::endl;
+int swm::ei_buffer_to_executable(const char* buf, const int pos, std::vector<SwmExecutable> &array) {
+  int term_size = 0
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << pos << std::endl;
     return -1;
   }
-  if(ERL_IS_EMPTY_LIST(elist)) {
+  if (term_type != ERL_LIST_EXT) {
+      std::cerr << "Could not parse term: not a executable list at position " << pos << std::endl;
+      return -1;
+  }
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {
+    std::cerr << "Could not parse list for executable at position " << pos << std::endl;
+    return -1;
+  }
+  if (list_size == 0) {
     return 0;
   }
-  const size_t sz = erl_length(elist);
-  array.reserve(sz);
-  for(size_t i=0; i<sz; ++i) {
-    ETERM* e = erl_hd(elist);
-    array.push_back(SwmExecutable(e));
-    elist = erl_tl(elist);
+  array.reserve(list_size);
+  for (size_t i=0; i<list_size; ++i) {
+    ei_term term;
+    if (ei_decode_ei_term(buf, pos, &term) < 0) {
+      std::cerr << "Could not decode list element at position " << pos << std::endl;
+      return -1;
+    }
+    array.push_back(SwmExecutable(term));
   }
   return 0;
 }
 
 
-int swm::eterm_to_executable(ETERM* eterm, SwmExecutable &obj) {
+int swm::eterm_to_executable(char* buf, SwmExecutable &obj) {
+  ei_term term;
+  if (ei_decode_ei_term(buf, 0, &term) < 0) {
+    std::cerr << "Could not decode element for " << executable << std::endl;
+    return -1;
+  }
   obj = SwmExecutable(eterm);
   return 0;
 }

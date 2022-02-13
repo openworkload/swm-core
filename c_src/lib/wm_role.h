@@ -12,7 +12,7 @@ class SwmRole:SwmEntity {
 
  public:
   SwmRole();
-  SwmRole(ETERM*);
+  SwmRole(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -37,7 +37,7 @@ class SwmRole:SwmEntity {
 
 };
 
-int eterm_to_role(ETERM*, int, std::vector<SwmRole>&);
-int eterm_to_role(ETERM*, SwmRole&);
+int ei_buffer_to_role(const char*, int, std::vector<SwmRole>&);
+int ei_buffer_to_role(const char*, SwmRole&);
 
 } // namespace swm

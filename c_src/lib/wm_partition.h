@@ -13,7 +13,7 @@ class SwmPartition:SwmEntity {
 
  public:
   SwmPartition();
-  SwmPartition(ETERM*);
+  SwmPartition(const char*);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -80,7 +80,7 @@ class SwmPartition:SwmEntity {
 
 };
 
-int eterm_to_partition(ETERM*, int, std::vector<SwmPartition>&);
-int eterm_to_partition(ETERM*, SwmPartition&);
+int ei_buffer_to_partition(const char*, int, std::vector<SwmPartition>&);
+int ei_buffer_to_partition(const char*, SwmPartition&);
 
 } // namespace swm

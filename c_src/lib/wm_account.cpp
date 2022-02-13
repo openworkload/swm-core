@@ -1,12 +1,9 @@
-
-
 #include "wm_entity_utils.h"
 
 #include <iostream>
 
 #include "wm_account.h"
 
-#include <erl_interface.h>
 #include <ei.h>
 
 
@@ -16,46 +13,62 @@ using namespace swm;
 SwmAccount::SwmAccount() {
 }
 
-SwmAccount::SwmAccount(ETERM *term) {
-  if(!term) {
-    std::cerr << "Cannot convert ETERM to SwmAccount: empty" << std::endl;
+SwmAccount::SwmAccount(const char* buf) {
+  if (!buf) {
+    std::cerr << "Cannot convert ei buffer into SwmAccount: empty" << std::endl;
     return;
   }
-  if(eterm_to_str(term, 2, id)) {
-    std::cerr << "Could not initialize account paremeter at position 2" << std::endl;
-    erl_print_term(stderr, term);
+
+  int term_size = 0;
+  int index = 0;
+
+  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
+    std::cerr << "Cannot decode SwmAccount header from ei buffer" << std::endl;
     return;
   }
-  if(eterm_to_atom(term, 3, name)) {
-    std::cerr << "Could not initialize account paremeter at position 3" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->id)) {
+    std::cerr << "Could not initialize account property at position=2" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 4, price_list)) {
-    std::cerr << "Could not initialize account paremeter at position 4" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_atom(buf, index, this->name)) {
+    std::cerr << "Could not initialize account property at position=3" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 5, users)) {
-    std::cerr << "Could not initialize account paremeter at position 5" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->price_list)) {
+    std::cerr << "Could not initialize account property at position=4" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 6, admins)) {
-    std::cerr << "Could not initialize account paremeter at position 6" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->users)) {
+    std::cerr << "Could not initialize account property at position=5" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_str(term, 7, comment)) {
-    std::cerr << "Could not initialize account paremeter at position 7" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->admins)) {
+    std::cerr << "Could not initialize account property at position=6" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
-  if(eterm_to_uint64_t(term, 8, revision)) {
-    std::cerr << "Could not initialize account paremeter at position 8" << std::endl;
-    erl_print_term(stderr, term);
+
+  if (ei_buffer_to_str(buf, index, this->comment)) {
+    std::cerr << "Could not initialize account property at position=7" << std::endl;
+    ei_print_term(stderr, buf, index);
     return;
   }
+
+  if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
+    std::cerr << "Could not initialize account property at position=8" << std::endl;
+    ei_print_term(stderr, buf, index);
+    return;
+  }
+
 }
 
 
@@ -117,27 +130,45 @@ uint64_t SwmAccount::get_revision() const {
 }
 
 
-int swm::eterm_to_account(ETERM* term, int pos, std::vector<SwmAccount> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if(!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a account list" << std::endl;
+int swm::ei_buffer_to_account(const char* buf, const int pos, std::vector<SwmAccount> &array) {
+  int term_size = 0
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << pos << std::endl;
     return -1;
   }
-  if(ERL_IS_EMPTY_LIST(elist)) {
+  if (term_type != ERL_LIST_EXT) {
+      std::cerr << "Could not parse term: not a account list at position " << pos << std::endl;
+      return -1;
+  }
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {
+    std::cerr << "Could not parse list for account at position " << pos << std::endl;
+    return -1;
+  }
+  if (list_size == 0) {
     return 0;
   }
-  const size_t sz = erl_length(elist);
-  array.reserve(sz);
-  for(size_t i=0; i<sz; ++i) {
-    ETERM* e = erl_hd(elist);
-    array.push_back(SwmAccount(e));
-    elist = erl_tl(elist);
+  array.reserve(list_size);
+  for (size_t i=0; i<list_size; ++i) {
+    ei_term term;
+    if (ei_decode_ei_term(buf, pos, &term) < 0) {
+      std::cerr << "Could not decode list element at position " << pos << std::endl;
+      return -1;
+    }
+    array.push_back(SwmAccount(term));
   }
   return 0;
 }
 
 
-int swm::eterm_to_account(ETERM* eterm, SwmAccount &obj) {
+int swm::eterm_to_account(char* buf, SwmAccount &obj) {
+  ei_term term;
+  if (ei_decode_ei_term(buf, 0, &term) < 0) {
+    std::cerr << "Could not decode element for " << account << std::endl;
+    return -1;
+  }
   obj = SwmAccount(eterm);
   return 0;
 }
@@ -147,20 +178,20 @@ void SwmAccount::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << id << separator;
     std::cerr << prefix << name << separator;
     std::cerr << prefix << price_list << separator;
-  if(users.empty()) {
+  if (users.empty()) {
     std::cerr << prefix << "users: []" << separator;
   } else {
     std::cerr << prefix << "users" << ": [";
-    for(const auto &q: users) {
+    for (const auto &q: users) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
-  if(admins.empty()) {
+  if (admins.empty()) {
     std::cerr << prefix << "admins: []" << separator;
   } else {
     std::cerr << prefix << "admins" << ": [";
-    for(const auto &q: admins) {
+    for (const auto &q: admins) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
