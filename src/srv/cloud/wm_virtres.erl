@@ -86,18 +86,24 @@ handle_sync_event(get_current_state, _From, State, MState) ->
 
 handle_event(job_finished, _, #mstate{job_id = JobId, part_mgr_id = PartMgrNodeId} = MState) ->
     case PartMgrNodeId of
-      undefined ->  % happens when running locally for example
-        ?LOG_DEBUG("Partition manager node is undefined => skip downloading"),
-        ok = wm_virtres_handler:remove_relocation_entities(JobId),
-        gen_fsm:send_event(self(), start_destroying),
-        {stop, normal, MState};
-      _ ->
-        ?LOG_DEBUG("Job has finished => start data downloading: ~p", [JobId]),
-        {ok, Ref, Files} = wm_virtres_handler:start_downloading(PartMgrNodeId, JobId),
-        ?LOG_INFO("Downloading has been started [jobid=~p, ref=~p]: ~p", [JobId, Ref, Files]),
-        {next_state, downloading, MState#mstate{download_ref = Ref}}
+        undefined ->  % happens when running locally for example
+            ?LOG_DEBUG("Partition manager node is undefined => skip downloading"),
+            ok = wm_virtres_handler:remove_relocation_entities(JobId),
+            gen_fsm:send_event(self(), start_destroying),
+            {stop, normal, MState};
+        _ ->
+            ?LOG_DEBUG("Job has finished => start data downloading: ~p", [JobId]),
+            {ok, Ref, Files} = wm_virtres_handler:start_downloading(PartMgrNodeId, JobId),
+            ?LOG_INFO("Downloading has been started [jobid=~p, ref=~p]: ~p", [JobId, Ref, Files]),
+            {next_state, downloading, MState#mstate{download_ref = Ref}}
     end;
-handle_event(destroy, _, #mstate{task_id = TaskId, job_id = JobId, part_id = PartId, remote = Remote} = MState) ->
+handle_event(destroy,
+             _,
+             #mstate{task_id = TaskId,
+                     job_id = JobId,
+                     part_id = PartId,
+                     remote = Remote} =
+                 MState) ->
     ?LOG_DEBUG("Destroy remote partition for job ~p (task_id: ~p)", [JobId, TaskId]),
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
@@ -144,7 +150,11 @@ terminate(State, StateName, #mstate{job_id = JobId}) ->
 %% FSM state transitions
 %% ============================================================================
 
-sleeping(activate, #mstate{task_id = ID, job_id = JobId, remote = Remote} = MState) ->
+sleeping(activate,
+         #mstate{task_id = ID,
+                 job_id = JobId,
+                 remote = Remote} =
+             MState) ->
     ?LOG_DEBUG("Received 'activate' [sleeping] (~p)", [ID]),
     {ok, WaitRef} = wm_virtres_handler:request_partition_existence(JobId, Remote),
     {next_state, validating, MState#mstate{wait_ref = WaitRef}}.
@@ -157,13 +167,13 @@ validating({partition_exists, Ref, false},
                MState) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     case is_local_job(Job) of
-      true ->
-        ?LOG_DEBUG("No partition will be spawned (local job): ~p", [JobId]),
-        {next_state, running, MState#mstate{upload_ref = finished}};
-      false ->
-        ?LOG_INFO("Spawn a new partition for job ~p", [JobId]),
-        {ok, WaitRef} = wm_virtres_handler:spawn_partition(Job, Remote),
-        {next_state, creating, MState#mstate{wait_ref = WaitRef}}
+        true ->
+            ?LOG_DEBUG("No partition will be spawned (local job): ~p", [JobId]),
+            {next_state, running, MState#mstate{upload_ref = finished}};
+        false ->
+            ?LOG_INFO("Spawn a new partition for job ~p", [JobId]),
+            {ok, WaitRef} = wm_virtres_handler:spawn_partition(Job, Remote),
+            {next_state, creating, MState#mstate{wait_ref = WaitRef}}
     end;
 validating({partition_exists, Ref, true},
            #mstate{action = create,
@@ -206,8 +216,7 @@ creating({partition_spawned, Ref, NewPartExtId}, #mstate{job_id = JobId, wait_re
 creating({partition_fetched, Ref, Partition},
          #mstate{job_id = JobId,
                  wait_ref = Ref,
-                 template_node = TplNode
-                } =
+                 template_node = TplNode} =
              MState) ->
     case wm_entity:get_attr(state, Partition) of
         up ->
@@ -306,7 +315,6 @@ parse_args([{task_id, ID} | T], MState) ->
     parse_args(T, MState#mstate{task_id = ID});
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
-
 
 -spec is_local_job(#job{}) -> boolean().
 is_local_job(#job{nodes = [Node]}) ->

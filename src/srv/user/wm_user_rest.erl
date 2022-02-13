@@ -302,12 +302,12 @@ do_submit_jobscript(JobScriptPath, <<"--", Boundary:32/binary, ?SUBMISSION_HEADE
     TailStr = binary_to_list(Tail),
     BoundaryStr = binary_to_list(Boundary),
     case string:rstr(TailStr, "\r\n--" ++ BoundaryStr) of
-      0 ->
-          ?LOG_WARN("Wrong HTTP body format: ~p", [TailStr]),
-          {error, ?HTTP_CODE_BAD_REQUEST};
-      JobScriptContentEndPosition ->
-          NewJobScriptContent = string:substr(TailStr, 1, JobScriptContentEndPosition - 1),
-          do_submit_jobscript(JobScriptPath, NewJobScriptContent, CertBin)
+        0 ->
+            ?LOG_WARN("Wrong HTTP body format: ~p", [TailStr]),
+            {error, ?HTTP_CODE_BAD_REQUEST};
+        JobScriptContentEndPosition ->
+            NewJobScriptContent = string:substr(TailStr, 1, JobScriptContentEndPosition - 1),
+            do_submit_jobscript(JobScriptPath, NewJobScriptContent, CertBin)
     end;
 do_submit_jobscript(JobScriptPath, JobScriptContent, CertBin) ->
     case get_username_from_cert(CertBin) of
