@@ -13,15 +13,12 @@ using namespace swm;
 SwmBootInfo::SwmBootInfo() {
 }
 
-SwmBootInfo::SwmBootInfo(const char* buf) {
+SwmBootInfo::SwmBootInfo(const char* buf, int* index) {
   if (!buf) {
-    std::cerr << "Cannot convert ei buffer into SwmBootInfo: empty" << std::endl;
+    std::cerr << "Cannot convert ei buffer into SwmBootInfo: null" << std::endl;
     return;
   }
-
   int term_size = 0;
-  int index = 0;
-
   if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
     std::cerr << "Cannot decode SwmBootInfo header from ei buffer" << std::endl;
     return;
@@ -52,7 +49,6 @@ SwmBootInfo::SwmBootInfo(const char* buf) {
   }
 
 }
-
 
 
 void SwmBootInfo::set_node_host(const std::string &new_val) {
@@ -87,50 +83,44 @@ uint64_t SwmBootInfo::get_parent_port() const {
   return parent_port;
 }
 
-
-int swm::ei_buffer_to_boot_info(const char* buf, const int pos, std::vector<SwmBootInfo> &array) {
+int swm::ei_buffer_to_boot_info(const char *buf, const int *index, std::vector<SwmBootInfo> &array) {
   int term_size = 0
   int term_type = 0;
   const int parsed = ei_get_type(buf, index, &term_type, &term_size);
   if (parsed < 0) {
-    std::cerr << "Could not get term type at position " << pos << std::endl;
+    std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
   }
+
   if (term_type != ERL_LIST_EXT) {
-      std::cerr << "Could not parse term: not a boot_info list at position " << pos << std::endl;
+      std::cerr << "Could not parse term: not a boot_info list at position " << index << std::endl;
       return -1;
   }
   int list_size = 0;
-  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {
-    std::cerr << "Could not parse list for boot_info at position " << pos << std::endl;
+  if (ei_decode_list_header(buf, &index, &list_size) < 0) {
+    std::cerr << "Could not parse list for " + entity_name + " at position " << index << std::endl;
     return -1;
   }
   if (list_size == 0) {
     return 0;
   }
+
   array.reserve(list_size);
   for (size_t i=0; i<list_size; ++i) {
-    ei_term term;
-    if (ei_decode_ei_term(buf, pos, &term) < 0) {
-      std::cerr << "Could not decode list element at position " << pos << std::endl;
-      return -1;
+    int entry_size;
+    int type;
+    int res = ei_get_type(buf, &index, &type, &entry_size);
+    switch (type) {
+      case ERL_SMALL_TUPLE_EXT:
+      case ERL_LARGE_TUPLE_EXT:
+        array.emplace_back(buf, index);
+      default:
+        std::cerr << "List element (at position " << i << " is not a tuple: " << <class 'type'> << std::endl;
     }
-    array.push_back(SwmBootInfo(term));
   }
+
   return 0;
 }
-
-
-int swm::eterm_to_boot_info(char* buf, SwmBootInfo &obj) {
-  ei_term term;
-  if (ei_decode_ei_term(buf, 0, &term) < 0) {
-    std::cerr << "Could not decode element for " << boot_info << std::endl;
-    return -1;
-  }
-  obj = SwmBootInfo(eterm);
-  return 0;
-}
-
 
 void SwmBootInfo::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << node_host << separator;
@@ -139,5 +129,4 @@ void SwmBootInfo::print(const std::string &prefix, const char separator) const {
     std::cerr << prefix << parent_port << separator;
   std::cerr << std::endl;
 }
-
 

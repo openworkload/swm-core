@@ -21,40 +21,40 @@ int resize_vector(ETERM* elist, std::vector<T> &array) {
   return 0;
 }
 
-int swm::eterm_to_tuple_str_str(ETERM* eterm, SwmTupleStrStr &tuple) {
+int swm::ei_buffer_to_tuple_str_str(ETERM* eterm, SwmTupleStrStr &tuple) {
   if (!ERL_IS_TUPLE(eterm)) {
     std::cerr << "Could not parse eterm: not a tuple" << std::endl;
     return -1;
   }
-  if (eterm_to_str(eterm, 1, tuple.x1)) {
+  if (ei_buffer_to_str(eterm, 1, tuple.x1)) {
     return -1;
   }
-  if (eterm_to_str(eterm, 2, tuple.x2)) {
+  if (ei_buffer_to_str(eterm, 2, tuple.x2)) {
     return -1;
   }
   return 0;
 }
 
-int swm::eterm_to_tuple_atom_str(ETERM* eterm, SwmTupleAtomStr &tuple) {
+int swm::ei_buffer_to_tuple_atom_str(ETERM* eterm, SwmTupleAtomStr &tuple) {
   if (!ERL_IS_TUPLE(eterm)) {
     std::cerr << "Could not parse eterm: not a tuple" << std::endl;
     return -1;
   }
-  if (eterm_to_atom(eterm, 1, tuple.x1)) {
+  if (ei_buffer_to_atom(eterm, 1, tuple.x1)) {
     return -1;
   }
-  if (eterm_to_str(eterm, 2, tuple.x2)) {
+  if (ei_buffer_to_str(eterm, 2, tuple.x2)) {
     return -1;
   }
   return 0;
 }
 
-int swm::eterm_to_tuple_atom_eterm(ETERM* eterm, SwmTupleAtomEterm &tuple) {
+int swm::ei_buffer_to_tuple_atom_eterm(ETERM* eterm, SwmTupleAtomEterm &tuple) {
   if (!ERL_IS_TUPLE(eterm)) {
     std::cerr << "Could not parse eterm: not a tuple" << std::endl;
     return -1;
   }
-  if (eterm_to_atom(eterm, 1, tuple.x1)) {
+  if (ei_buffer_to_atom(eterm, 1, tuple.x1)) {
     return -1;
   }
   // TODO free the copy of the term
@@ -65,7 +65,7 @@ int swm::eterm_to_tuple_atom_eterm(ETERM* eterm, SwmTupleAtomEterm &tuple) {
   return 0;
 }
 
-int swm::eterm_to_tuple_str_str(ETERM* eterm, int pos, std::vector<SwmTupleStrStr> &array) {
+int swm::ei_buffer_to_tuple_str_str(ETERM* eterm, int pos, std::vector<SwmTupleStrStr> &array) {
   ETERM* elist = erl_element(pos, eterm);
   if (!elist) {
     return -1;
@@ -78,7 +78,7 @@ int swm::eterm_to_tuple_str_str(ETERM* eterm, int pos, std::vector<SwmTupleStrSt
     if (!x) {
       continue;
     }
-    if (swm::eterm_to_tuple_str_str(x, ss)) {
+    if (swm::ei_buffer_to_tuple_str_str(x, ss)) {
       std::cerr << "Could not init array of SwmTupleStrStr" << std::endl;
       return -1;
     }
@@ -87,7 +87,7 @@ int swm::eterm_to_tuple_str_str(ETERM* eterm, int pos, std::vector<SwmTupleStrSt
   return 0;
 }
 
-int swm::eterm_to_tuple_atom_str(ETERM* eterm, int pos, std::vector<SwmTupleAtomStr> &array) {
+int swm::ei_buffer_to_tuple_atom_str(ETERM* eterm, int pos, std::vector<SwmTupleAtomStr> &array) {
   ETERM* elist = erl_element(pos, eterm);
   if (!elist) {
     return -1;
@@ -100,7 +100,7 @@ int swm::eterm_to_tuple_atom_str(ETERM* eterm, int pos, std::vector<SwmTupleAtom
     if (!x) {
       continue;
     }
-    if (swm::eterm_to_tuple_atom_str(x, as)) {
+    if (swm::ei_buffer_to_tuple_atom_str(x, as)) {
       std::cerr << "Could not init array of SwmTupleAtomStr" << std::endl;
       return -1;
     }
@@ -109,7 +109,7 @@ int swm::eterm_to_tuple_atom_str(ETERM* eterm, int pos, std::vector<SwmTupleAtom
   return 0;
 }
 
-int swm::eterm_to_tuple_atom_eterm(ETERM* eterm, int pos, std::vector<SwmTupleAtomEterm> &array) {
+int swm::ei_buffer_to_tuple_atom_eterm(ETERM* eterm, int pos, std::vector<SwmTupleAtomEterm> &array) {
   ETERM* elist = erl_element(pos, eterm);
   if (!elist) {
     return -1;
@@ -122,7 +122,7 @@ int swm::eterm_to_tuple_atom_eterm(ETERM* eterm, int pos, std::vector<SwmTupleAt
     if (!x) {
       continue;
     }
-    if (swm::eterm_to_tuple_atom_eterm(x, ae)) {
+    if (swm::ei_buffer_to_tuple_atom_eterm(x, ae)) {
       std::cerr << "Could not init array of SwmTupleAtomEterm" << std::endl;
       return -1;
     }
@@ -131,22 +131,22 @@ int swm::eterm_to_tuple_atom_eterm(ETERM* eterm, int pos, std::vector<SwmTupleAt
   return 0;
 }
 
-int swm::eterm_to_tuple_atom_uint64(ETERM* eterm, SwmTupleAtomUint64 &tuple) {
+int swm::ei_buffer_to_tuple_atom_uint64(ETERM* eterm, SwmTupleAtomUint64 &tuple) {
   if (!ERL_IS_TUPLE(eterm)) {
     std::cerr << "Could not parse eterm: not a tuple" << std::endl;
     return -1;
   }
-  if (eterm_to_atom(eterm, 1, tuple.x1)) {
+  if (ei_buffer_to_atom(eterm, 1, tuple.x1)) {
     return -1;
   }
   ETERM* elem = erl_element(2, eterm);
-  if (eterm_to_integer(elem, tuple.x2)) {
+  if (ei_buffer_to_integer(elem, tuple.x2)) {
     return -1;
   }
   return 0;
 }
 
-int swm::eterm_to_atom(ETERM* e, std::string &a) {
+int swm::ei_buffer_to_atom(ETERM* e, std::string &a) {
   if (!e) {
     return -1;
   }
@@ -162,12 +162,12 @@ int swm::eterm_to_atom(ETERM* e, std::string &a) {
   return 0;
 }
 
-int swm::eterm_to_atom(ETERM* term, int pos, std::string &a) {
+int swm::ei_buffer_to_atom(ETERM* term, int pos, std::string &a) {
   ETERM* elem = erl_element(pos, term);
-  return eterm_to_atom(elem, a);
+  return ei_buffer_to_atom(elem, a);
 }
 
-int swm::eterm_to_atom(ETERM* term, int pos, std::vector<std::string> &array) {
+int swm::ei_buffer_to_atom(ETERM* term, int pos, std::vector<std::string> &array) {
   ETERM* elist = erl_element(pos, term);
   if (!elist) {
     return -1;
@@ -197,7 +197,7 @@ int swm::eterm_to_atom(ETERM* term, int pos, std::vector<std::string> &array) {
   return 0;
 }
 
-int swm::eterm_to_str(ETERM* term, int pos, std::vector<std::string> &array) {
+int swm::ei_buffer_to_str(ETERM* term, int pos, std::vector<std::string> &array) {
   ETERM* elist = erl_element(pos, term);
   if (!elist) {
     return -1;
@@ -229,15 +229,15 @@ int swm::eterm_to_str(ETERM* term, int pos, std::vector<std::string> &array) {
   return 0;
 }
 
-int swm::eterm_to_str(ETERM* term, int pos, std::string &s) {
+int swm::ei_buffer_to_str(ETERM* term, int pos, std::string &s) {
   ETERM* elem = erl_element(pos, term);
   if (!elem) {
     return -1;
   }
-  return eterm_to_str(elem, s);
+  return ei_buffer_to_str(elem, s);
 }
 
-int swm::eterm_to_str(ETERM* term, std::string &s) {
+int swm::ei_buffer_to_str(ETERM* term, std::string &s) {
   if (!ERL_IS_LIST(term) && !ERL_IS_BINARY(term)) {
     std::cerr << "Could not parse eterm: not a string: ";
     erl_print_term(stderr, term);
@@ -253,7 +253,7 @@ int swm::eterm_to_str(ETERM* term, std::string &s) {
 }
 
 template<typename T>
-int swm::eterm_to_integer(ETERM* e, T &x) {
+int swm::ei_buffer_to_integer(ETERM* e, T &x) {
   if (ERL_IS_INTEGER(e)) {
     x = ERL_INT_VALUE(e);
   }
@@ -275,15 +275,15 @@ int swm::eterm_to_integer(ETERM* e, T &x) {
   return 0;
 }
 
-int swm::eterm_to_uint64_t(ETERM* term, int pos, uint64_t &x) {
+int swm::ei_buffer_to_uint64_t(ETERM* term, int pos, uint64_t &x) {
   ETERM* elem = erl_element(pos, term);
   if (!elem) {
     return -1;
   }
-  return eterm_to_integer(elem, x);
+  return ei_buffer_to_integer(elem, x);
 }
 
-int swm::eterm_to_uint64_t(ETERM* term, int pos, std::vector<uint64_t> &array) {
+int swm::ei_buffer_to_uint64_t(ETERM* term, int pos, std::vector<uint64_t> &array) {
   ETERM* elist = erl_element(pos, term);
   if (!elist) {
     return -1;
@@ -296,7 +296,7 @@ int swm::eterm_to_uint64_t(ETERM* term, int pos, std::vector<uint64_t> &array) {
     if (!e) {
       continue;
     }
-    if (eterm_to_integer(e, n)) {
+    if (ei_buffer_to_integer(e, n)) {
       return -1;
     }
     elist = erl_tl(elist);
@@ -304,15 +304,15 @@ int swm::eterm_to_uint64_t(ETERM* term, int pos, std::vector<uint64_t> &array) {
   return 0;
 }
 
-int swm::eterm_to_int64_t(ETERM* term, int pos, int64_t &n) {
+int swm::ei_buffer_to_int64_t(ETERM* term, int pos, int64_t &n) {
   ETERM* elem = erl_element(pos, term);
   if (!elem) {
     return -1;
   }
-  return eterm_to_integer(elem, n);
+  return ei_buffer_to_integer(elem, n);
 }
 
-int swm::eterm_to_int64_t(ETERM* term, int pos, std::vector<int64_t> &array) {
+int swm::ei_buffer_to_int64_t(ETERM* term, int pos, std::vector<int64_t> &array) {
   ETERM* elist = erl_element(pos, term);
   if (!elist) {
     return -1;
@@ -330,7 +330,7 @@ int swm::eterm_to_int64_t(ETERM* term, int pos, std::vector<int64_t> &array) {
     if (!e) {
       continue;
     }
-    if (eterm_to_integer(e, n)) {
+    if (ei_buffer_to_integer(e, n)) {
       return -1;
     }
     elist = erl_tl(elist);
@@ -338,7 +338,7 @@ int swm::eterm_to_int64_t(ETERM* term, int pos, std::vector<int64_t> &array) {
   return 0;
 }
 
-int swm::eterm_to_double(ETERM* term, int pos, double &n) {
+int swm::ei_buffer_to_double(ETERM* term, int pos, double &n) {
   ETERM* elem = erl_element(pos, term);
   if (!elem) {
     return -1;
@@ -350,7 +350,7 @@ int swm::eterm_to_double(ETERM* term, int pos, double &n) {
   return 0;
 }
 
-int swm::eterm_to_double(ETERM* term, int pos, std::vector<double> &array) {
+int swm::ei_buffer_to_double(ETERM* term, int pos, std::vector<double> &array) {
   ETERM* elist = erl_element(pos, term);
   if (!elist) {
     return -1;
@@ -377,7 +377,7 @@ int swm::eterm_to_double(ETERM* term, int pos, std::vector<double> &array) {
   return 0;
 }
 
-int swm::eterm_to_eterm(ETERM* term, int pos, ETERM* &elem) {
+int swm::ei_buffer_to_eterm(ETERM* term, int pos, ETERM* &elem) {
   // TODO free the copy of the term
   elem = erl_copy_term(erl_element(pos, term));
   if (!elem) {
@@ -387,7 +387,7 @@ int swm::eterm_to_eterm(ETERM* term, int pos, ETERM* &elem) {
   return 0;
 }
 
-int swm::eterm_to_eterm(ETERM* term, int pos, std::vector<ETERM*> &array) {
+int swm::ei_buffer_to_eterm(ETERM* term, int pos, std::vector<ETERM*> &array) {
   // TODO free the copy of the term list
   ETERM *elist = erl_copy_term(erl_element(pos, term));
   if (!elist) {
