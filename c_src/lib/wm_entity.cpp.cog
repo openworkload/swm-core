@@ -69,15 +69,12 @@
     outputs.append("}")
     outputs.append("")
 
-    outputs.append("%s::%s(const char* buf) {" % (class_name, class_name))
+    outputs.append("%s::%s(const char* buf, int* index) {" % (class_name, class_name))
     outputs.append("  if (!buf) {")
-    outputs.append(f'    std::cerr << "Cannot convert ei buffer into {class_name}: empty" << std::endl;')
+    outputs.append(f'    std::cerr << "Cannot convert ei buffer into {class_name}: null" << std::endl;')
     outputs.append("    return;")
     outputs.append("  }")
-    outputs.append("")
     outputs.append("  int term_size = 0;")
-    outputs.append("  int index = 0;")
-    outputs.append("")
     outputs.append("  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {")
     outputs.append(f'    std::cerr << "Cannot decode {class_name} header from ei buffer" << std::endl;')
     outputs.append("    return;")
@@ -113,55 +110,45 @@
   def out_init_array_fun(entity_name):
     struct_type = entity_name.title().replace('_', '')
     cog.out("int swm::ei_buffer_to_%s(" % WM_ENTITY_NAME)
-    cog.out("const char* buf, ")
-    cog.out("const int pos, ")
+    cog.out("const char *buf, ")
+    cog.out("const int *index, ")
     cog.out("std::vector<Swm" + struct_type + "> &array")
     cog.outl(") {")
     cog.outl("  int term_size = 0");
     cog.outl("  int term_type = 0;");
     cog.outl("  const int parsed = ei_get_type(buf, index, &term_type, &term_size);");
     cog.outl("  if (parsed < 0) {");
-    cog.outl("    std::cerr << \"Could not get term type at position \" << pos << std::endl;");
+    cog.outl("    std::cerr << \"Could not get term type at position \" << index << std::endl;");
     cog.outl("    return -1;");
     cog.outl("  }");
+    cog.outl()
     cog.outl("  if (term_type != ERL_LIST_EXT) {");
-    cog.outl("      std::cerr << \"Could not parse term: not a " + entity_name + " list at position \" << pos << std::endl;");
+    cog.outl("      std::cerr << \"Could not parse term: not a " + entity_name + " list at position \" << index << std::endl;");
     cog.outl("      return -1;");
     cog.outl("  }");
     cog.outl("  int list_size = 0;");
-    cog.outl("  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {");
-    cog.outl("    std::cerr << \"Could not parse list for " + entity_name + " at position \" << pos << std::endl;");
+    cog.outl("  if (ei_decode_list_header(buf, &index, &list_size) < 0) {");
+    cog.outl(f'    std::cerr << "Could not parse list for " + entity_name + " at position " << index << std::endl;');
     cog.outl("    return -1;");
     cog.outl("  }");
     cog.outl("  if (list_size == 0) {");
     cog.outl("    return 0;");
     cog.outl("  }");
+    cog.outl()
     cog.outl("  array.reserve(list_size);");
     cog.outl("  for (size_t i=0; i<list_size; ++i) {");
-    cog.outl("    ei_term term;");
-    cog.outl("    if (ei_decode_ei_term(buf, pos, &term) < 0) {");
-    cog.outl("      std::cerr << \"Could not decode list element at position \" << pos << std::endl;");
-    cog.outl("      return -1;");
-    cog.outl("    }");
-    cog.outl("    array.push_back(Swm%s(term));" % struct_type);
+    cog.outl("    int entry_size;")
+    cog.outl("    int type;")
+    cog.outl("    int res = ei_get_type(buf, &index, &type, &entry_size);")
+    cog.outl("    switch (type) {")
+    cog.outl("      case ERL_SMALL_TUPLE_EXT:")
+    cog.outl("      case ERL_LARGE_TUPLE_EXT:")
+    cog.outl(f"        array.emplace_back(buf, index);");
+    cog.outl("      default:")
+    cog.outl(f'        std::cerr << "List element (at position " << i << " is not a tuple: " << {type} << std::endl;')
+    cog.outl("    }")
     cog.outl("  }");
-    cog.outl("  return 0;");
-    cog.outl("}")
     cog.outl()
-
-
-  def out_convert_fun(entity_name):
-    struct_type = entity_name.title().replace('_', '')
-    cog.out("int swm::eterm_to_%s(" % WM_ENTITY_NAME)
-    cog.out("char* buf, ")
-    cog.out("Swm" + struct_type + " &obj")
-    cog.outl(") {")
-    cog.outl("  ei_term term;");
-    cog.outl("  if (ei_decode_ei_term(buf, 0, &term) < 0) {");
-    cog.outl("    std::cerr << \"Could not decode element for \" << " + WM_ENTITY_NAME + " << std::endl;");
-    cog.outl("    return -1;");
-    cog.outl("  }");
-    cog.outl("  obj = Swm%s(eterm);" % struct_type);
     cog.outl("  return 0;");
     cog.outl("}")
     cog.outl()
@@ -245,22 +232,10 @@
     cog.outl()
     for output in outputs:
       cog.outl(output)
-    cog.outl()
-
     out_setters(entity_name, entity_properties)
-    cog.outl()
-
     out_init_array_fun(entity_name)
-    cog.outl()
-
-    out_convert_fun(entity_name)
-    cog.outl()
-
     out_print_funs(entity_name, entity_properties)
-    cog.outl()
-
 
   generate_output()
 
 ]]]
-

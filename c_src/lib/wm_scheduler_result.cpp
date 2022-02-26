@@ -6,8 +6,8 @@
 
 #include <ei.h>
 
-#include "wm_timetable.h"
 #include "wm_metric.h"
+#include "wm_timetable.h"
 
 using namespace swm;
 
@@ -15,15 +15,12 @@ using namespace swm;
 SwmSchedulerResult::SwmSchedulerResult() {
 }
 
-SwmSchedulerResult::SwmSchedulerResult(const char* buf) {
+SwmSchedulerResult::SwmSchedulerResult(const char* buf, int* index) {
   if (!buf) {
-    std::cerr << "Cannot convert ei buffer into SwmSchedulerResult: empty" << std::endl;
+    std::cerr << "Cannot convert ei buffer into SwmSchedulerResult: null" << std::endl;
     return;
   }
-
   int term_size = 0;
-  int index = 0;
-
   if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
     std::cerr << "Cannot decode SwmSchedulerResult header from ei buffer" << std::endl;
     return;
@@ -72,7 +69,6 @@ SwmSchedulerResult::SwmSchedulerResult(const char* buf) {
   }
 
 }
-
 
 
 void SwmSchedulerResult::set_timetable(const std::vector<SwmTimetable> &new_val) {
@@ -131,50 +127,44 @@ double SwmSchedulerResult::get_work_time() const {
   return work_time;
 }
 
-
-int swm::ei_buffer_to_scheduler_result(const char* buf, const int pos, std::vector<SwmSchedulerResult> &array) {
+int swm::ei_buffer_to_scheduler_result(const char *buf, const int *index, std::vector<SwmSchedulerResult> &array) {
   int term_size = 0
   int term_type = 0;
   const int parsed = ei_get_type(buf, index, &term_type, &term_size);
   if (parsed < 0) {
-    std::cerr << "Could not get term type at position " << pos << std::endl;
+    std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
   }
+
   if (term_type != ERL_LIST_EXT) {
-      std::cerr << "Could not parse term: not a scheduler_result list at position " << pos << std::endl;
+      std::cerr << "Could not parse term: not a scheduler_result list at position " << index << std::endl;
       return -1;
   }
   int list_size = 0;
-  if (ei_decode_list_header(buf, &pos, &list_size) < 0) {
-    std::cerr << "Could not parse list for scheduler_result at position " << pos << std::endl;
+  if (ei_decode_list_header(buf, &index, &list_size) < 0) {
+    std::cerr << "Could not parse list for " + entity_name + " at position " << index << std::endl;
     return -1;
   }
   if (list_size == 0) {
     return 0;
   }
+
   array.reserve(list_size);
   for (size_t i=0; i<list_size; ++i) {
-    ei_term term;
-    if (ei_decode_ei_term(buf, pos, &term) < 0) {
-      std::cerr << "Could not decode list element at position " << pos << std::endl;
-      return -1;
+    int entry_size;
+    int type;
+    int res = ei_get_type(buf, &index, &type, &entry_size);
+    switch (type) {
+      case ERL_SMALL_TUPLE_EXT:
+      case ERL_LARGE_TUPLE_EXT:
+        array.emplace_back(buf, index);
+      default:
+        std::cerr << "List element (at position " << i << " is not a tuple: " << <class 'type'> << std::endl;
     }
-    array.push_back(SwmSchedulerResult(term));
   }
+
   return 0;
 }
-
-
-int swm::eterm_to_scheduler_result(char* buf, SwmSchedulerResult &obj) {
-  ei_term term;
-  if (ei_decode_ei_term(buf, 0, &term) < 0) {
-    std::cerr << "Could not decode element for " << scheduler_result << std::endl;
-    return -1;
-  }
-  obj = SwmSchedulerResult(eterm);
-  return 0;
-}
-
 
 void SwmSchedulerResult::print(const std::string &prefix, const char separator) const {
   if (timetable.empty()) {
@@ -202,5 +192,4 @@ void SwmSchedulerResult::print(const std::string &prefix, const char separator) 
     std::cerr << prefix << work_time << separator;
   std::cerr << std::endl;
 }
-
 
