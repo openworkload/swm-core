@@ -10,10 +10,10 @@ exclude = {"malfunction",
 
 types_map = {
      "atom()": "std::string",
-     "any()": "ETERM*",
-     "map()": "ETERM*",
+     "any()": "char*",
+     "map()": "char*",
      "string()": "std::string",
-     "binary()": "ETERM*",
+     "binary()": "char*",
      "integer()": "int64_t",
      "pos_integer()": "uint64_t",
      "float()": "double",

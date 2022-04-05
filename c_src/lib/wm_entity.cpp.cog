@@ -69,7 +69,7 @@
     outputs.append("}")
     outputs.append("")
 
-    outputs.append("%s::%s(const char* buf, int* index) {" % (class_name, class_name))
+    outputs.append("%s::%s(const char* buf, int &index) {" % (class_name, class_name))
     outputs.append("  if (!buf) {")
     outputs.append(f'    std::cerr << "Cannot convert ei buffer into {class_name}: null" << std::endl;')
     outputs.append("    return;")
@@ -93,7 +93,7 @@
 
       outputs.append(f'  if (ei_buffer_to_{type_suffix}(buf, index, this->{prop_name})) {{')
       outputs.append(f'    std::cerr << "Could not initialize {entity_name} property at position={pos}" << std::endl;')
-      outputs.append("    ei_print_term(stderr, buf, index);")
+      outputs.append("    ei_print_term(stderr, buf, &index);")
       outputs.append("    return;")
       outputs.append("  }")
       outputs.append("")
@@ -111,24 +111,24 @@
     struct_type = entity_name.title().replace('_', '')
     cog.out("int swm::ei_buffer_to_%s(" % WM_ENTITY_NAME)
     cog.out("const char *buf, ")
-    cog.out("const int *index, ")
+    cog.out("int &index, ")
     cog.out("std::vector<Swm" + struct_type + "> &array")
     cog.outl(") {")
-    cog.outl("  int term_size = 0");
+    cog.outl("  int term_size = 0;");
     cog.outl("  int term_type = 0;");
-    cog.outl("  const int parsed = ei_get_type(buf, index, &term_type, &term_size);");
+    cog.outl("  const int parsed = ei_get_type(buf, &index, &term_type, &term_size);");
     cog.outl("  if (parsed < 0) {");
     cog.outl("    std::cerr << \"Could not get term type at position \" << index << std::endl;");
     cog.outl("    return -1;");
     cog.outl("  }");
     cog.outl()
     cog.outl("  if (term_type != ERL_LIST_EXT) {");
-    cog.outl("      std::cerr << \"Could not parse term: not a " + entity_name + " list at position \" << index << std::endl;");
+    cog.outl(f'      std::cerr << "Could not parse term: not a {entity_name} list at position " << index << std::endl;');
     cog.outl("      return -1;");
     cog.outl("  }");
     cog.outl("  int list_size = 0;");
     cog.outl("  if (ei_decode_list_header(buf, &index, &list_size) < 0) {");
-    cog.outl(f'    std::cerr << "Could not parse list for " + entity_name + " at position " << index << std::endl;');
+    cog.outl(f'    std::cerr << "Could not parse list for {entity_name} at position " << index << std::endl;');
     cog.outl("    return -1;");
     cog.outl("  }");
     cog.outl("  if (list_size == 0) {");
@@ -136,16 +136,16 @@
     cog.outl("  }");
     cog.outl()
     cog.outl("  array.reserve(list_size);");
-    cog.outl("  for (size_t i=0; i<list_size; ++i) {");
-    cog.outl("    int entry_size;")
-    cog.outl("    int type;")
-    cog.outl("    int res = ei_get_type(buf, &index, &type, &entry_size);")
-    cog.outl("    switch (type) {")
+    cog.outl("  for (int i=0; i<list_size; ++i) {");
+    cog.outl("    int entry_size = 0;")
+    cog.outl("    int type = 0;")
+    cog.outl("    switch (ei_get_type(buf, &index, &type, &entry_size)) {")
     cog.outl("      case ERL_SMALL_TUPLE_EXT:")
     cog.outl("      case ERL_LARGE_TUPLE_EXT:")
     cog.outl(f"        array.emplace_back(buf, index);");
+    cog.outl(f"        break;");
     cog.outl("      default:")
-    cog.outl(f'        std::cerr << "List element (at position " << i << " is not a tuple: " << {type} << std::endl;')
+    cog.outl(f'        std::cerr << "List element (at position " << i << " is not a tuple: {type}" << std::endl;')
     cog.outl("    }")
     cog.outl("  }");
     cog.outl()
@@ -190,9 +190,10 @@
       need_setters.append((prop_name, type_str))
     cog.outl()
     for x, t in need_setters:
-      cog.outl("void %s::set_%s(const %s &new_val) {" % (class_name, x, t))
-      if t == "const char*":
-         cog.outl("  %s = const_cast<const char*>(new_val);" % x)
+      operand = "" if t.endswith("*") else "&"
+      cog.outl(f"void {class_name}::set_{x}(const {t} {operand}new_val) {{")
+      if t.endswith("char*"):
+         cog.outl("  %s = const_cast<char*>(new_val);" % x)
       else:
          cog.outl("  %s = new_val;" % x)
       cog.outl("}")

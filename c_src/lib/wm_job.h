@@ -23,7 +23,7 @@ class SwmJob:SwmEntity {
 
  public:
   SwmJob();
-  SwmJob(const char*);
+  SwmJob(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -132,7 +132,7 @@ class SwmJob:SwmEntity {
 
 };
 
-int ei_buffer_to_job(const char*, int, std::vector<SwmJob>&);
-int ei_buffer_to_job(const char*, SwmJob&);
+int ei_buffer_to_job(const char*, int&, std::vector<SwmJob>&);
+int ei_buffer_to_job(const char*, int&, SwmJob&);
 
 } // namespace swm

@@ -12,7 +12,7 @@ class SwmBootInfo:SwmEntity {
 
  public:
   SwmBootInfo();
-  SwmBootInfo(const char*);
+  SwmBootInfo(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -34,7 +34,7 @@ class SwmBootInfo:SwmEntity {
 
 };
 
-int ei_buffer_to_boot_info(const char*, int, std::vector<SwmBootInfo>&);
-int ei_buffer_to_boot_info(const char*, SwmBootInfo&);
+int ei_buffer_to_boot_info(const char*, int&, std::vector<SwmBootInfo>&);
+int ei_buffer_to_boot_info(const char*, int&, SwmBootInfo&);
 
 } // namespace swm

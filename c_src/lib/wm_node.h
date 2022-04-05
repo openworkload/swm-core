@@ -13,7 +13,7 @@ class SwmNode:SwmEntity {
 
  public:
   SwmNode();
-  SwmNode(const char*);
+  SwmNode(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -34,7 +34,7 @@ class SwmNode:SwmEntity {
   void set_remote_id(const std::string&);
   void set_is_template(const std::string&);
   void set_gateway(const std::string&);
-  void set_prices(const ETERM*&);
+  void set_prices(const char*);
   void set_revision(const uint64_t&);
 
   std::string get_id() const;
@@ -54,7 +54,7 @@ class SwmNode:SwmEntity {
   std::string get_remote_id() const;
   std::string get_is_template() const;
   std::string get_gateway() const;
-  ETERM* get_prices() const;
+  char* get_prices() const;
   uint64_t get_revision() const;
 
  private:
@@ -75,12 +75,12 @@ class SwmNode:SwmEntity {
   std::string remote_id;
   std::string is_template;
   std::string gateway;
-  ETERM* prices;
+  char* prices;
   uint64_t revision;
 
 };
 
-int ei_buffer_to_node(const char*, int, std::vector<SwmNode>&);
-int ei_buffer_to_node(const char*, SwmNode&);
+int ei_buffer_to_node(const char*, int&, std::vector<SwmNode>&);
+int ei_buffer_to_node(const char*, int&, SwmNode&);
 
 } // namespace swm

@@ -12,7 +12,7 @@ class SwmExecutable:SwmEntity {
 
  public:
   SwmExecutable();
-  SwmExecutable(const char*);
+  SwmExecutable(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -37,7 +37,7 @@ class SwmExecutable:SwmEntity {
 
 };
 
-int ei_buffer_to_executable(const char*, int, std::vector<SwmExecutable>&);
-int ei_buffer_to_executable(const char*, SwmExecutable&);
+int ei_buffer_to_executable(const char*, int&, std::vector<SwmExecutable>&);
+int ei_buffer_to_executable(const char*, int&, SwmExecutable&);
 
 } // namespace swm

@@ -94,7 +94,8 @@
   def out_setters(need_setters):
     cog.outl()
     for (x,t) in need_setters:
-      cog.outl("  void set_%s(const %s&);" % (x, t))
+      operand = "" if t.endswith("*") else "&"
+      cog.outl(f"  void set_{x}(const {t}{operand});")
     cog.outl()
     for (x,t) in need_setters:
       cog.outl("  %s get_%s() const;" % (t, x))
@@ -102,13 +103,13 @@
 
   def out_init_ctor(x,y):
     cog.outl("  %s();" % ClassName)
-    cog.outl("  %s(const char*);" % ClassName)
+    cog.outl("  %s(const char*, int&);" % ClassName)
 
 
   def out_convert(x,y):
-    cog.outl("int ei_buffer_to_%s(const char*, int, std::vector<%s>&);" %\
+    cog.outl("int ei_buffer_to_%s(const char*, int&, std::vector<%s>&);" %\
              (x, ClassName))
-    cog.outl("int ei_buffer_to_%s(const char*, %s&);" %\
+    cog.outl("int ei_buffer_to_%s(const char*, int&, %s&);" %\
              (x, ClassName))
 
   def out_print_funs(x,y):

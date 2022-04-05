@@ -2,407 +2,426 @@
 #include "wm_entity_utils.h"
 
 #include <iostream>
+#include <new>
 
 
 using namespace swm;
 
-
 template<typename T>
-int resize_vector(ETERM* elist, std::vector<T> &array) {
-  if (!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not an ss-tuple list" << std::endl;
+int resize_vector(const char* buf, const int &index, std::vector<T> &array) {
+  int term_size = 0;
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, &index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
   }
-  if (ERL_IS_EMPTY_LIST(elist)) {
+  if (term_type != ERL_LIST_EXT) {
+      std::cerr << "Could not parse ei buffer: not an ss-tuple list" << std::endl;
+      return -1;
+  }
+  if (term_size == 0) {
     return 0;
   }
-  const size_t sz = erl_length(elist);
-  array.resize(sz);
+  array.resize(term_size);
   return 0;
 }
 
-int swm::ei_buffer_to_tuple_str_str(ETERM* eterm, SwmTupleStrStr &tuple) {
-  if (!ERL_IS_TUPLE(eterm)) {
-    std::cerr << "Could not parse eterm: not a tuple" << std::endl;
+int get_term_type(const char* buf, const int &index) {
+  int term_size = 0;
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, &index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
   }
-  if (ei_buffer_to_str(eterm, 1, tuple.x1)) {
+  return term_type;
+}
+
+int get_term_size(const char* buf, const int &index) {
+  int term_size = 0;
+  int term_type = 0;
+  const int parsed = ei_get_type(buf, &index, &term_type, &term_size);
+  if (parsed < 0) {
+    std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
   }
-  if (ei_buffer_to_str(eterm, 2, tuple.x2)) {
+  return term_size;
+}
+
+int swm::ei_buffer_to_tuple_str_str(const char* buf, int &index, SwmTupleStrStr &tuple) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
+    return -1;
+  }
+  if (ei_buffer_to_str(buf, index, tuple.x1)) {
+    return -1;
+  }
+  if (ei_buffer_to_str(buf, index, tuple.x2)) {
     return -1;
   }
   return 0;
 }
 
-int swm::ei_buffer_to_tuple_atom_str(ETERM* eterm, SwmTupleAtomStr &tuple) {
-  if (!ERL_IS_TUPLE(eterm)) {
-    std::cerr << "Could not parse eterm: not a tuple" << std::endl;
+int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, SwmTupleAtomStr &tuple) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
     return -1;
   }
-  if (ei_buffer_to_atom(eterm, 1, tuple.x1)) {
+  if (ei_buffer_to_atom(buf, index, tuple.x1)) {
     return -1;
   }
-  if (ei_buffer_to_str(eterm, 2, tuple.x2)) {
+  if (ei_buffer_to_str(buf, index, tuple.x2)) {
     return -1;
   }
   return 0;
 }
 
-int swm::ei_buffer_to_tuple_atom_eterm(ETERM* eterm, SwmTupleAtomEterm &tuple) {
-  if (!ERL_IS_TUPLE(eterm)) {
-    std::cerr << "Could not parse eterm: not a tuple" << std::endl;
+int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, SwmTupleAtomEterm &tuple) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
     return -1;
   }
-  if (ei_buffer_to_atom(eterm, 1, tuple.x1)) {
+  if (ei_buffer_to_atom(buf, index, tuple.x1)) {
     return -1;
   }
-  // TODO free the copy of the term
-  tuple.x2 = erl_copy_term(erl_element(2, eterm));
+  const auto term_size = get_term_size(buf, index);
+  tuple.x2 = new(std::nothrow) char[term_size + 1];  // TODO: free the buffer?
   if (!tuple.x2) {
+    std::cerr << "Could not allocate memory for buffer: " << (term_size + 1) << " chars" << std::endl;
     return -1;
   }
+  ei_skip_term(buf, &index);
   return 0;
 }
 
-int swm::ei_buffer_to_tuple_str_str(ETERM* eterm, int pos, std::vector<SwmTupleStrStr> &array) {
-  ETERM* elist = erl_element(pos, eterm);
-  if (!elist) {
+
+int swm::ei_buffer_to_tuple_str_str(const char* buf, int &index, std::vector<SwmTupleStrStr> &array) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_LIST_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
-  if (resize_vector(elist, array)) {
+
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &index, &list_size)) {
+    std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
+  if (resize_vector(buf, index, array)) {
+    return -1;
+  }
+
   for (auto &ss : array) {
-    ETERM* x = erl_hd(elist);
-    if (!x) {
-      continue;
-    }
-    if (swm::ei_buffer_to_tuple_str_str(x, ss)) {
-      std::cerr << "Could not init array of SwmTupleStrStr" << std::endl;
+    if (swm::ei_buffer_to_tuple_str_str(buf, index, ss)) {
+      std::cerr << "Could not init array of SwmTupleStrStr at " << index << std::endl;
       return -1;
     }
-    elist = erl_tl(elist);
   }
   return 0;
 }
 
-int swm::ei_buffer_to_tuple_atom_str(ETERM* eterm, int pos, std::vector<SwmTupleAtomStr> &array) {
-  ETERM* elist = erl_element(pos, eterm);
-  if (!elist) {
+int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, std::vector<SwmTupleAtomStr> &array) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_LIST_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
-  if (resize_vector(elist, array)) {
+
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &index, &list_size)) {
+    std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  for (auto &as : array) {
-    ETERM* x = erl_hd(elist);
-    if (!x) {
-      continue;
-    }
-    if (swm::ei_buffer_to_tuple_atom_str(x, as)) {
-      std::cerr << "Could not init array of SwmTupleAtomStr" << std::endl;
+  if (resize_vector(buf, index, array)) {
+    return -1;
+  }
+
+  for (auto &ss : array) {
+    if (swm::ei_buffer_to_tuple_atom_str(buf, index, ss)) {
+      std::cerr << "Could not init array of SwmTupleAtomStr at " << index << std::endl;
       return -1;
     }
-    elist = erl_tl(elist);
   }
   return 0;
 }
 
-int swm::ei_buffer_to_tuple_atom_eterm(ETERM* eterm, int pos, std::vector<SwmTupleAtomEterm> &array) {
-  ETERM* elist = erl_element(pos, eterm);
-  if (!elist) {
+int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, std::vector<SwmTupleAtomEterm> &array) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_LIST_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
-  if (resize_vector(elist, array)) {
+
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &index, &list_size)) {
+    std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  for (auto &ae : array) {
-    ETERM* x = erl_hd(elist);
-    if (!x) {
-      continue;
-    }
-    if (swm::ei_buffer_to_tuple_atom_eterm(x, ae)) {
-      std::cerr << "Could not init array of SwmTupleAtomEterm" << std::endl;
+  if (resize_vector(buf, index, array)) {
+    return -1;
+  }
+
+  for (auto &ss : array) {
+    if (swm::ei_buffer_to_tuple_atom_eterm(buf, index, ss)) {
+      std::cerr << "Could not init array of SwmTupleAtomStr at " << index << std::endl;
       return -1;
     }
-    elist = erl_tl(elist);
   }
   return 0;
 }
 
-int swm::ei_buffer_to_tuple_atom_uint64(ETERM* eterm, SwmTupleAtomUint64 &tuple) {
-  if (!ERL_IS_TUPLE(eterm)) {
-    std::cerr << "Could not parse eterm: not a tuple" << std::endl;
+int swm::ei_buffer_to_tuple_atom_uint64(const char* buf, int &index, SwmTupleAtomUint64 &tuple) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
     return -1;
   }
-  if (ei_buffer_to_atom(eterm, 1, tuple.x1)) {
+  if (ei_buffer_to_atom(buf, index, tuple.x1)) {
     return -1;
   }
-  ETERM* elem = erl_element(2, eterm);
-  if (ei_buffer_to_integer(elem, tuple.x2)) {
+  if (ei_buffer_to_uint64_t(buf, index, tuple.x2)) {
     return -1;
   }
   return 0;
 }
 
-int swm::ei_buffer_to_atom(ETERM* e, std::string &a) {
-  if (!e) {
+int swm::ei_buffer_to_atom(const char* buf, int &index, std::string &a) {
+  if (get_term_type(buf, index) != ERL_ATOM_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not an atom" << std::endl;
     return -1;
   }
-  if (!ERL_IS_ATOM(e)) {
-    std::cerr << "Could not parse eterm: not an atom" << std::endl;
+  const auto term_size = get_term_size(buf, index);
+  char *tmp = new(std::nothrow) char[term_size + 1];
+  if (ei_decode_atom(buf, &index, tmp)) {
+    std::cerr << "Could not decode atom at " << index << std::endl;
     return -1;
   }
-  char *tmp = ERL_ATOM_PTR(e);
   if (tmp == nullptr) {
+    std::cerr << "Could not decode atom at " << index << ": empty pointer" << std::endl;
     return -1;
   }
   a = std::string(tmp);
+  delete tmp;
   return 0;
 }
 
-int swm::ei_buffer_to_atom(ETERM* term, int pos, std::string &a) {
-  ETERM* elem = erl_element(pos, term);
-  return ei_buffer_to_atom(elem, a);
-}
-
-int swm::ei_buffer_to_atom(ETERM* term, int pos, std::vector<std::string> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if (!elist) {
+int swm::ei_buffer_to_atom(const char* buf, int &index, std::vector<std::string> &array) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_LIST_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
-  if (!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not an atom array" << std::endl;
+
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &index, &list_size)) {
+    std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (ERL_IS_EMPTY_LIST(elist)) {
-    return 0;
+  if (resize_vector(buf, index, array)) {
+    return -1;
   }
-  const size_t sz = erl_length(elist);
-  array.resize(sz);
 
-  for (auto &str : array) {
-    ETERM* x = erl_hd(elist);
-    if (!x) {
-      continue;
-    }
-    if (!ERL_IS_ATOM(x)) {
-      std::cerr << "Could not parse eterm: not an atom" << std::endl;
+  for (auto &a : array) {
+    if (swm::ei_buffer_to_atom(buf, index, a)) {
+      std::cerr << "Could not init array of atoms at " << index << std::endl;
       return -1;
     }
-    str = ERL_ATOM_PTR(x);
-    elist = erl_tl(elist);
   }
   return 0;
 }
 
-int swm::ei_buffer_to_str(ETERM* term, int pos, std::vector<std::string> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if (!elist) {
+int swm::ei_buffer_to_str(const char* buf, int &index, std::vector<std::string> &array) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_LIST_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
-  if (!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a str array" << std::endl;
-    return -1;
-  }
-  if (ERL_IS_EMPTY_LIST(elist)) {
-    return 0;
-  }
-  const size_t sz = erl_length(elist);
-  array.resize(sz);
 
-  for (auto &str : array) {
-    ETERM* x = erl_hd(elist);
-    if (!x) {
-      continue;
-    }
-    if (!ERL_IS_LIST(x)) {
-      std::cerr << "Could not parse eterm: not a string: ";
-      erl_print_term(stderr, x);
-      std::cerr << std::endl;
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &index, &list_size)) {
+    std::cerr << "Could not decode ei list header at " << index << std::endl;
+    return -1;
+  }
+  if (resize_vector(buf, index, array)) {
+    return -1;
+  }
+
+  for (auto &a : array) {
+    if (swm::ei_buffer_to_str(buf, index, a)) {
+      std::cerr << "Could not init array of strings at " << index << std::endl;
       return -1;
     }
-    str = erl_iolist_to_string(x);
-    elist = erl_tl(elist);
   }
   return 0;
 }
 
-int swm::ei_buffer_to_str(ETERM* term, int pos, std::string &s) {
-  ETERM* elem = erl_element(pos, term);
-  if (!elem) {
+int swm::ei_buffer_to_str(const char* buf, int &index, std::string &s) {
+  const auto term_size = get_term_size(buf, index);
+  char *tmp = new(std::nothrow) char[term_size + 1];
+  if (ei_decode_string(buf, &index, tmp)) {
+    std::cerr << "Could not decode string at " << index << std::endl;
     return -1;
   }
-  return ei_buffer_to_str(elem, s);
-}
-
-int swm::ei_buffer_to_str(ETERM* term, std::string &s) {
-  if (!ERL_IS_LIST(term) && !ERL_IS_BINARY(term)) {
-    std::cerr << "Could not parse eterm: not a string: ";
-    erl_print_term(stderr, term);
-    std::cerr << std::endl;
-    return -1;
-  }
-  char *tmp = erl_iolist_to_string(erl_iolist_to_binary(term));
   if (tmp == nullptr) {
+    std::cerr << "Could not decode string (nullptr) at " << index << std::endl;
     return -1;
   }
   s = std::string(tmp);
+  delete tmp;
   return 0;
 }
 
-template<typename T>
-int swm::ei_buffer_to_integer(ETERM* e, T &x) {
-  if (ERL_IS_INTEGER(e)) {
-    x = ERL_INT_VALUE(e);
+int swm::ei_buffer_to_uint64_t(const char* buf, int &index, uint64_t &n) {
+  const auto term_type = get_term_type(buf, index);
+  if (term_type != ERL_SMALL_BIG_EXT) {
+    std::cerr << "Wrong eterm type " << index << ": not a ulong integer, type is " << term_type << std::endl;
+    return -1;
   }
-  else if (ERL_IS_UNSIGNED_INTEGER(e)) {
-    x = ERL_INT_UVALUE(e);
-  }
-  else if (ERL_IS_LONGLONG(e)) {
-    x = ERL_LL_VALUE(e);
-  }
-  else if (ERL_IS_UNSIGNED_LONGLONG(e)) {
-    x = ERL_LL_UVALUE(e);
-  }
-  else {
-    std::cerr << "Could not parse eterm: not an integer: ";
-    erl_print_term(stderr, e);
-    std::cerr << std::endl;
+  if (ei_decode_ulong(buf, &index, &n)) {
+    std::cerr << "Could not parse eterm " << index << ": not a ulong integer" << std::endl;
     return -1;
   }
   return 0;
 }
 
-int swm::ei_buffer_to_uint64_t(ETERM* term, int pos, uint64_t &x) {
-  ETERM* elem = erl_element(pos, term);
-  if (!elem) {
+int swm::ei_buffer_to_int64_t(const char* buf, int &index, int64_t &n) {
+  const auto term_type = get_term_type(buf, index);
+  if (term_type != ERL_INTEGER_EXT) {
+    std::cerr << "Wrong eterm type " << index << ": not a long integer, type is " << term_type << std::endl;
     return -1;
   }
-  return ei_buffer_to_integer(elem, x);
+  if (ei_decode_long(buf, &index, &n)) {
+    std::cerr << "Could not parse eterm " << index << ": not a long integer" << std::endl;
+    return -1;
+  }
+  return 0;
 }
 
-int swm::ei_buffer_to_uint64_t(ETERM* term, int pos, std::vector<uint64_t> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if (!elist) {
+int swm::ei_buffer_to_uint64_t(const char* buf, int &index, std::vector<uint64_t> &array) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_LIST_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
-  if (resize_vector(elist, array)) {
+
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &index, &list_size)) {
+    std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  for (auto &n : array) {
-    ETERM* e = erl_hd(elist);
-    if (!e) {
-      continue;
-    }
-    if (ei_buffer_to_integer(e, n)) {
+  if (resize_vector(buf, index, array)) {
+    return -1;
+  }
+
+  for (auto &a : array) {
+    if (swm::ei_buffer_to_uint64_t(buf, index, a)) {
+      std::cerr << "Could not init array of integers at " << index << std::endl;
       return -1;
     }
-    elist = erl_tl(elist);
   }
   return 0;
 }
 
-int swm::ei_buffer_to_int64_t(ETERM* term, int pos, int64_t &n) {
-  ETERM* elem = erl_element(pos, term);
-  if (!elem) {
+int swm::ei_buffer_to_int64_t(const char* buf, int &index, std::vector<int64_t> &array) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_LIST_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
-  }
-  return ei_buffer_to_integer(elem, n);
-}
-
-int swm::ei_buffer_to_int64_t(ETERM* term, int pos, std::vector<int64_t> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if (!elist) {
-    return -1;
-  }
-  if (!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a ulong array" << std::endl;
-    return -1;
-  }
-  if (ERL_IS_EMPTY_LIST(elist)) {
-    return 0;
   }
 
-  for (auto &n : array) {
-    ETERM* e = erl_hd(elist);
-    if (!e) {
-      continue;
-    }
-    if (ei_buffer_to_integer(e, n)) {
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &index, &list_size)) {
+    std::cerr << "Could not decode ei list header at " << index << std::endl;
+    return -1;
+  }
+  if (resize_vector(buf, index, array)) {
+    return -1;
+  }
+
+  for (auto &a : array) {
+    if (swm::ei_buffer_to_int64_t(buf, index, a)) {
+      std::cerr << "Could not init array of integers at " << index << std::endl;
       return -1;
     }
-    elist = erl_tl(elist);
   }
   return 0;
 }
 
-int swm::ei_buffer_to_double(ETERM* term, int pos, double &n) {
-  ETERM* elem = erl_element(pos, term);
-  if (!elem) {
+
+int swm::ei_buffer_to_double(const char* buf, int &index, double &n) {
+
+  const auto term_type = get_term_type(buf, index);
+  if (term_type != ERL_FLOAT_EXT) {
+    std::cerr << "Wrong eterm type " << index << ": not a float, type is " << term_type << std::endl;
     return -1;
   }
-  if (!ERL_IS_FLOAT(elem)) {
+  if (ei_decode_double(buf, &index, &n)) {
+    std::cerr << "Could not parse eterm " << index << ": not a float" << std::endl;
     return -1;
   }
-  n = ERL_FLOAT_VALUE(elem);
   return 0;
 }
 
-int swm::ei_buffer_to_double(ETERM* term, int pos, std::vector<double> &array) {
-  ETERM* elist = erl_element(pos, term);
-  if (!elist) {
+int swm::ei_buffer_to_double(const char* buf, int &index, std::vector<double> &array) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_LIST_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
-  }
-  if (!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not a ulong array" << std::endl;
-    return -1;
-  }
-  if (ERL_IS_EMPTY_LIST(elist)) {
-    return 0;
   }
 
-  for (auto &n : array) {
-    ETERM* e = erl_hd(elist);
-    if (!e) {
-      continue;
-    }
-    if (!ERL_IS_FLOAT(e)) {
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &index, &list_size)) {
+    std::cerr << "Could not decode ei list header at " << index << std::endl;
+    return -1;
+  }
+  if (resize_vector(buf, index, array)) {
+    return -1;
+  }
+
+  for (auto &d : array) {
+    if (swm::ei_buffer_to_double(buf, index, d)) {
+      std::cerr << "Could not init array of floats at " << index << std::endl;
       return -1;
     }
-    n = ERL_FLOAT_VALUE(e);
-    elist = erl_tl(elist);
   }
   return 0;
 }
 
-int swm::ei_buffer_to_eterm(ETERM* term, int pos, ETERM* &elem) {
-  // TODO free the copy of the term
-  elem = erl_copy_term(erl_element(pos, term));
-  if (!elem) {
-    std::cerr << "Could not parse eterm at pos " << pos << std::endl;
+int swm::ei_buffer_to_eterm(const char* buf, int &index, char* elem) {
+  // Skip for now, no point to keep a copy of binary without parsing
+  if (ei_skip_term(buf, &index)) {
+    std::cerr << "Could not skip eterm at pos " << index << std::endl;
     return -1;
   }
+  *elem = static_cast<char>(0);
   return 0;
 }
 
-int swm::ei_buffer_to_eterm(ETERM* term, int pos, std::vector<ETERM*> &array) {
-  // TODO free the copy of the term list
-  ETERM *elist = erl_copy_term(erl_element(pos, term));
-  if (!elist) {
+int swm::ei_buffer_to_eterm(const char* buf, int &index, std::vector<char*> &array) {
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_LIST_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
-  if (!ERL_IS_LIST(elist)) {
-    std::cerr << "Could not parse eterm: not an ETERM array" << std::endl;
+
+  int list_size = 0;
+  if (ei_decode_list_header(buf, &index, &list_size)) {
+    std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (ERL_IS_EMPTY_LIST(elist)) {
-    return 0;
+  if (resize_vector(buf, index, array)) {
+    return -1;
   }
-  for (auto &e : array) {
-    e = erl_hd(elist);
-    elist = erl_tl(elist);
+
+  for (auto &c : array) {
+    if (swm::ei_buffer_to_eterm(buf, index, c)) {
+      std::cerr << "Could not parse eterm list element at " << index << std::endl;
+      return -1;
+    }
   }
   return 0;
 }
@@ -424,9 +443,7 @@ void swm::print_str(const std::string &x, const std::string &prefix, const char 
 }
 
 void swm::print_tuple_atom_eterm(const SwmTupleAtomEterm &x, const std::string &prefix, const char separator) {
-  std::cout << prefix << "{" << x.x1 << ", ";
-  erl_print_term(stdout, x.x2);
-  std::cout << "}" << separator;
+  std::cout << prefix << "{" << x.x1 << ", " << x.x2 << "}" << separator;
 }
 
 void swm::print_tuple_str_str(const SwmTupleStrStr &x, const std::string &prefix, const char separator) {

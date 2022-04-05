@@ -12,7 +12,7 @@ class SwmAccount:SwmEntity {
 
  public:
   SwmAccount();
-  SwmAccount(const char*);
+  SwmAccount(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -43,7 +43,7 @@ class SwmAccount:SwmEntity {
 
 };
 
-int ei_buffer_to_account(const char*, int, std::vector<SwmAccount>&);
-int ei_buffer_to_account(const char*, SwmAccount&);
+int ei_buffer_to_account(const char*, int&, std::vector<SwmAccount>&);
+int ei_buffer_to_account(const char*, int&, SwmAccount&);
 
 } // namespace swm

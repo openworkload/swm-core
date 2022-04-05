@@ -14,7 +14,7 @@ using namespace swm;
 SwmScheduler::SwmScheduler() {
 }
 
-SwmScheduler::SwmScheduler(const char* buf, int* index) {
+SwmScheduler::SwmScheduler(const char* buf, int &index) {
   if (!buf) {
     std::cerr << "Cannot convert ei buffer into SwmScheduler: null" << std::endl;
     return;
@@ -27,73 +27,73 @@ SwmScheduler::SwmScheduler(const char* buf, int* index) {
 
   if (ei_buffer_to_uint64_t(buf, index, this->id)) {
     std::cerr << "Could not initialize scheduler property at position=2" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->name)) {
     std::cerr << "Could not initialize scheduler property at position=3" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->state)) {
     std::cerr << "Could not initialize scheduler property at position=4" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->start_time)) {
     std::cerr << "Could not initialize scheduler property at position=5" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->stop_time)) {
     std::cerr << "Could not initialize scheduler property at position=6" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->run_interval)) {
     std::cerr << "Could not initialize scheduler property at position=7" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_executable(buf, index, this->path)) {
     std::cerr << "Could not initialize scheduler property at position=8" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->family)) {
     std::cerr << "Could not initialize scheduler property at position=9" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->version)) {
     std::cerr << "Could not initialize scheduler property at position=10" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->cu)) {
     std::cerr << "Could not initialize scheduler property at position=11" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->comment)) {
     std::cerr << "Could not initialize scheduler property at position=12" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
     std::cerr << "Could not initialize scheduler property at position=13" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
@@ -196,10 +196,10 @@ uint64_t SwmScheduler::get_revision() const {
   return revision;
 }
 
-int swm::ei_buffer_to_scheduler(const char *buf, const int *index, std::vector<SwmScheduler> &array) {
-  int term_size = 0
+int swm::ei_buffer_to_scheduler(const char *buf, int &index, std::vector<SwmScheduler> &array) {
+  int term_size = 0;
   int term_type = 0;
-  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  const int parsed = ei_get_type(buf, &index, &term_type, &term_size);
   if (parsed < 0) {
     std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
@@ -211,7 +211,7 @@ int swm::ei_buffer_to_scheduler(const char *buf, const int *index, std::vector<S
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
-    std::cerr << "Could not parse list for " + entity_name + " at position " << index << std::endl;
+    std::cerr << "Could not parse list for scheduler at position " << index << std::endl;
     return -1;
   }
   if (list_size == 0) {
@@ -219,16 +219,16 @@ int swm::ei_buffer_to_scheduler(const char *buf, const int *index, std::vector<S
   }
 
   array.reserve(list_size);
-  for (size_t i=0; i<list_size; ++i) {
-    int entry_size;
-    int type;
-    int res = ei_get_type(buf, &index, &type, &entry_size);
-    switch (type) {
+  for (int i=0; i<list_size; ++i) {
+    int entry_size = 0;
+    int type = 0;
+    switch (ei_get_type(buf, &index, &type, &entry_size)) {
       case ERL_SMALL_TUPLE_EXT:
       case ERL_LARGE_TUPLE_EXT:
         array.emplace_back(buf, index);
+        break;
       default:
-        std::cerr << "List element (at position " << i << " is not a tuple: " << <class 'type'> << std::endl;
+        std::cerr << "List element (at position " << i << " is not a tuple: <class 'type'>" << std::endl;
     }
   }
 

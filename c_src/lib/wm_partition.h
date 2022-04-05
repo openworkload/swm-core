@@ -13,7 +13,7 @@ class SwmPartition:SwmEntity {
 
  public:
   SwmPartition();
-  SwmPartition(const char*);
+  SwmPartition(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -33,7 +33,7 @@ class SwmPartition:SwmEntity {
   void set_created(const std::string&);
   void set_updated(const std::string&);
   void set_external_id(const std::string&);
-  void set_addresses(const ETERM*&);
+  void set_addresses(const char*);
   void set_comment(const std::string&);
   void set_revision(const uint64_t&);
 
@@ -53,7 +53,7 @@ class SwmPartition:SwmEntity {
   std::string get_created() const;
   std::string get_updated() const;
   std::string get_external_id() const;
-  ETERM* get_addresses() const;
+  char* get_addresses() const;
   std::string get_comment() const;
   uint64_t get_revision() const;
 
@@ -74,13 +74,13 @@ class SwmPartition:SwmEntity {
   std::string created;
   std::string updated;
   std::string external_id;
-  ETERM* addresses;
+  char* addresses;
   std::string comment;
   uint64_t revision;
 
 };
 
-int ei_buffer_to_partition(const char*, int, std::vector<SwmPartition>&);
-int ei_buffer_to_partition(const char*, SwmPartition&);
+int ei_buffer_to_partition(const char*, int&, std::vector<SwmPartition>&);
+int ei_buffer_to_partition(const char*, int&, SwmPartition&);
 
 } // namespace swm

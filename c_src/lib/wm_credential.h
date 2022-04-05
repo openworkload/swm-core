@@ -12,7 +12,7 @@ class SwmCredential:SwmEntity {
 
  public:
   SwmCredential();
-  SwmCredential(const char*);
+  SwmCredential(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -46,7 +46,7 @@ class SwmCredential:SwmEntity {
 
 };
 
-int ei_buffer_to_credential(const char*, int, std::vector<SwmCredential>&);
-int ei_buffer_to_credential(const char*, SwmCredential&);
+int ei_buffer_to_credential(const char*, int&, std::vector<SwmCredential>&);
+int ei_buffer_to_credential(const char*, int&, SwmCredential&);
 
 } // namespace swm

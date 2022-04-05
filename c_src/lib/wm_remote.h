@@ -12,7 +12,7 @@ class SwmRemote:SwmEntity {
 
  public:
   SwmRemote();
-  SwmRemote(const char*);
+  SwmRemote(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -49,7 +49,7 @@ class SwmRemote:SwmEntity {
 
 };
 
-int ei_buffer_to_remote(const char*, int, std::vector<SwmRemote>&);
-int ei_buffer_to_remote(const char*, SwmRemote&);
+int ei_buffer_to_remote(const char*, int&, std::vector<SwmRemote>&);
+int ei_buffer_to_remote(const char*, int&, SwmRemote&);
 
 } // namespace swm

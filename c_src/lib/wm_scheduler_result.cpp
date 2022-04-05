@@ -6,8 +6,8 @@
 
 #include <ei.h>
 
-#include "wm_metric.h"
 #include "wm_timetable.h"
+#include "wm_metric.h"
 
 using namespace swm;
 
@@ -15,7 +15,7 @@ using namespace swm;
 SwmSchedulerResult::SwmSchedulerResult() {
 }
 
-SwmSchedulerResult::SwmSchedulerResult(const char* buf, int* index) {
+SwmSchedulerResult::SwmSchedulerResult(const char* buf, int &index) {
   if (!buf) {
     std::cerr << "Cannot convert ei buffer into SwmSchedulerResult: null" << std::endl;
     return;
@@ -28,43 +28,43 @@ SwmSchedulerResult::SwmSchedulerResult(const char* buf, int* index) {
 
   if (ei_buffer_to_timetable(buf, index, this->timetable)) {
     std::cerr << "Could not initialize scheduler_result property at position=2" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_metric(buf, index, this->metrics)) {
     std::cerr << "Could not initialize scheduler_result property at position=3" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->request_id)) {
     std::cerr << "Could not initialize scheduler_result property at position=4" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->status)) {
     std::cerr << "Could not initialize scheduler_result property at position=5" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_double(buf, index, this->astro_time)) {
     std::cerr << "Could not initialize scheduler_result property at position=6" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_double(buf, index, this->idle_time)) {
     std::cerr << "Could not initialize scheduler_result property at position=7" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_double(buf, index, this->work_time)) {
     std::cerr << "Could not initialize scheduler_result property at position=8" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
@@ -127,10 +127,10 @@ double SwmSchedulerResult::get_work_time() const {
   return work_time;
 }
 
-int swm::ei_buffer_to_scheduler_result(const char *buf, const int *index, std::vector<SwmSchedulerResult> &array) {
-  int term_size = 0
+int swm::ei_buffer_to_scheduler_result(const char *buf, int &index, std::vector<SwmSchedulerResult> &array) {
+  int term_size = 0;
   int term_type = 0;
-  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  const int parsed = ei_get_type(buf, &index, &term_type, &term_size);
   if (parsed < 0) {
     std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
@@ -142,7 +142,7 @@ int swm::ei_buffer_to_scheduler_result(const char *buf, const int *index, std::v
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
-    std::cerr << "Could not parse list for " + entity_name + " at position " << index << std::endl;
+    std::cerr << "Could not parse list for scheduler_result at position " << index << std::endl;
     return -1;
   }
   if (list_size == 0) {
@@ -150,16 +150,16 @@ int swm::ei_buffer_to_scheduler_result(const char *buf, const int *index, std::v
   }
 
   array.reserve(list_size);
-  for (size_t i=0; i<list_size; ++i) {
-    int entry_size;
-    int type;
-    int res = ei_get_type(buf, &index, &type, &entry_size);
-    switch (type) {
+  for (int i=0; i<list_size; ++i) {
+    int entry_size = 0;
+    int type = 0;
+    switch (ei_get_type(buf, &index, &type, &entry_size)) {
       case ERL_SMALL_TUPLE_EXT:
       case ERL_LARGE_TUPLE_EXT:
         array.emplace_back(buf, index);
+        break;
       default:
-        std::cerr << "List element (at position " << i << " is not a tuple: " << <class 'type'> << std::endl;
+        std::cerr << "List element (at position " << i << " is not a tuple: <class 'type'>" << std::endl;
     }
   }
 

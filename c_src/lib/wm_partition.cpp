@@ -14,7 +14,7 @@ using namespace swm;
 SwmPartition::SwmPartition() {
 }
 
-SwmPartition::SwmPartition(const char* buf, int* index) {
+SwmPartition::SwmPartition(const char* buf, int &index) {
   if (!buf) {
     std::cerr << "Cannot convert ei buffer into SwmPartition: null" << std::endl;
     return;
@@ -27,115 +27,115 @@ SwmPartition::SwmPartition(const char* buf, int* index) {
 
   if (ei_buffer_to_str(buf, index, this->id)) {
     std::cerr << "Could not initialize partition property at position=2" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->name)) {
     std::cerr << "Could not initialize partition property at position=3" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->state)) {
     std::cerr << "Could not initialize partition property at position=4" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->manager)) {
     std::cerr << "Could not initialize partition property at position=5" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->nodes)) {
     std::cerr << "Could not initialize partition property at position=6" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->partitions)) {
     std::cerr << "Could not initialize partition property at position=7" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->hooks)) {
     std::cerr << "Could not initialize partition property at position=8" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->scheduler)) {
     std::cerr << "Could not initialize partition property at position=9" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->jobs_per_node)) {
     std::cerr << "Could not initialize partition property at position=10" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_resource(buf, index, this->resources)) {
     std::cerr << "Could not initialize partition property at position=11" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_tuple_atom_eterm(buf, index, this->properties)) {
     std::cerr << "Could not initialize partition property at position=12" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->subdivision)) {
     std::cerr << "Could not initialize partition property at position=13" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->subdivision_id)) {
     std::cerr << "Could not initialize partition property at position=14" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->created)) {
     std::cerr << "Could not initialize partition property at position=15" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->updated)) {
     std::cerr << "Could not initialize partition property at position=16" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->external_id)) {
     std::cerr << "Could not initialize partition property at position=17" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_eterm(buf, index, this->addresses)) {
     std::cerr << "Could not initialize partition property at position=18" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->comment)) {
     std::cerr << "Could not initialize partition property at position=19" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
     std::cerr << "Could not initialize partition property at position=20" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
@@ -206,8 +206,8 @@ void SwmPartition::set_external_id(const std::string &new_val) {
   external_id = new_val;
 }
 
-void SwmPartition::set_addresses(const ETERM* &new_val) {
-  addresses = new_val;
+void SwmPartition::set_addresses(const char* new_val) {
+  addresses = const_cast<char*>(new_val);
 }
 
 void SwmPartition::set_comment(const std::string &new_val) {
@@ -282,7 +282,7 @@ std::string SwmPartition::get_external_id() const {
   return external_id;
 }
 
-ETERM* SwmPartition::get_addresses() const {
+char* SwmPartition::get_addresses() const {
   return addresses;
 }
 
@@ -294,10 +294,10 @@ uint64_t SwmPartition::get_revision() const {
   return revision;
 }
 
-int swm::ei_buffer_to_partition(const char *buf, const int *index, std::vector<SwmPartition> &array) {
-  int term_size = 0
+int swm::ei_buffer_to_partition(const char *buf, int &index, std::vector<SwmPartition> &array) {
+  int term_size = 0;
   int term_type = 0;
-  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  const int parsed = ei_get_type(buf, &index, &term_type, &term_size);
   if (parsed < 0) {
     std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
@@ -309,7 +309,7 @@ int swm::ei_buffer_to_partition(const char *buf, const int *index, std::vector<S
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
-    std::cerr << "Could not parse list for " + entity_name + " at position " << index << std::endl;
+    std::cerr << "Could not parse list for partition at position " << index << std::endl;
     return -1;
   }
   if (list_size == 0) {
@@ -317,16 +317,16 @@ int swm::ei_buffer_to_partition(const char *buf, const int *index, std::vector<S
   }
 
   array.reserve(list_size);
-  for (size_t i=0; i<list_size; ++i) {
-    int entry_size;
-    int type;
-    int res = ei_get_type(buf, &index, &type, &entry_size);
-    switch (type) {
+  for (int i=0; i<list_size; ++i) {
+    int entry_size = 0;
+    int type = 0;
+    switch (ei_get_type(buf, &index, &type, &entry_size)) {
       case ERL_SMALL_TUPLE_EXT:
       case ERL_LARGE_TUPLE_EXT:
         array.emplace_back(buf, index);
+        break;
       default:
-        std::cerr << "List element (at position " << i << " is not a tuple: " << <class 'type'> << std::endl;
+        std::cerr << "List element (at position " << i << " is not a tuple: <class 'type'>" << std::endl;
     }
   }
 

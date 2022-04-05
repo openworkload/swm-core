@@ -12,7 +12,7 @@ class SwmRelocation:SwmEntity {
 
  public:
   SwmRelocation();
-  SwmRelocation(const char*);
+  SwmRelocation(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -34,7 +34,7 @@ class SwmRelocation:SwmEntity {
 
 };
 
-int ei_buffer_to_relocation(const char*, int, std::vector<SwmRelocation>&);
-int ei_buffer_to_relocation(const char*, SwmRelocation&);
+int ei_buffer_to_relocation(const char*, int&, std::vector<SwmRelocation>&);
+int ei_buffer_to_relocation(const char*, int&, SwmRelocation&);
 
 } // namespace swm
