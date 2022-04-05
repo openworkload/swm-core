@@ -14,7 +14,7 @@ class SwmSchedulerResult:SwmEntity {
 
  public:
   SwmSchedulerResult();
-  SwmSchedulerResult(const char*);
+  SwmSchedulerResult(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -45,7 +45,7 @@ class SwmSchedulerResult:SwmEntity {
 
 };
 
-int ei_buffer_to_scheduler_result(const char*, int, std::vector<SwmSchedulerResult>&);
-int ei_buffer_to_scheduler_result(const char*, SwmSchedulerResult&);
+int ei_buffer_to_scheduler_result(const char*, int&, std::vector<SwmSchedulerResult>&);
+int ei_buffer_to_scheduler_result(const char*, int&, SwmSchedulerResult&);
 
 } // namespace swm

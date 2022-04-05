@@ -14,7 +14,7 @@ using namespace swm;
 SwmResource::SwmResource() {
 }
 
-SwmResource::SwmResource(const char* buf, int* index) {
+SwmResource::SwmResource(const char* buf, int &index) {
   if (!buf) {
     std::cerr << "Cannot convert ei buffer into SwmResource: null" << std::endl;
     return;
@@ -27,43 +27,43 @@ SwmResource::SwmResource(const char* buf, int* index) {
 
   if (ei_buffer_to_str(buf, index, this->name)) {
     std::cerr << "Could not initialize resource property at position=2" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->count)) {
     std::cerr << "Could not initialize resource property at position=3" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->hooks)) {
     std::cerr << "Could not initialize resource property at position=4" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_tuple_atom_eterm(buf, index, this->properties)) {
     std::cerr << "Could not initialize resource property at position=5" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_eterm(buf, index, this->prices)) {
     std::cerr << "Could not initialize resource property at position=6" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->usage_time)) {
     std::cerr << "Could not initialize resource property at position=7" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
   if (ei_buffer_to_resource(buf, index, this->resources)) {
     std::cerr << "Could not initialize resource property at position=8" << std::endl;
-    ei_print_term(stderr, buf, index);
+    ei_print_term(stderr, buf, &index);
     return;
   }
 
@@ -86,8 +86,8 @@ void SwmResource::set_properties(const std::vector<SwmTupleAtomEterm> &new_val) 
   properties = new_val;
 }
 
-void SwmResource::set_prices(const ETERM* &new_val) {
-  prices = new_val;
+void SwmResource::set_prices(const char* new_val) {
+  prices = const_cast<char*>(new_val);
 }
 
 void SwmResource::set_usage_time(const uint64_t &new_val) {
@@ -114,7 +114,7 @@ std::vector<SwmTupleAtomEterm> SwmResource::get_properties() const {
   return properties;
 }
 
-ETERM* SwmResource::get_prices() const {
+char* SwmResource::get_prices() const {
   return prices;
 }
 
@@ -126,10 +126,10 @@ std::vector<SwmResource> SwmResource::get_resources() const {
   return resources;
 }
 
-int swm::ei_buffer_to_resource(const char *buf, const int *index, std::vector<SwmResource> &array) {
-  int term_size = 0
+int swm::ei_buffer_to_resource(const char *buf, int &index, std::vector<SwmResource> &array) {
+  int term_size = 0;
   int term_type = 0;
-  const int parsed = ei_get_type(buf, index, &term_type, &term_size);
+  const int parsed = ei_get_type(buf, &index, &term_type, &term_size);
   if (parsed < 0) {
     std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
@@ -141,7 +141,7 @@ int swm::ei_buffer_to_resource(const char *buf, const int *index, std::vector<Sw
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
-    std::cerr << "Could not parse list for " + entity_name + " at position " << index << std::endl;
+    std::cerr << "Could not parse list for resource at position " << index << std::endl;
     return -1;
   }
   if (list_size == 0) {
@@ -149,16 +149,16 @@ int swm::ei_buffer_to_resource(const char *buf, const int *index, std::vector<Sw
   }
 
   array.reserve(list_size);
-  for (size_t i=0; i<list_size; ++i) {
-    int entry_size;
-    int type;
-    int res = ei_get_type(buf, &index, &type, &entry_size);
-    switch (type) {
+  for (int i=0; i<list_size; ++i) {
+    int entry_size = 0;
+    int type = 0;
+    switch (ei_get_type(buf, &index, &type, &entry_size)) {
       case ERL_SMALL_TUPLE_EXT:
       case ERL_LARGE_TUPLE_EXT:
         array.emplace_back(buf, index);
+        break;
       default:
-        std::cerr << "List element (at position " << i << " is not a tuple: " << <class 'type'> << std::endl;
+        std::cerr << "List element (at position " << i << " is not a tuple: <class 'type'>" << std::endl;
     }
   }
 

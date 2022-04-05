@@ -12,7 +12,7 @@ class SwmMetric:SwmEntity {
 
  public:
   SwmMetric();
-  SwmMetric(const char*);
+  SwmMetric(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -31,7 +31,7 @@ class SwmMetric:SwmEntity {
 
 };
 
-int ei_buffer_to_metric(const char*, int, std::vector<SwmMetric>&);
-int ei_buffer_to_metric(const char*, SwmMetric&);
+int ei_buffer_to_metric(const char*, int&, std::vector<SwmMetric>&);
+int ei_buffer_to_metric(const char*, int&, SwmMetric&);
 
 } // namespace swm

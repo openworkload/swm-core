@@ -58,16 +58,6 @@ void swm_loge(const char* message, ...) {
   fflush(LOG_OUT_STREAM);
 }
 
-void swm_logd(const char* message, const ei_term* eterm) {
-  if (message) {
-    va_list args;
-    _print_log_format("DEBUG", message, args, false);
-    erl_print_term(LOG_OUT_STREAM, eterm);
-  }
-  fprintf(LOG_OUT_STREAM, "\n");
-  fflush(LOG_OUT_STREAM);
-}
-
 void swm_logd(const char* message, ...) {
   if (g_log_level < SWM_LOG_LEVEL_DEBUG1) {
     return;

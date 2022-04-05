@@ -12,7 +12,7 @@ class SwmTimetable:SwmEntity {
 
  public:
   SwmTimetable();
-  SwmTimetable(const char*);
+  SwmTimetable(const char*, int&);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
@@ -31,7 +31,7 @@ class SwmTimetable:SwmEntity {
 
 };
 
-int ei_buffer_to_timetable(const char*, int, std::vector<SwmTimetable>&);
-int ei_buffer_to_timetable(const char*, SwmTimetable&);
+int ei_buffer_to_timetable(const char*, int&, std::vector<SwmTimetable>&);
+int ei_buffer_to_timetable(const char*, int&, SwmTimetable&);
 
 } // namespace swm
