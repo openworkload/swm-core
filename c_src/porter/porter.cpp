@@ -36,12 +36,12 @@ void set_uid_gid(uid_t uid, uid_t gid) {
   int status = -1;
   status = setregid(gid, gid);
   if (status < 0) {
-    swm_loge("Couldn't set gid, status=", status);
+    swm_loge("Can't set gid, status=", status);
     exit(status);
   }
   status = setreuid(uid, uid);
   if (status < 0) {
-    swm_loge("Couldn't set uid, status=", status);
+    swm_loge("Can't set uid, status=", status);
     exit(status);
   }
 }
@@ -153,30 +153,57 @@ void set_env(passwd *pw, const SwmJob &job) {
 }
 
 int send_process_info(const SwmProcess &proc) {
-  ETERM* props[PROCESS_TUPLE_SIZE];
-  props[0] = erl_mk_atom("process");
-  props[1] = erl_mk_int(proc.get_pid());
-  props[2] = erl_mk_string(proc.get_state().c_str());
-  props[3] = erl_mk_int(proc.get_exitcode());
-  props[4] = erl_mk_int(proc.get_signal());
-  props[5] = erl_mk_string(proc.get_comment().c_str());
-  ETERM* eproc =erl_mk_tuple(props, PROCESS_TUPLE_SIZE);
-  if (swm_get_log_level() >= SWM_LOG_LEVEL_DEBUG1) {
-    swm_logd("Process eterm: ", eproc);
-    //erl_print_term(stderr, eproc);
+  ei_x_buff x;
+  if (ei_x_new(&x)) {
+    swm_loge("Can't create new process term");
+    return -1;
   }
-
-  byte *buf = (byte*)malloc(erl_term_len(eproc));
-  size_t bufbytes = erl_encode(eproc, buf);
-
-  if (!bufbytes) {
-    swm_loge("Can not encode ETERM");
+  if (ei_x_encode_version(&x)) {
+    swm_loge("Can't encode version");
+    return -1;
+  }
+  if (ei_x_encode_tuple_header(&x, PROCESS_TUPLE_SIZE)) {
+    swm_loge("Can't encode process tuple header");
+    return -1;
+  }
+  if (ei_x_encode_atom(&x, "process")) {
+    swm_loge("Can't encode process first atom");
+    return -1;
+  }
+  if (ei_x_encode_ulong(&x, proc.get_pid())) {
+    swm_loge("Can't encode process pid");
+    return -1;
+  }
+  if (ei_x_encode_string(&x, proc.get_state().c_str())) {
+    swm_loge("Can't encode process state");
+    return -1;
+  }
+  if (ei_x_encode_long(&x, proc.get_exitcode())) {
+    swm_loge("Can't encode process exitcode");
+    return -1;
+  }
+  if (ei_x_encode_long(&x, proc.get_signal())) {
+    swm_loge("Can't encode process signal");
+    return -1;
+  }
+  if (ei_x_encode_string(&x, proc.get_comment().c_str())) {
+    swm_loge("Can't encode process comment");
     return -1;
   }
 
-  swm_write_exact(&std::cout, buf, bufbytes);
-  erl_free_compound(eproc);
-  free(buf);
+  if (swm_get_log_level() >= SWM_LOG_LEVEL_DEBUG1) {
+    char* term_str = new (std::nothrow) char[1000];
+    int index = 0;
+    ei_s_print_term(&term_str, x.buff, &index);
+    swm_logd("Process term: ", term_str);
+    delete[] term_str;
+  }
+
+  const uint64_t buf_bytes = x.index;
+  swm_write_exact(&std::cout, x.buff, buf_bytes);
+  if (ei_x_free(&x)) {
+    swm_loge("Can't free encoded buffer for process term");
+  }
   fflush(stdout);
 
   swm_logd("Process info has been just sent to stdout (%s)", proc.get_state().c_str());
@@ -229,6 +256,10 @@ int main(int argc, char* const argv[]) {
   if (parse_data(data, info)) {
     swm_loge("Could not decode data");
     return EXIT_FAILURE;
+  }
+
+  for (size_t i = 0; i < SWM_DATA_TYPES_COUNT; i++) {
+    delete[] data[i];
   }
 
   pid_t child_pid;

@@ -5,7 +5,7 @@ CFLAGS=-I${_KERL_ACTIVE_DIR}/usr/include\
        -Werror\
        -pedantic\
        -g\
-       -std=c++14\
+       -std=c++17\
        -Wno-deprecated-declarations
 LDFLAGS=-L${_KERL_ACTIVE_DIR}/usr/lib
 LIBS=-lei\

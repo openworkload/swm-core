@@ -115,7 +115,6 @@
   def out_print_funs(x,y):
     cog.out("  virtual void print(const std::string &prefix, const char separator) const;\n")
 
-
   def generate_output():
     for e in exclude:
       del data[e]

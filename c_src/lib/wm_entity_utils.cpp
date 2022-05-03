@@ -7,26 +7,6 @@
 
 using namespace swm;
 
-template<typename T>
-int resize_vector(const char* buf, const int &index, std::vector<T> &array) {
-  int term_size = 0;
-  int term_type = 0;
-  const int parsed = ei_get_type(buf, &index, &term_type, &term_size);
-  if (parsed < 0) {
-    std::cerr << "Could not get term type at position " << index << std::endl;
-    return -1;
-  }
-  if (term_type != ERL_LIST_EXT) {
-      std::cerr << "Could not parse ei buffer: not an ss-tuple list" << std::endl;
-      return -1;
-  }
-  if (term_size == 0) {
-    return 0;
-  }
-  array.resize(term_size);
-  return 0;
-}
-
 int get_term_type(const char* buf, const int &index) {
   int term_size = 0;
   int term_type = 0;
@@ -82,7 +62,7 @@ int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, SwmTupleAtomSt
 int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, SwmTupleAtomEterm &tuple) {
   const int term_type = get_term_type(buf, index);
   if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
-    std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
+    std::cerr << "Could not parse eterm at " << index << ": not a tuple" << std::endl;
     return -1;
   }
   if (ei_buffer_to_atom(buf, index, tuple.x1)) {
@@ -101,7 +81,7 @@ int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, SwmTupleAtom
 
 int swm::ei_buffer_to_tuple_str_str(const char* buf, int &index, std::vector<SwmTupleStrStr> &array) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_LIST_EXT) {
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
@@ -111,9 +91,10 @@ int swm::ei_buffer_to_tuple_str_str(const char* buf, int &index, std::vector<Swm
     std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (resize_vector(buf, index, array)) {
-    return -1;
+  if (list_size == 0) {
+    return 0;
   }
+  array.resize(list_size);
 
   for (auto &ss : array) {
     if (swm::ei_buffer_to_tuple_str_str(buf, index, ss)) {
@@ -121,12 +102,14 @@ int swm::ei_buffer_to_tuple_str_str(const char* buf, int &index, std::vector<Swm
       return -1;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
+
   return 0;
 }
 
 int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, std::vector<SwmTupleAtomStr> &array) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_LIST_EXT) {
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
@@ -136,9 +119,10 @@ int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, std::vector<Sw
     std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (resize_vector(buf, index, array)) {
-    return -1;
+  if (list_size == 0) {
+    return 0;
   }
+  array.resize(list_size);
 
   for (auto &ss : array) {
     if (swm::ei_buffer_to_tuple_atom_str(buf, index, ss)) {
@@ -146,12 +130,14 @@ int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, std::vector<Sw
       return -1;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
+
   return 0;
 }
 
 int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, std::vector<SwmTupleAtomEterm> &array) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_LIST_EXT) {
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
@@ -161,9 +147,10 @@ int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, std::vector<
     std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (resize_vector(buf, index, array)) {
-    return -1;
+  if (list_size == 0) {
+    return 0;
   }
+  array.resize(list_size);
 
   for (auto &ss : array) {
     if (swm::ei_buffer_to_tuple_atom_eterm(buf, index, ss)) {
@@ -171,13 +158,15 @@ int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, std::vector<
       return -1;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
+
   return 0;
 }
 
 int swm::ei_buffer_to_tuple_atom_uint64(const char* buf, int &index, SwmTupleAtomUint64 &tuple) {
   const int term_type = get_term_type(buf, index);
   if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
-    std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
+    std::cerr << "Could not parse eterm at " << index << ": not a tuple" << std::endl;
     return -1;
   }
   if (ei_buffer_to_atom(buf, index, tuple.x1)) {
@@ -190,8 +179,9 @@ int swm::ei_buffer_to_tuple_atom_uint64(const char* buf, int &index, SwmTupleAto
 }
 
 int swm::ei_buffer_to_atom(const char* buf, int &index, std::string &a) {
-  if (get_term_type(buf, index) != ERL_ATOM_EXT) {
-    std::cerr << "Could not parse eterm " << index << ": not an atom" << std::endl;
+  const int term_type = get_term_type(buf, index);
+  if (term_type != ERL_ATOM_EXT) {
+    std::cerr << "Could not parse eterm " << index << ": not an atom, but " << term_type << std::endl;
     return -1;
   }
   const auto term_size = get_term_size(buf, index);
@@ -211,7 +201,7 @@ int swm::ei_buffer_to_atom(const char* buf, int &index, std::string &a) {
 
 int swm::ei_buffer_to_atom(const char* buf, int &index, std::vector<std::string> &array) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_LIST_EXT) {
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
@@ -221,9 +211,10 @@ int swm::ei_buffer_to_atom(const char* buf, int &index, std::vector<std::string>
     std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (resize_vector(buf, index, array)) {
-    return -1;
+  if (list_size == 0) {
+    return 0;
   }
+  array.resize(list_size);
 
   for (auto &a : array) {
     if (swm::ei_buffer_to_atom(buf, index, a)) {
@@ -231,12 +222,14 @@ int swm::ei_buffer_to_atom(const char* buf, int &index, std::vector<std::string>
       return -1;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
+
   return 0;
 }
 
 int swm::ei_buffer_to_str(const char* buf, int &index, std::vector<std::string> &array) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_LIST_EXT) {
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
@@ -246,9 +239,10 @@ int swm::ei_buffer_to_str(const char* buf, int &index, std::vector<std::string> 
     std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (resize_vector(buf, index, array)) {
-    return -1;
+  if (list_size == 0) {
+    return 0;
   }
+  array.resize(list_size);
 
   for (auto &a : array) {
     if (swm::ei_buffer_to_str(buf, index, a)) {
@@ -256,6 +250,8 @@ int swm::ei_buffer_to_str(const char* buf, int &index, std::vector<std::string> 
       return -1;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
+
   return 0;
 }
 
@@ -277,8 +273,8 @@ int swm::ei_buffer_to_str(const char* buf, int &index, std::string &s) {
 
 int swm::ei_buffer_to_uint64_t(const char* buf, int &index, uint64_t &n) {
   const auto term_type = get_term_type(buf, index);
-  if (term_type != ERL_SMALL_BIG_EXT) {
-    std::cerr << "Wrong eterm type " << index << ": not a ulong integer, type is " << term_type << std::endl;
+  if (term_type != ERL_INTEGER_EXT && term_type != ERL_SMALL_INTEGER_EXT) {
+    std::cerr << "Wrong eterm type at " << index << ": not a ulong integer, type is " << term_type << std::endl;
     return -1;
   }
   if (ei_decode_ulong(buf, &index, &n)) {
@@ -290,7 +286,7 @@ int swm::ei_buffer_to_uint64_t(const char* buf, int &index, uint64_t &n) {
 
 int swm::ei_buffer_to_int64_t(const char* buf, int &index, int64_t &n) {
   const auto term_type = get_term_type(buf, index);
-  if (term_type != ERL_INTEGER_EXT) {
+  if (term_type != ERL_INTEGER_EXT && term_type != ERL_SMALL_INTEGER_EXT) {
     std::cerr << "Wrong eterm type " << index << ": not a long integer, type is " << term_type << std::endl;
     return -1;
   }
@@ -303,7 +299,7 @@ int swm::ei_buffer_to_int64_t(const char* buf, int &index, int64_t &n) {
 
 int swm::ei_buffer_to_uint64_t(const char* buf, int &index, std::vector<uint64_t> &array) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_LIST_EXT) {
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
@@ -313,9 +309,11 @@ int swm::ei_buffer_to_uint64_t(const char* buf, int &index, std::vector<uint64_t
     std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (resize_vector(buf, index, array)) {
-    return -1;
+  if (list_size == 0) {
+    return 0;
   }
+
+  array.resize(list_size);
 
   for (auto &a : array) {
     if (swm::ei_buffer_to_uint64_t(buf, index, a)) {
@@ -323,12 +321,14 @@ int swm::ei_buffer_to_uint64_t(const char* buf, int &index, std::vector<uint64_t
       return -1;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
+
   return 0;
 }
 
 int swm::ei_buffer_to_int64_t(const char* buf, int &index, std::vector<int64_t> &array) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_LIST_EXT) {
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
@@ -338,9 +338,10 @@ int swm::ei_buffer_to_int64_t(const char* buf, int &index, std::vector<int64_t> 
     std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (resize_vector(buf, index, array)) {
-    return -1;
+  if (list_size == 0) {
+    return 0;
   }
+  array.resize(list_size);
 
   for (auto &a : array) {
     if (swm::ei_buffer_to_int64_t(buf, index, a)) {
@@ -348,6 +349,8 @@ int swm::ei_buffer_to_int64_t(const char* buf, int &index, std::vector<int64_t> 
       return -1;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
+
   return 0;
 }
 
@@ -368,7 +371,7 @@ int swm::ei_buffer_to_double(const char* buf, int &index, double &n) {
 
 int swm::ei_buffer_to_double(const char* buf, int &index, std::vector<double> &array) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_LIST_EXT) {
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
@@ -378,9 +381,10 @@ int swm::ei_buffer_to_double(const char* buf, int &index, std::vector<double> &a
     std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (resize_vector(buf, index, array)) {
-    return -1;
+  if (list_size == 0) {
+    return 0;
   }
+  array.resize(list_size);
 
   for (auto &d : array) {
     if (swm::ei_buffer_to_double(buf, index, d)) {
@@ -388,22 +392,24 @@ int swm::ei_buffer_to_double(const char* buf, int &index, std::vector<double> &a
       return -1;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
+
   return 0;
 }
 
-int swm::ei_buffer_to_eterm(const char* buf, int &index, char* elem) {
-  // Skip for now, no point to keep a copy of binary without parsing
-  if (ei_skip_term(buf, &index)) {
-    std::cerr << "Could not skip eterm at pos " << index << std::endl;
+int swm::ei_buffer_to_map(const char* buf, int &index, [[maybe_unused]] char* elem) {
+  int map_size = 0;
+  if (ei_decode_map_header(buf, &index, &map_size)) {
+    std::cerr << "Could not decode map at pos " << index << std::endl;
     return -1;
   }
-  *elem = static_cast<char>(0);
+  //TODO: copy row buf for further parsing when types are known?
   return 0;
 }
 
-int swm::ei_buffer_to_eterm(const char* buf, int &index, std::vector<char*> &array) {
+int swm::ei_buffer_to_map(const char* buf, int &index, std::vector<char*> &array) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_LIST_EXT) {
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
     return -1;
   }
@@ -413,16 +419,19 @@ int swm::ei_buffer_to_eterm(const char* buf, int &index, std::vector<char*> &arr
     std::cerr << "Could not decode ei list header at " << index << std::endl;
     return -1;
   }
-  if (resize_vector(buf, index, array)) {
-    return -1;
+  if (list_size == 0) {
+    return 0;
   }
+  array.resize(list_size);
 
   for (auto &c : array) {
-    if (swm::ei_buffer_to_eterm(buf, index, c)) {
+    if (swm::ei_buffer_to_map(buf, index, c)) {
       std::cerr << "Could not parse eterm list element at " << index << std::endl;
       return -1;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
+
   return 0;
 }
 

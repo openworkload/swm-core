@@ -28,6 +28,9 @@ get_final_binary() ->
   Job8 = wm_entity:set_attr({script_content, JobScriptContent}, Job7),
   JobBin = erlang:term_to_binary(Job8),
   JobBinSize = byte_size(JobBin),
+  ?LOG_DEBUG(">>>>>> Job: ~p", Job8),
+  ?LOG_DEBUG(">>>>>> JobBin: ~p", JobBin),
+  ?LOG_DEBUG(">>>>>> JobBinSize: ~p", JobBinSize),
 
   <<?PORTER_COMMAND_RUN/integer,
     ?PORTER_DATA_TYPES_COUNT/integer,

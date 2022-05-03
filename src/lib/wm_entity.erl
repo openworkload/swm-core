@@ -461,7 +461,7 @@ get_type(metric, Attr) when is_atom(Attr) ->
   case Attr of
     name -> atom;
     value_integer -> integer;
-    value_float64 -> {list, string}
+    value_float64 -> float
   end;
 get_type(scheduler_result, Attr) when is_atom(Attr) ->
   case Attr of
@@ -469,9 +469,9 @@ get_type(scheduler_result, Attr) when is_atom(Attr) ->
     metrics -> {list, {record, metric}};
     request_id -> string;
     status -> integer;
-    astro_time -> {list, {record, metric}};
-    idle_time -> {list, {record, metric}};
-    work_time -> {list, {record, metric}}
+    astro_time -> float;
+    idle_time -> float;
+    work_time -> float
   end;
 get_type(boot_info, Attr) when is_atom(Attr) ->
   case Attr of
