@@ -85,9 +85,9 @@ void swm_logdd(const char* message, ...) {
 }
 
 bool swm_read_length(std::istream *stream, uint32_t *len) {
-  // swm_read_exact() will check stream for nullptr
-  uint8_t buf[4];
-  if (!swm_read_exact(stream, buf, 4)) {
+  // swm_read_exact() checks stream for nullptr
+  unsigned char buf[4];
+  if (!swm_read_exact(stream, (char*)buf, 4)) {
     return false;
   }
 
@@ -99,20 +99,20 @@ bool swm_read_length(std::istream *stream, uint32_t *len) {
   return true;
 }
 
-bool swm_read_exact(std::istream *stream, uint8_t *buf, size_t len) {
+bool swm_read_exact(std::istream *stream, char *buf, size_t len) {
   if (stream == nullptr) {
     throw std::runtime_error("swm_read_exact(): \"stream\" cannot be equal to nullptr");
   }
 
-  stream->read((char *)buf, len);
+  stream->read(buf, len);
   return stream->good();
 }
 
-bool swm_write_exact(std::ostream *stream, uint8_t *buf, size_t len) {
+bool swm_write_exact(std::ostream *stream, char *buf, size_t len) {
   if (stream == nullptr) {
     throw std::runtime_error("swm_write_exact(): \"stream\" cannot be equal to nullptr");
   }
-  stream->write((const char *)buf, len);
+  stream->write(buf, len);
   stream->flush();
   return stream->good();
 }

@@ -71,12 +71,22 @@
 
     outputs.append("%s::%s(const char* buf, int &index) {" % (class_name, class_name))
     outputs.append("  if (!buf) {")
-    outputs.append(f'    std::cerr << "Cannot convert ei buffer into {class_name}: null" << std::endl;')
+    outputs.append(f'    std::cerr << "Could not convert ei buffer into {class_name}: null" << std::endl;')
     outputs.append("    return;")
     outputs.append("  }")
+    outputs.append("")
     outputs.append("  int term_size = 0;")
-    outputs.append("  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {")
-    outputs.append(f'    std::cerr << "Cannot decode {class_name} header from ei buffer" << std::endl;')
+    outputs.append("  if (ei_decode_tuple_header(buf, &index, &term_size)) {")
+    outputs.append(f'    std::cerr << "Could decode {class_name} header from ei buffer: ";')
+    outputs.append('    ei_print_term(stdout, buf, &index);')
+    outputs.append("    std::cerr << std::endl;")
+    outputs.append("    return;")
+    outputs.append("  }")
+    outputs.append("")
+    outputs.append('  if (ei_skip_term(buf, &index) < 0) {  // first atom is the term name')
+    outputs.append(f'    std::cerr << "Could not skip {class_name} term first atom: ";')
+    outputs.append("    ei_print_term(stderr, buf, &index);")
+    outputs.append('    std::cerr << std::endl;')
     outputs.append("    return;")
     outputs.append("  }")
     outputs.append("")
@@ -92,8 +102,9 @@
         type_suffix, camel_type, _, is_tuple = transform(prop_type)
 
       outputs.append(f'  if (ei_buffer_to_{type_suffix}(buf, index, this->{prop_name})) {{')
-      outputs.append(f'    std::cerr << "Could not initialize {entity_name} property at position={pos}" << std::endl;')
+      outputs.append(f'    std::cerr << "Could not init {entity_name}::{prop_name} at pos {pos}: ";')
       outputs.append("    ei_print_term(stderr, buf, &index);")
+      outputs.append('    std::cerr << std::endl;')
       outputs.append("    return;")
       outputs.append("  }")
       outputs.append("")
@@ -105,6 +116,19 @@
     outputs.append("}")
     outputs.append("")
     return (includes, outputs)
+
+
+  def out_convert_fun(entity_name):
+    struct_type = entity_name.title().replace('_', '')
+    cog.out("int swm::ei_buffer_to_%s(" % WM_ENTITY_NAME)
+    cog.out("const char* buf, ")
+    cog.out("int &index, ")
+    cog.out("Swm" + struct_type + " &obj")
+    cog.outl(") {")
+    cog.outl("  obj = Swm%s(buf, index);" % struct_type);
+    cog.outl("  return 0;");
+    cog.outl("}")
+    cog.outl()
 
 
   def out_init_array_fun(entity_name):
@@ -122,8 +146,8 @@
     cog.outl("    return -1;");
     cog.outl("  }");
     cog.outl()
-    cog.outl("  if (term_type != ERL_LIST_EXT) {");
-    cog.outl(f'      std::cerr << "Could not parse term: not a {entity_name} list at position " << index << std::endl;');
+    cog.outl("  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {");
+    cog.outl(f'      std::cerr << "Could not parse term: not a {entity_name} list at " << index << ": " << term_type << std::endl;');
     cog.outl("      return -1;");
     cog.outl("  }");
     cog.outl("  int list_size = 0;");
@@ -138,16 +162,22 @@
     cog.outl("  array.reserve(list_size);");
     cog.outl("  for (int i=0; i<list_size; ++i) {");
     cog.outl("    int entry_size = 0;")
-    cog.outl("    int type = 0;")
-    cog.outl("    switch (ei_get_type(buf, &index, &type, &entry_size)) {")
+    cog.outl("    int sub_term_type = 0;")
+    cog.outl("    const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);");
+    cog.outl("    if (parsed < 0) {");
+    cog.outl("      std::cerr << \"Could not get term type at position \" << index << std::endl;");
+    cog.outl("      return -1;");
+    cog.outl("    }");
+    cog.outl("    switch (sub_term_type) {")
     cog.outl("      case ERL_SMALL_TUPLE_EXT:")
     cog.outl("      case ERL_LARGE_TUPLE_EXT:")
     cog.outl(f"        array.emplace_back(buf, index);");
     cog.outl(f"        break;");
     cog.outl("      default:")
-    cog.outl(f'        std::cerr << "List element (at position " << i << " is not a tuple: {type}" << std::endl;')
+    cog.outl(f'        std::cerr << "List element (at position " << i << ") is not a tuple" << std::endl;')
     cog.outl("    }")
     cog.outl("  }");
+    cog.outl("  ei_skip_term(buf, &index);  // last element of a list is empty list");
     cog.outl()
     cog.outl("  return 0;");
     cog.outl("}")
@@ -235,6 +265,7 @@
       cog.outl(output)
     out_setters(entity_name, entity_properties)
     out_init_array_fun(entity_name)
+    out_convert_fun(entity_name)
     out_print_funs(entity_name, entity_properties)
 
   generate_output()

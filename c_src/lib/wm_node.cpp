@@ -16,126 +16,155 @@ SwmNode::SwmNode() {
 
 SwmNode::SwmNode(const char* buf, int &index) {
   if (!buf) {
-    std::cerr << "Cannot convert ei buffer into SwmNode: null" << std::endl;
+    std::cerr << "Could not convert ei buffer into SwmNode: null" << std::endl;
     return;
   }
+
   int term_size = 0;
-  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
-    std::cerr << "Cannot decode SwmNode header from ei buffer" << std::endl;
+  if (ei_decode_tuple_header(buf, &index, &term_size)) {
+    std::cerr << "Could decode SwmNode header from ei buffer: ";
+    ei_print_term(stdout, buf, &index);
+    std::cerr << std::endl;
+    return;
+  }
+
+  if (ei_skip_term(buf, &index) < 0) {  // first atom is the term name
+    std::cerr << "Could not skip SwmNode term first atom: ";
+    ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->id)) {
-    std::cerr << "Could not initialize node property at position=2" << std::endl;
+    std::cerr << "Could not init node::id at pos 2: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->name)) {
-    std::cerr << "Could not initialize node property at position=3" << std::endl;
+    std::cerr << "Could not init node::name at pos 3: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->host)) {
-    std::cerr << "Could not initialize node property at position=4" << std::endl;
+    std::cerr << "Could not init node::host at pos 4: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->api_port)) {
-    std::cerr << "Could not initialize node property at position=5" << std::endl;
+    std::cerr << "Could not init node::api_port at pos 5: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->parent)) {
-    std::cerr << "Could not initialize node property at position=6" << std::endl;
+    std::cerr << "Could not init node::parent at pos 6: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->state_power)) {
-    std::cerr << "Could not initialize node property at position=7" << std::endl;
+    std::cerr << "Could not init node::state_power at pos 7: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->state_alloc)) {
-    std::cerr << "Could not initialize node property at position=8" << std::endl;
+    std::cerr << "Could not init node::state_alloc at pos 8: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->roles)) {
-    std::cerr << "Could not initialize node property at position=9" << std::endl;
+    std::cerr << "Could not init node::roles at pos 9: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_resource(buf, index, this->resources)) {
-    std::cerr << "Could not initialize node property at position=10" << std::endl;
+    std::cerr << "Could not init node::resources at pos 10: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_tuple_atom_eterm(buf, index, this->properties)) {
-    std::cerr << "Could not initialize node property at position=11" << std::endl;
+    std::cerr << "Could not init node::properties at pos 11: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->subdivision)) {
-    std::cerr << "Could not initialize node property at position=12" << std::endl;
+    std::cerr << "Could not init node::subdivision at pos 12: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->subdivision_id)) {
-    std::cerr << "Could not initialize node property at position=13" << std::endl;
+    std::cerr << "Could not init node::subdivision_id at pos 13: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->malfunctions)) {
-    std::cerr << "Could not initialize node property at position=14" << std::endl;
+    std::cerr << "Could not init node::malfunctions at pos 14: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->comment)) {
-    std::cerr << "Could not initialize node property at position=15" << std::endl;
+    std::cerr << "Could not init node::comment at pos 15: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->remote_id)) {
-    std::cerr << "Could not initialize node property at position=16" << std::endl;
+    std::cerr << "Could not init node::remote_id at pos 16: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->is_template)) {
-    std::cerr << "Could not initialize node property at position=17" << std::endl;
+    std::cerr << "Could not init node::is_template at pos 17: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->gateway)) {
-    std::cerr << "Could not initialize node property at position=18" << std::endl;
+    std::cerr << "Could not init node::gateway at pos 18: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
-  if (ei_buffer_to_eterm(buf, index, this->prices)) {
-    std::cerr << "Could not initialize node property at position=19" << std::endl;
+  if (ei_buffer_to_map(buf, index, this->prices)) {
+    std::cerr << "Could not init node::prices at pos 19: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
-    std::cerr << "Could not initialize node property at position=20" << std::endl;
+    std::cerr << "Could not init node::revision at pos 20: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
@@ -303,8 +332,8 @@ int swm::ei_buffer_to_node(const char *buf, int &index, std::vector<SwmNode> &ar
     return -1;
   }
 
-  if (term_type != ERL_LIST_EXT) {
-      std::cerr << "Could not parse term: not a node list at position " << index << std::endl;
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
+      std::cerr << "Could not parse term: not a node list at " << index << ": " << term_type << std::endl;
       return -1;
   }
   int list_size = 0;
@@ -319,17 +348,28 @@ int swm::ei_buffer_to_node(const char *buf, int &index, std::vector<SwmNode> &ar
   array.reserve(list_size);
   for (int i=0; i<list_size; ++i) {
     int entry_size = 0;
-    int type = 0;
-    switch (ei_get_type(buf, &index, &type, &entry_size)) {
+    int sub_term_type = 0;
+    const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
+    if (parsed < 0) {
+      std::cerr << "Could not get term type at position " << index << std::endl;
+      return -1;
+    }
+    switch (sub_term_type) {
       case ERL_SMALL_TUPLE_EXT:
       case ERL_LARGE_TUPLE_EXT:
         array.emplace_back(buf, index);
         break;
       default:
-        std::cerr << "List element (at position " << i << " is not a tuple: <class 'type'>" << std::endl;
+        std::cerr << "List element (at position " << i << ") is not a tuple" << std::endl;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
 
+  return 0;
+}
+
+int swm::ei_buffer_to_node(const char* buf, int &index, SwmNode &obj) {
+  obj = SwmNode(buf, index);
   return 0;
 }
 

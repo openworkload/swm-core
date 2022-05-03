@@ -307,9 +307,9 @@
            metrics = [] :: [#metric{}],
            request_id :: string(),
            status = 0 :: pos_integer(),
-           astro_time = 0 :: float(),
-           idle_time = 0 :: float(),
-           work_time = 0 :: float()
+           astro_time = 0.0 :: float(),
+           idle_time = 0.0 :: float(),
+           work_time = 0.0 :: float()
     }).
 -record (boot_info, {
            node_host :: string(),

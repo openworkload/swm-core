@@ -37,7 +37,7 @@ types_map = {
 type_suffix_map = {
      "atom()": "atom",
      "any()": "eterm",
-     "map()": "eterm",
+     "map()": "map",
      "string()": "str",
      "binary()": "eterm",
      "integer()": "int64_t",

@@ -982,15 +982,15 @@
       "type": "pos_integer()"
     },
     "astro_time": {
-      "default": 0,
+      "default": 0.0,
       "type": "float()"
     },
     "idle_time": {
-      "default": 0,
+      "default": 0.0,
       "type": "float()"
     },
     "work_time": {
-      "default": 0,
+      "default": 0.0,
       "type": "float()"
     }
   },

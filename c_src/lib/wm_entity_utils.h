@@ -61,8 +61,8 @@ int ei_buffer_to_int64_t(const char* buf, int &index, std::vector<int64_t> &arra
 int ei_buffer_to_double(const char* buf, int &index, double &x);
 int ei_buffer_to_double(const char* buf, int &index, std::vector<double> &array);
 
-int ei_buffer_to_eterm(const char* buf, int &index, char* a);
-int ei_buffer_to_eterm(const char* buf, int &index, std::vector<char*> &array);
+int ei_buffer_to_map(const char* buf, int &index, char* a);
+int ei_buffer_to_map(const char* buf, int &index, std::vector<char*> &array);
 
 void print_uint64_t(const uint64_t&, const std::string &prefix, const char separator);
 void print_int64_t(const int64_t&, const std::string &prefix, const char separator);

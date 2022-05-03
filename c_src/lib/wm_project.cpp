@@ -15,54 +15,71 @@ SwmProject::SwmProject() {
 
 SwmProject::SwmProject(const char* buf, int &index) {
   if (!buf) {
-    std::cerr << "Cannot convert ei buffer into SwmProject: null" << std::endl;
+    std::cerr << "Could not convert ei buffer into SwmProject: null" << std::endl;
     return;
   }
+
   int term_size = 0;
-  if (ei_decode_tuple_header(buf, &index, &term_size) < 0) {
-    std::cerr << "Cannot decode SwmProject header from ei buffer" << std::endl;
+  if (ei_decode_tuple_header(buf, &index, &term_size)) {
+    std::cerr << "Could decode SwmProject header from ei buffer: ";
+    ei_print_term(stdout, buf, &index);
+    std::cerr << std::endl;
+    return;
+  }
+
+  if (ei_skip_term(buf, &index) < 0) {  // first atom is the term name
+    std::cerr << "Could not skip SwmProject term first atom: ";
+    ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->id)) {
-    std::cerr << "Could not initialize project property at position=2" << std::endl;
+    std::cerr << "Could not init project::id at pos 2: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->name)) {
-    std::cerr << "Could not initialize project property at position=3" << std::endl;
+    std::cerr << "Could not init project::name at pos 3: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->acl)) {
-    std::cerr << "Could not initialize project property at position=4" << std::endl;
+    std::cerr << "Could not init project::acl at pos 4: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->hooks)) {
-    std::cerr << "Could not initialize project property at position=5" << std::endl;
+    std::cerr << "Could not init project::hooks at pos 5: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_int64_t(buf, index, this->priority)) {
-    std::cerr << "Could not initialize project property at position=6" << std::endl;
+    std::cerr << "Could not init project::priority at pos 6: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->comment)) {
-    std::cerr << "Could not initialize project property at position=7" << std::endl;
+    std::cerr << "Could not init project::comment at pos 7: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
-    std::cerr << "Could not initialize project property at position=8" << std::endl;
+    std::cerr << "Could not init project::revision at pos 8: ";
     ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
     return;
   }
 
@@ -134,8 +151,8 @@ int swm::ei_buffer_to_project(const char *buf, int &index, std::vector<SwmProjec
     return -1;
   }
 
-  if (term_type != ERL_LIST_EXT) {
-      std::cerr << "Could not parse term: not a project list at position " << index << std::endl;
+  if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
+      std::cerr << "Could not parse term: not a project list at " << index << ": " << term_type << std::endl;
       return -1;
   }
   int list_size = 0;
@@ -150,17 +167,28 @@ int swm::ei_buffer_to_project(const char *buf, int &index, std::vector<SwmProjec
   array.reserve(list_size);
   for (int i=0; i<list_size; ++i) {
     int entry_size = 0;
-    int type = 0;
-    switch (ei_get_type(buf, &index, &type, &entry_size)) {
+    int sub_term_type = 0;
+    const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
+    if (parsed < 0) {
+      std::cerr << "Could not get term type at position " << index << std::endl;
+      return -1;
+    }
+    switch (sub_term_type) {
       case ERL_SMALL_TUPLE_EXT:
       case ERL_LARGE_TUPLE_EXT:
         array.emplace_back(buf, index);
         break;
       default:
-        std::cerr << "List element (at position " << i << " is not a tuple: <class 'type'>" << std::endl;
+        std::cerr << "List element (at position " << i << ") is not a tuple" << std::endl;
     }
   }
+  ei_skip_term(buf, &index);  // last element of a list is empty list
 
+  return 0;
+}
+
+int swm::ei_buffer_to_project(const char* buf, int &index, SwmProject &obj) {
+  obj = SwmProject(buf, index);
   return 0;
 }
 

@@ -1,4 +1,3 @@
-
 CC=g++
 ERL_PATH=${_KERL_ACTIVE_DIR}
 CFLAGS=-I${_KERL_ACTIVE_DIR}/usr/include\
@@ -8,7 +7,7 @@ CFLAGS=-I${_KERL_ACTIVE_DIR}/usr/include\
        -Wextra\
        -Wconversion\
        -g\
-       -std=c++14
+       -std=c++17
 LIBS=-lei\
      -lnsl\
      -lpthread
