@@ -25,7 +25,7 @@ class SwmGrid:SwmEntity {
   void set_hooks(const std::vector<std::string>&);
   void set_scheduler(const uint64_t&);
   void set_resources(const std::vector<SwmResource>&);
-  void set_properties(const std::vector<SwmTupleAtomEterm>&);
+  void set_properties(const std::vector<SwmTupleAtomBuff>&);
   void set_comment(const std::string&);
   void set_revision(const uint64_t&);
 
@@ -37,7 +37,7 @@ class SwmGrid:SwmEntity {
   std::vector<std::string> get_hooks() const;
   uint64_t get_scheduler() const;
   std::vector<SwmResource> get_resources() const;
-  std::vector<SwmTupleAtomEterm> get_properties() const;
+  std::vector<SwmTupleAtomBuff> get_properties() const;
   std::string get_comment() const;
   uint64_t get_revision() const;
 
@@ -50,7 +50,7 @@ class SwmGrid:SwmEntity {
   std::vector<std::string> hooks;
   uint64_t scheduler;
   std::vector<SwmResource> resources;
-  std::vector<SwmTupleAtomEterm> properties;
+  std::vector<SwmTupleAtomBuff> properties;
   std::string comment;
   uint64_t revision;
 

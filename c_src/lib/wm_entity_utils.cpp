@@ -35,10 +35,10 @@ int swm::ei_buffer_to_tuple_str_str(const char* buf, int &index, SwmTupleStrStr 
     std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
     return -1;
   }
-  if (ei_buffer_to_str(buf, index, tuple.x1)) {
+  if (ei_buffer_to_str(buf, index, std::get<0>(tuple))) {
     return -1;
   }
-  if (ei_buffer_to_str(buf, index, tuple.x2)) {
+  if (ei_buffer_to_str(buf, index, std::get<1>(tuple))) {
     return -1;
   }
   return 0;
@@ -50,31 +50,32 @@ int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, SwmTupleAtomSt
     std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
     return -1;
   }
-  if (ei_buffer_to_atom(buf, index, tuple.x1)) {
+  if (ei_buffer_to_atom(buf, index, std::get<0>(tuple))) {
     return -1;
   }
-  if (ei_buffer_to_str(buf, index, tuple.x2)) {
+  if (ei_buffer_to_str(buf, index, std::get<1>(tuple))) {
     return -1;
   }
   return 0;
 }
 
-int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, SwmTupleAtomEterm &tuple) {
+int swm::ei_buffer_to_tuple_atom_buff(const char* buf, int &index, SwmTupleAtomBuff &tuple) {
   const int term_type = get_term_type(buf, index);
   if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
     std::cerr << "Could not parse eterm at " << index << ": not a tuple" << std::endl;
     return -1;
   }
-  if (ei_buffer_to_atom(buf, index, tuple.x1)) {
+  if (ei_buffer_to_atom(buf, index, std::get<0>(tuple))) {
     return -1;
   }
-  const auto term_size = get_term_size(buf, index);
-  tuple.x2 = new(std::nothrow) char[term_size + 1];  // TODO: free the buffer?
-  if (!tuple.x2) {
-    std::cerr << "Could not allocate memory for buffer: " << (term_size + 1) << " chars" << std::endl;
+  if (ei_x_new(&std::get<1>(tuple))) {
+    std::cerr << "Could not create ei buffer for SwmTupleAtomBuff" << std::endl;
     return -1;
   }
-  ei_skip_term(buf, &index);
+  if (ei_x_append_buf(&std::get<1>(tuple), buf, get_term_size(buf, index))) {
+    std::cerr << "Could not append ei buffer for SwmTupleAtomBuff" << std::endl;
+    return -1;
+  }
   return 0;
 }
 
@@ -135,7 +136,7 @@ int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, std::vector<Sw
   return 0;
 }
 
-int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, std::vector<SwmTupleAtomEterm> &array) {
+int swm::ei_buffer_to_tuple_atom_buff(const char* buf, int &index, std::vector<SwmTupleAtomBuff> &array) {
   const int term_type = get_term_type(buf, index);
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
@@ -153,7 +154,7 @@ int swm::ei_buffer_to_tuple_atom_eterm(const char* buf, int &index, std::vector<
   array.resize(list_size);
 
   for (auto &ss : array) {
-    if (swm::ei_buffer_to_tuple_atom_eterm(buf, index, ss)) {
+    if (swm::ei_buffer_to_tuple_atom_buff(buf, index, ss)) {
       std::cerr << "Could not init array of SwmTupleAtomStr at " << index << std::endl;
       return -1;
     }
@@ -169,10 +170,10 @@ int swm::ei_buffer_to_tuple_atom_uint64(const char* buf, int &index, SwmTupleAto
     std::cerr << "Could not parse eterm at " << index << ": not a tuple" << std::endl;
     return -1;
   }
-  if (ei_buffer_to_atom(buf, index, tuple.x1)) {
+  if (ei_buffer_to_atom(buf, index, std::get<0>(tuple))) {
     return -1;
   }
-  if (ei_buffer_to_uint64_t(buf, index, tuple.x2)) {
+  if (ei_buffer_to_uint64_t(buf, index, std::get<1>(tuple))) {
     return -1;
   }
   return 0;
@@ -227,6 +228,10 @@ int swm::ei_buffer_to_atom(const char* buf, int &index, std::vector<std::string>
   return 0;
 }
 
+int swm::ei_buffer_to_str(ei_x_buff &x, std::vector<std::string> &array) {
+  return ei_buffer_to_str(x.buff, x.index, array);
+}
+
 int swm::ei_buffer_to_str(const char* buf, int &index, std::vector<std::string> &array) {
   const int term_type = get_term_type(buf, index);
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
@@ -253,6 +258,10 @@ int swm::ei_buffer_to_str(const char* buf, int &index, std::vector<std::string> 
   ei_skip_term(buf, &index);  // last element of a list is empty list
 
   return 0;
+}
+
+int swm::ei_buffer_to_str(ei_x_buff &x, std::string &s) {
+  return ei_buffer_to_str(x.buff, x.index, s);
 }
 
 int swm::ei_buffer_to_str(const char* buf, int &index, std::string &s) {
@@ -451,14 +460,32 @@ void swm::print_str(const std::string &x, const std::string &prefix, const char 
   std::cout << prefix << x << separator;
 }
 
-void swm::print_tuple_atom_eterm(const SwmTupleAtomEterm &x, const std::string &prefix, const char separator) {
-  std::cout << prefix << "{" << x.x1 << ", " << x.x2 << "}" << separator;
+void swm::print_tuple_atom_buff(const SwmTupleAtomBuff &x, const std::string &prefix, const char separator) {
+  std::cout << prefix << x << separator;
 }
 
 void swm::print_tuple_str_str(const SwmTupleStrStr &x, const std::string &prefix, const char separator) {
-  std::cout << prefix << "{" << x.x1 << ", " << x.x2 << "}" << separator;
+  std::cout << prefix + "{" + std::get<0>(x) + ", " << std::get<1>(x) + "}" + separator;
 }
 
 void swm::print_tuple_atom_str(const SwmTupleAtomStr &x, const std::string &prefix, const char separator) {
-  std::cout << prefix << "{" << x.x1 << ", " << x.x2 << "}" << separator;
+  std::cout << prefix + "{" + std::get<0>(x) + ", " << std::get<1>(x) + "}" + separator;
+}
+
+std::ostream& operator<<(std::ostream& out, const std::pair<std::string, std::string> &x) {
+  out << std::string("(") << std::get<0>(x) << std::string(", ") << std::get<1>(x) << std::string(")");
+  return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const std::pair<std::string, ei_x_buff> &x) {
+  char* term_str = new (std::nothrow) char[std::get<1>(x).index + 1];
+  int index = 0;
+  ei_s_print_term(&term_str, std::get<1>(x).buff, &index);
+  out << std::string("(") << std::get<0>(x) << std::string(", ") + term_str + ")";
+  delete[] term_str;
+  return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const std::pair<std::string, uint64_t> &x) {
+  return out << std::string("(") + std::get<0>(x) + ", " + std::to_string(std::get<1>(x)) + ")";
 }

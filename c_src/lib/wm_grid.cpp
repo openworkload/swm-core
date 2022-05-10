@@ -1,5 +1,3 @@
-#include "wm_entity_utils.h"
-
 #include <iostream>
 
 #include "wm_grid.h"
@@ -91,7 +89,7 @@ SwmGrid::SwmGrid(const char* buf, int &index) {
     return;
   }
 
-  if (ei_buffer_to_tuple_atom_eterm(buf, index, this->properties)) {
+  if (ei_buffer_to_tuple_atom_buff(buf, index, this->properties)) {
     std::cerr << "Could not init grid::properties at pos 10: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
@@ -147,7 +145,7 @@ void SwmGrid::set_resources(const std::vector<SwmResource> &new_val) {
   resources = new_val;
 }
 
-void SwmGrid::set_properties(const std::vector<SwmTupleAtomEterm> &new_val) {
+void SwmGrid::set_properties(const std::vector<SwmTupleAtomBuff> &new_val) {
   properties = new_val;
 }
 
@@ -191,7 +189,7 @@ std::vector<SwmResource> SwmGrid::get_resources() const {
   return resources;
 }
 
-std::vector<SwmTupleAtomEterm> SwmGrid::get_properties() const {
+std::vector<SwmTupleAtomBuff> SwmGrid::get_properties() const {
   return properties;
 }
 

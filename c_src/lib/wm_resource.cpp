@@ -1,5 +1,3 @@
-#include "wm_entity_utils.h"
-
 #include <iostream>
 
 #include "wm_resource.h"
@@ -56,7 +54,7 @@ SwmResource::SwmResource(const char* buf, int &index) {
     return;
   }
 
-  if (ei_buffer_to_tuple_atom_eterm(buf, index, this->properties)) {
+  if (ei_buffer_to_tuple_atom_buff(buf, index, this->properties)) {
     std::cerr << "Could not init resource::properties at pos 5: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
@@ -99,7 +97,7 @@ void SwmResource::set_hooks(const std::vector<std::string> &new_val) {
   hooks = new_val;
 }
 
-void SwmResource::set_properties(const std::vector<SwmTupleAtomEterm> &new_val) {
+void SwmResource::set_properties(const std::vector<SwmTupleAtomBuff> &new_val) {
   properties = new_val;
 }
 
@@ -127,7 +125,7 @@ std::vector<std::string> SwmResource::get_hooks() const {
   return hooks;
 }
 
-std::vector<SwmTupleAtomEterm> SwmResource::get_properties() const {
+std::vector<SwmTupleAtomBuff> SwmResource::get_properties() const {
   return properties;
 }
 
