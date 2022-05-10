@@ -3,7 +3,6 @@
 #include "wm_io.h"
 #include "wm_job.h"
 #include "wm_process.h"
-#include "wm_entity_utils.h"
 #include "wm_porter_data.h"
 
 #include <ei.h>

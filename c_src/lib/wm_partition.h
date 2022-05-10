@@ -27,7 +27,7 @@ class SwmPartition:SwmEntity {
   void set_scheduler(const uint64_t&);
   void set_jobs_per_node(const uint64_t&);
   void set_resources(const std::vector<SwmResource>&);
-  void set_properties(const std::vector<SwmTupleAtomEterm>&);
+  void set_properties(const std::vector<SwmTupleAtomBuff>&);
   void set_subdivision(const std::string&);
   void set_subdivision_id(const std::string&);
   void set_created(const std::string&);
@@ -47,7 +47,7 @@ class SwmPartition:SwmEntity {
   uint64_t get_scheduler() const;
   uint64_t get_jobs_per_node() const;
   std::vector<SwmResource> get_resources() const;
-  std::vector<SwmTupleAtomEterm> get_properties() const;
+  std::vector<SwmTupleAtomBuff> get_properties() const;
   std::string get_subdivision() const;
   std::string get_subdivision_id() const;
   std::string get_created() const;
@@ -68,7 +68,7 @@ class SwmPartition:SwmEntity {
   uint64_t scheduler;
   uint64_t jobs_per_node;
   std::vector<SwmResource> resources;
-  std::vector<SwmTupleAtomEterm> properties;
+  std::vector<SwmTupleAtomBuff> properties;
   std::string subdivision;
   std::string subdivision_id;
   std::string created;

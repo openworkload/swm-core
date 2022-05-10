@@ -36,10 +36,10 @@ types_map = {
 
 type_suffix_map = {
      "atom()": "atom",
-     "any()": "eterm",
+     "any()": "buff",
      "map()": "map",
      "string()": "str",
-     "binary()": "eterm",
+     "binary()": "buff",
      "integer()": "int64_t",
      "pos_integer()": "uint64_t",
      "float()": "double",
@@ -62,9 +62,9 @@ type_suffix_map = {
 
 printer = {
      "atom()": "%s",
-     "any()": "eterm",
-     "map()": "eterm",
-     "binary()": "eterm",
+     "any()": "buff",
+     "map()": "buff",
+     "binary()": "buff",
      "string()": "%s",
      "integer()": "%ld",
      "pos_integer()": "%ld",
@@ -106,7 +106,7 @@ def get_tuple_type(pp):
         elif tp == "string()":
             tuple_type += '_str'
         elif tp == "any()":
-            tuple_type += '_eterm'
+            tuple_type += '_buff'
     return tuple_type
 
 

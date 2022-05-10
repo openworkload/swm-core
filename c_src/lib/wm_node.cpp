@@ -1,5 +1,3 @@
-#include "wm_entity_utils.h"
-
 #include <iostream>
 
 #include "wm_node.h"
@@ -98,7 +96,7 @@ SwmNode::SwmNode(const char* buf, int &index) {
     return;
   }
 
-  if (ei_buffer_to_tuple_atom_eterm(buf, index, this->properties)) {
+  if (ei_buffer_to_tuple_atom_buff(buf, index, this->properties)) {
     std::cerr << "Could not init node::properties at pos 11: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
@@ -207,7 +205,7 @@ void SwmNode::set_resources(const std::vector<SwmResource> &new_val) {
   resources = new_val;
 }
 
-void SwmNode::set_properties(const std::vector<SwmTupleAtomEterm> &new_val) {
+void SwmNode::set_properties(const std::vector<SwmTupleAtomBuff> &new_val) {
   properties = new_val;
 }
 
@@ -283,7 +281,7 @@ std::vector<SwmResource> SwmNode::get_resources() const {
   return resources;
 }
 
-std::vector<SwmTupleAtomEterm> SwmNode::get_properties() const {
+std::vector<SwmTupleAtomBuff> SwmNode::get_properties() const {
   return properties;
 }
 
