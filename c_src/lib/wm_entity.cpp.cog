@@ -75,7 +75,7 @@
     outputs.append("")
     outputs.append("  int term_size = 0;")
     outputs.append("  if (ei_decode_tuple_header(buf, &index, &term_size)) {")
-    outputs.append(f'    std::cerr << "Could decode {class_name} header from ei buffer: ";')
+    outputs.append(f'    std::cerr << "Could not decode {class_name} header from ei buffer: ";')
     outputs.append('    ei_print_term(stdout, buf, &index);')
     outputs.append("    std::cerr << std::endl;")
     outputs.append("    return;")
