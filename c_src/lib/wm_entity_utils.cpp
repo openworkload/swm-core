@@ -31,8 +31,15 @@ int get_term_size(const char* buf, const int &index) {
 
 int swm::ei_buffer_to_tuple_str_str(const char* buf, int &index, SwmTupleStrStr &tuple) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
-    std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
+  if (term_type != ERL_SMALL_TUPLE_EXT && term_type != ERL_LARGE_TUPLE_EXT) {
+    std::cerr << "Could not parse eterm at (index=" << index << "): not a tuple: " << term_type << std::endl;
+    return -1;
+  }
+  int tuple_size = 0;
+  if (ei_decode_tuple_header(buf, &index, &tuple_size)) {
+    std::cerr << "Could not decode tuple header from ei buffer: ";
+    ei_print_term(stdout, buf, &index);
+    std::cerr << std::endl;
     return -1;
   }
   if (ei_buffer_to_str(buf, index, std::get<0>(tuple))) {
@@ -46,8 +53,19 @@ int swm::ei_buffer_to_tuple_str_str(const char* buf, int &index, SwmTupleStrStr 
 
 int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, SwmTupleAtomStr &tuple) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
-    std::cerr << "Could not parse eterm " << index << ": not a tuple" << std::endl;
+  if (term_type != ERL_SMALL_TUPLE_EXT && term_type != ERL_LARGE_TUPLE_EXT) {
+    std::cerr << "Could not parse eterm (index=" << index << "): not a tuple: " << term_type << std::endl;
+    return -1;
+  }
+  int tuple_size = 0;
+  if (ei_decode_tuple_header(buf, &index, &tuple_size)) {
+    std::cerr << "Could not decode tuple header from ei buffer: ";
+    ei_print_term(stdout, buf, &index);
+    std::cerr << std::endl;
+    return -1;
+  }
+  if (tuple_size != 2) {
+    std::cerr << "Could not parse tuple which size is not 2, but " << tuple_size << std::endl;
     return -1;
   }
   if (ei_buffer_to_atom(buf, index, std::get<0>(tuple))) {
@@ -61,8 +79,15 @@ int swm::ei_buffer_to_tuple_atom_str(const char* buf, int &index, SwmTupleAtomSt
 
 int swm::ei_buffer_to_tuple_atom_buff(const char* buf, int &index, SwmTupleAtomBuff &tuple) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
-    std::cerr << "Could not parse eterm at " << index << ": not a tuple" << std::endl;
+  if (term_type != ERL_SMALL_TUPLE_EXT && term_type != ERL_LARGE_TUPLE_EXT) {
+    std::cerr << "Could not parse eterm at (index=" << index << "): not a tuple: " << term_type << std::endl;
+    return -1;
+  }
+  int tuple_size = 0;
+  if (ei_decode_tuple_header(buf, &index, &tuple_size)) {
+    std::cerr << "Could not decode tuple header from ei buffer: ";
+    ei_print_term(stdout, buf, &index);
+    std::cerr << std::endl;
     return -1;
   }
   if (ei_buffer_to_atom(buf, index, std::get<0>(tuple))) {
@@ -166,8 +191,15 @@ int swm::ei_buffer_to_tuple_atom_buff(const char* buf, int &index, std::vector<S
 
 int swm::ei_buffer_to_tuple_atom_uint64(const char* buf, int &index, SwmTupleAtomUint64 &tuple) {
   const int term_type = get_term_type(buf, index);
-  if (term_type != ERL_SMALL_TUPLE_EXT || term_type != ERL_LARGE_TUPLE_EXT) {
-    std::cerr << "Could not parse eterm at " << index << ": not a tuple" << std::endl;
+  if (term_type != ERL_SMALL_TUPLE_EXT && term_type != ERL_LARGE_TUPLE_EXT) {
+    std::cerr << "Could not parse eterm at (index=" << index << "): not a tuple: " << term_type << std::endl;
+    return -1;
+  }
+  int tuple_size = 0;
+  if (ei_decode_tuple_header(buf, &index, &tuple_size)) {
+    std::cerr << "Could not decode tuple header from ei buffer: ";
+    ei_print_term(stdout, buf, &index);
+    std::cerr << std::endl;
     return -1;
   }
   if (ei_buffer_to_atom(buf, index, std::get<0>(tuple))) {
@@ -265,11 +297,27 @@ int swm::ei_buffer_to_str(ei_x_buff &x, std::string &s) {
 }
 
 int swm::ei_buffer_to_str(const char* buf, int &index, std::string &s) {
-  const auto term_size = get_term_size(buf, index);
-  char *tmp = new(std::nothrow) char[term_size + 1];
-  if (ei_decode_string(buf, &index, tmp)) {
-    std::cerr << "Could not decode string at " << index << std::endl;
+  int term_size = 0;
+  int term_type = 0;
+  if (ei_get_type(buf, &index, &term_type, &term_size)) {
+    std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
+  }
+  char *tmp = new(std::nothrow) char[term_size + 1];
+
+  if (term_type == ERL_BINARY_EXT) {
+    int iodata_size = 0;
+    if (ei_decode_iodata(buf, &index, &iodata_size, tmp)) {
+      std::cerr << "Could not decode iodata at " << index << std::endl;
+      return -1;
+    }
+  } else if (term_type == ERL_STRING_EXT) {
+    if (ei_decode_string(buf, &index, tmp)) {
+      std::cerr << "Could not decode string at " << index << std::endl;
+      return -1;
+    }
+  } else {  // assume empty string or iodata
+    return 0;
   }
   if (tmp == nullptr) {
     std::cerr << "Could not decode string (nullptr) at " << index << std::endl;
