@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "gmock/gmock-matchers.h"
 
+#include "wm_job.h"
 #include "wm_node.h"
 #include "wm_resource.h"
 #include "wm_scheduler_result.h"
@@ -187,4 +188,157 @@ TEST(Process, construct) {
   EXPECT_EQ(entity.get_exitcode(), -1);
   EXPECT_EQ(entity.get_signal(), 9);
   EXPECT_EQ(entity.get_comment(), "comment");
+}
+
+TEST(Job, construct) {
+  static const int entity_tuple_arity = 34;
+
+  ei_x_buff x;
+  EXPECT_EQ(ei_x_new(&x), 0);
+
+  EXPECT_EQ(ei_x_encode_tuple_header(&x, entity_tuple_arity), 0);
+  EXPECT_EQ(ei_x_encode_atom(&x, "job"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "7873a946-d85d-11ec-8529-6fdf37248ceb"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "Job name"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "cluster-id"), 0);
+  EXPECT_EQ(ei_x_encode_list_header(&x, 3), 0);  // nodes
+  {
+    EXPECT_EQ(ei_x_encode_string(&x, "node-id-1"), 0);
+    EXPECT_EQ(ei_x_encode_string(&x, "node-id-2"), 0);
+    EXPECT_EQ(ei_x_encode_string(&x, "node-id-3"), 0);
+  }
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "Q"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "2022-05-22T20:01:48"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "2022-05-22T20:00:34"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "2022-05-22T20:02:00"), 0);
+  EXPECT_EQ(ei_x_encode_longlong(&x, 2), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "job-stdin"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "job-stdout"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "job-stderr"), 0);
+  EXPECT_EQ(ei_x_encode_list_header(&x, 2), 0);  // input_files
+  {
+    EXPECT_EQ(ei_x_encode_string(&x, "/path/to/file1"), 0);
+    EXPECT_EQ(ei_x_encode_string(&x, "/path/to/file2"), 0);
+  }
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
+  EXPECT_EQ(ei_x_encode_list_header(&x, 2), 0);  // output_files
+  {
+    EXPECT_EQ(ei_x_encode_string(&x, "/path/to/file3"), 0);
+    EXPECT_EQ(ei_x_encode_string(&x, "/path/to/file4"), 0);
+  }
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "workdir"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "user-id"), 0);
+  EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // hooks
+  {
+    EXPECT_EQ(ei_x_encode_string(&x, "hook-id-1"), 0);
+  }
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
+  EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // env
+  {
+    EXPECT_EQ(ei_x_encode_tuple_header(&x, 2), 0);
+    {
+      EXPECT_EQ(ei_x_encode_string(&x, "HOME"), 0);
+      EXPECT_EQ(ei_x_encode_string(&x, "/home/dude"), 0);
+    }
+  }
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
+  EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // deps
+  {
+    EXPECT_EQ(ei_x_encode_tuple_header(&x, 2), 0);
+    {
+      EXPECT_EQ(ei_x_encode_atom(&x, "ok"), 0);
+      EXPECT_EQ(ei_x_encode_string(&x, "job-id-42"), 0);
+    }
+  }
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // projects
+  EXPECT_EQ(ei_x_encode_string(&x, "account-id-2"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "gang-id-4"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "/home/dude/exec1"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "#!/bin/sh\nsleep120\nhostname\n"), 0);
+  EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // request
+  {
+    EXPECT_EQ(ei_x_encode_tuple_header(&x, 8), 0);
+    {
+      EXPECT_EQ(ei_x_encode_atom(&x, "resource"), 0);
+      EXPECT_EQ(ei_x_encode_string(&x, "node"), 0);
+      EXPECT_EQ(ei_x_encode_ulonglong(&x, 1), 0);
+      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // hooks
+      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // properties
+      EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0);   // prices
+      EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);     // usage time
+      EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // resources
+      {
+        EXPECT_EQ(ei_x_encode_tuple_header(&x, 8), 0);
+        {
+          EXPECT_EQ(ei_x_encode_atom(&x, "resource"), 0);
+          EXPECT_EQ(ei_x_encode_string(&x, "mem"), 0);
+          EXPECT_EQ(ei_x_encode_ulonglong(&x, 1234567), 0);
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // hooks
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // properties
+          EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0); // prices
+          EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);  // usage time
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
+        }
+      }
+      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
+    }
+  }
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
+  EXPECT_EQ(ei_x_encode_string(&x, "container-id-28"), 0);
+  EXPECT_EQ(ei_x_encode_atom(&x, "true"), 0);  // relocatable
+  EXPECT_EQ(ei_x_encode_ulong(&x, 1), 0);  // exit code
+  EXPECT_EQ(ei_x_encode_ulong(&x, 15), 0);  // signal
+  EXPECT_EQ(ei_x_encode_ulong(&x, 1500), 0);  // priority
+  EXPECT_EQ(ei_x_encode_string(&x, "comment"), 0);
+  EXPECT_EQ(ei_x_encode_ulong(&x, 0), 0);  // revision
+
+  int index = 0;
+  const auto entity = swm::SwmJob(x.buff, index);
+
+  EXPECT_EQ(entity.get_id(), "7873a946-d85d-11ec-8529-6fdf37248ceb");
+  EXPECT_EQ(entity.get_name(), "Job name");
+  EXPECT_EQ(entity.get_cluster_id(), "cluster-id");
+  EXPECT_THAT(entity.get_nodes(), ElementsAre("node-id-1", "node-id-2", "node-id-3"));
+  EXPECT_EQ(entity.get_state(), "Q");
+  EXPECT_EQ(entity.get_start_time(), "2022-05-22T20:01:48");
+  EXPECT_EQ(entity.get_submit_time(), "2022-05-22T20:00:34");
+  EXPECT_EQ(entity.get_end_time(), "2022-05-22T20:02:00");
+  EXPECT_EQ(entity.get_duration(), 2ul);
+  EXPECT_EQ(entity.get_job_stdin(), "job-stdin");
+  EXPECT_EQ(entity.get_job_stdout(), "job-stdout");
+  EXPECT_EQ(entity.get_job_stderr(), "job-stderr");
+  EXPECT_THAT(entity.get_input_files(), ElementsAre("/path/to/file1", "/path/to/file2"));
+  EXPECT_THAT(entity.get_output_files(), ElementsAre("/path/to/file3", "/path/to/file4"));
+  EXPECT_EQ(entity.get_workdir(), "workdir");
+  EXPECT_EQ(entity.get_user_id(), "user-id");
+  EXPECT_THAT(entity.get_hooks(), ElementsAre("hook-id-1"));
+  EXPECT_THAT(entity.get_env(), ElementsAre(std::pair("HOME", "/home/dude")));
+  EXPECT_THAT(entity.get_deps(), ElementsAre(std::pair("ok", "job-id-42")));
+  EXPECT_TRUE(entity.get_projects().empty());
+  EXPECT_EQ(entity.get_account_id(), "account-id-2");
+  EXPECT_EQ(entity.get_gang_id(), "gang-id-4");
+  EXPECT_EQ(entity.get_execution_path(), "/home/dude/exec1");
+  EXPECT_EQ(entity.get_script_content(), "#!/bin/sh\nsleep120\nhostname\n");
+
+  const auto resources = entity.get_request();
+  EXPECT_EQ(resources.size(), 1ul);
+  EXPECT_EQ(resources[0].get_name(), "node");
+  EXPECT_EQ(resources[0].get_count(), 1ul);
+
+  const auto sub_resources = resources[0].get_resources();
+  EXPECT_EQ(sub_resources[0].get_name(), "mem");
+  EXPECT_EQ(sub_resources[0].get_count(), 1234567ul);
+
+  EXPECT_TRUE(entity.get_resources().empty());
+  EXPECT_EQ(entity.get_container(), "container-id-28");
+  EXPECT_EQ(entity.get_relocatable(), "true");
+  EXPECT_EQ(entity.get_exitcode(), 1ul);
+  EXPECT_EQ(entity.get_signal(), 15ul);
+  EXPECT_EQ(entity.get_priority(), 1500ul);
+  EXPECT_EQ(entity.get_comment(), "comment");
+  EXPECT_EQ(entity.get_revision(), 0ul);
 }
