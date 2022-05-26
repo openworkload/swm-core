@@ -1,10 +1,10 @@
-Sky Workload Manager / Sky Port
-===============================
+Sky Port
+========
 
 
 ## Introduction
 
-[This](https://github.com/skyworkflows/swm-core) is a core component of the Sky Port (SP) project. SP is an universal bus between user software and compute resources. It can also be considered as a transportation layer between workload producers and compute resource providers. Sky Port makes it easy to connect user software to different cloud resources.
+[This](https://github.com/openworkload/swm-core) is a core component of the Sky Port (SP) project. SP is an universal bus between user software and compute resources. It can also be considered as a transportation layer between workload producers and compute resource providers. Sky Port makes it easy to connect user software to different cloud resources.
 
 
 ## Design
@@ -19,15 +19,15 @@ Terminology:
 
 
 SP consists of 3 main components:
-   * [Core](https://github.com/skyworkflows/swm-core) (this repository).
-   * Gate. See the [default cloud gate](https://github.com/skyworkflows/swm-cloud-gate) as a gate example.
-   * Terminal. See the [JupyterLab terminal](https://github.com/skyworkflows/swm-jupyter-term) as a terminal example.
+   * [Core](https://github.com/openworkload/swm-core) (this repository).
+   * Gate. See the [default cloud gate](https://github.com/openworkload/swm-cloud-gate) as a gate example.
+   * Terminal. See the [JupyterLab terminal](https://github.com/openworkload/swm-jupyter-term) as a terminal example.
 
 The idea here is the following: API of the Core and the Gate is well described. Thus each of the components can be replaced to more suitable for the user problem ones. The core component code is located in the current repository and can be considered as a reference and a prove of concept. The project is started recently and requires some time for stabilization of the API. Thus one can consider this code for now as highly experimental.
 
 ## How to run
 
-User can pull or build docker container that will run the Core. The procedure of building and running swm-core container is [described here](https://github.com/skyworkflows/swm-core/blob/master/priv/prod/README.md) 
+User can pull or build docker container that will run the Core. The procedure of building and running swm-core container is [described here](https://github.com/openworkload/swm-core/blob/master/priv/prod/README.md) 
 
 
 ## Contributing
