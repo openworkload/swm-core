@@ -19,7 +19,7 @@ SwmGroup::SwmGroup(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmGroup header from ei buffer: ";
+    std::cerr << "Could not decode SwmGroup header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -176,12 +176,12 @@ int swm::ei_buffer_to_group(const char* buf, int &index, SwmGroup &obj) {
 }
 
 void SwmGroup::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << acl << separator;
-    std::cerr << prefix << priority << separator;
-    std::cerr << prefix << comment << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << acl << separator;
+  std::cerr << prefix << priority << separator;
+  std::cerr << prefix << comment << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

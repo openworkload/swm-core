@@ -40,6 +40,7 @@ case $i in
     -h|--help)
     echo "The script starts erlang shell attached to a new swm instance"
     echo "Usage: ${0##*/} [-e|-o] [-g|c]"
+    echo "  -x|--skyport                run in SkyPort mode"
     echo "  -e|--etop|etop              run etop in remote shell"
     echo "  -o|--observer|observer      run observer in remote shell"
     echo "  -g|--grid                   run (or connect to) grid SWM instance"

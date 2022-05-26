@@ -46,7 +46,6 @@ int swm::get_porter_data(std::istream* input, byte* data[]) {
     }
     swm_logd("Data length is %zu (type=%d)", len, type);
 
-    //data[i] = (byte*)malloc(len);
     data[i] = new (std::nothrow) byte[len];
     if (!data[i]) {
       std::cerr << "Could not allocate " << len << " bytes for data type " << type << std::endl;
@@ -84,7 +83,7 @@ int swm::get_porter_data(std::istream* input, byte* data[]) {
       std::cerr << "Could not get term type at position " << index << std::endl;
       return -1;
     }
-    char* term_str = new (std::nothrow) char[1000];
+    char* term_str = nullptr;
     ei_s_print_term(&term_str, data[i], &index);
     swm_logd("Got term of size: %d and type: %d (index=%d): %s", term_size, term_type, index, term_str);
     delete[] term_str;

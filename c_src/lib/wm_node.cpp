@@ -20,7 +20,7 @@ SwmNode::SwmNode(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmNode header from ei buffer: ";
+    std::cerr << "Could not decode SwmNode header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -372,13 +372,13 @@ int swm::ei_buffer_to_node(const char* buf, int &index, SwmNode &obj) {
 }
 
 void SwmNode::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << host << separator;
-    std::cerr << prefix << api_port << separator;
-    std::cerr << prefix << parent << separator;
-    std::cerr << prefix << state_power << separator;
-    std::cerr << prefix << state_alloc << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << host << separator;
+  std::cerr << prefix << api_port << separator;
+  std::cerr << prefix << parent << separator;
+  std::cerr << prefix << state_power << separator;
+  std::cerr << prefix << state_alloc << separator;
   if (roles.empty()) {
     std::cerr << prefix << "roles: []" << separator;
   } else {
@@ -406,8 +406,8 @@ void SwmNode::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << subdivision << separator;
-    std::cerr << prefix << subdivision_id << separator;
+  std::cerr << prefix << subdivision << separator;
+  std::cerr << prefix << subdivision_id << separator;
   if (malfunctions.empty()) {
     std::cerr << prefix << "malfunctions: []" << separator;
   } else {
@@ -417,12 +417,12 @@ void SwmNode::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << comment << separator;
-    std::cerr << prefix << remote_id << separator;
-    std::cerr << prefix << is_template << separator;
-    std::cerr << prefix << gateway << separator;
-    std::cerr << prefix << prices << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << comment << separator;
+  std::cerr << prefix << remote_id << separator;
+  std::cerr << prefix << is_template << separator;
+  std::cerr << prefix << gateway << separator;
+  std::cerr << prefix << prices << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

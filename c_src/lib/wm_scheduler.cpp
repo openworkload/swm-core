@@ -20,7 +20,7 @@ SwmScheduler::SwmScheduler(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmScheduler header from ei buffer: ";
+    std::cerr << "Could not decode SwmScheduler header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -267,18 +267,18 @@ int swm::ei_buffer_to_scheduler(const char* buf, int &index, SwmScheduler &obj) 
 }
 
 void SwmScheduler::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << state << separator;
-    std::cerr << prefix << start_time << separator;
-    std::cerr << prefix << stop_time << separator;
-    std::cerr << prefix << run_interval << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << state << separator;
+  std::cerr << prefix << start_time << separator;
+  std::cerr << prefix << stop_time << separator;
+  std::cerr << prefix << run_interval << separator;
   path.print(prefix, separator);
-    std::cerr << prefix << family << separator;
-    std::cerr << prefix << version << separator;
-    std::cerr << prefix << cu << separator;
-    std::cerr << prefix << comment << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << family << separator;
+  std::cerr << prefix << version << separator;
+  std::cerr << prefix << cu << separator;
+  std::cerr << prefix << comment << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

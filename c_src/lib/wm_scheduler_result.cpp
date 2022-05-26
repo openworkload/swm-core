@@ -4,8 +4,8 @@
 
 #include <ei.h>
 
-#include "wm_metric.h"
 #include "wm_timetable.h"
+#include "wm_metric.h"
 
 using namespace swm;
 
@@ -21,7 +21,7 @@ SwmSchedulerResult::SwmSchedulerResult(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmSchedulerResult header from ei buffer: ";
+    std::cerr << "Could not decode SwmSchedulerResult header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -211,11 +211,11 @@ void SwmSchedulerResult::print(const std::string &prefix, const char separator) 
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << request_id << separator;
-    std::cerr << prefix << status << separator;
-    std::cerr << prefix << astro_time << separator;
-    std::cerr << prefix << idle_time << separator;
-    std::cerr << prefix << work_time << separator;
+  std::cerr << prefix << request_id << separator;
+  std::cerr << prefix << status << separator;
+  std::cerr << prefix << astro_time << separator;
+  std::cerr << prefix << idle_time << separator;
+  std::cerr << prefix << work_time << separator;
   std::cerr << std::endl;
 }
 

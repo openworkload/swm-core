@@ -25,4 +25,6 @@ bool swm_read_length(std::istream *stream, uint32_t *len);
 bool swm_read_exact(std::istream *stream, char *buf, size_t len);
 bool swm_write_exact(std::ostream *stream, char *buf, size_t len);
 
+void print_ei_buf(const char* buf, int index);
+
 #endif

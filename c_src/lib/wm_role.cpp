@@ -19,7 +19,7 @@ SwmRole::SwmRole(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmRole header from ei buffer: ";
+    std::cerr << "Could not decode SwmRole header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -161,8 +161,8 @@ int swm::ei_buffer_to_role(const char* buf, int &index, SwmRole &obj) {
 }
 
 void SwmRole::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << name << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << name << separator;
   if (services.empty()) {
     std::cerr << prefix << "services: []" << separator;
   } else {
@@ -172,8 +172,8 @@ void SwmRole::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << comment << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << comment << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

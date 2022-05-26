@@ -19,7 +19,7 @@ SwmBootInfo::SwmBootInfo(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmBootInfo header from ei buffer: ";
+    std::cerr << "Could not decode SwmBootInfo header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -146,10 +146,10 @@ int swm::ei_buffer_to_boot_info(const char* buf, int &index, SwmBootInfo &obj) {
 }
 
 void SwmBootInfo::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << node_host << separator;
-    std::cerr << prefix << node_port << separator;
-    std::cerr << prefix << parent_host << separator;
-    std::cerr << prefix << parent_port << separator;
+  std::cerr << prefix << node_host << separator;
+  std::cerr << prefix << node_port << separator;
+  std::cerr << prefix << parent_host << separator;
+  std::cerr << prefix << parent_port << separator;
   std::cerr << std::endl;
 }
 

@@ -247,9 +247,8 @@ get_binary_for_scheduler(Scheduler) ->
     Jobs1 = wm_db:get_many(job, state, [?JOB_STATE_QUEUED]),
     Jobs2 = [wm_entity:set_attr({revision, wm_entity:get_attr(revision, X) + 1}, X) || X <- Jobs1],
     wm_conf:update(Jobs2), %% TODO: mark that the job has been scheduled at least once differently
-    Jobs3 = wm_utils:make_jobs_c_decodable(Jobs2),
-    ?LOG_DEBUG("Jobs for scheduler: ~p", [length(Jobs3)]),
-    JobsBin = erlang:term_to_binary(Jobs3),
+    ?LOG_DEBUG("Jobs for scheduler: ~p", [length(Jobs2)]),
+    JobsBin = erlang:term_to_binary(Jobs2),
     Bin3 = wm_sched_utils:add_input(?DATA_TYPE_JOBS, JobsBin, Bin2),
 
     Bin4 = get_grid_bin_entity(Bin3),
@@ -257,14 +256,12 @@ get_binary_for_scheduler(Scheduler) ->
     ClustersBin = erlang:term_to_binary(Clusters),
     Bin5 = wm_sched_utils:add_input(?DATA_TYPE_CLUSTERS, ClustersBin, Bin4),
 
-    Parts1 = wm_conf:select(partition, all),
-    Parts2 = wm_utils:make_partitions_c_decodable(Parts1),
-    PartsBin = erlang:term_to_binary(Parts2),
+    Parts = wm_conf:select(partition, all),
+    PartsBin = erlang:term_to_binary(Parts),
     Bin6 = wm_sched_utils:add_input(?DATA_TYPE_PARTITIONS, PartsBin, Bin5),
 
-    Nodes1 = wm_topology:get_tree_nodes(),
-    Nodes2 = wm_utils:make_nodes_c_decodable(Nodes1),
-    NodesBin = erlang:term_to_binary(Nodes2),
+    Nodes = wm_topology:get_tree_nodes(),
+    NodesBin = erlang:term_to_binary(Nodes),
     wm_sched_utils:add_input(?DATA_TYPE_NODES, NodesBin, Bin6).
 
 -spec get_grid_bin_entity(binary()) -> binary().
@@ -290,9 +287,7 @@ handle_new_timetable(SchedulerResult, #mstate{} = MState) when is_tuple(Schedule
                     update_scheduled_jobs(TT),
                     wake_me_for_job_start(TT, MState);
                 TT ->
-                    ?LOG_ERROR("Generated timetable format is incorrect "
-                               "(not a list): ~p",
-                               [TT]),
+                    ?LOG_ERROR("Generated timetable format is incorrect (not a list): ~p", [TT]),
                     MState
             end;
         _ ->

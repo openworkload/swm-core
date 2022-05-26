@@ -19,7 +19,7 @@ SwmRemote::SwmRemote(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmRemote header from ei buffer: ";
+    std::cerr << "Could not decode SwmRemote header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -221,15 +221,15 @@ int swm::ei_buffer_to_remote(const char* buf, int &index, SwmRemote &obj) {
 }
 
 void SwmRemote::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << account_id << separator;
-    std::cerr << prefix << default_image_id << separator;
-    std::cerr << prefix << default_flavor_id << separator;
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << kind << separator;
-    std::cerr << prefix << server << separator;
-    std::cerr << prefix << port << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << account_id << separator;
+  std::cerr << prefix << default_image_id << separator;
+  std::cerr << prefix << default_flavor_id << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << kind << separator;
+  std::cerr << prefix << server << separator;
+  std::cerr << prefix << port << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

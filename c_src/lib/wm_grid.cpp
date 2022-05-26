@@ -20,7 +20,7 @@ SwmGrid::SwmGrid(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmGrid header from ei buffer: ";
+    std::cerr << "Could not decode SwmGrid header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -252,10 +252,10 @@ int swm::ei_buffer_to_grid(const char* buf, int &index, SwmGrid &obj) {
 }
 
 void SwmGrid::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << state << separator;
-    std::cerr << prefix << manager << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << state << separator;
+  std::cerr << prefix << manager << separator;
   if (clusters.empty()) {
     std::cerr << prefix << "clusters: []" << separator;
   } else {
@@ -274,7 +274,7 @@ void SwmGrid::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << scheduler << separator;
+  std::cerr << prefix << scheduler << separator;
   if (resources.empty()) {
     std::cerr << prefix << "resources: []" << separator;
   } else {
@@ -293,8 +293,8 @@ void SwmGrid::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << comment << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << comment << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

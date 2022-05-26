@@ -83,7 +83,7 @@ handle_info({'EXIT', Proc, normal}, State, #mstate{task_id = TaskId} = MState) -
 code_change(_, State, MState, _) ->
     {ok, State, MState}.
 
-terminate(Status, State, #mstate{task_id = TaskId} = MState) ->
+terminate(Status, State, #mstate{task_id = TaskId}) ->
     Msg = io_lib:format("proc ~p has been terminated (status=~p, state=~p)", [TaskId, Status, State]),
     wm_utils:terminate_msg(?MODULE, Msg).
 
@@ -142,7 +142,7 @@ parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
 -spec execute(#mstate{}) -> ok.
-execute(#mstate{job_id = JobId} = MState) ->
+execute(#mstate{job_id = JobId}) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     case wm_utils:get_job_user(Job) of
         {error, not_found} ->
@@ -215,8 +215,7 @@ run_native_process(#job{id = JobId} = Job, Porter, ProcEnvs, User) ->
 prepare_porter_input(Job, User) ->
     UserBin = erlang:term_to_binary(User),
     UserBinSize = byte_size(UserBin),
-    [Job2] = wm_utils:make_jobs_c_decodable([Job]),
-    JobBin = erlang:term_to_binary(Job2),
+    JobBin = erlang:term_to_binary(Job),
     JobBinSize = byte_size(JobBin),
     <<?PORTER_COMMAND_RUN/integer,
       ?PORTER_DATA_TYPES_COUNT/integer,

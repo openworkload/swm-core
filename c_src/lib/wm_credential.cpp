@@ -19,7 +19,7 @@ SwmCredential::SwmCredential(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmCredential header from ei buffer: ";
+    std::cerr << "Could not decode SwmCredential header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -206,14 +206,14 @@ int swm::ei_buffer_to_credential(const char* buf, int &index, SwmCredential &obj
 }
 
 void SwmCredential::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << remote_id << separator;
-    std::cerr << prefix << tenant_name << separator;
-    std::cerr << prefix << tenant_domain_name << separator;
-    std::cerr << prefix << username << separator;
-    std::cerr << prefix << password << separator;
-    std::cerr << prefix << key_name << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << remote_id << separator;
+  std::cerr << prefix << tenant_name << separator;
+  std::cerr << prefix << tenant_domain_name << separator;
+  std::cerr << prefix << username << separator;
+  std::cerr << prefix << password << separator;
+  std::cerr << prefix << key_name << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

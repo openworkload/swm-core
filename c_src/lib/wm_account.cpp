@@ -19,7 +19,7 @@ SwmAccount::SwmAccount(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmAccount header from ei buffer: ";
+    std::cerr << "Could not decode SwmAccount header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -191,9 +191,9 @@ int swm::ei_buffer_to_account(const char* buf, int &index, SwmAccount &obj) {
 }
 
 void SwmAccount::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << price_list << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << price_list << separator;
   if (users.empty()) {
     std::cerr << prefix << "users: []" << separator;
   } else {
@@ -212,8 +212,8 @@ void SwmAccount::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << comment << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << comment << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

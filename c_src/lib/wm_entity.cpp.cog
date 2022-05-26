@@ -203,7 +203,7 @@
         if is_tuple:
           cog.outl("  " + name + ".print(prefix, separator);")
         else:
-          cog.outl("    std::cerr << prefix << " + name + " << separator;")
+          cog.outl("  std::cerr << prefix << " + name + " << separator;")
     cog.outl("  std::cerr << std::endl;");
     cog.outl("}\n")
 
