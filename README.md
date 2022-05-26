@@ -11,9 +11,8 @@ Sky Port
 
 Terminology:
 
-* Sky Workload Manager: predecessor of SP. It was designed to control a large number of HPC clusters and was smoothly transformed to SP.
 * Remote Site: remote computing system where user's jobs run. It can be either cloud or on-premises cluster (depending on the connected gate).
-* swm: service that runs in a background on the user’s desktop and performs all required operations on remote sites.
+* swm: core service of Sky Port that runs in a background on the user’s desktop and performs all required operations on remote sites.
 * Terminal: user software that can connect to swm, submits jobs, retrieves current jobs status, displays the information. For the user the terminal is an interface to remote sites where his jobs run. The user should not really care that the terminal connects to swm and not to the remote sites directly.
 * Gate: a plugin for swm that is in charge of all communications with one particular remote site.
 
