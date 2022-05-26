@@ -19,7 +19,7 @@ SwmImage::SwmImage(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmImage header from ei buffer: ";
+    std::cerr << "Could not decode SwmImage header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -251,8 +251,8 @@ int swm::ei_buffer_to_image(const char* buf, int &index, SwmImage &obj) {
 }
 
 void SwmImage::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << id << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << id << separator;
   if (tags.empty()) {
     std::cerr << prefix << "tags: []" << separator;
   } else {
@@ -262,14 +262,14 @@ void SwmImage::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << size << separator;
-    std::cerr << prefix << kind << separator;
-    std::cerr << prefix << status << separator;
-    std::cerr << prefix << remote_id << separator;
-    std::cerr << prefix << created << separator;
-    std::cerr << prefix << updated << separator;
-    std::cerr << prefix << comment << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << size << separator;
+  std::cerr << prefix << kind << separator;
+  std::cerr << prefix << status << separator;
+  std::cerr << prefix << remote_id << separator;
+  std::cerr << prefix << created << separator;
+  std::cerr << prefix << updated << separator;
+  std::cerr << prefix << comment << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

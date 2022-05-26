@@ -19,7 +19,7 @@ SwmProcess::SwmProcess(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmProcess header from ei buffer: ";
+    std::cerr << "Could not decode SwmProcess header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -161,11 +161,11 @@ int swm::ei_buffer_to_process(const char* buf, int &index, SwmProcess &obj) {
 }
 
 void SwmProcess::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << pid << separator;
-    std::cerr << prefix << state << separator;
-    std::cerr << prefix << exitcode << separator;
-    std::cerr << prefix << signal << separator;
-    std::cerr << prefix << comment << separator;
+  std::cerr << prefix << pid << separator;
+  std::cerr << prefix << state << separator;
+  std::cerr << prefix << exitcode << separator;
+  std::cerr << prefix << signal << separator;
+  std::cerr << prefix << comment << separator;
   std::cerr << std::endl;
 }
 

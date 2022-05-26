@@ -19,7 +19,7 @@ SwmTimetable::SwmTimetable(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmTimetable header from ei buffer: ";
+    std::cerr << "Could not decode SwmTimetable header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -131,8 +131,8 @@ int swm::ei_buffer_to_timetable(const char* buf, int &index, SwmTimetable &obj) 
 }
 
 void SwmTimetable::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << start_time << separator;
-    std::cerr << prefix << job_id << separator;
+  std::cerr << prefix << start_time << separator;
+  std::cerr << prefix << job_id << separator;
   if (job_nodes.empty()) {
     std::cerr << prefix << "job_nodes: []" << separator;
   } else {

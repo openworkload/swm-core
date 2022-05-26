@@ -19,7 +19,7 @@ SwmExecutable::SwmExecutable(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmExecutable header from ei buffer: ";
+    std::cerr << "Could not decode SwmExecutable header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -161,11 +161,11 @@ int swm::ei_buffer_to_executable(const char* buf, int &index, SwmExecutable &obj
 }
 
 void SwmExecutable::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << path << separator;
-    std::cerr << prefix << user << separator;
-    std::cerr << prefix << comment << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << path << separator;
+  std::cerr << prefix << user << separator;
+  std::cerr << prefix << comment << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

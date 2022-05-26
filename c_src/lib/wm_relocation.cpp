@@ -19,7 +19,7 @@ SwmRelocation::SwmRelocation(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmRelocation header from ei buffer: ";
+    std::cerr << "Could not decode SwmRelocation header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -146,10 +146,10 @@ int swm::ei_buffer_to_relocation(const char* buf, int &index, SwmRelocation &obj
 }
 
 void SwmRelocation::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << job_id << separator;
-    std::cerr << prefix << template_node_id << separator;
-    std::cerr << prefix << canceled << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << job_id << separator;
+  std::cerr << prefix << template_node_id << separator;
+  std::cerr << prefix << canceled << separator;
   std::cerr << std::endl;
 }
 

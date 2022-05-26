@@ -20,7 +20,7 @@ SwmJob::SwmJob(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmJob header from ei buffer: ";
+    std::cerr << "Could not decode SwmJob header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -582,9 +582,9 @@ int swm::ei_buffer_to_job(const char* buf, int &index, SwmJob &obj) {
 }
 
 void SwmJob::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << id << separator;
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << cluster_id << separator;
+  std::cerr << prefix << id << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << cluster_id << separator;
   if (nodes.empty()) {
     std::cerr << prefix << "nodes: []" << separator;
   } else {
@@ -594,14 +594,14 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << state << separator;
-    std::cerr << prefix << start_time << separator;
-    std::cerr << prefix << submit_time << separator;
-    std::cerr << prefix << end_time << separator;
-    std::cerr << prefix << duration << separator;
-    std::cerr << prefix << job_stdin << separator;
-    std::cerr << prefix << job_stdout << separator;
-    std::cerr << prefix << job_stderr << separator;
+  std::cerr << prefix << state << separator;
+  std::cerr << prefix << start_time << separator;
+  std::cerr << prefix << submit_time << separator;
+  std::cerr << prefix << end_time << separator;
+  std::cerr << prefix << duration << separator;
+  std::cerr << prefix << job_stdin << separator;
+  std::cerr << prefix << job_stdout << separator;
+  std::cerr << prefix << job_stderr << separator;
   if (input_files.empty()) {
     std::cerr << prefix << "input_files: []" << separator;
   } else {
@@ -620,8 +620,8 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << workdir << separator;
-    std::cerr << prefix << user_id << separator;
+  std::cerr << prefix << workdir << separator;
+  std::cerr << prefix << user_id << separator;
   if (hooks.empty()) {
     std::cerr << prefix << "hooks: []" << separator;
   } else {
@@ -658,10 +658,10 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << account_id << separator;
-    std::cerr << prefix << gang_id << separator;
-    std::cerr << prefix << execution_path << separator;
-    std::cerr << prefix << script_content << separator;
+  std::cerr << prefix << account_id << separator;
+  std::cerr << prefix << gang_id << separator;
+  std::cerr << prefix << execution_path << separator;
+  std::cerr << prefix << script_content << separator;
   if (request.empty()) {
     std::cerr << prefix << "request: []" << separator;
   } else {
@@ -680,13 +680,13 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << container << separator;
-    std::cerr << prefix << relocatable << separator;
-    std::cerr << prefix << exitcode << separator;
-    std::cerr << prefix << signal << separator;
-    std::cerr << prefix << priority << separator;
-    std::cerr << prefix << comment << separator;
-    std::cerr << prefix << revision << separator;
+  std::cerr << prefix << container << separator;
+  std::cerr << prefix << relocatable << separator;
+  std::cerr << prefix << exitcode << separator;
+  std::cerr << prefix << signal << separator;
+  std::cerr << prefix << priority << separator;
+  std::cerr << prefix << comment << separator;
+  std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
 

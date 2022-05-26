@@ -11,7 +11,7 @@
 #define LOG_OUT_STREAM stderr
 
 static int g_log_level = SWM_LOG_LEVEL_INFO;
-static FILE *g_log_stream = NULL;
+static FILE *g_log_stream = nullptr;
 
 void _print_log_format(const char* tag, const char* message, va_list args, const bool end_line) {
   time_t now;
@@ -37,7 +37,7 @@ int swm_get_log_level() {
 void swm_logi(const char* message, ...) {
   va_list args;
   va_start(args, message);
-  if (message == NULL) {
+  if (message == nullptr) {
     fprintf(LOG_OUT_STREAM, "\n");
   } else {
     _print_log_format("INFO", message, args, true);
@@ -49,7 +49,7 @@ void swm_logi(const char* message, ...) {
 void swm_loge(const char* message, ...) {
   va_list args;
   va_start(args, message);
-  if (message == NULL) {
+  if (message == nullptr) {
     fprintf(LOG_OUT_STREAM, "\n");
   } else {
     _print_log_format("ERROR", message, args, true);
@@ -58,13 +58,13 @@ void swm_loge(const char* message, ...) {
   fflush(LOG_OUT_STREAM);
 }
 
-void swm_logd(const char* message, ...) {
+void swm_logd(const char* message = nullptr, ...) {
   if (g_log_level < SWM_LOG_LEVEL_DEBUG1) {
     return;
   }
   va_list args;
   va_start(args, message);
-  if (message == NULL) {
+  if (message == nullptr) {
     fprintf(LOG_OUT_STREAM, "\n");
   } else {
     _print_log_format("DEBUG", message, args, true);
@@ -115,4 +115,9 @@ bool swm_write_exact(std::ostream *stream, char *buf, size_t len) {
   stream->write(buf, len);
   stream->flush();
   return stream->good();
+}
+
+void print_ei_buf(const char* buf, int index) {
+  ei_print_term(LOG_OUT_STREAM, buf, &index);
+  fprintf(LOG_OUT_STREAM, "\n");
 }

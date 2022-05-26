@@ -191,7 +191,7 @@ int send_process_info(const SwmProcess &proc) {
   }
 
   if (swm_get_log_level() >= SWM_LOG_LEVEL_DEBUG1) {
-    char* term_str = new (std::nothrow) char[1000];
+    char* term_str = nullptr;
     int index = 0;
     ei_s_print_term(&term_str, x.buff, &index);
     swm_logd("Process term: ", term_str);

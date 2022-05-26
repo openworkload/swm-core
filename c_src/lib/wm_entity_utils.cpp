@@ -101,6 +101,7 @@ int swm::ei_buffer_to_tuple_atom_buff(const char* buf, int &index, SwmTupleAtomB
     std::cerr << "Could not append ei buffer for SwmTupleAtomBuff" << std::endl;
     return -1;
   }
+  ei_skip_term(buf, &index);
   return 0;
 }
 
@@ -311,12 +312,14 @@ int swm::ei_buffer_to_str(const char* buf, int &index, std::string &s) {
       std::cerr << "Could not decode iodata at " << index << std::endl;
       return -1;
     }
+    tmp[iodata_size] = '\0';
   } else if (term_type == ERL_STRING_EXT) {
     if (ei_decode_string(buf, &index, tmp)) {
       std::cerr << "Could not decode string at " << index << std::endl;
       return -1;
     }
   } else {  // assume empty string or iodata
+    ei_skip_term(buf, &index);  // last element of a list is empty list
     return 0;
   }
   if (tmp == nullptr) {
@@ -330,7 +333,7 @@ int swm::ei_buffer_to_str(const char* buf, int &index, std::string &s) {
 
 int swm::ei_buffer_to_uint64_t(const char* buf, int &index, uint64_t &n) {
   const auto term_type = get_term_type(buf, index);
-  if (term_type != ERL_INTEGER_EXT && term_type != ERL_SMALL_INTEGER_EXT) {
+  if (term_type != ERL_INTEGER_EXT && term_type != ERL_SMALL_INTEGER_EXT && term_type != ERL_SMALL_BIG_EXT) {
     std::cerr << "Wrong eterm type at " << index << ": not a ulong integer, type is " << term_type << std::endl;
     return -1;
   }
@@ -343,7 +346,7 @@ int swm::ei_buffer_to_uint64_t(const char* buf, int &index, uint64_t &n) {
 
 int swm::ei_buffer_to_int64_t(const char* buf, int &index, int64_t &n) {
   const auto term_type = get_term_type(buf, index);
-  if (term_type != ERL_INTEGER_EXT && term_type != ERL_SMALL_INTEGER_EXT) {
+  if (term_type != ERL_INTEGER_EXT && term_type != ERL_SMALL_INTEGER_EXT && term_type != ERL_SMALL_BIG_EXT) {
     std::cerr << "Wrong eterm type " << index << ": not a long integer, type is " << term_type << std::endl;
     return -1;
   }
@@ -355,9 +358,29 @@ int swm::ei_buffer_to_int64_t(const char* buf, int &index, int64_t &n) {
 }
 
 int swm::ei_buffer_to_uint64_t(const char* buf, int &index, std::vector<uint64_t> &array) {
-  const int term_type = get_term_type(buf, index);
+  int term_size = 0;
+  int term_type = 0;
+  if (ei_get_type(buf, &index, &term_type, &term_size)) {
+    std::cerr << "Could not get term type at position " << index << std::endl;
+    return -1;
+  }
+
+  if (term_type == ERL_STRING_EXT) {  // list of integers that is incoded by erlang as string
+    array.resize(term_size);
+    char *tmp = new(std::nothrow) char[term_size + 1];
+    if (ei_decode_string(buf, &index, tmp)) {
+      std::cerr << "Could not decode string at " << index << std::endl;
+      return -1;
+    }
+    for (int i = 0; i < term_size; ++i) {
+      array[i] = tmp[i];
+    }
+    delete tmp;
+    return 0;
+  }
+
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-    std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
+    std::cerr << "Could not parse eterm " << index << ": not a list, type=" << term_type << std::endl;
     return -1;
   }
 
@@ -526,7 +549,7 @@ std::ostream& operator<<(std::ostream& out, const std::pair<std::string, std::st
 }
 
 std::ostream& operator<<(std::ostream& out, const std::pair<std::string, ei_x_buff> &x) {
-  char* term_str = new (std::nothrow) char[std::get<1>(x).index + 1];
+  char* term_str = nullptr;
   int index = 0;
   ei_s_print_term(&term_str, std::get<1>(x).buff, &index);
   out << std::string("(") << std::get<0>(x) << std::string(", ") + term_str + ")";

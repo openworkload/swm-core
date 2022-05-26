@@ -20,7 +20,7 @@ SwmResource::SwmResource(const char* buf, int &index) {
 
   int term_size = 0;
   if (ei_decode_tuple_header(buf, &index, &term_size)) {
-    std::cerr << "Could decode SwmResource header from ei buffer: ";
+    std::cerr << "Could not decode SwmResource header from ei buffer: ";
     ei_print_term(stdout, buf, &index);
     std::cerr << std::endl;
     return;
@@ -192,8 +192,8 @@ int swm::ei_buffer_to_resource(const char* buf, int &index, SwmResource &obj) {
 }
 
 void SwmResource::print(const std::string &prefix, const char separator) const {
-    std::cerr << prefix << name << separator;
-    std::cerr << prefix << count << separator;
+  std::cerr << prefix << name << separator;
+  std::cerr << prefix << count << separator;
   if (hooks.empty()) {
     std::cerr << prefix << "hooks: []" << separator;
   } else {
@@ -212,8 +212,8 @@ void SwmResource::print(const std::string &prefix, const char separator) const {
     }
     std::cerr << "]" << separator;
   }
-    std::cerr << prefix << prices << separator;
-    std::cerr << prefix << usage_time << separator;
+  std::cerr << prefix << prices << separator;
+  std::cerr << prefix << usage_time << separator;
   if (resources.empty()) {
     std::cerr << prefix << "resources: []" << separator;
   } else {
