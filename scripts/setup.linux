@@ -533,7 +533,7 @@ def get_from_user(opts):
     userInput("SWM_ADMIN_EMAIL", admin+"@"+opts["SWM_HOST"], "administrator email", opts, [("{USER}", admin)], False)
 
     userInput("SWM_UNIT_NAME", "Dev", "organizational unit name", opts, ispath=False)
-    userInput("SWM_ORG_NAME", "Sky Workflows", "organization name", opts, ispath=False)
+    userInput("SWM_ORG_NAME", "Open Workload", "organization name", opts, ispath=False)
     userInput("SWM_LOCALITY", "EN", "locality name", opts, ispath=False)
     userInput("SWM_COUNTRY", "US", "country name", opts, ispath=False)
 

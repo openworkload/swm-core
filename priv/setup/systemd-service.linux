@@ -1,5 +1,5 @@
 [Unit]
-Description=Sky Workload Manager
+Description=Sky Port Core Daemon
 After=network.target remote-fs.target
 Requires=network.target remote-fs.target
 

@@ -1,6 +1,6 @@
 {application,
  swm,
- [{description, "Sky Workload Manager"},
+ [{description, "Sky Port Core Daemon"},
   {vsn, semver},
   {modules, []},
   {registered, []},

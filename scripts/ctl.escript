@@ -1,13 +1,4 @@
 #!/usr/bin/env escript
-%
-% Copyright (c) 2016-2017 Sky Workflows. All Rights Reserved.
-%
-% This software is the confidential and proprietary information of
-% Sky Workflows ("Confidential Information"). You shall not
-% disclose such Confidential Information and shall use it only in
-% accordance with the terms of the license agreement you entered into
-% with Sky Workflows or its subsidiaries.
-
 %%! -smp enable
 
 main([]) ->
