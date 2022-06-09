@@ -15,12 +15,15 @@
 %% Common test callbacks
 %% ============================================================================
 
+-spec suite() -> list().
 suite() ->
     [{timetrap, {seconds, 260}}].
 
+-spec all() -> list().
 all() ->
     [{group, common}].
 
+-spec groups() -> list().
 groups() ->
     [{common,
       [],
@@ -33,11 +36,13 @@ groups() ->
        delete_partition,
        partition_exists]}].
 
+-spec init_per_suite(list()) -> list().
 init_per_suite(Config) ->
     {ok, GateRunnerPid} = wm_ct_helpers:run_gate_system_process(),
     {ok, _} = application:ensure_all_started(gun),
     [{gate_runner_pid, GateRunnerPid} | Config].
 
+-spec end_per_suite(list()) -> list().
 end_per_suite(Config) ->
     ok = application:stop(gun),
     wm_ct_helpers:kill_gate_system_process(),
@@ -45,11 +50,13 @@ end_per_suite(Config) ->
         proplists:get_value(gate_runner_pid, Config), kill),
     Config.
 
+-spec init_per_testcase(atom(), [{atom(), term()}]) -> [{atom(), term()}] | {fail, term()} | {skip, term()}.
 init_per_testcase(_, Config) ->
     {ok, Pid} = wm_gate:start_link([{spool, ?SWM_SPOOL}]),
     ct:print("Gate has been started: ~p", [Pid]),
     [{wm_gate_pid, Pid} | Config].
 
+-spec end_per_testcase(atom(), [{atom(), term()}]) -> [{atom(), term()}] | {fail, term()} | {skip, term()}.
 end_per_testcase(_, Config) ->
     %erlang:exit(proplists:get_value(wm_gate_pid, Config), kill),
     Config.

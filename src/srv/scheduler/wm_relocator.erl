@@ -332,7 +332,7 @@ respawn_virtres(Job, Relocation) ->
             wm_entity:set_attr({state, ?JOB_STATE_WAITING}, Job)),
     wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)).
 
-% @doc Start relocation returning relocation ID which, is a hash of the nodes involved into the relocation
+% @doc Start relocation returning relocation ID that is a hash of the nodes involved into the relocation
 -spec spawn_virtres(#job{}) -> {ok, integer(), node_id()} | {error, not_found}.
 spawn_virtres(Job) ->
     JobId = wm_entity:get_attr(id, Job),

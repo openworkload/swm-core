@@ -33,17 +33,13 @@ command(Pid, Command) ->
                                                         Otherwise
                                                 end
                                         after 45000 ->
-                                            ?LOG_WARN("SSH SFTP EXT peer command '~p' execution "
-                                                      "timed-out",
-                                                      [Command]),
+                                            ?LOG_WARN("SSH SFTP EXT peer command '~p' execution timed-out", [Command]),
                                             {error, ssh_sftp_ext_command_timeout}
                                         end
                                 end,
                             F();
                         Error ->
-                            ?LOG_WARN("SSH SFTP EXT peer command '~p' execution "
-                                      "error '~p'",
-                                      [Command, Error]),
+                            ?LOG_WARN("SSH SFTP EXT peer command '~p' execution error '~p'", [Command, Error]),
                             {error, ssh_sftp_ext_command_failed}
                     end;
                 Otherwise ->
@@ -74,12 +70,18 @@ subsystem_spec() ->
 %% Server callbacks
 %% ============================================================================
 
-handle_msg({ssh_channel_up, ChannelId, ConnectionManager}, State) ->
-    {ok, State}.
+-spec init(term()) -> {ok, term()} | {ok, term(), timeout()} | {stop, term()}.
+init(_) ->
+    {ok, stub}.
+
+-spec handle_msg(timeout | term(), term()) -> {ok, term()} | {stop, ssh:channel_id(), term()}.
+handle_msg({ssh_channel_up, _ChannelId, _ConnectionManager}, MState) ->
+    {ok, MState}.
 
 %% We have to implement `delete_directory`, `file_size` and `md5sum` by own,
 %% due ssh_sftpd don't support this commands
-handle_ssh_msg({ssh_cm, ConnectionManager, {data, ChannelId, 0, Data}}, State) ->
+-spec handle_ssh_msg(ssh_connection:event(), term()) -> {ok, term()} | {stop, ssh:channel_id(), term()}.
+handle_ssh_msg({ssh_cm, ConnectionManager, {data, ChannelId, 0, Data}}, MState) ->
     Result =
         case binary_to_term(Data) of
             {delete_directory, File} ->
@@ -111,10 +113,8 @@ handle_ssh_msg({ssh_cm, ConnectionManager, {data, ChannelId, 0, Data}}, State) -
         end,
     case Result of
         terminate_without_reply ->
-            ?LOG_WARN("SSH SFTP EXT async_md5sum timed out, "
-                      "terminate without reply to caller",
-                      []),
-            {stop, ChannelId, State};
+            ?LOG_WARN("SSH SFTP EXT async_md5sum timed out, terminate without reply to caller", []),
+            {stop, ChannelId, MState};
         Result ->
             case ssh_connection:send(ConnectionManager, ChannelId, term_to_binary(Result)) of
                 ok ->
@@ -122,18 +122,12 @@ handle_ssh_msg({ssh_cm, ConnectionManager, {data, ChannelId, 0, Data}}, State) -
                 {error, closed} ->
                     ?LOG_WARN("SSH SFTP EXT peer connection closed", [])
             end,
-            {stop, ChannelId, State}
+            {stop, ChannelId, MState}
     end;
-handle_ssh_msg({ssh_cm, _ConnectionManager, Msg}, State) ->
+handle_ssh_msg({ssh_cm, _ConnectionManager, Msg}, MState) ->
     ?LOG_INFO("Got not handled ssh message ~p", [Msg]),
-    {ok, State}.
+    {ok, MState}.
 
+-spec terminate(term(), term()) -> _.
 terminate(Reason, _) ->
     wm_utils:terminate_msg(?MODULE, Reason).
-
-%% ============================================================================
-%% Implementation functions
-%% ============================================================================
-
-init(_) ->
-    {ok, stub}.

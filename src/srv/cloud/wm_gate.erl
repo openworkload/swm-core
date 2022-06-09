@@ -149,6 +149,7 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], #mstate{} = MState) ->
     MState;
 parse_args([{spool, Spool} | T], #mstate{} = MState) ->
