@@ -54,6 +54,7 @@ init(Args) ->
        get_worker_spec(wm_data, Args),
        get_worker_spec(wm_tcpserver, Args),
        get_worker_spec(wm_file_transfer, Args),
+       get_worker_spec(wm_tunnel_server, Args),
        get_worker_spec(wm_session, Args),
        get_worker_spec(wm_api, Args),
        get_worker_spec(wm_factory_mst, Args),

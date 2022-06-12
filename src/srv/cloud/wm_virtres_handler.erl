@@ -2,13 +2,15 @@
 
 -export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/2,
          start_uploading/2, start_downloading/2, delete_partition/2, spawn_partition/2, wait_for_partition_fetch/0,
-         wait_for_wm_resources_readiness/0, remove_relocation_entities/1, ensure_entities_created/3]).
+         wait_for_wm_resources_readiness/0, wait_for_ssh_connection/0, remove_relocation_entities/1,
+         ensure_entities_created/3]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 
 -define(DEFAULT_CLOUD_NODE_API_PORT, 10001).
 -define(REDINESS_CHECK_PERIOD, 10000).
+-define(SSH_CHECK_PERIOD, 10000).
 -define(PARTITION_FETCH_PERIOD, 10000).
 
 %% ============================================================================
@@ -33,7 +35,11 @@ wait_for_partition_fetch() ->
 
 -spec wait_for_wm_resources_readiness() -> reference().
 wait_for_wm_resources_readiness() ->
-    wm_utils:wake_up_after(?REDINESS_CHECK_PERIOD, readiness_check).
+    wm_utils:wake_up_after(?REDINESS_CHECK_PERIOD, part_check).
+
+-spec wait_for_ssh_connection() -> reference().
+wait_for_ssh_connection() ->
+    wm_utils:wake_up_after(?SSH_CHECK_PERIOD, ssh_check).
 
 -spec request_partition(job_id(), #remote{}) -> {atom(), string()}.
 request_partition(JobId, Remote) ->

@@ -1,4 +1,4 @@
--module(wm_ssh_tunnel_server).
+-module(wm_tunnel_server).
 
 -behaviour(gen_server).
 
@@ -7,12 +7,13 @@
 
 -include("../lib/wm_log.hrl").
 
+-define(SSH_DAEMON_DEFAULT_PORT, 10022).
+
 -record(mstate,
         {spool = "" :: string(),
-         daemon_pid = none :: pid() | none,
-         listen_ip = none :: inet:ip_address() | none,
-         listen_port = none :: inet:port_number() | none
-        }).
+         daemon_pid = undefined :: pid() | undefined,
+         listen_ip = undefined :: inet:ip_address() | undefined,
+         listen_port = undefined :: inet:port_number() | undefined}).
 
 %% ============================================================================
 %% Module API
@@ -54,8 +55,9 @@ init(Args) ->
     HostCertsDir = filename:join([Spool, "secure/host"]),
     SystemDir = HostCertsDir,
     UserDir = HostCertsDir,
-    case spawn_ssh_daemon(any,  % host
-                          0,    % random free port is selected
+    ListenPort = wm_conf:g(ssh_daemon_listen_port, {?SSH_DAEMON_DEFAULT_PORT, integer}),
+    case spawn_ssh_daemon(any,  % TODO: don't listen to all interfaces
+                          ListenPort,
                           [{tcpip_tunnel_in, true},
                            {system_dir, SystemDir},
                            {user_dir, UserDir},
@@ -73,12 +75,12 @@ init(Args) ->
             {stop, Error}
     end.
 
-handle_call(get_address, _From, #mstate{listen_ip=none} = MState) ->
-  {reply, {error, "Listen IP is unknown"}, MState};
-handle_call(get_address, _From, #mstate{listen_port=none} = MState) ->
-  {reply, {error, "Listen port is unknown"}, MState};
-handle_call(get_address, _From, #mstate{listen_port=Port, listen_ip=IP} = MState) ->
-  {reply, {ok, IP, Port}, MState};
+handle_call(get_address, _From, #mstate{listen_ip = undefined} = MState) ->
+    {reply, {error, "Listen IP is unknown"}, MState};
+handle_call(get_address, _From, #mstate{listen_port = undefined} = MState) ->
+    {reply, {error, "Listen port is unknown"}, MState};
+handle_call(get_address, _From, #mstate{listen_port = Port, listen_ip = IP} = MState) ->
+    {reply, {ok, IP, Port}, MState};
 handle_call(_Msg, _From, #mstate{} = MState) ->
     {reply, {error, not_handled}, MState}.
 

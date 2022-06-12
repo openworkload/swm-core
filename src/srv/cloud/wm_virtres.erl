@@ -10,6 +10,8 @@
 -include("../../../include/wm_scheduler.hrl").
 -include("../../lib/wm_entity.hrl").
 
+-define(SSH_DAEMON_DEFAULT_PORT, 10022).
+
 -record(mstate,
         {wait_ref = undefined :: string(),
          part_id = undefined :: string(),
@@ -19,6 +21,8 @@
          task_id = undefined :: integer(),
          part_mgr_id = undefined :: string(),
          rediness_timer = undefined :: reference(),
+         ssh_conn_timer = undefined :: reference(),
+         ssh_client_pid = undefined :: pid(),
          part_check_timer = undefined :: reference(),
          upload_ref = undefined :: reference(),
          download_ref = undefined :: reference(),
@@ -73,9 +77,10 @@ init(Args) ->
     JobId = MState#mstate.job_id,
     case wm_virtres_handler:get_remote(JobId) of
         {ok, Remote} ->
+            {ok, TunnelClientPid} = wm_tunnel_client:start_link(Args),
             ?LOG_INFO("Virtual resources manager has been started, remote: ~p", [wm_entity:get_attr(name, Remote)]),
             wm_factory:notify_initiated(virtres, MState#mstate.task_id),
-            {ok, sleeping, MState#mstate{remote = Remote}};
+            {ok, sleeping, MState#mstate{remote = Remote, ssh_client_pid = TunnelClientPid}};
         _ ->
             ?LOG_ERROR("Remote not found for job: ~p", [JobId]),
             {stop, {shutdown, "Remote not found"}, MState}
@@ -107,12 +112,31 @@ handle_event(destroy,
     ?LOG_DEBUG("Destroy remote partition for job ~p (task_id: ~p)", [JobId, TaskId]),
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
-handle_event(Event, State, MState) ->
-    ?LOG_DEBUG("Unexpected event: ~p [state=~p, mstate=~p]", [Event, State, MState]),
-    {next_state, State, MState}.
+handle_event(Event, StateName, MState) ->
+    ?LOG_DEBUG("Unexpected event: ~p [virtres state: ~p, mstate: ~p]", [Event, StateName, MState]),
+    {next_state, StateName, MState}.
 
-handle_info(readiness_check, StateName, MState = #mstate{rediness_timer = OldTRef, job_id = JobId}) ->
-    ?LOG_DEBUG("Readiness check (job=~p, state=~p)", [JobId, StateName]),
+handle_info(ssh_check,
+            StateName,
+            MState =
+                #mstate{ssh_conn_timer = OldTRef,
+                        job_id = JobId,
+                        part_mgr_id = PartMgrNodeId}) ->
+    ?LOG_DEBUG("SSH readiness check (job ~p, virtres state: ~p)", [JobId, StateName]),
+    catch timer:cancel(OldTRef),
+    {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
+    ConnectToHost = wm_entity:get_attr(gateway, PartMgrNode),
+    ConnectToPort = wm_conf:g(ssh_daemon_listen_port, {?SSH_DAEMON_DEFAULT_PORT, integer}),
+    case wm_tunnel_client:connect(ConnectToHost, ConnectToPort) of
+        ok ->
+            gen_fsm:send_event(self(), ssh_connected),
+            {next_state, creating, MState};
+        {error, Error} ->
+            Timer = wm_virtres_handler:wait_for_ssh_connection(),
+            {next_state, creating, MState#mstate{ssh_conn_timer = Timer}}
+    end;
+handle_info(part_check, StateName, MState = #mstate{rediness_timer = OldTRef, job_id = JobId}) ->
+    ?LOG_DEBUG("Readiness check (job=~p, virtres state: ~p)", [JobId, StateName]),
     catch timer:cancel(OldTRef),
     case wm_virtres_handler:is_job_partition_ready(JobId) of
         false ->
@@ -132,7 +156,7 @@ handle_info(part_fetch,
                 #mstate{part_check_timer = OldTRef,
                         job_id = JobId,
                         remote = Remote}) ->
-    ?LOG_DEBUG("Partition creation check (job=~p, state=~p)", [JobId, StateName]),
+    ?LOG_DEBUG("Partition creation check (job ~p, virtres state: ~p)", [JobId, StateName]),
     catch timer:cancel(OldTRef),
     {ok, WaitRef} = wm_virtres_handler:request_partition(JobId, Remote),
     {next_state, StateName, MState#mstate{wait_ref = WaitRef}};
@@ -218,15 +242,23 @@ creating({partition_fetched, Ref, Partition},
                  wait_ref = Ref,
                  template_node = TplNode} =
              MState) ->
+    {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
+    Timer = wm_virtres_handler:wait_for_ssh_connection(),
+    {next_state,
+     creating,
+     MState#mstate{wait_ref = Ref,
+                   ssh_conn_timer = Timer,
+                   part_mgr_id = PartMgrNodeId}};
+creating(ssh_connected,
+         #mstate{wait_ref = Ref,
+                 job_id = JobId,
+                 part_id = PartId} =
+             MState) ->
+    {ok, Partition} = wm_conf:select(partition, {id, PartId}),
     case wm_entity:get_attr(state, Partition) of
         up ->
-            {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
             Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
-            MState2 =
-                MState#mstate{wait_ref = undefined,
-                              job_id = JobId,
-                              rediness_timer = Timer,
-                              part_mgr_id = PartMgrNodeId},
+            MState2 = MState#mstate{wait_ref = undefined, rediness_timer = Timer},
             {next_state, creating, MState2};
         Other ->
             ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p", [Other]),
@@ -242,10 +274,15 @@ creating({Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MStat
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, creating, MState#mstate{part_check_timer = Timer}}.
 
-uploading({Ref, ok}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
+uploading({Ref, ok},
+          #mstate{upload_ref = Ref,
+                  job_id = JobId,
+                  part_mgr_id = PartMgrNodeId} =
+              MState) ->
     ?LOG_INFO("Uploading has finished (~p)", [Ref]),
     ?LOG_DEBUG("Let the job be scheduled again with preset node ids (~p)", [JobId]),
-    wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], MState#mstate.job_id),
+    start_port_forwarding(JobId, PartMgrNodeId),
+    wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
     {next_state, running, MState#mstate{upload_ref = finished}};
 uploading({Ref, {error, Node, Reason}}, #mstate{upload_ref = Ref} = MState) ->
     ?LOG_DEBUG("Uploading to ~p has failed: ~s", [Node, Reason]),
@@ -261,6 +298,7 @@ running({Ref, Status}, #mstate{} = MState) ->
 downloading({Ref, ok}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Downloading has finished => delete entities [~p, ~p]", [Ref, JobId]),
     ok = wm_virtres_handler:remove_relocation_entities(JobId),
+    stop_port_forwarding(JobId),
     gen_fsm:send_event(self(), start_destroying),
     {next_state, destroying, MState#mstate{download_ref = finished}};
 downloading({Ref, {error, Node, Reason}}, #mstate{download_ref = Ref} = MState) ->
@@ -321,3 +359,61 @@ is_local_job(#job{nodes = [Node]}) ->
     Node == wm_self:get_node_id();
 is_local_job(_) ->
     false.
+
+-spec get_job_ports([#resource{}]) -> [integer()].
+get_job_ports([]) ->
+    [];
+get_job_ports([#resource{name = "ports", properties = Properties} | T]) ->
+    Value = proplists:get_value(value, Properties), % example of the Value: "8888/tcp,6001/udp"
+    lists:foldl(fun(PortStr, List) ->
+                   Parts = string:split(Value, "/", all),
+                   case length(Parts) of
+                       1 ->
+                           [list_to_integer(Value) | List];
+                       2 ->
+                           case lists:nth(2, Parts) of
+                               "tcp" ->
+                                   [list_to_integer(lists:nth(1, Parts)) | List];
+                               OtherType ->
+                                   ?LOG_DEBUG("Requested job port type is not supported: ~p", [OtherType]),
+                                   List
+                           end;
+                       WrongFormat ->
+                           ?LOG_DEBUG("Requested job port format is incorrect: ~p", [WrongFormat]),
+                           List
+                   end
+                end,
+                [],
+                string:split(Value, ",", all));
+get_job_ports([_ | T]) ->
+    get_job_ports(T).
+
+-spec start_port_forwarding(job_id(), node_id()) -> ok.
+start_port_forwarding(JobId, PartMgrNodeId) ->
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    ResourcesRequest = wm_entity:get_attr(request, Job),
+    case get_job_ports(ResourcesRequest) of
+        [] ->
+            ok;
+        JobPorts ->
+            ListenHost = {127, 0, 0, 1},
+            {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
+            JobHost = wm_entity:get_attr(gateway, PartMgrNode),
+            lists:foldl(fun(JobPort, OpenedPorts) ->
+                           ListenPort = JobPort,
+                           case wm_tunnel_client:make_tunnel(ListenHost, ListenPort, JobHost, JobPort) of
+                               {ok, OpenedPort} ->
+                                   [OpenedPort | OpenedPorts];
+                               {error, Error} ->
+                                   ?LOG_ERROR("Can't make ssh tunnel: ~p:~p -> ~p:~p",
+                                              [ListenHost, ListenPort, JobHost, JobPort]),
+                                   OpenedPorts
+                           end
+                        end,
+                        [],
+                        JobPorts)
+    end.
+
+-spec stop_port_forwarding(job_id()) -> ok.
+stop_port_forwarding(JobId) ->
+    todo.  %TODO: how we can stop port forwarding?

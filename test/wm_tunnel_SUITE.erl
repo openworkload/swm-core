@@ -1,4 +1,4 @@
--module(wm_ssh_tunnel_SUITE).
+-module(wm_tunnel_SUITE).
 
 -export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1]).
 -export([one_server_two_clients/1]).
@@ -41,22 +41,22 @@ end_per_suite(Config) ->
 -spec one_server_two_clients(list()) -> atom().
 one_server_two_clients(_Config) ->
     Args = [{spool, "/opt/swm/spool"}],
-    {ok, ServerModulePid} = wm_ssh_tunnel_server:start_link(Args),
-    {ok, ClientModulePid} = wm_ssh_tunnel_client:start_link(Args),
+    {ok, ServerModulePid} = wm_tunnel_server:start_link(Args),
+    {ok, ClientModulePid} = wm_tunnel_client:start_link(Args),
 
-    {ok, RemoteHost, RemotePort} = wm_ssh_tunnel_server:get_address(),
-    {ok, Connection} = wm_ssh_tunnel_client:connect(RemoteHost, RemotePort),
+    {ok, RemoteHost, RemotePort} = wm_tunnel_server:get_address(),
+    ok = wm_tunnel_client:connect(RemoteHost, RemotePort),
 
     {JobSock1, LocalHost1, JobPort1} = tunnel_local_listner(),
 
     ListenHost = {127, 0, 0, 1},
-    {ok, JobPort1_2} = ssh:tcpip_tunnel_to_server(Connection, ListenHost, 0, RemoteHost, JobPort1, 2000),
+    {ok, JobPort1_2} = wm_tunnel_client:make_tunnel(ListenHost, 0, RemoteHost, JobPort1),
     % We use 2 job ports in the test because the both daemon and client are running on the same machine.
     % In this case JobPort1_2 is selected randomly (we pass 0 to tcpip_tunnel_to_server).
     test_tunneling(JobSock1, LocalHost1, JobPort1_2),
 
     {JobSock2, LocalHost2, JobPort2} = tunnel_local_listner(),
-    {ok, JobPort2_2} = ssh:tcpip_tunnel_to_server(Connection, ListenHost, 0, RemoteHost, JobPort2, 2000),
+    {ok, JobPort2_2} = wm_tunnel_client:make_tunnel(ListenHost, 0, RemoteHost, JobPort2),
     test_tunneling(JobSock2, LocalHost2, JobPort2_2),
 
     gen_server:stop(ClientModulePid),
