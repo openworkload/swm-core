@@ -97,8 +97,6 @@ do_connect(Host, Port, Spool, #mstate{} = MState) ->
     Options =
         [{silently_accept_hosts, true},
          {user_dir, HostCertsDir},
-         {user, "foo"},
-         {password, "bar"},
          {user_interaction, false}],
     case ssh:connect(Host, Port, Options) of
         {ok, Connection} ->

@@ -144,7 +144,7 @@ handle_event(mon_started, _, #mstate{} = MState) ->
     MState.
 
 connection_loop(Socket, ServerPid, #mstate{} = MState) ->
-    case wm_tcpserver:recv(Socket) of
+    case wm_tcp_server:recv(Socket) of
         {call, Module, Fun, Args} ->
             Msg = {call, {Module, Fun, Args, Socket, ServerPid}},
             gen_server:cast(wm_session, Msg);

@@ -41,10 +41,10 @@ end_per_suite(Config) ->
 -spec one_server_two_clients(list()) -> atom().
 one_server_two_clients(_Config) ->
     Args = [{spool, "/opt/swm/spool"}],
-    {ok, ServerModulePid} = wm_tunnel_server:start_link(Args),
+    {ok, ServerModulePid} = wm_ssh_server:start_link(Args),
     {ok, ClientModulePid} = wm_tunnel_client:start_link(Args),
 
-    {ok, RemoteHost, RemotePort} = wm_tunnel_server:get_address(),
+    {ok, RemoteHost, RemotePort} = wm_ssh_server:get_address(),
     ok = wm_tunnel_client:connect(RemoteHost, RemotePort),
 
     {JobSock1, LocalHost1, JobPort1} = tunnel_local_listner(),

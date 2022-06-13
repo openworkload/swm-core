@@ -33,7 +33,7 @@
          dst_fd :: file:io_device()}).
 -record(directory, {src_dir_list = [] :: [file:filename()], dst_dir_list = [] :: [file:filename()]}).
 
--define(SSH_PORT, 31337).
+-define(SSH_PORT, 31337).  % TODO: use ssh daemon started by wm_ssh_server
 -define(DATA_TRANSFER_PARALLEL, 2).
 -define(BUF_SIZE, 65536).
 

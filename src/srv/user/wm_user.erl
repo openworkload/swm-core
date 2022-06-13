@@ -77,7 +77,7 @@ handle_cast(Msg, MState) ->
 
 terminate(Reason, _) ->
     wm_utils:terminate_msg(?MODULE, Reason),
-    wm_tcpserver:terminate(Reason, ?MODULE).
+    wm_tcp_server:terminate(Reason, ?MODULE).
 
 handle_info(_Info, Data) ->
     {noreply, Data}.

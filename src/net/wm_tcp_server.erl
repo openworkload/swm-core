@@ -1,4 +1,4 @@
--module(wm_tcpserver).
+-module(wm_tcp_server).
 
 -behavior(gen_server).
 

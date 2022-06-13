@@ -82,7 +82,7 @@ handle_received_call({wm_api, Fun, {Mod, Msg}, Socket, ServerPid}) ->
             Error ->
                 {error, Error}
         end,
-    wm_tcpserver:reply(Return, Socket),
+    wm_tcp_server:reply(Return, Socket),
     ServerPid
     ! replied; % only now the connection can be closed
 handle_received_call({Module, Arg0, [], Socket}) ->
@@ -95,15 +95,15 @@ handle_received_call({Module, Arg0, Args, Socket, ServerPid}) ->
                 Msg = erlang:insert_element(1, Args, Arg0),
                 Result = wm_utils:protected_call(Module, Msg),
                 %?LOG_DEBUG("Call result: ~P", [Result, 10]),
-                wm_tcpserver:reply(Result, Socket)
+                wm_tcp_server:reply(Result, Socket)
             catch
                 T:Error ->
                     ErrRet = {string, io_lib:format("Cannot handle RPC to ~p: ~p(~P)", [Module, Arg0, Args, 5])},
                     ?LOG_DEBUG("RPC FAILED [CALL]: ~p:~p", [T, Error]),
-                    wm_tcpserver:reply(ErrRet, Socket)
+                    wm_tcp_server:reply(ErrRet, Socket)
             end;
         Error ->
-            wm_tcpserver:reply({error, Error}, Socket)
+            wm_tcp_server:reply({error, Error}, Socket)
     end,
     ServerPid ! replied.
 
@@ -125,9 +125,9 @@ handle_received_cast({Module, Arg0, Args, Tag, Addr, Socket, ServerPid}) ->
                 false ->
                     wm_rpc:cast(Module, Arg0, NewArgs, Addr)
             end,
-            wm_tcpserver:reply(ok, Socket);
+            wm_tcp_server:reply(ok, Socket);
         Error ->
-            wm_tcpserver:reply({error, Error}, Socket)
+            wm_tcp_server:reply({error, Error}, Socket)
     end.
 
 verify_rpc(_, route, {StartAddr, EndAddr, RouteID, Requestor, D, Route}, _) ->

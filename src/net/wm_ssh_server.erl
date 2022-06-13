@@ -1,4 +1,4 @@
--module(wm_tunnel_server).
+-module(wm_ssh_server).
 
 -behaviour(gen_server).
 
@@ -61,7 +61,6 @@ init(Args) ->
                           [{tcpip_tunnel_in, true},
                            {system_dir, SystemDir},
                            {user_dir, UserDir},
-                           {user_passwords, [{"foo", "bar"}]},
                            {failfun, fun failfun/2}])
     of
         {Pid, ListenIP, ListenPort} ->
