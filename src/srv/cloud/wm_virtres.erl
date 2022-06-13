@@ -77,7 +77,7 @@ init(Args) ->
     JobId = MState#mstate.job_id,
     case wm_virtres_handler:get_remote(JobId) of
         {ok, Remote} ->
-            {ok, TunnelClientPid} = wm_tunnel_client:start_link(Args),
+            {ok, TunnelClientPid} = wm_ssh_client:start_link(Args),
             ?LOG_INFO("Virtual resources manager has been started, remote: ~p", [wm_entity:get_attr(name, Remote)]),
             wm_factory:notify_initiated(virtres, MState#mstate.task_id),
             {ok, sleeping, MState#mstate{remote = Remote, ssh_client_pid = TunnelClientPid}};
@@ -127,7 +127,7 @@ handle_info(ssh_check,
     {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
     ConnectToHost = wm_entity:get_attr(gateway, PartMgrNode),
     ConnectToPort = wm_conf:g(ssh_daemon_listen_port, {?SSH_DAEMON_DEFAULT_PORT, integer}),
-    case wm_tunnel_client:connect(ConnectToHost, ConnectToPort) of
+    case wm_ssh_client:connect(ConnectToHost, ConnectToPort) of
         ok ->
             gen_fsm:send_event(self(), ssh_connected),
             {next_state, creating, MState};
@@ -401,7 +401,7 @@ start_port_forwarding(JobId, PartMgrNodeId) ->
             JobHost = wm_entity:get_attr(gateway, PartMgrNode),
             lists:foldl(fun(JobPort, OpenedPorts) ->
                            ListenPort = JobPort,
-                           case wm_tunnel_client:make_tunnel(ListenHost, ListenPort, JobHost, JobPort) of
+                           case wm_ssh_client:make_tunnel(ListenHost, ListenPort, JobHost, JobPort) of
                                {ok, OpenedPort} ->
                                    [OpenedPort | OpenedPorts];
                                {error, Error} ->
