@@ -233,7 +233,7 @@
             "properties":{
                "name":{
                   "str_replace":{
-                     "template":"$STACK_NAME-phead.skyworkflows.com",
+                     "template":"$STACK_NAME-phead.openworkload.com",
                      "params":{
                         "$STACK_NAME":{
                            "get_param":"OS::stack_name"
@@ -297,7 +297,7 @@
                   "properties":{
                      "name":{
                         "str_replace":{
-                           "template":"$STACK_NAME-node%index%.skyworkflows.com",
+                           "template":"$STACK_NAME-node%index%.openworkload.com",
                            "params":{
                               "$STACK_NAME":{
                                  "get_param":"OS::stack_name"

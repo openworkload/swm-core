@@ -36,11 +36,11 @@ GATEWAY_IP=$(ip -4 addr show $(ip -4 route list 0/0 | awk -F' ' '{ print $5 }') 
 echo "----------------------------------------------------"
 echo $(date) ": start openstack initialization (HOST: ${HOSTNAME}, IP=$GATEWAY_IP, master: ${MASTER})"
 
-hostname ${HOST_NAME}.skyworkflows.com
-echo ${HOST_NAME}.skyworkflows.com > /etc/hostname
+hostname ${HOST_NAME}.openworkload.com
+echo ${HOST_NAME}.openworkload.com > /etc/hostname
 echo $(date) ": hostname=$(hostname)"
 
-echo $GATEWAY_IP ${HOST_NAME}.skyworkflows.com ${HOST_NAME} >> /etc/hosts
+echo $GATEWAY_IP ${HOST_NAME}.openworkload.com ${HOST_NAME} >> /etc/hosts
 echo $(date) ": /etc/hosts:"
 cat /etc/hosts
 echo

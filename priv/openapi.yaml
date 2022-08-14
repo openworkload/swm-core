@@ -214,7 +214,7 @@ paths:
 
 externalDocs:
   description: Find out more about Sky Port
-  url: 'http://skyworkflows.com'
+  url: 'http://openworkload.com'
 
 components:
   schemas:

@@ -25,7 +25,7 @@ the container while spool directory is mounted there. This script initializes sw
 SWM_SPOOL_ON_HOST=$HOME/.swm/spool
 mkdir -p ${SWM_SPOOL_ON_HOST}
 COMMAND="/opt/swm/current/scripts/setup-skyport.linux -u $(id -u) -g $(id -g) -n $(id -u -n)"
-docker run --rm -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=skyworkflows.com -ti swm-core:latest ${COMMAND}
+docker run --rm -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=openworkload.com -ti swm-core:latest ${COMMAND}
 ```
 
 In order to debug the setup script or swm daemon the following script will help (run on host):
@@ -41,7 +41,7 @@ Run swm daemon in container (in background)
 
 ```console
 SWM_SPOOL_ON_HOST=$HOME/.swm/spool
-docker run --init --log-driver=syslog -d -p 10001:10001 -p 8443:8443 -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=skyworkflows.com swm-core:latest
+docker run --init --log-driver=syslog -d -p 10001:10001 -p 8443:8443 -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=openworkload.com swm-core:latest
 ```
 
 After that the container can be controlled with:

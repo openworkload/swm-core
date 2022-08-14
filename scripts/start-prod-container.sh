@@ -55,7 +55,7 @@ if [ $INTERACTIVE ]; then
             -e DISPLAY=${DISPLAY}\
             --name ${CONTAINER_NAME}\
             --hostname $(hostname)\
-            --domainname=skyworkflows.com\
+            --domainname=openworkload.com\
             --add-host host:${HOST_IP}\
             --workdir ${PWD}\
             --tty\
