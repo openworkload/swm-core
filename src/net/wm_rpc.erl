@@ -32,11 +32,11 @@ call(Module, Function, Args) ->
 -spec call(module(), fun(), list(), #node{} | atom()) -> term().
 call(Module, Function, Args, Node) when is_tuple(Node) ->
     ?LOG_DEBUG("m=~p f=~p, a=~P, n=~p", [Module, Function, Args, 3, Node]),
-    case wm_tcpclient:connect(get_connection_args(Node)) of
+    case wm_tcp_client:connect(get_connection_args(Node)) of
         {ok, Socket} ->
             RPC = {call, Module, Function, Args},
-            Reply = wm_tcpclient:rpc(RPC, Socket),
-            wm_tcpclient:disconnect(Socket),
+            Reply = wm_tcp_client:rpc(RPC, Socket),
+            wm_tcp_client:disconnect(Socket),
             Reply;
         Error ->
             Error
@@ -59,13 +59,13 @@ cast(Module, Function, Args, FinalAddr = {_, _}) ->
     NextAddr = get_next_destination(FinalAddr),
     ?LOG_DEBUG("Next destination address: ~p", [NextAddr]),
     ConnArgs = get_connection_args(NextAddr),
-    case wm_tcpclient:connect(ConnArgs) of
+    case wm_tcp_client:connect(ConnArgs) of
         {ok, Socket} ->
             Tag = wm_utils:uuid(v4),
             RPC = {cast, Module, Function, Args, Tag, FinalAddr},
             send_metrics_to_mon(NextAddr),
-            wm_tcpclient:rpc(RPC, Socket),
-            wm_tcpclient:disconnect(Socket);
+            wm_tcp_client:rpc(RPC, Socket),
+            wm_tcp_client:disconnect(Socket);
         Error ->
             Error
     end.

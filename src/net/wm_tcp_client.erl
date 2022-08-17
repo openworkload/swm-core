@@ -1,4 +1,4 @@
--module(wm_tcpclient).
+-module(wm_tcp_client).
 
 -export([connect/1, disconnect/1, rpc/2, send/2, recv/2]).
 
@@ -95,9 +95,9 @@ mk_opts(Cert, Key) ->
      {packet, 4},
      {active, false},
      {versions, ['tlsv1.2']},
-     %{reuseaddr, true},
-     %{depth, 2},
-     %{verify, verify_peer},
+     {reuseaddr, true},
+     {depth, 99},
+     {verify, verify_peer},
      {cacertfile, CA},
      {certfile, Cert},
      {keyfile, Key}].
