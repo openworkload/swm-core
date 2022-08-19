@@ -5,7 +5,7 @@ Steps to deploy a development environment from scratch
 Dependencies:
 ------------
 
-1. Erlang/OTP 22 (installed in the dev container automatically)
+1. Erlang/OTP 24 (installed in the dev container automatically)
 2. rlwrap (installed in the dev container automatically)
 3. cog (https://pypi.python.org/pypi/cogapp) (installed in the dev container automatically)
 4. swm-sched (should be cloned to swm parent directory)

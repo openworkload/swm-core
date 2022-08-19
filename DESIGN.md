@@ -1,4 +1,3 @@
-
 * From CAP theorem prospective we need to have Consistency + Partition tolerance. We should dismiss Availability for particular nodes/partitions/clusters: when a node/aprtition/cluster does not responce, then we assume it is down. When it does not responce we should not make any assumtion about the node and jobs on it: they are lost completely.
 * We should keep a list of alive hosts separatly from vnodes list. When host becomes alive we check what vnodes should be started there and start them.
 * We need to be able to start several vnodes on the same host. The name of node is <vnodename>@<hostname>, for example compute@node003.
