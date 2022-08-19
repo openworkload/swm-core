@@ -7,7 +7,6 @@
 # Also the stoppage will fail because old and new cookies may differ. Perhaps we need to consider
 # using a single erlang-node name and using a hash of the node name.
 
-
 import argparse
 import datetime
 import getpass

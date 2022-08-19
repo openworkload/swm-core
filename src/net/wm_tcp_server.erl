@@ -8,6 +8,7 @@
 -include("../lib/wm_log.hrl").
 
 -define(DEFAULT_TIMEOUT, 60000).
+-define(SSL_HANDSHAKE_TIMEOUT, 5000).
 
 -record(mstate, {port = none, default_port = none, sname :: string(), spool, ip = any, lsocket = null, pids = []}).
 
@@ -168,42 +169,42 @@ parse_args([{default_api_port, Port} | T], #mstate{} = MState) ->
 parse_args([{_, _} | T], #mstate{} = MState) ->
     parse_args(T, #mstate{} = MState).
 
-accept(MState = #mstate{lsocket = LSocket}) ->
+accept(MState = #mstate{lsocket = ListenSocket}) ->
     ?LOG_DEBUG("Connection has been accepting"),
-    Pid = spawn(?MODULE, loop, [{self(), LSocket, wm_api}]),
+    Pid = spawn(?MODULE, loop, [{self(), ListenSocket, wm_api}]),
     ?LOG_DEBUG("New connection process pid: ~p", [Pid]),
     MState#mstate{pids = [Pid | MState#mstate.pids]}. %TODO should the pids be used?
 
-loop({Server, LSocket, Module}) ->
+loop({Server, ListenSocket, Module}) ->
     ?LOG_DEBUG("Ready to accept new SSL connection"),
     try
-        case ssl:transport_accept(LSocket) of
-            {ok, Socket} ->
+        case ssl:transport_accept(ListenSocket) of
+            {ok, TlsTransportSocket} ->
                 ?LOG_DEBUG("Transport connection has been accepted"),
-                case ssl:ssl_accept(Socket) of
-                    ok ->
+                case ssl:handshake(TlsTransportSocket, ?SSL_HANDSHAKE_TIMEOUT) of
+                    {ok, SslSocket} ->
                         {IPv4, Port} =
-                            case ssl:peername(Socket) of
+                            case ssl:peername(SslSocket) of
                                 {ok, {X, Y}} ->
                                     {X, Y};
                                 {error, Reason} ->
                                     {Reason, []}
                             end,
                         {IP1, IP2, IP3, IP4} = IPv4,
-                        ?LOG_DEBUG("SSL peer: ~p.~p.~p.~p:~p", [IP1, IP2, IP3, IP4, Port]),
-                        {ok, [{protocol, ProtoVer}, {cipher_suite, CipherSuite}]} =
-                            ssl:connection_information(Socket, [protocol, cipher_suite]),
-                        ?LOG_DEBUG("SSL connection is accepted (protocol: ~p, cipher: ~w)", [ProtoVer, CipherSuite]),
-                        {ok, CertBin} = ssl:peercert(Socket),
+                        {ok, [{protocol, ProtoVer}, {selected_cipher_suite, CipherSuite}]} =
+                            ssl:connection_information(SslSocket, [protocol, selected_cipher_suite]),
+                        ?LOG_DEBUG("SSL handshake performed with peer: ~p.~p.~p.~p:~p; proto: ~p, cipher: ~w",
+                                   [IP1, IP2, IP3, IP4, Port, ProtoVer, CipherSuite]),
+                        {ok, CertBin} = ssl:peercert(SslSocket),
                         Cert = public_key:pkix_decode_cert(CertBin, otp),
                         UserId = wm_cert:get_uid(Cert),
-                        ?LOG_DEBUG("Peer certificate NUID: ~p", [UserId]),
+                        ?LOG_DEBUG("Peer certificate user id: ~p", [UserId]),
                         gen_server:cast(Server, {accepted, self()}),
                         T = wm_conf:g(conn_timeout, {?DEFAULT_TIMEOUT, integer}),
                         %?LOG_DEBUG("Call ~p with message ~p",
-                        %[Module, {accept_conn, Socket}]),
+                        %[Module, {accept_conn, SslSocket}]),
                         ServerPid = self(),
-                        case gen_server:call(Module, {accept_conn, ServerPid, Socket}, T) of
+                        case gen_server:call(Module, {accept_conn, ServerPid, SslSocket}, T) of
                             ok ->
                                 ?LOG_DEBUG("Module ~p has handled the connection", [Module]);
                             Error ->
@@ -218,9 +219,6 @@ loop({Server, LSocket, Module}) ->
                             ?LOG_ERROR("API call timeout (~pms) Pid=~p", [T, ServerPid]),
                             []
                         end;
-                    {error, closed} ->
-                        ?LOG_ERROR("Connection has closed"),
-                        exit(normal);
                     {error, Reason} ->
                         ?LOG_ERROR("Connection error: ~p", [Reason]),
                         exit(normal)
@@ -264,7 +262,7 @@ mk_opts(Cert, Key, CA) ->
      {reuseaddr, true},
      {verify, verify_peer},
      {fail_if_no_peer_cert, true},
-     {versions, ['tlsv1.2', 'tlsv1.1', tlsv1]},
+     {versions, ['tlsv1.3']},
      {partial_chain, PartChain},
      {cacertfile, CA},
      {certfile, Cert},
@@ -272,8 +270,8 @@ mk_opts(Cert, Key, CA) ->
 
 listen(Port, NodeCert, NodeKey, CA, MState) ->
     case ssl:listen(Port, mk_opts(NodeCert, NodeKey, CA)) of
-        {ok, LSocket} ->
-            {ok, accept(MState#mstate{lsocket = LSocket})};
+        {ok, ListenSocket} ->
+            {ok, accept(MState#mstate{lsocket = ListenSocket})};
         {error, Reason} ->
             ?LOG_ERROR("Could not start listening port ~p: ~p", [Port, Reason]),
             {Reason, MState};

@@ -60,10 +60,10 @@ init(Args) ->
     MState2 = MState#mstate{routes = #{"/" => {api, wm_http_top}}},
     Dispatch = dispatch_rules(MState2#mstate.routes, []),
     Port = wm_conf:g(https_port, {?DEFAULT_HTTPS_PORT, integer}),
-    CA = filename:join([MState2#mstate.spool, "secure/cluster/cert.pem"]),
-    Cert = filename:join([MState2#mstate.spool, "secure/node/cert.pem"]),
-    Key = filename:join([MState2#mstate.spool, "secure/node/key.pem"]),
-    {ok, ServerCAs} = file:read_file(CA),
+    CaFile = filename:join([MState2#mstate.spool, "secure/cluster/cert.pem"]),
+    CertFile = filename:join([MState2#mstate.spool, "secure/node/cert.pem"]),
+    KeyFile = filename:join([MState2#mstate.spool, "secure/node/key.pem"]),
+    {ok, ServerCAs} = file:read_file(CaFile),
     Pems = public_key:pem_decode(ServerCAs),
     CaCerts = lists:map(fun({_, Der, _}) -> Der end, Pems),
     PartChain = fun(ChainCerts) -> enum_cacerts(CaCerts, ChainCerts) end,
@@ -72,12 +72,12 @@ init(Args) ->
                          [{port, Port},
                           {depth, 99},
                           {verify, verify_peer},
-                          {versions, ['tlsv1.2', 'tlsv1.1', tlsv1]},
+                          {versions, ['tlsv1.2']},  % we use 1.2 because ranch 1.8 does not work with 1.3
                           {fail_if_no_peer_cert, true},
                           {partial_chain, PartChain},
-                          {cacertfile, CA},
-                          {certfile, Cert},
-                          {keyfile, Key}],
+                          {cacertfile, CaFile},
+                          {certfile, CertFile},
+                          {keyfile, KeyFile}],
                          #{env => #{dispatch => Dispatch}, onresponse => fun error_hook/4}),
     ?LOG_INFO("Web server has been started on port ~p: ~p", [Port, Result]),
     wm_event:announce(http_started),
@@ -85,10 +85,10 @@ init(Args) ->
 
 enum_cacerts([], _Certs) ->
     unknown_ca;
-enum_cacerts([Cert | Rest], Certs) ->
-    case lists:member(Cert, Certs) of
+enum_cacerts([CertFile | Rest], Certs) ->
+    case lists:member(CertFile, Certs) of
         true ->
-            {trusted_ca, Cert};
+            {trusted_ca, CertFile};
         false ->
             enum_cacerts(Rest, Certs)
     end.

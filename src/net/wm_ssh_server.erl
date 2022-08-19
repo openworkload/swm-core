@@ -61,6 +61,7 @@ init(Args) ->
                           [{tcpip_tunnel_in, true},
                            {system_dir, SystemDir},
                            {user_dir, UserDir},
+                           {user_passwords, [{"swm", "swm"}]},
                            {failfun, fun failfun/2}])
     of
         {Pid, ListenIP, ListenPort} ->

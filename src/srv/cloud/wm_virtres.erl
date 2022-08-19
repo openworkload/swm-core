@@ -23,6 +23,7 @@
          rediness_timer = undefined :: reference(),
          ssh_conn_timer = undefined :: reference(),
          ssh_client_pid = undefined :: pid(),
+         forwarded_ports = [] :: [inet:port_number()],
          part_check_timer = undefined :: reference(),
          upload_ref = undefined :: reference(),
          download_ref = undefined :: reference(),
@@ -281,9 +282,9 @@ uploading({Ref, ok},
               MState) ->
     ?LOG_INFO("Uploading has finished (~p)", [Ref]),
     ?LOG_DEBUG("Let the job be scheduled again with preset node ids (~p)", [JobId]),
-    start_port_forwarding(JobId, PartMgrNodeId),
+    ForwardedPorts = start_port_forwarding(JobId, PartMgrNodeId),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
-    {next_state, running, MState#mstate{upload_ref = finished}};
+    {next_state, running, MState#mstate{upload_ref = finished, forwarded_ports = ForwardedPorts}};
 uploading({Ref, {error, Node, Reason}}, #mstate{upload_ref = Ref} = MState) ->
     ?LOG_DEBUG("Uploading to ~p has failed: ~s", [Node, Reason]),
     handle_remote_failure(MState);
@@ -388,32 +389,35 @@ get_job_ports([#resource{name = "ports", properties = Properties} | T]) ->
 get_job_ports([_ | T]) ->
     get_job_ports(T).
 
--spec start_port_forwarding(job_id(), node_id()) -> ok.
+-spec get_wm_ports() -> [inet:port_number()].
+get_wm_ports() ->
+    %TODO DO WE WANT TO USE LOCAL PORT ALWAYS FOR PARENT COMMUNICATIONS?
+    [].
+
+-spec start_port_forwarding(job_id(), node_id()) -> [inet:port_number()].
 start_port_forwarding(JobId, PartMgrNodeId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
+    {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
+
+    ListenHost = {127, 0, 0, 1},
     ResourcesRequest = wm_entity:get_attr(request, Job),
-    case get_job_ports(ResourcesRequest) of
-        [] ->
-            ok;
-        JobPorts ->
-            ListenHost = {127, 0, 0, 1},
-            {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
-            JobHost = wm_entity:get_attr(gateway, PartMgrNode),
-            lists:foldl(fun(JobPort, OpenedPorts) ->
-                           ListenPort = JobPort,
-                           case wm_ssh_client:make_tunnel(ListenHost, ListenPort, JobHost, JobPort) of
-                               {ok, OpenedPort} ->
-                                   [OpenedPort | OpenedPorts];
-                               {error, Error} ->
-                                   ?LOG_ERROR("Can't make ssh tunnel: ~p:~p -> ~p:~p",
-                                              [ListenHost, ListenPort, JobHost, JobPort]),
-                                   OpenedPorts
-                           end
-                        end,
-                        [],
-                        JobPorts)
-    end.
+    PortsToForward = get_job_ports(ResourcesRequest) ++ get_wm_ports(),
+    JobHost = wm_entity:get_attr(gateway, PartMgrNode),
+
+    lists:foldl(fun(PortToForward, OpenedPorts) ->
+                   ListenPort = PortToForward,  % local and remote ports should be the same
+                   case wm_ssh_client:make_tunnel(ListenHost, ListenPort, JobHost, PortToForward) of
+                       {ok, OpenedPort} ->
+                           [OpenedPort | OpenedPorts];
+                       {error, Error} ->
+                           ?LOG_ERROR("Can't make ssh tunnel: ~p:~p -> ~p:~p",
+                                      [ListenHost, ListenPort, JobHost, PortToForward]),
+                           OpenedPorts
+                   end
+                end,
+                [],
+                PortsToForward).
 
 -spec stop_port_forwarding(job_id()) -> ok.
 stop_port_forwarding(JobId) ->
-    todo.  %TODO: how we can stop port forwarding?
+    ok.  %TODO: stop port forwarding?
