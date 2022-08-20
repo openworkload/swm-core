@@ -17,7 +17,7 @@
 
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
+    gen_server:start_link(?MODULE, Args, []).
 
 -spec connect(inet:ip_address(), inet:port_number()) -> ok | {error, term()}.
 connect(Host, Port) ->

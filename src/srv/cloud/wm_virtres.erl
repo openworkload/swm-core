@@ -78,10 +78,16 @@ init(Args) ->
     JobId = MState#mstate.job_id,
     case wm_virtres_handler:get_remote(JobId) of
         {ok, Remote} ->
-            {ok, TunnelClientPid} = wm_ssh_client:start_link(Args),
-            ?LOG_INFO("Virtual resources manager has been started, remote: ~p", [wm_entity:get_attr(name, Remote)]),
-            wm_factory:notify_initiated(virtres, MState#mstate.task_id),
-            {ok, sleeping, MState#mstate{remote = Remote, ssh_client_pid = TunnelClientPid}};
+            case wm_ssh_client:start_link(Args) of
+                {ok, TunnelClientPid} ->
+                    ?LOG_INFO("Virtual resources manager has been started, remote: ~p",
+                              [wm_entity:get_attr(name, Remote)]),
+                    wm_factory:notify_initiated(virtres, MState#mstate.task_id),
+                    {ok, sleeping, MState#mstate{remote = Remote, ssh_client_pid = TunnelClientPid}};
+                {error, Error} ->
+                    ?LOG_ERROR("Can not start new SSH client: ~p", [Error]),
+                    {stop, {shutdown, "SSH client failed to start"}, MState}
+            end;
         _ ->
             ?LOG_ERROR("Remote not found for job: ~p", [JobId]),
             {stop, {shutdown, "Remote not found"}, MState}
