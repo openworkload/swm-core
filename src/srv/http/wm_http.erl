@@ -72,7 +72,7 @@ init(Args) ->
                          [{port, Port},
                           {depth, 99},
                           {verify, verify_peer},
-                          {versions, ['tlsv1.2']},  % we use 1.2 because ranch 1.8 does not work with 1.3
+                          {versions, ['tlsv1.3', 'tlsv1.2']},
                           {fail_if_no_peer_cert, true},
                           {partial_chain, PartChain},
                           {cacertfile, CaFile},
