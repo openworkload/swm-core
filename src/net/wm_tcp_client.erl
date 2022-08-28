@@ -87,37 +87,22 @@ recv(Socket, Answers) ->
             halt(1)
     end.
 
-% /home/taras/projects/swm-core/scripts/swmctl global update schema /home/taras/projects/swm-core/priv/schema.json
-enum_cacerts([], _Certs) ->
-    unknown_ca;
-enum_cacerts([Cert | Rest], Certs) ->
-    case lists:member(Cert, Certs) of
-        true ->
-            {trusted_ca, Cert};
-        false ->
-            enum_cacerts(Rest, Certs)
-    end.
-
-mk_opts(Cert, Key) ->
-    CA = wm_utils:get_env("SWM_CLUSTER_CA"),
-    ?LOG_DEBUG("Use ssl certs: ~p ~p ~p", [Cert, Key, CA]),
-    {ok, ServerCAs} = file:read_file(CA),
-    Pems = public_key:pem_decode(ServerCAs),
-    CaCerts = lists:map(fun({_, Der, _}) -> Der end, Pems),
-    PartChain = fun(ChainCerts) -> enum_cacerts(CaCerts, ChainCerts) end,
+mk_opts(CertFile, KeyFile) ->
+    CaFile = wm_utils:get_env("SWM_CLUSTER_CA"),
+    ?LOG_DEBUG("Use ssl certs: ~p ~p ~p", [CertFile, KeyFile, CaFile]),
     [binary,
      {header, 0},
      {packet, 4},
      {active, false},
      {versions, ['tlsv1.3']},
-     {partial_chain, PartChain},
+     {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
      {reuseaddr, true},
      {depth, 99},
      {verify, verify_peer},
      {server_name_indication, disable},
-     {cacertfile, CA},
-     {certfile, Cert},
-     {keyfile, Key}].
+     {cacertfile, CaFile},
+     {certfile, CertFile},
+     {keyfile, KeyFile}].
 
 get_host(Args) ->
     Server = maps:get(server, Args, ?DEFAULT_SERVER),

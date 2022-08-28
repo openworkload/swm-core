@@ -14,6 +14,7 @@
 -export([to_float/1, to_string/1, to_binary/1, to_integer/1]).
 -export([localtime/0, now_iso8601/1, timestamp/0, timestamp/1]).
 -export([get_cloud_node_name/2, get_requested_nodes_number/1]).
+-export([get_cert_partial_chain_fun/1, get_node_cert_paths/1]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -672,3 +673,31 @@ get_requested_nodes_number(Job) ->
            end
         end,
     lists:foldl(F, 0, wm_entity:get_attr(request, Job)).
+
+-spec enum_cacerts([string()], [string()]) -> term().
+enum_cacerts([], _Certs) ->
+    unknown_ca;
+enum_cacerts([CertFile | Rest], Certs) ->
+    case lists:member(CertFile, Certs) of
+        true ->
+            {trusted_ca, CertFile};
+        false ->
+            enum_cacerts(Rest, Certs)
+    end.
+
+-spec get_cert_partial_chain_fun(string()) -> fun().
+get_cert_partial_chain_fun(CaFile) ->
+    {ok, ServerCAs} = file:read_file(CaFile),
+    Pems = public_key:pem_decode(ServerCAs),
+    CaCerts = lists:map(fun({_, Der, _}) -> Der end, Pems),
+    fun(ChainCerts) -> enum_cacerts(CaCerts, ChainCerts) end.
+
+-spec get_node_cert_paths(string()) -> {string(), string(), string()}.
+get_node_cert_paths(Spool) ->
+    DefaultCA = filename:join([Spool, "secure/cluster/cert.pem"]),
+    DefaultKey = filename:join([Spool, "secure/node/key.pem"]),
+    DefaultCert = filename:join([Spool, "secure/node/cert.pem"]),
+    CaFile = wm_conf:g(cluster_cert, {DefaultCA, string}),
+    KeyFile = wm_conf:g(node_key, {DefaultKey, string}),
+    CertFile = wm_conf:g(node_cert, {DefaultCert, string}),
+    {CaFile, KeyFile, CertFile}.

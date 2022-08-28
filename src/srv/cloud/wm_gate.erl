@@ -13,6 +13,8 @@
 
 -record(mstate, {spool = "" :: string, children = #{} :: #{}}).
 
+-define(CONNECTION_AWAIT_TIMEOUT, timer:seconds(3)).
+
 %% ============================================================================
 %% Module API
 %% ============================================================================
@@ -169,29 +171,43 @@ get_auth_headers(Creds) ->
      {<<"username">>, list_to_binary(Username)},
      {<<"password">>, list_to_binary(Password)}].
 
+% https://www.erlang.org/doc/man/ssl.html#type-client_option
+%(node@ts.openworkload.com)32> {ok, Pid1} = gun:open("ts.openworkload.com", 8444, #{transport => tls, protocols => [http], tls_opts => [{versions, ['tlsv1.3']}, {verify, verify_peer}, {fail_if_no_peer_cert, false}, {server_name_indication, disable}, {reuse_sessions, false}, {partial_chain, wm_utils:get_cert_partial_chain_fun("/opt/swm/spool/secure/cluster/cert.pem")}, {cacertfile, "/opt/swm/spool/secure/cluster/ca-chain-cert.pem"}, {certfile, "/home/taras/.swm/cert.pem"}, {keyfile, "/home/taras/.swm/key.pem"}]}).
+%{ok,<0.4471.0>}
+%(node@ts.openworkload.com)33> gun:await_up(Pid1).
+%{error,timeout}
+%(node@ts.openworkload.com)34>
+
 -spec open_connection(#remote{}, string()) -> {ok, pid()} | {error | term()}.
 open_connection(Remote, Spool) ->
-    DefaultCA = filename:join([Spool, "secure/cluster/cert.pem"]),
-    DefaultKey = filename:join([Spool, "secure/node/key.pem"]),
-    CA = wm_conf:g(cluster_cert, {DefaultCA, string}),
-    Key = wm_conf:g(node_key, {DefaultKey, string}),
-    Server = wm_entity:get_attr(server, Remote),
+    {CaFile, KeyFile, CertFile} = wm_utils:get_node_cert_paths(Spool),
+    ServerFqdn = wm_entity:get_attr(server, Remote),
+    Server = hd(string:split("ts.openworkload.com", ".")), % {server_name_indication, disable} does not work here
     Port = wm_entity:get_attr(port, Remote),
     ConnOpts =
         #{transport => tls,
           protocols => [http],
-          tls_opts => [{cacertfile, CA}, {keyfile, Key}]},
+          tls_handshake_timeout => 5000,
+          tls_opts => [
+                       {versions, ['tlsv1.3', 'tlsv1.2']},
+                       {verify, verify_peer},
+                       {fail_if_no_peer_cert, true},
+                       {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
+                       {cacertfile, CaFile},
+                       {certfile, CertFile},
+                       {keyfile, KeyFile}
+                      ]},
     ConnPid =
         case gun:open(Server, Port, ConnOpts) of
             {ok, Pid} ->
-                ?LOG_DEBUG("Opened connection to ~p:~p, pid=~p", [Server, Port, Pid]),
+                ?LOG_DEBUG("Opened connection to ~s:~p, pid=~p", [Server, Port, Pid]),
                 Pid;
             OpenError ->
                 Msg = io_lib:format("Connection opening error: ~p, server=~p, port=~p", [OpenError, Server, Port]),
                 ?LOG_WARN(Msg),
                 exit(Msg)
         end,
-    case gun:await_up(ConnPid) of
+    case gun:await_up(ConnPid, ?CONNECTION_AWAIT_TIMEOUT) of
         {ok, Protocol} ->
             ?LOG_DEBUG("Connection is UP, protocol: ~p", [Protocol]),
             {ok, ConnPid};

@@ -53,20 +53,13 @@ code_change(_OldVsn, MState, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
-%% @hidden
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     MState2 = MState#mstate{routes = #{"/" => {api, wm_http_top}}},
     Dispatch = dispatch_rules(MState2#mstate.routes, []),
     Port = wm_conf:g(https_port, {?DEFAULT_HTTPS_PORT, integer}),
-    CaFile = filename:join([MState2#mstate.spool, "secure/cluster/cert.pem"]),
-    CertFile = filename:join([MState2#mstate.spool, "secure/node/cert.pem"]),
-    KeyFile = filename:join([MState2#mstate.spool, "secure/node/key.pem"]),
-    {ok, ServerCAs} = file:read_file(CaFile),
-    Pems = public_key:pem_decode(ServerCAs),
-    CaCerts = lists:map(fun({_, Der, _}) -> Der end, Pems),
-    PartChain = fun(ChainCerts) -> enum_cacerts(CaCerts, ChainCerts) end,
+    {CaFile, KeyFile, CertFile} = wm_utils:get_node_cert_paths(MState#mstate.spool),
     {ok, Result} =
         cowboy:start_tls(https,
                          [{port, Port},
@@ -74,7 +67,7 @@ init(Args) ->
                           {verify, verify_peer},
                           {versions, ['tlsv1.3', 'tlsv1.2']},
                           {fail_if_no_peer_cert, true},
-                          {partial_chain, PartChain},
+                          {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
                           {cacertfile, CaFile},
                           {certfile, CertFile},
                           {keyfile, KeyFile}],
@@ -82,16 +75,6 @@ init(Args) ->
     ?LOG_INFO("Web server has been started on port ~p: ~p", [Port, Result]),
     wm_event:announce(http_started),
     {ok, MState2}.
-
-enum_cacerts([], _Certs) ->
-    unknown_ca;
-enum_cacerts([CertFile | Rest], Certs) ->
-    case lists:member(CertFile, Certs) of
-        true ->
-            {trusted_ca, CertFile};
-        false ->
-            enum_cacerts(Rest, Certs)
-    end.
 
 parse_args([], MState) ->
     MState;
