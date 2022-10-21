@@ -18,6 +18,16 @@ int get_term_type(const char* buf, const int &index) {
   return term_type;
 }
 
+int get_term_buf_size(const char* buf, const int &index) {
+  // Get buffer size with the term header
+  int tmp_index = index;
+  if (ei_skip_term(buf, &tmp_index)) {
+    std::cerr << "Could not skip ei buffer term to get its size" << std::endl;
+    return -1;
+  }
+  return tmp_index - index;
+}
+
 int get_term_size(const char* buf, const int &index) {
   int term_size = 0;
   int term_type = 0;
@@ -93,14 +103,17 @@ int swm::ei_buffer_to_tuple_atom_buff(const char* buf, int &index, SwmTupleAtomB
   if (ei_buffer_to_atom(buf, index, std::get<0>(tuple))) {
     return -1;
   }
-  if (ei_x_new(&std::get<1>(tuple))) {
+  auto &x = std::get<1>(tuple);
+  if (ei_x_new(&x)) {
     std::cerr << "Could not create ei buffer for SwmTupleAtomBuff" << std::endl;
     return -1;
   }
-  if (ei_x_append_buf(&std::get<1>(tuple), buf, get_term_size(buf, index))) {
+
+  if (ei_x_append_buf(&x, &buf[index], get_term_buf_size(buf, index))) {
     std::cerr << "Could not append ei buffer for SwmTupleAtomBuff" << std::endl;
     return -1;
   }
+  x.index = 0;
   ei_skip_term(buf, &index);
   return 0;
 }

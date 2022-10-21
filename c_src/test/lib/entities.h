@@ -5,6 +5,7 @@
 #include "wm_node.h"
 #include "wm_resource.h"
 #include "wm_scheduler_result.h"
+#include "wm_entity_utils.h"
 #include "wm_process.h"
 
 using ::testing::ElementsAre;
@@ -269,7 +270,7 @@ TEST(Job, construct) {
       EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // properties
       EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0);   // prices
       EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);     // usage time
-      EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // resources
+      EXPECT_EQ(ei_x_encode_list_header(&x, 2), 0);  // resources
       {
         EXPECT_EQ(ei_x_encode_tuple_header(&x, 8), 0);
         {
@@ -278,6 +279,25 @@ TEST(Job, construct) {
           EXPECT_EQ(ei_x_encode_ulonglong(&x, 1234567), 0);
           EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // hooks
           EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // properties
+          EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0); // prices
+          EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);  // usage time
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
+        }
+        EXPECT_EQ(ei_x_encode_tuple_header(&x, 8), 0);
+        {
+          EXPECT_EQ(ei_x_encode_atom(&x, "resource"), 0);
+          EXPECT_EQ(ei_x_encode_string(&x, "flavor"), 0);
+          EXPECT_EQ(ei_x_encode_ulonglong(&x, 1), 0);
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // hooks
+          EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // properties
+          {
+            EXPECT_EQ(ei_x_encode_tuple_header(&x, 2), 0);  // {value, "m1.tiny"}
+            {
+              EXPECT_EQ(ei_x_encode_atom(&x, "value"), 0);
+              EXPECT_EQ(ei_x_encode_string(&x, "m1.tiny"), 0);
+            }
+          }
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
           EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0); // prices
           EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);  // usage time
           EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
@@ -330,8 +350,22 @@ TEST(Job, construct) {
   EXPECT_EQ(resources[0].get_count(), 1ul);
 
   const auto sub_resources = resources[0].get_resources();
+  EXPECT_EQ(sub_resources.size(), 2ul);
+
   EXPECT_EQ(sub_resources[0].get_name(), "mem");
   EXPECT_EQ(sub_resources[0].get_count(), 1234567ul);
+  EXPECT_TRUE(sub_resources[0].get_properties().empty());
+
+  EXPECT_EQ(sub_resources[1].get_name(), "flavor");
+  EXPECT_EQ(sub_resources[1].get_count(), 1ul);
+  const auto props = sub_resources[1].get_properties();
+  EXPECT_EQ(props.size(), 1ul);
+  EXPECT_EQ(std::get<0>(props[0]), "value");
+
+  std::string value;
+  auto tmp_buf = std::get<1>(props[0]);
+  ASSERT_EQ(swm::ei_buffer_to_str(tmp_buf, value), 0);
+  EXPECT_EQ(value, "m1.tiny");
 
   EXPECT_TRUE(entity.get_resources().empty());
   EXPECT_EQ(entity.get_container(), "container-id-28");
