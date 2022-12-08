@@ -188,15 +188,14 @@ open_connection(Remote, Spool) ->
         #{transport => tls,
           protocols => [http],
           tls_handshake_timeout => 5000,
-          tls_opts => [
-                       {versions, ['tlsv1.3', 'tlsv1.2']},
-                       {verify, verify_peer},
-                       {fail_if_no_peer_cert, true},
-                       {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
-                       {cacertfile, CaFile},
-                       {certfile, CertFile},
-                       {keyfile, KeyFile}
-                      ]},
+          tls_opts =>
+              [{versions, ['tlsv1.3', 'tlsv1.2']},
+               {verify, verify_peer},
+               {fail_if_no_peer_cert, true},
+               {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
+               {cacertfile, CaFile},
+               {certfile, CertFile},
+               {keyfile, KeyFile}]},
     ConnPid =
         case gun:open(Server, Port, ConnOpts) of
             {ok, Pid} ->

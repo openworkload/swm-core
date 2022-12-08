@@ -139,11 +139,11 @@ get_flavors_info(Req) ->
 get_jobs_info(Req) ->
     ?LOG_DEBUG("Handle job info HTTP request"),
     case Req of
-        #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary, "/stdout">>} ->
+        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/stdout">>} ->
             get_job_stdout(binary_to_list(JobId));
-        #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary, "/stderr">>} ->
+        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/stderr">>} ->
             get_job_stderr(binary_to_list(JobId));
-        #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary>>} ->
+        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
             get_one_job(binary_to_list(JobId));
         #{path := <<"/user/job">>} ->
             get_job_list();
@@ -251,7 +251,7 @@ get_job_list() ->
 delete_job(Req) ->
     ?LOG_DEBUG("Handle job cancellation HTTP request: ~p", [Req]),
     case Req of
-        #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary>>} ->
+        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
             {string, Msg} = gen_server:call(wm_user, {cancel, [binary_to_list(JobId)]}),
             {Msg, ?HTTP_CODE_OK};
         _ ->
@@ -262,7 +262,7 @@ delete_job(Req) ->
 update_job(Req) ->
     ?LOG_DEBUG("Handle job updating HTTP request: ~p", [Req]),
     case Req of
-        #{path := <<"/user/job/", JobId:?JOB_ID_SIZE/binary>>} ->
+        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
             case cowboy_req:header(<<"modification">>, Req) of
                 <<"requeue">> ->
                     {string, Msg} = gen_server:call(wm_user, {requeue, [binary_to_list(JobId)]}),

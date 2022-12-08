@@ -715,7 +715,7 @@ input_validation_test() ->
                          end,
                      %% could be {ucs,{bad_utf8_character_code}} or
                      %%          {json_encode,{bad_char,_}}
-                     {'EXIT', _} = catch encode(X)
+                     {'EXIT', _} = (catch encode(X))
                   end,
                   Bad).
 

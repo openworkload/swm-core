@@ -432,7 +432,7 @@ add_resources([R | T], Map) ->
 
 -spec append_id_to_binary(pos_integer(), binary()) -> binary().
 append_id_to_binary(ID, Binary) ->
-    <<Binary/binary, ID:?BINARY_ID_BITS/unsigned-integer>>.
+    <<Binary/binary, ID:(?BINARY_ID_BITS)/unsigned-integer>>.
 
 -spec do_get_neighbours_addresses(atom(), #mstate{}) -> [node_address()].
 do_get_neighbours_addresses(SortBy, #mstate{rh = RH}) ->
@@ -591,11 +591,11 @@ init_ct(CT, 0, N2, _, _) when N2 =< 1 ->
 init_ct(CT, 0, N2, Len, #mstate{} = MState) ->
     init_ct(CT, Len, N2 - 1, Len, MState);
 init_ct(CT, N1, N2, Len, #mstate{} = MState) when N1 == N2 ->
-    NewCT = <<0:?BINARY_WEIGHT_BITS/unsigned-integer, CT/binary>>,
+    NewCT = <<0:(?BINARY_WEIGHT_BITS)/unsigned-integer, CT/binary>>,
     init_ct(NewCT, N1 - 1, N2, Len, MState);
 init_ct(CT, N1, N2, Len, #mstate{} = MState) ->
     %% Assume 1 second is a relatively big weight and real value is usually less:
-    X = <<?MILLISECONDS_IN_1_SECOND:?BINARY_WEIGHT_BITS/unsigned-integer>>,
+    X = <<?MILLISECONDS_IN_1_SECOND:(?BINARY_WEIGHT_BITS)/unsigned-integer>>,
     init_ct(<<X/binary, CT/binary>>, N1 - 1, N2, Len, MState).
 
 do_update_latency(Node, #mstate{}) ->

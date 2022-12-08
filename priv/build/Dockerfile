@@ -111,7 +111,7 @@ RUN echo . /usr/erlang/activate >> /etc/bash.bashrc
 RUN mkdir /tmp/swm-sched
 RUN mkdir /var/run/swm
 COPY ./priv/build/build-package.sh /var/run/swm/
-COPY ./c_src/porter/swm-porter /var/run/swm/
+#COPY ./c_src/porter/swm-porter /var/run/swm/
 COPY ./scripts/swm-docker-finalize.sh /var/run/swm/
 
 # Build and install Google Tests
