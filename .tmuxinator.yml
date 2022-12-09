@@ -1,0 +1,51 @@
+################################################################
+# Runs a set of development windows/panes for Sky Port in tmux #
+# To run it:                                                   #
+#    tmuxinator start                                          #
+################################################################
+
+name: skyport
+root: ~/projects/swm-core
+pre_window: make cr
+startup_window: core
+
+windows:
+  - core:
+      layout: main-horizontal
+      panes:
+        - core:
+          - scripts/run-in-shell.sh -x
+  - logs:
+      layout: main-horizontal
+      panes:
+        - core-logs:
+          - tail -f /opt/swm/spool/node\@*/log/$(date +"%Y")
+        - scheduler-logs:
+          - tail -f /opt/swm/spool/node\@*/log/scheduler.log
+  - terminal:
+      layout: even-vertical
+      panes:
+        - list-jobs:
+          - sleep 3
+          - cd ~/projects/swm-console-term
+          - watch ./swm-console --job-list
+        - list-nodes:
+          - sleep 3
+          - cd ~/projects/swm-console-term
+          - watch ./swm-console --node-list
+        - flavor-nodes:
+          - sleep 3
+          - cd ~/projects/swm-console-term
+          - watch ./swm-console --flavor-list
+  - jupyter:
+      panes:
+        - jupyterlab:
+          - cd ~/projects/swm-jupyter-term
+          - conda activate swm-jupyter
+          - . .venv/bin/activate
+          - jupyterhub
+  - gate:
+      panes:
+        - cloud-gate:
+          - cd ~/projects/swm-cloud-gate
+          - ./run.sh
