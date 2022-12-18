@@ -379,9 +379,8 @@ ca_cnf(CA) ->
 -spec do_get_altname(term()) -> atom() | string().
 do_get_altname(Cert) ->
     {rdnSequence, Subject} = Cert#'OTPCertificate'.tbsCertificate#'OTPTBSCertificate'.subject,
-    %V = [Attribute#'AttributeTypeAndValue'.value
-    %     || [Attribute] <- Subject, Attribute#'AttributeTypeAndValue'.type == ?id - ce - subjectAltName],
-    V = false,  % FIXME uncomment the line above
+    V = [Attribute#'AttributeTypeAndValue'.value
+         || [Attribute] <- Subject, Attribute#'AttributeTypeAndValue'.type == ?'id-ce-subjectAltName'],
     case V of
         [Att] ->
             case Att of
