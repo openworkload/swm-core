@@ -171,18 +171,11 @@ get_auth_headers(Creds) ->
      {<<"username">>, list_to_binary(Username)},
      {<<"password">>, list_to_binary(Password)}].
 
-% https://www.erlang.org/doc/man/ssl.html#type-client_option
-%(node@ts.openworkload.com)32> {ok, Pid1} = gun:open("ts.openworkload.com", 8444, #{transport => tls, protocols => [http], tls_opts => [{versions, ['tlsv1.3']}, {verify, verify_peer}, {fail_if_no_peer_cert, false}, {server_name_indication, disable}, {reuse_sessions, false}, {partial_chain, wm_utils:get_cert_partial_chain_fun("/opt/swm/spool/secure/cluster/cert.pem")}, {cacertfile, "/opt/swm/spool/secure/cluster/ca-chain-cert.pem"}, {certfile, "/home/taras/.swm/cert.pem"}, {keyfile, "/home/taras/.swm/key.pem"}]}).
-%{ok,<0.4471.0>}
-%(node@ts.openworkload.com)33> gun:await_up(Pid1).
-%{error,timeout}
-%(node@ts.openworkload.com)34>
-
 -spec open_connection(#remote{}, string()) -> {ok, pid()} | {error | term()}.
 open_connection(Remote, Spool) ->
     {CaFile, KeyFile, CertFile} = wm_utils:get_node_cert_paths(Spool),
     ServerFqdn = wm_entity:get_attr(server, Remote),
-    Server = hd(string:split("ts.openworkload.com", ".")), % {server_name_indication, disable} does not work here
+    Server = hd(string:split(ServerFqdn, ".")),
     Port = wm_entity:get_attr(port, Remote),
     ConnOpts =
         #{transport => tls,
