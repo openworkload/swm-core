@@ -217,7 +217,7 @@ start_scheduler(Scheduler, #mstate{} = MState) ->
             {error, MState}
     end.
 
-start_timetable_creation(grid, Scheduler, #mstate{} = MState) ->
+start_timetable_creation(grid, _, #mstate{} = MState) ->
     ?LOG_DEBUG("Start new grid scheduling iteration"),
     %TODO Call a real grid scheduler instead of this mock-scheduler
     TT = run_mock_scheduler(grid, MState),
@@ -260,7 +260,7 @@ get_binary_for_scheduler(Scheduler) ->
     PartsBin = erlang:term_to_binary(Parts),
     Bin6 = wm_sched_utils:add_input(?DATA_TYPE_PARTITIONS, PartsBin, Bin5),
 
-    Nodes = wm_topology:get_tree_nodes(),
+    Nodes = wm_topology:get_tree_nodes(true),
     NodesBin = erlang:term_to_binary(Nodes),
     wm_sched_utils:add_input(?DATA_TYPE_NODES, NodesBin, Bin6).
 

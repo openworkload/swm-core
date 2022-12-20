@@ -5,7 +5,7 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([schedule_latency_update/1, get_children/1, get_neighbours/1, get_neighbour_addresses/1, get_latency/2,
-         get_min_latency_to/1, get_tree/1, get_subdiv/1, get_subdiv/0, on_path/2, get_tree_nodes/0, reload/0,
+         get_min_latency_to/1, get_tree/1, get_subdiv/1, get_subdiv/0, on_path/2, get_tree_nodes/1, reload/0,
          is_direct_child/1]).
 
 -include("wm_log.hrl").
@@ -89,9 +89,9 @@ on_path(FromNodeId, ToNodeId) ->
     wm_utils:protected_call(?MODULE, {get_path, FromNodeId, ToNodeId}, []).
 
 %% @doc Get node entities for each
--spec get_tree_nodes() -> [tuple()].
-get_tree_nodes() ->
-    wm_utils:protected_call(?MODULE, get_tree_nodes, []).
+-spec get_tree_nodes(boolean()) -> [tuple()].
+get_tree_nodes(WithTemplates) ->
+    wm_utils:protected_call(?MODULE, {get_tree_nodes, WithTemplates}, []).
 
 %% @doc Reload topology data structures
 -spec reload() -> ok.
@@ -158,8 +158,8 @@ handle_call({is_direct_child, NodeId}, _, #mstate{} = MState) ->
         end,
     Result = lists:any(F, Children),
     {reply, Result, MState};
-handle_call(get_tree_nodes, _, #mstate{} = MState) ->
-    {reply, do_get_tree_nodes(MState), MState};
+handle_call({get_tree_nodes, WithTemplates}, _, #mstate{} = MState) ->
+    {reply, do_get_tree_nodes(WithTemplates, MState), MState};
 handle_call({get_subdiv, Name}, _, #mstate{} = MState) ->
     {reply, do_get_my_subdiv(Name, MState), MState};
 handle_call({get_tree, list}, _, #mstate{rh = RH} = MState) ->
@@ -699,8 +699,8 @@ do_get_my_subdiv(SubDivName, #mstate{} = MState) ->
             do_get_subdiv(SubDivName, Node)
     end.
 
--spec do_get_tree_nodes(#mstate{}) -> [tuple()].
-do_get_tree_nodes(#mstate{rh = RH}) when is_map(RH) ->
+-spec do_get_tree_nodes(boolean(), #mstate{}) -> [tuple()].
+do_get_tree_nodes(WithTemplates, #mstate{rh = RH}) when is_map(RH) ->
     F = fun FoldFun({node, ID}, _, IDs) ->
                 [ID | IDs];
             FoldFun(_, V, IDs) when is_map(V) ->
@@ -708,8 +708,14 @@ do_get_tree_nodes(#mstate{rh = RH}) when is_map(RH) ->
         end,
     NodeIDs = maps:fold(F, [], RH),
     ?LOG_DEBUG("RH node ids: ~p", [NodeIDs]),
-    wm_conf:select(node, NodeIDs);
-do_get_tree_nodes(#mstate{rh = RH}) ->
+    Nodes = wm_conf:select(node, NodeIDs),
+    case WithTemplates of
+        false ->
+            lists:filter(fun(X) -> wm_entity:get_attr(is_template, X) == false end, Nodes);
+        true ->
+            Nodes
+    end;
+do_get_tree_nodes(_, #mstate{rh = RH}) ->
     ?LOG_DEBUG("RH has not been constructed yet: ~p", [RH]),
     [].
 
