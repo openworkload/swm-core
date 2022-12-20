@@ -233,8 +233,8 @@ void SwmPartition::set_external_id(const std::string &new_val) {
   external_id = new_val;
 }
 
-void SwmPartition::set_addresses(const char* new_val) {
-  addresses = const_cast<char*>(new_val);
+void SwmPartition::set_addresses(const std::map<std::string, std::string> &new_val) {
+  addresses = new_val;
 }
 
 void SwmPartition::set_comment(const std::string &new_val) {
@@ -309,7 +309,7 @@ std::string SwmPartition::get_external_id() const {
   return external_id;
 }
 
-char* SwmPartition::get_addresses() const {
+std::map<std::string, std::string> SwmPartition::get_addresses() const {
   return addresses;
 }
 

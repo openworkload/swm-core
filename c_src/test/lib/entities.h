@@ -59,7 +59,13 @@ TEST(Node, construct) {
   EXPECT_EQ(ei_x_encode_string(&x, "remote-id"), 0);
   EXPECT_EQ(ei_x_encode_atom(&x, "false"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "gateway"), 0);
-  EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0);   // prices
+  EXPECT_EQ(ei_x_encode_map_header(&x, 2), 0);   // prices
+  {
+    EXPECT_EQ(ei_x_encode_string(&x, "account-1"), 0);
+    EXPECT_EQ(ei_x_encode_double(&x, 0.0), 0);
+    EXPECT_EQ(ei_x_encode_string(&x, "account-2"), 0);
+    EXPECT_EQ(ei_x_encode_double(&x, 42.12), 0);
+  }
   EXPECT_EQ(ei_x_encode_ulonglong(&x, 5), 0);
 
   int index = 0;
@@ -86,6 +92,15 @@ TEST(Node, construct) {
   EXPECT_EQ(entity.get_is_template(), "false");
   EXPECT_EQ(entity.get_gateway(), "gateway");
   EXPECT_EQ(entity.get_revision(), 5ul);
+
+  const auto prices = entity.get_prices();
+  EXPECT_EQ(prices.size(), 2ul);
+  const auto found1 = prices.find("account-1");
+  const auto found2 = prices.find("account-2");
+  EXPECT_TRUE(found1 != prices.end());
+  EXPECT_TRUE(found2 != prices.end());
+  EXPECT_DOUBLE_EQ(stod(found1->second), 0.0);
+  EXPECT_DOUBLE_EQ(stod(found2->second), 42.12);
 
   EXPECT_EQ(ei_x_free(&x), 0);
 }

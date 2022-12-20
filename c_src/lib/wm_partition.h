@@ -33,7 +33,7 @@ class SwmPartition:SwmEntity {
   void set_created(const std::string&);
   void set_updated(const std::string&);
   void set_external_id(const std::string&);
-  void set_addresses(const char*);
+  void set_addresses(const std::map<std::string, std::string>&);
   void set_comment(const std::string&);
   void set_revision(const uint64_t&);
 
@@ -53,7 +53,7 @@ class SwmPartition:SwmEntity {
   std::string get_created() const;
   std::string get_updated() const;
   std::string get_external_id() const;
-  char* get_addresses() const;
+  std::map<std::string, std::string> get_addresses() const;
   std::string get_comment() const;
   uint64_t get_revision() const;
 
@@ -74,7 +74,7 @@ class SwmPartition:SwmEntity {
   std::string created;
   std::string updated;
   std::string external_id;
-  char* addresses;
+  std::map<std::string, std::string> addresses;
   std::string comment;
   uint64_t revision;
 

@@ -11,7 +11,7 @@ exclude = {"malfunction",
 types_map = {
      "atom()": "std::string",
      "any()": "char*",
-     "map()": "char*",
+     "map()": "std::map<std::string, std::string>",
      "string()": "std::string",
      "binary()": "char*",
      "integer()": "int64_t",

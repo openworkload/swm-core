@@ -101,8 +101,8 @@ void SwmResource::set_properties(const std::vector<SwmTupleAtomBuff> &new_val) {
   properties = new_val;
 }
 
-void SwmResource::set_prices(const char* new_val) {
-  prices = const_cast<char*>(new_val);
+void SwmResource::set_prices(const std::map<std::string, std::string> &new_val) {
+  prices = new_val;
 }
 
 void SwmResource::set_usage_time(const uint64_t &new_val) {
@@ -129,7 +129,7 @@ std::vector<SwmTupleAtomBuff> SwmResource::get_properties() const {
   return properties;
 }
 
-char* SwmResource::get_prices() const {
+std::map<std::string, std::string> SwmResource::get_prices() const {
   return prices;
 }
 

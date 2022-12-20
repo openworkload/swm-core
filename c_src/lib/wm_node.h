@@ -34,7 +34,7 @@ class SwmNode:SwmEntity {
   void set_remote_id(const std::string&);
   void set_is_template(const std::string&);
   void set_gateway(const std::string&);
-  void set_prices(const char*);
+  void set_prices(const std::map<std::string, std::string>&);
   void set_revision(const uint64_t&);
 
   std::string get_id() const;
@@ -54,7 +54,7 @@ class SwmNode:SwmEntity {
   std::string get_remote_id() const;
   std::string get_is_template() const;
   std::string get_gateway() const;
-  char* get_prices() const;
+  std::map<std::string, std::string> get_prices() const;
   uint64_t get_revision() const;
 
  private:
@@ -75,7 +75,7 @@ class SwmNode:SwmEntity {
   std::string remote_id;
   std::string is_template;
   std::string gateway;
-  char* prices;
+  std::map<std::string, std::string> prices;
   uint64_t revision;
 
 };

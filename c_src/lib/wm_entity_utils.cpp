@@ -490,17 +490,60 @@ int swm::ei_buffer_to_double(const char* buf, int &index, std::vector<double> &a
   return 0;
 }
 
-int swm::ei_buffer_to_map(const char* buf, int &index, [[maybe_unused]] char* elem) {
+int swm::ei_buffer_to_map(const char* buf, int &index, std::map<std::string, std::string> &data) {
   int map_size = 0;
   if (ei_decode_map_header(buf, &index, &map_size)) {
     std::cerr << "Could not decode map at pos " << index << std::endl;
     return -1;
   }
-  //TODO: copy row buf for further parsing when types are known?
+
+  for (int i=0; i< map_size; ++i) {
+    std::string x1;
+    if (ei_buffer_to_str(buf, index, x1)) {
+      return -1;
+    }
+    std::string x2;
+    double d_tmp = 0.0;
+    int64_t i_tmp = 0;
+    const auto term_type = get_term_type(buf, index);
+    switch (term_type) {
+        case ERL_ATOM_EXT:
+          if (ei_buffer_to_atom(buf, index, x2)) {
+            return -1;
+          }
+          break;
+        case ERL_FLOAT_EXT:
+          if (swm::ei_buffer_to_double(buf, index, d_tmp)) {
+            return -1;
+          }
+          x2 = std::to_string(d_tmp);
+          break;
+        case ERL_SMALL_INTEGER_EXT:
+        case ERL_INTEGER_EXT:
+        case ERL_SMALL_BIG_EXT:
+        case ERL_LARGE_BIG_EXT:
+          if (ei_buffer_to_int64_t(buf, index, i_tmp)) {
+            return -1;
+          }
+          x2 = std::to_string(i_tmp);
+          break;
+        case ERL_LIST_EXT:
+        case ERL_STRING_EXT:
+          if (ei_buffer_to_str(buf, index, x2)) {
+            return -1;
+          }
+          break;
+        default:
+          // unsupported or empty
+          std::cerr << "Unsupported type of map value: " << term_type << std::endl;
+    }
+    data.emplace(std::move(x1), std::move(x2));
+  }
+
   return 0;
 }
 
-int swm::ei_buffer_to_map(const char* buf, int &index, std::vector<char*> &array) {
+int swm::ei_buffer_to_map(const char* buf, int &index, std::vector<std::map<std::string, std::string>> &array) {
   const int term_type = get_term_type(buf, index);
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
     std::cerr << "Could not parse eterm " << index << ": not a list" << std::endl;
@@ -573,3 +616,13 @@ std::ostream& operator<<(std::ostream& out, const std::pair<std::string, ei_x_bu
 std::ostream& operator<<(std::ostream& out, const std::pair<std::string, uint64_t> &x) {
   return out << std::string("(") + std::get<0>(x) + ", " + std::to_string(std::get<1>(x)) + ")";
 }
+
+std::ostream& operator<<(std::ostream& out, const std::map<std::string, std::string> &x) {
+  out << "{";
+  for (const auto &[first, second] : x) {
+    out << first << ": " << second << ", ";
+  }
+  out << "}" << std::endl;
+  return out;
+}
+

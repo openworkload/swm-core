@@ -6,10 +6,12 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <map>
 
 std::ostream& operator<<(std::ostream& out, const std::pair<std::string, std::string> &x);
 std::ostream& operator<<(std::ostream& out, const std::pair<std::string, ei_x_buff> &x);
 std::ostream& operator<<(std::ostream& out, const std::pair<std::string, uint64_t> &x);
+std::ostream& operator<<(std::ostream& out, const std::map<std::string, std::string> &x);
 
 namespace swm {
 
@@ -39,8 +41,8 @@ int ei_buffer_to_int64_t(const char* buf, int &index, std::vector<int64_t> &arra
 int ei_buffer_to_double(const char* buf, int &index, double &x);
 int ei_buffer_to_double(const char* buf, int &index, std::vector<double> &array);
 
-int ei_buffer_to_map(const char* buf, int &index, char* a);
-int ei_buffer_to_map(const char* buf, int &index, std::vector<char*> &array);
+int ei_buffer_to_map(const char* buf, int &index, std::map<std::string, std::string> &data);
+int ei_buffer_to_map(const char* buf, int &index, std::vector<std::map<std::string, std::string>> &array);
 
 void print_uint64_t(const uint64_t&, const std::string &prefix, const char separator);
 void print_int64_t(const int64_t&, const std::string &prefix, const char separator);

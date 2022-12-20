@@ -237,8 +237,8 @@ void SwmNode::set_gateway(const std::string &new_val) {
   gateway = new_val;
 }
 
-void SwmNode::set_prices(const char* new_val) {
-  prices = const_cast<char*>(new_val);
+void SwmNode::set_prices(const std::map<std::string, std::string> &new_val) {
+  prices = new_val;
 }
 
 void SwmNode::set_revision(const uint64_t &new_val) {
@@ -313,7 +313,7 @@ std::string SwmNode::get_gateway() const {
   return gateway;
 }
 
-char* SwmNode::get_prices() const {
+std::map<std::string, std::string> SwmNode::get_prices() const {
   return prices;
 }
 
