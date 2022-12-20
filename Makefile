@@ -37,18 +37,18 @@ cb:			##@CONTAINERS build container image
 cr: 		##@CONTAINERS run or attach to running container
 			$(START_CONTAINER)
 
-gen:		##@SWM Generate files for SWM and Porter
+gen:		##@SKYPORT Generate entity files
 			$(COG) -U -z -d -e -c -o ./src/lib/wm_entity.hrl ./src/lib/wm_entity.hrl.cog
 			$(COG) -U -z -d -e -c -o ./src/lib/wm_entity.erl ./src/lib/wm_entity.erl.cog
 			scripts/autogen-cpp.py
 
-porter:		##@SWM Compile Porter
+porter:		##@SKYPORT Compile Porter
 			$(MAKE) -C c_src/porter
 
-compile:	##@SWM Compile SWM
+compile:	##@SKYPORT Compile Core
 			$(REBAR) compile
 
-release:	##@SWM Build release tar.gz package
+release:	##@SKYPORT Build release tar.gz package
 			$(REBAR) release
 			# relx can't copy files from directory by wildcard, but it can copy full directory
 			# like {copy, "priv/", "priv/"}, but result will be priv/priv, workaround for that
@@ -67,6 +67,9 @@ run-ghead: gen compile porter	##@RUN Run grid head node (1st hier level)
 
 run-chead: gen compile porter	##@RUN Run cluster head node (2nd hier level)
 			scripts/run-in-shell.sh -c
+
+run-skyport:	##@RUN Run Sky Port core in foreground
+			scripts/run-in-shell.sh -x
 
 test:		##@TESTS Run unit and functional erlang tests
 			scripts/swm.env
@@ -98,3 +101,6 @@ format:		##@DEV Format erlang code
 
 lint:		##@DEV Run erlang linter to validate the code
 			$(REBAR) lint
+
+tmux:	##@DEV Run tmux with Sky Port development layout
+	tmuxinator
