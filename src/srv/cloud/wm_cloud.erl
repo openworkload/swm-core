@@ -204,8 +204,24 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
                 0 ->
                     ok;
                 Length ->
-                    true = wm_conf:update(PreserveNodes) == Length,
-                    Default = lists:nth(1, PreserveNodes),
+                    AddFlavorRes =
+                        fun(Node) ->
+                           Resources1 = wm_entity:get_attr(resources, Node),
+                           Resources2 =
+                               Resources1
+                               ++ case lists:keysearch("flavor", 2, Resources1) of
+                                      false ->
+                                          Name = wm_entity:get_attr(name, Node),
+                                          Parameters = [{name, "flavor"}, {properties, [{value, Name}]}],
+                                          [wm_entity:set_attr(Parameters, wm_entity:new(resource))];
+                                      _ ->  % flavor resource already presents
+                                          []
+                                  end,
+                           wm_entity:set_attr([{resources, Resources2}], Node)
+                        end,
+                    NodesToUpdate = lists:map(AddFlavorRes, PreserveNodes),
+                    true = wm_conf:update(NodesToUpdate) == Length,
+                    Default = lists:nth(1, NodesToUpdate),
                     DefaultId = wm_entity:get_attr(id, Default),
                     case wm_entity:get_attr(default_flavor_id, Remote) of
                         DefaultId ->
