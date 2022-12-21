@@ -125,7 +125,7 @@ spawn_partition(Job, Remote) ->
         #{name => PartName,
           image_name => get_resource_value_property(image, image, Job, Remote, fun get_default_image_name/1),
           flavor_name => get_resource_value_property(node, flavor, Job, Remote, fun get_default_flavor_name/1),
-          partition_name => get_partition_name(JobId),
+          partition_name => PartName,
           node_count => wm_utils:get_requested_nodes_number(Job)},
     ?LOG_DEBUG("Start partition options: ~w", [Options]),
     {ok, Creds} = get_credentials(Remote),

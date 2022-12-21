@@ -221,6 +221,8 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
                         end,
                     NodesToUpdate = lists:map(AddFlavorRes, PreserveNodes),
                     true = wm_conf:update(NodesToUpdate) == Length,
+                    RemoteName = wm_entity:get_attr(name, Remote),
+                    add_nodes_to_new_partition(NodesToUpdate, RemoteName),
                     Default = lists:nth(1, NodesToUpdate),
                     DefaultId = wm_entity:get_attr(id, Default),
                     case wm_entity:get_attr(default_flavor_id, Remote) of
@@ -238,6 +240,46 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
         {error, not_found} ->
             [ok = wm_conf:delete(Node) || Node <- TemplateNodes]
     end.
+
+-spec add_nodes_to_new_partition([#node{}], string()) -> integer().
+add_nodes_to_new_partition(Nodes, PartName) ->
+    NodeIds = [wm_entity:get_attr(id, Node) || Node <- Nodes],
+    Cluster1 = wm_topology:get_subdiv(cluster),
+    ClusterId = wm_entity:get_attr(id, Cluster1),
+    OldPartIds = wm_entity:get_attr(partitions, Cluster1),
+    ExistingParts = wm_conf:select(partition, OldPartIds),
+    PartId = case lists:any(fun(P) -> wm_entity:get_attr(name, P) == PartName end, ExistingParts) of
+        true ->
+            ?LOG_DEBUG("Partition with name ~p exists in cluster (good)", [PartName]),
+            {ok, Part1} = wm_conf:select(partition, {name, PartName}),
+            OldNodeIds = wm_entity:get_attr(nodes, Part1),
+            NewNodeIds = lists:umerge(OldNodeIds, NodeIds),
+            Part2 = wm_entity:set_attr([{nodes, NewNodeIds}], Part1),
+            1 = wm_conf:update(Part2),
+            wm_entity:get_attr(id, Part2);
+        false ->
+            NewPartId = wm_utils:uuid(v4),
+            NewPart = wm_entity:set_attr([
+                                               {id, NewPartId},
+                                               {name, PartName},
+                                               {nodes, NodeIds},
+                                               {state, up},
+                                               {subdivision, cluster},
+                                               {subdivision_id, ClusterId},
+                                               {comment, "Remote site partition"}
+                                              ],
+                                              wm_entity:new(partition)),
+            Cluster2 = wm_entity:set_attr({partitions, [NewPartId | OldPartIds]}, Cluster1),
+            1 = wm_conf:update(NewPart),
+            1 = wm_conf:update(Cluster2),
+            NewPartId
+    end,
+    UpdatedNodes = lists:map(fun(Node) ->
+                  wm_entity:set_attr([{subdivision, partition}, {subdivision_id, PartId}], Node)
+              end,
+              Nodes),
+    NodesNumber = length(Nodes),
+    NodesNumber = wm_conf:update(UpdatedNodes).
 
 -spec lookup_node(nonempty_string(), [#node{}]) -> {ok, #node{}} | {error, not_found}.
 lookup_node(_, []) ->

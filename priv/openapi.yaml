@@ -79,6 +79,8 @@ paths:
                 format: binary
         '405':
           description: Invalid input
+        '400':
+          description: User not found
 
     get:
       summary: List all jobs
