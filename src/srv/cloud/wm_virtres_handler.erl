@@ -20,7 +20,7 @@
 -spec get_remote(string()) -> {ok, #remote{}}.
 get_remote(JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
-    AccountID = wm_entity:get_attr(account_id, Job),
+    AccountID = wm_entity:get(account_id, Job),
     ?LOG_INFO("Validate partition (job: ~p, account: ~p)", [JobId, AccountID]),
     wm_conf:select(remote, {account_id, AccountID}).
 
@@ -58,28 +58,28 @@ request_partition_existence(JobId, Remote) ->
 -spec is_job_partition_ready(job_id()) -> true | false.
 is_job_partition_ready(JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
-    NodeIds = wm_entity:get_attr(nodes, Job),
+    NodeIds = wm_entity:get(nodes, Job),
     NotReady =
         fun(NodeID) ->
            {ok, Node} = wm_conf:select(node, {id, NodeID}),
-           idle =/= wm_entity:get_attr(state_alloc, Node)
+           idle =/= wm_entity:get(state_alloc, Node)
         end,
     not lists:any(NotReady, NodeIds).
 
 -spec update_job(list(), job_id()) -> 1.
 update_job(NewParams, JobId) ->
     {ok, Job1} = wm_conf:select(job, {id, JobId}),
-    Job2 = wm_entity:set_attr(NewParams, Job1),
+    Job2 = wm_entity:set(NewParams, Job1),
     1 = wm_conf:update(Job2).
 
 -spec start_uploading(node_id(), job_id()) -> {ok, string()}.
 start_uploading(PartMgrNodeID, JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
-    Priority = wm_entity:get_attr(priority, Job),
-    WorkDir = wm_entity:get_attr(workdir, Job),
-    StdInFile = wm_entity:get_attr(job_stdin, Job),
-    InputFiles = wm_entity:get_attr(input_files, Job),
-    JobScript = wm_entity:get_attr(script, Job),
+    Priority = wm_entity:get(priority, Job),
+    WorkDir = wm_entity:get(workdir, Job),
+    StdInFile = wm_entity:get(job_stdin, Job),
+    InputFiles = wm_entity:get(input_files, Job),
+    JobScript = wm_entity:get(script, Job),
     %TODO: transfer also container image
     Files = lists:filter(fun(X) -> X =/= [] end, [JobScript, StdInFile | InputFiles]),
     {ok, ToNode} = wm_conf:select(node, {id, PartMgrNodeID}),
@@ -91,11 +91,11 @@ start_uploading(PartMgrNodeID, JobId) ->
 -spec start_downloading(node_id(), job_id()) -> {ok, reference(), [string()]}.
 start_downloading(PartMgrNodeID, JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
-    Priority = wm_entity:get_attr(priority, Job),
-    WorkDir = wm_entity:get_attr(workdir, Job),
-    OutputFiles = wm_entity:get_attr(output_files, Job),
-    StdErrFile = wm_entity:get_attr(job_stderr, Job),
-    StdOutFile = wm_entity:get_attr(job_stdout, Job),
+    Priority = wm_entity:get(priority, Job),
+    WorkDir = wm_entity:get(workdir, Job),
+    OutputFiles = wm_entity:get(output_files, Job),
+    StdErrFile = wm_entity:get(job_stderr, Job),
+    StdOutFile = wm_entity:get(job_stdout, Job),
     StdErrPath = filename:join([WorkDir, StdErrFile]),
     StdOutPath = filename:join([WorkDir, StdOutFile]),
     Files = lists:filter(fun(X) -> X =/= [] end, [StdErrPath, StdOutPath | OutputFiles]),
@@ -110,7 +110,7 @@ start_downloading(PartMgrNodeID, JobId) ->
 delete_partition(PartId, Remote) ->
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
-            PartName = wm_entity:get_attr(name, Partition),
+            PartName = wm_entity:get(name, Partition),
             {ok, Creds} = get_credentials(Remote),
             wm_gate:delete_partition(self(), Remote, Creds, PartName);
         {error, Error} ->
@@ -119,7 +119,7 @@ delete_partition(PartId, Remote) ->
 
 -spec spawn_partition(#job{}, #remote{}) -> {ok, string()} | {error, any()}.
 spawn_partition(Job, Remote) ->
-    JobId = wm_entity:get_attr(id, Job),
+    JobId = wm_entity:get(id, Job),
     PartName = get_partition_name(JobId),
     Options =
         #{name => PartName,
@@ -147,10 +147,10 @@ get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
                           (_) ->
                               false
                       end,
-                      wm_entity:get_attr(request, Job))
+                      wm_entity:get(request, Job))
     of
         {value, Resource} ->
-            Properties = wm_entity:get_attr(properties, Resource),
+            Properties = wm_entity:get(properties, Resource),
             case proplists:get_value(value, Properties) of
                 undefined ->
                     FunGetDefault(Remote);
@@ -159,7 +159,7 @@ get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
                         {ok, _} ->
                             EntityName;
                         {error, not_found} ->
-                            JobId = wm_entity:get_attr(id, Job),
+                            JobId = wm_entity:get(id, Job),
                             throw(io_lib:format("Entity ~p ~p (job ~p) is unknown", [Tab, EntityName, JobId]))
                     end
             end;
@@ -169,8 +169,8 @@ get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
 
 -spec get_default_image_name(#remote{}) -> string().
 get_default_image_name(Remote) ->
-    RemoteName = wm_entity:get_attr(name, Remote),
-    case wm_entity:get_attr(default_image_id, Remote) of
+    RemoteName = wm_entity:get(name, Remote),
+    case wm_entity:get(default_image_id, Remote) of
         undefined ->
             ?LOG_ERROR("No default image id is set for the remote ~p", [RemoteName]),
             "";
@@ -180,14 +180,14 @@ get_default_image_name(Remote) ->
                     ?LOG_ERROR("Default image for remote ~p is not found: ~p", [RemoteName, DefaultImageId]),
                     "";
                 {ok, Image} ->
-                    wm_entity:get_attr(name, Image)
+                    wm_entity:get(name, Image)
             end
     end.
 
 -spec get_default_flavor_name(#remote{}) -> string().
 get_default_flavor_name(Remote) ->
-    RemoteName = wm_entity:get_attr(name, Remote),
-    case wm_entity:get_attr(default_flavor_id, Remote) of
+    RemoteName = wm_entity:get(name, Remote),
+    case wm_entity:get(default_flavor_id, Remote) of
         undefined ->
             ?LOG_ERROR("No default flavor node id is set for the remote ~p", [RemoteName]),
             "";
@@ -197,31 +197,31 @@ get_default_flavor_name(Remote) ->
                     ?LOG_ERROR("Default flavor for remote ~p is not found: ~p", [RemoteName, DefaultFlavorId]),
                     "";
                 {ok, Node} ->
-                    wm_entity:get_attr(name, Node)
+                    wm_entity:get(name, Node)
             end
     end.
 
 -spec create_relocation_entities(job_id(), #partition{}, #node{}) -> {atom(), string()}.
 create_relocation_entities(JobId, Partition, TplNode) ->
     ?LOG_INFO("Remote partition [job ~p]: ~p", [JobId, Partition]),
-    Addresses = wm_entity:get_attr(addresses, Partition),
+    Addresses = wm_entity:get(addresses, Partition),
     NodeIps = maps:get(compute_instances_ips, Addresses, []),
     PubPartMgrIp = maps:get(master_public_ip, Addresses, ""),
     PriPartMgrIp = maps:get(master_private_ip, Addresses, ""),
-    PartID = wm_entity:get_attr(id, Partition),
+    PartID = wm_entity:get(id, Partition),
     PartMgrName = get_partition_manager_name(JobId),
 
     case ensure_nodes_cloned(PartID, PartMgrName, NodeIps, JobId, TplNode) of
         [] ->
             {error, "Could not clone nodes for job " ++ JobId};
         ComputeNodes ->
-            ComputeNodeIds = [wm_entity:get_attr(id, X) || X <- ComputeNodes],
+            ComputeNodeIds = [wm_entity:get(id, X) || X <- ComputeNodes],
             PartMgrNode = create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode),
             update_division_entities(Partition, PartMgrNode, ComputeNodeIds),
             NewNodes = [PartMgrNode | ComputeNodes],
             wm_conf:update(NewNodes),
             ?LOG_INFO("Remote nodes [job ~p]: ~p", [JobId, NewNodes]),
-            PartMgrNodeId = wm_entity:get_attr(id, PartMgrNode),
+            PartMgrNodeId = wm_entity:get(id, PartMgrNode),
             JobRss = get_allocated_resources(PartID, [PartMgrNodeId | ComputeNodeIds]),
             ?LOG_DEBUG("New job resources [job ~p]: ~p", [JobId, JobRss]),
             wm_virtres_handler:update_job([{nodes, ComputeNodeIds}, {resources, JobRss}], JobId),
@@ -232,19 +232,19 @@ create_relocation_entities(JobId, Partition, TplNode) ->
 -spec update_division_entities(#partition{}, #node{}, [string()]) -> ok.
 update_division_entities(Partition, PartMgrNode, ComputeNodeIds) ->
     Cluster = wm_topology:get_subdiv(),
-    NameStr = wm_entity:get_attr(name, PartMgrNode),
-    HostStr = wm_entity:get_attr(host, PartMgrNode),
-    PartMgrNodeId = wm_entity:get_attr(id, PartMgrNode),
-    PartID = wm_entity:get_attr(id, Partition),
+    NameStr = wm_entity:get(name, PartMgrNode),
+    HostStr = wm_entity:get(host, PartMgrNode),
+    PartMgrNodeId = wm_entity:get(id, PartMgrNode),
+    PartID = wm_entity:get(id, Partition),
     Cluster1 = wm_topology:get_subdiv(cluster),
-    OldPartIDs = wm_entity:get_attr(partitions, Cluster1),
-    Cluster2 = wm_entity:set_attr({partitions, [PartID | OldPartIDs]}, Cluster1),
+    OldPartIDs = wm_entity:get(partitions, Cluster1),
+    Cluster2 = wm_entity:set({partitions, [PartID | OldPartIDs]}, Cluster1),
     PartitionUpdated =
-        wm_entity:set_attr([{subdivision, cluster},
-                            {subdivision_id, wm_entity:get_attr(id, Cluster)},
-                            {manager, NameStr ++ "@" ++ HostStr},
-                            {nodes, [PartMgrNodeId | ComputeNodeIds]}],
-                           Partition),
+        wm_entity:set([{subdivision, cluster},
+                       {subdivision_id, wm_entity:get(id, Cluster)},
+                       {manager, NameStr ++ "@" ++ HostStr},
+                       {nodes, [PartMgrNodeId | ComputeNodeIds]}],
+                      Partition),
     1 = wm_conf:update(PartitionUpdated),
     1 = wm_conf:update(Cluster2),
     ok.
@@ -255,40 +255,40 @@ get_partition_name(JobId) ->
 
 -spec get_credentials(#remote{}) -> #credential{}.
 get_credentials(Remote) ->
-    RemoteID = wm_entity:get_attr(id, Remote),
+    RemoteID = wm_entity:get(id, Remote),
     wm_conf:select(credential, {remote_id, RemoteID}).
 
 -spec get_allocated_resources(partition_id(), [node_id()]) -> [#resource{}].
 get_allocated_resources(PartID, NodeIds) ->
     GetNodeRes =
         fun(NodeID) ->
-           wm_entity:set_attr([{name, "node"}, {count, 1}, {properties, [{id, NodeID}]}], wm_entity:new(resource))
+           wm_entity:set([{name, "node"}, {count, 1}, {properties, [{id, NodeID}]}], wm_entity:new(resource))
         end,
     NodeRss = [GetNodeRes(X) || X <- NodeIds],
     PartRes =
-        wm_entity:set_attr([{name, "partition"}, {count, 1}, {properties, [{id, PartID}]}, {resources, NodeRss}],
-                           wm_entity:new(resource)),
+        wm_entity:set([{name, "partition"}, {count, 1}, {properties, [{id, PartID}]}, {resources, NodeRss}],
+                      wm_entity:new(resource)),
     [PartRes].
 
 -spec create_partition_manager_node(partition_id(), job_id(), string(), string(), #node{}) -> #node{}.
 create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode) when TplNode =/= undefined ->
-    RemoteID = wm_entity:get_attr(remote_id, TplNode),
+    RemoteID = wm_entity:get(remote_id, TplNode),
     NodeName = get_partition_manager_name(JobId),
     ApiPort = get_cloud_node_api_port(),
     NodeID = wm_utils:uuid(v4),
-    wm_entity:set_attr([{id, NodeID},
-                        {name, NodeName},
-                        {host, PriPartMgrIp},
-                        {gateway, PubPartMgrIp},
-                        {api_port, ApiPort},
-                        {roles, [get_role_id("partition")]},
-                        {remote_id, RemoteID},
-                        {resources, []},
-                        {subdivision, partition},
-                        {subdivision_id, PartID},
-                        {parent, wm_utils:get_short_name(node())},
-                        {comment, "Cloud partition manager node for job " ++ JobId}],
-                       wm_entity:new(node)).
+    wm_entity:set([{id, NodeID},
+                   {name, NodeName},
+                   {host, PriPartMgrIp},
+                   {gateway, PubPartMgrIp},
+                   {api_port, ApiPort},
+                   {roles, [get_role_id("partition")]},
+                   {remote_id, RemoteID},
+                   {resources, []},
+                   {subdivision, partition},
+                   {subdivision_id, PartID},
+                   {parent, wm_utils:get_short_name(node())},
+                   {comment, "Cloud partition manager node for job " ++ JobId}],
+                  wm_entity:new(node)).
 
 -spec get_partition_manager_name(job_id()) -> string().
 get_partition_manager_name(JobId) ->
@@ -299,28 +299,28 @@ ensure_nodes_cloned(_, _, [], _, _) ->
     ?LOG_ERROR("Could not clone nodes, because there are no IPs"),
     [];
 ensure_nodes_cloned(PartID, ParentName, NodeIps, JobId, TplNode) when TplNode =/= undefined ->
-    RemoteID = wm_entity:get_attr(remote_id, TplNode),
+    RemoteID = wm_entity:get(remote_id, TplNode),
     ApiPort = get_cloud_node_api_port(),
     JobRes =
-        wm_entity:set_attr([{name, "job"}, % special resource to pin node to job
-                            {count, 1},
-                            {properties, [{id, JobId}]}],
-                           wm_entity:new(resource)),
-    Rss = [JobRes | wm_entity:get_attr(resources, TplNode)],
+        wm_entity:set([{name, "job"}, % special resource to pin node to job
+                       {count, 1},
+                       {properties, [{id, JobId}]}],
+                      wm_entity:new(resource)),
+    Rss = [JobRes | wm_entity:get(resources, TplNode)],
     NewNode =
         fun({SeqNum, IP}) ->
-           wm_entity:set_attr([{id, wm_utils:uuid(v4)},
-                               {name, wm_utils:get_cloud_node_name(JobId, SeqNum)},
-                               {host, IP},
-                               {api_port, ApiPort},
-                               {roles, [get_role_id("compute")]},
-                               {subdivision, partition},
-                               {subdivision_id, PartID},
-                               {remote_id, RemoteID},
-                               {resources, Rss},
-                               {parent, ParentName},
-                               {comment, "Cloud compute node for job " ++ JobId}],
-                              wm_entity:new(node))
+           wm_entity:set([{id, wm_utils:uuid(v4)},
+                          {name, wm_utils:get_cloud_node_name(JobId, SeqNum)},
+                          {host, IP},
+                          {api_port, ApiPort},
+                          {roles, [get_role_id("compute")]},
+                          {subdivision, partition},
+                          {subdivision_id, PartID},
+                          {remote_id, RemoteID},
+                          {resources, Rss},
+                          {parent, ParentName},
+                          {comment, "Cloud compute node for job " ++ JobId}],
+                         wm_entity:new(node))
         end,
     ListOfPairs =
         lists:zip(
@@ -332,4 +332,4 @@ get_cloud_node_api_port() ->
 
 get_role_id(RoleName) ->
     {ok, Role} = wm_conf:select(role, {name, RoleName}),
-    wm_entity:get_attr(id, Role).
+    wm_entity:get(id, Role).

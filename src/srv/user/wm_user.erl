@@ -112,7 +112,7 @@ handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
     ?LOG_DEBUG("Job ~p has been requested: ~p", [OutputType, JobId]),
     case wm_conf:select(job, {id, JobId}) of
         {ok, Job} ->
-            FileName = wm_entity:get_attr(OutputType, Job),
+            FileName = wm_entity:get(OutputType, Job),
             FullPath = filename:join([Spool, "output", JobId, FileName]),
             wm_utils:read_file(FullPath, [binary]);
         _ ->
@@ -132,17 +132,17 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
             Cluster = wm_topology:get_subdiv(cluster),
             Job1 = wm_jobscript:parse(JobScriptContent),
             Job2 =
-                wm_entity:set_attr([{cluster_id, wm_entity:get_attr(id, Cluster)},
-                                    {state, ?JOB_STATE_QUEUED},
-                                    {execution_path, Filename},
-                                    {script_content, JobScriptContent},
-                                    {user_id, wm_entity:get_attr(id, User)},
-                                    {id, JobId},
-                                    {job_stdout, "stdout.log"},
-                                    {job_stderr, "stderr.log"},
-                                    {submit_time, wm_utils:now_iso8601(without_ms)},
-                                    {duration, 3600}],
-                                   Job1),
+                wm_entity:set([{cluster_id, wm_entity:get(id, Cluster)},
+                               {state, ?JOB_STATE_QUEUED},
+                               {execution_path, Filename},
+                               {script_content, JobScriptContent},
+                               {user_id, wm_entity:get(id, User)},
+                               {id, JobId},
+                               {job_stdout, "stdout.log"},
+                               {job_stderr, "stderr.log"},
+                               {submit_time, wm_utils:now_iso8601(without_ms)},
+                               {duration, 3600}],
+                              Job1),
             Job3 = set_defaults(Job2, Spool),
             Job4 = ensure_request_is_full(Job3),
             1 = wm_conf:update(Job4),
@@ -192,7 +192,7 @@ handle_request(cancel, Args, _) ->
     {string, Msg};
 handle_request(list, {[flavor], Limit}, _) ->
     Nodes = wm_conf:select(node, {all, Limit}),
-    lists:filter(fun(X) -> wm_entity:get_attr(is_template, X) == true end, Nodes);
+    lists:filter(fun(X) -> wm_entity:get(is_template, X) == true end, Nodes);
 handle_request(list, {Args, Limit}, _) ->
     ?LOG_DEBUG("List of ~p entities with limit ~p has been requested", [Args, Limit]),
     F = fun(X) -> wm_conf:select(X, {all, Limit}) end,
@@ -207,13 +207,13 @@ handle_request(show, Args, _) ->
 
 -spec ensure_request_is_full(#job{}) -> #job{}.
 ensure_request_is_full(Job) ->
-    ResourcesOld = wm_entity:get_attr(request, Job),
+    ResourcesOld = wm_entity:get(request, Job),
     ResourcesNew = add_missed_mandatory_request_resources(ResourcesOld),
-    wm_entity:set_attr({request, ResourcesNew}, Job).
+    wm_entity:set({request, ResourcesNew}, Job).
 
 -spec add_missed_mandatory_request_resources([#resource{}]) -> [#resource{}].
 add_missed_mandatory_request_resources(Resources) ->
-    Names = lists:foldl(fun(R, Acc) -> [wm_entity:get_attr(name, R) | Acc] end, [], Resources),
+    Names = lists:foldl(fun(R, Acc) -> [wm_entity:get(name, R) | Acc] end, [], Resources),
 
     AddIfMissed =
         fun(Name, ResList, AddFun) ->
@@ -230,16 +230,16 @@ add_missed_mandatory_request_resources(Resources) ->
                     Resources,
                     fun() ->
                        ResNode1 = wm_entity:new(resource),
-                       ResNode2 = wm_entity:set_attr({name, "node"}, ResNode1),
-                       wm_entity:set_attr({count, 1}, ResNode2)
+                       ResNode2 = wm_entity:set({name, "node"}, ResNode1),
+                       wm_entity:set({count, 1}, ResNode2)
                     end),
     Resources3 =
         AddIfMissed("cpus",
                     Resources2,
                     fun() ->
                        ResCpu1 = wm_entity:new(resource),
-                       ResCpu2 = wm_entity:set_attr({name, "cpus"}, ResCpu1),
-                       wm_entity:set_attr({count, 1}, ResCpu2)
+                       ResCpu2 = wm_entity:set({name, "cpus"}, ResCpu1),
+                       wm_entity:set({count, 1}, ResCpu2)
                     end),
     Resources3.
 
@@ -250,7 +250,7 @@ requeue_jobs([JobId | T], Results) ->
     Result =
         case wm_conf:select(job, {id, JobId}) of
             {ok, Job} ->
-                UpdatedJob = wm_entity:set_attr({state, ?JOB_STATE_QUEUED}, Job),
+                UpdatedJob = wm_entity:set({state, ?JOB_STATE_QUEUED}, Job),
                 1 = wm_conf:update([UpdatedJob]),
                 {requeued, JobId};
             _ ->
@@ -264,9 +264,9 @@ cancel_jobs([JobId | T], Results) ->
     Result =
         case wm_conf:select(job, {id, JobId}) of
             {ok, Job} ->
-                UpdatedJob = wm_entity:set_attr({state, ?JOB_STATE_CANCELLED}, Job),
+                UpdatedJob = wm_entity:set({state, ?JOB_STATE_CANCELLED}, Job),
                 1 = wm_conf:update([UpdatedJob]),
-                Process = wm_entity:set_attr([{state, ?JOB_STATE_CANCELLED}], wm_entity:new(process)),
+                Process = wm_entity:set([{state, ?JOB_STATE_CANCELLED}], wm_entity:new(process)),
                 EndTime = wm_utils:now_iso8601(without_ms),
                 wm_event:announce(job_cancelled, {JobId, Process, EndTime, node()}),
                 {cancelled, JobId};
@@ -277,17 +277,17 @@ cancel_jobs([JobId | T], Results) ->
 
 -spec set_defaults(#job{}, string()) -> #job{}.
 set_defaults(#job{workdir = [], id = JobId} = Job, Spool) ->
-    set_defaults(wm_entity:set_attr({workdir, Spool ++ "/output/" ++ JobId}, Job), Spool);
+    set_defaults(wm_entity:set({workdir, Spool ++ "/output/" ++ JobId}, Job), Spool);
 set_defaults(#job{account_id = [], user_id = UserId} = Job, Spool) ->
     % If account is not specified by user during job submission then use the user's main account
     AccountId =
         case wm_conf:select(account, {admins, [UserId]}) of
             {ok, Accounts} when is_list(Accounts) ->
                 %TODO Handle case: multiple accounts are administrated by same user
-                wm_entity:get_attr(id, hd(Accounts));
+                wm_entity:get(id, hd(Accounts));
             {ok, Account} ->
-                wm_entity:get_attr(id, Account)
+                wm_entity:get(id, Account)
         end,
-    set_defaults(wm_entity:set_attr({account_id, AccountId}, Job), Spool);
+    set_defaults(wm_entity:set({account_id, AccountId}, Job), Spool);
 set_defaults(Job, _) ->
     Job.

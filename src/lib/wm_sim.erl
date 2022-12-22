@@ -198,11 +198,11 @@ try_start_slave(NodeName, MState) ->
 
 -spec do_start_slave(#node{}, #mstate{}) -> #mstate{}.
 do_start_slave(Node, MState = #mstate{sim_spool = Spool, root = RootDir}) ->
-    SlaveShortName = wm_entity:get_attr(name, Node),
+    SlaveShortName = wm_entity:get(name, Node),
     case wm_utils:get_parent_from_conf(Node) of
         {ParentHost, ParentPort} ->
-            SlaveHost = wm_entity:get_attr(host, Node),
-            SlavePort = wm_entity:get_attr(api_port, Node),
+            SlaveHost = wm_entity:get(host, Node),
+            SlavePort = wm_entity:get(api_port, Node),
             SlaveArgs = get_slave_args(SlaveShortName, SlaveHost, MState),
             AppArgs =
                 [{spool, Spool},

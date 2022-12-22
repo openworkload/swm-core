@@ -127,7 +127,7 @@ set_node_state(alloc, State, Node) ->
 
 -spec set_nodes_state(atom(), atom(), [#node{}]) -> pos_integer().
 set_nodes_state(StateType, StateName, Nodes) ->
-    NewNodes = [wm_entity:set_attr({StateType, StateName}, Z) || Z <- Nodes],
+    NewNodes = [wm_entity:set({StateType, StateName}, Z) || Z <- Nodes],
     update(NewNodes).
 
 -spec get_my_address() -> node_address() | not_found.
@@ -170,14 +170,14 @@ get_relative_address(_To = #node{gateway = Gateway, api_port = Port}, _) ->
 get_my_relative_address(DestAddr = {_, _}) ->
     case do_select_node(DestAddr) of
         {ok, Node} ->
-            NodeId = wm_entity:get_attr(id, Node),
+            NodeId = wm_entity:get(id, Node),
             case wm_topology:is_direct_child(NodeId) of
                 true ->
                     get_my_relative_direct_address(Node);
                 false ->
                     case select_my_node() of
                         {ok, MyNode} ->
-                            MyNodeId = wm_entity:get_attr(id, MyNode),
+                            MyNodeId = wm_entity:get(id, MyNode),
                             case wm_topology:on_path(MyNodeId, NodeId) of
                                 {ok, NextNodeId} ->
                                     case select_one({node, id}, NextNodeId) of
@@ -209,16 +209,16 @@ select_my_node() ->
 
 -spec get_my_relative_direct_address(#node{}) -> node_address().
 get_my_relative_direct_address(DestNode) ->
-    case wm_entity:get_attr(remote_id, DestNode) of
+    case wm_entity:get(remote_id, DestNode) of
         [] ->
             do_get_my_address();
         _ ->
             MySName = wm_utils:get_short_name(node()),
             case select_node(MySName) of
                 {ok, MyNode} ->
-                    MyHost = wm_entity:get_attr(host, MyNode),
-                    MyPort = wm_entity:get_attr(api_port, MyNode),
-                    case wm_entity:get_attr(gateway, MyNode) of
+                    MyHost = wm_entity:get(host, MyNode),
+                    MyPort = wm_entity:get(api_port, MyNode),
+                    case wm_entity:get(gateway, MyNode) of
                         [] ->
                             {MyHost, MyPort};
                         MyGateway ->
@@ -324,7 +324,7 @@ handle_call({select_api_port, NodeName}, _From, MState) ->
             ?LOG_DEBUG("Found 0 entities with name=~s", [NodeName]),
             {reply, {error, not_found}, MState};
         X when is_list(X) ->
-            Port = wm_entity:get_attr(api_port, hd(X)),
+            Port = wm_entity:get(api_port, hd(X)),
             ?LOG_DEBUG("Requested port of ~p: ~p", [NodeName, Port]),
             {reply, {port, Port}, MState}
     end;
@@ -511,7 +511,7 @@ do_set_state(Type, State, Node) when is_atom(Node) ->
                     ?LOG_DEBUG("The node is unknown: ~p", [ShortName]),
                     0;
                 Nodes when is_list(Nodes) ->
-                    F = fun(Nd) -> wm_entity:get_attr(host, Nd) =:= Host end,
+                    F = fun(Nd) -> wm_entity:get(host, Nd) =:= Host end,
                     {NodesOnHost, _} = lists:partition(F, Nodes),
                     case NodesOnHost of
                         [] ->
@@ -519,14 +519,14 @@ do_set_state(Type, State, Node) when is_atom(Node) ->
                             0;
                         SatisfyingNodes ->
                             Node1 = hd(SatisfyingNodes), % should be one only
-                            Node2 = wm_entity:set_attr({Type, State}, Node1),
+                            Node2 = wm_entity:set({Type, State}, Node1),
                             wm_db:update([{Node2, false}])
                     end
             end
     end;
 do_set_state(Type, State, {Host, Port}) when is_list(Host) ->
     F = fun({ok, Node}) ->
-           NodeUpdated = wm_entity:set_attr({Type, State}, Node),
+           NodeUpdated = wm_entity:set({Type, State}, Node),
            wm_db:update([{NodeUpdated, false}])
         end,
     select_node_apply({Host, Port}, F).
@@ -545,7 +545,7 @@ do_set_global(Name, Value) ->
              X1 ->
                  X1
          end,
-    X3 = wm_entity:set_attr({value, Value}, X2),
+    X3 = wm_entity:set({value, Value}, X2),
     wm_utils:protected_call(?MODULE, {set, [X3]}).
 
 -spec schedule_sync_check() -> reference().
@@ -565,8 +565,8 @@ do_get_my_address() ->
                         ?LOG_DEBUG("Could not get any nodes => my address is not known"),
                         {error, not_found};
                     [BootNode] ->
-                        NodeHost = wm_entity:get_attr(host, BootNode),
-                        NodePort = wm_entity:get_attr(api_port, BootNode),
+                        NodeHost = wm_entity:get(host, BootNode),
+                        NodePort = wm_entity:get(api_port, BootNode),
                         {NodeHost, NodePort}
                 end;
             [SelfNode] ->

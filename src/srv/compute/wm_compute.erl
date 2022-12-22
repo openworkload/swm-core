@@ -25,14 +25,14 @@ set_nodes_alloc_state(Kind, Status, JobID) ->
     ?LOG_DEBUG("Set nodes alloc state: ~p ~p ~p", [Kind, Status, JobID]),
     case wm_conf:select(job, {id, JobID}) of
         {ok, Job} ->
-            NodeIds = wm_entity:get_attr(nodes, Job),
+            NodeIds = wm_entity:get(nodes, Job),
             Nodes = wm_conf:select_many(node, id, NodeIds),
             Filtered =
                 case Kind of
                     remote ->
-                        lists:filter(fun(X) -> wm_entity:get_attr(remote_id, X) =/= [] end, Nodes);
+                        lists:filter(fun(X) -> wm_entity:get(remote_id, X) =/= [] end, Nodes);
                     onprem ->
-                        lists:filter(fun(X) -> wm_entity:get_attr(remote_id, X) == [] end, Nodes);
+                        lists:filter(fun(X) -> wm_entity:get(remote_id, X) == [] end, Nodes);
                     all ->
                         Nodes
                 end,
@@ -165,8 +165,8 @@ handle_event(proc_started, {JobID, Node}, MState) ->
 handle_timetable([], MState) ->
     MState;
 handle_timetable([X | T], MState) ->
-    JobID = wm_entity:get_attr(job_id, X),
-    JobNodeIds = wm_entity:get_attr(job_nodes, X),
+    JobID = wm_entity:get(job_id, X),
+    JobNodeIds = wm_entity:get(job_nodes, X),
     ?LOG_DEBUG("Handle job ~p, node IDs: ~p", [JobID, JobNodeIds]),
     SelfNodeId = wm_self:get_node_id(),
     case JobNodeIds of
@@ -175,7 +175,7 @@ handle_timetable([X | T], MState) ->
             handle_timetable(T, MState);
         [FirstNodeId | _] when FirstNodeId == SelfNodeId ->
             Nodes = wm_conf:select_many(node, id, JobNodeIds),
-            ?LOG_DEBUG("Job will be started locally (on ~p)", [wm_entity:get_attr(name, hd(Nodes))]),
+            ?LOG_DEBUG("Job will be started locally (on ~p)", [wm_entity:get(name, hd(Nodes))]),
             wm_conf:set_nodes_state(state_alloc, busy, Nodes),
             update_job(JobID, nodes, JobNodeIds),
             MState2 = start_job_processes(Nodes, JobID, MState),
@@ -216,15 +216,15 @@ add_proc(JobID, ProcID, JobNodes, MState) ->
     MState#mstate{processes = PsMap}.
 
 update_job(JobID, process, Process) ->
-    update_job(JobID, state, wm_entity:get_attr(state, Process)),
-    update_job(JobID, exitcode, wm_entity:get_attr(exitcode, Process)),
-    update_job(JobID, signal, wm_entity:get_attr(signal, Process));
+    update_job(JobID, state, wm_entity:get(state, Process)),
+    update_job(JobID, exitcode, wm_entity:get(exitcode, Process)),
+    update_job(JobID, signal, wm_entity:get(signal, Process));
 update_job(JobID, Attr, NewValue) ->
     case wm_conf:select(job, {id, JobID}) of
         {ok, Job1} ->
-            OldValue = wm_entity:get_attr(Attr, Job1),
+            OldValue = wm_entity:get(Attr, Job1),
             ?LOG_DEBUG("Job update: id=~p, ~p: ~p -> ~p", [JobID, Attr, OldValue, NewValue]),
-            Job2 = wm_entity:set_attr({Attr, NewValue}, Job1),
+            Job2 = wm_entity:set({Attr, NewValue}, Job1),
             1 = wm_conf:update([Job2]),
             ok;
         _ ->

@@ -53,7 +53,7 @@ update() ->
 %% @doc Verify is node entity points to the node where the code is running now
 -spec is_local_node(#node{}) -> true | false.
 is_local_node(Node) ->
-    wm_entity:get_attr(id, Node) == get_node_id().
+    wm_entity:get(id, Node) == get_node_id().
 
 %% ============================================================================
 %% Server callbacks
@@ -147,7 +147,7 @@ update_node_id(MState) ->
     ?LOG_DEBUG("Update node id"),
     case do_get_node(MState) of
         {ok, Node} ->
-            ID = wm_entity:get_attr(id, Node),
+            ID = wm_entity:get(id, Node),
             MState#mstate{node_id = ID};
         _ ->
             MState

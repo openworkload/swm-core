@@ -161,12 +161,12 @@ parse_args([{_, _} | T], MState) ->
 
 -spec get_address(string(), #remote{}) -> string().
 get_address(SectionName, Remote) ->
-    "/" ++ atom_to_list(wm_entity:get_attr(kind, Remote)) ++ "/" ++ SectionName.
+    "/" ++ atom_to_list(wm_entity:get(kind, Remote)) ++ "/" ++ SectionName.
 
 -spec get_auth_headers(#credential{}) -> [tuple()].
 get_auth_headers(Creds) ->
-    Username = wm_entity:get_attr(username, Creds),
-    Password = wm_entity:get_attr(password, Creds),
+    Username = wm_entity:get(username, Creds),
+    Password = wm_entity:get(password, Creds),
     [{<<"Accept">>, <<"application/json">>},
      {<<"username">>, list_to_binary(Username)},
      {<<"password">>, list_to_binary(Password)}].
@@ -174,9 +174,9 @@ get_auth_headers(Creds) ->
 -spec open_connection(#remote{}, string()) -> {ok, pid()} | {error | term()}.
 open_connection(Remote, Spool) ->
     {CaFile, KeyFile, CertFile} = wm_utils:get_node_cert_paths(Spool),
-    ServerFqdn = wm_entity:get_attr(server, Remote),
+    ServerFqdn = wm_entity:get(server, Remote),
     Server = hd(string:split(ServerFqdn, ".")),
-    Port = wm_entity:get_attr(port, Remote),
+    Port = wm_entity:get(port, Remote),
     ConnOpts =
         #{transport => tls,
           protocols => [http],
@@ -301,9 +301,9 @@ fetch_images(Remote, Creds, Spool) ->
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
                     {ok, BinBody} ->
-                        RemoteId = wm_entity:get_attr(id, Remote),
+                        RemoteId = wm_entity:get(id, Remote),
                         {ok, Images} = wm_gate_parsers:parse_images(BinBody),
-                        {ok, [wm_entity:set_attr({remote_id, RemoteId}, Image) || Image <- Images]};
+                        {ok, [wm_entity:set({remote_id, RemoteId}, Image) || Image <- Images]};
                     {error, Error} ->
                         {error, Error}
                 end,
@@ -333,7 +333,7 @@ fetch_image(Remote, Creds, ImageID, Spool) ->
 
 -spec fetch_flavors(#remote{}, #credential{}, string()) -> {ok, [#image{}]} | {error, string()}.
 fetch_flavors(Remote, Creds, Spool) ->
-    ?LOG_DEBUG("Fetch flavors from ~p", [wm_entity:get_attr(name, Remote)]),
+    ?LOG_DEBUG("Fetch flavors from ~p", [wm_entity:get(name, Remote)]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             StreamRef = gun:get(ConnPid, get_address("flavors", Remote), get_auth_headers(Creds)),

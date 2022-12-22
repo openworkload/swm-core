@@ -141,7 +141,7 @@ init(Args) ->
                 end;
             {ok, SelfNode} ->
                 ?LOG_DEBUG("My node ~p was found in the local db", [SelfNode]),
-                wm_entity:get_attr(api_port, SelfNode)
+                wm_entity:get(api_port, SelfNode)
         end,
     %FIXME If port of node001 was X and port of node002
     %      is changed to X and port of node001 is changed

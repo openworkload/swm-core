@@ -34,7 +34,7 @@ add_parent_from_my_sname(NodeShortName, List) ->
     ?LOG_DEBUG("Get parent from sname: ~p (~p)", [NodeShortName, List]),
     case wm_conf:select(node, {name, NodeShortName}) of
         {ok, Me} ->
-            case wm_entity:get_attr(parent, Me) of
+            case wm_entity:get(parent, Me) of
                 undefined ->
                     List;
                 ParentName ->
@@ -75,7 +75,7 @@ add_parent_from_boot_args(_, _, List) ->
 is_grid_management_node(ShortName) ->
     case wm_conf:select(node, {name, ShortName}) of
         {ok, Node} ->
-            wm_entity:get_attr(subdivision, Node) == grid;
+            wm_entity:get(subdivision, Node) == grid;
         _ ->
             false
     end.

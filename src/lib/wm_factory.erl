@@ -220,7 +220,7 @@ handle_event(Event, {ModuleTaskId, Extra}, MState) when Event == MState#mstate.d
         {node, Me} ->
             SelfNodeId = wm_self:get_node_id(),
             Nodes1 = get_nodes(ModuleTaskId, MState),
-            Nodes2 = lists:filter(fun(Node) -> wm_entity:get_attr(id, Node) =/= SelfNodeId end, Nodes1),
+            Nodes2 = lists:filter(fun(Node) -> wm_entity:get(id, Node) =/= SelfNodeId end, Nodes1),
             wm_event:announce_nodes(Nodes2, Event, {ModuleTaskId, Extra});
         _ ->
             ok

@@ -34,9 +34,9 @@ grid_to_json(<<"GET">>, Req) ->
     ?LOG_DEBUG("Received HTTP parameters: ~p", [Map]),
     Xs = wm_grid:get_nodes(Limit),
     F1 = fun(Node, FullJson) ->
-            SubDiv = wm_entity:get_attr(subdivision, Node),
-            SubDivId = wm_entity:get_attr(subdivision_id, Node),
-            Parent = wm_entity:get_attr(parent, Node),
+            SubDiv = wm_entity:get(subdivision, Node),
+            SubDivId = wm_entity:get(subdivision_id, Node),
+            Parent = wm_entity:get(parent, Node),
             Name = atom_to_list(wm_utils:node_to_fullname(Node)),
             NodeJson =
                 "{\"name\":\""

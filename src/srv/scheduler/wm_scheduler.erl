@@ -67,7 +67,7 @@ handle_info(schedule, #mstate{} = MState) ->
             ?LOG_ERROR("Cannot get scheduler: ~p", [Error]),
             {noreply, MState};
         {SubDivType, Scheduler} ->
-            RunInterval = wm_entity:get_attr(run_interval, Scheduler),
+            RunInterval = wm_entity:get(run_interval, Scheduler),
             wm_utils:wake_up_after(RunInterval, schedule),
             {noreply, start_timetable_creation(SubDivType, Scheduler, MState)}
     end;
@@ -112,7 +112,7 @@ handle_event(wm_commit_done, {COMMIT_ID, _}, #mstate{} = MState) ->
     case maps:get(COMMIT_ID, MState#mstate.forwardings, not_found) of
         {Jobs, Node} ->
             ?LOG_DEBUG("Finished commit to ~p spotted: ~p", [Node, COMMIT_ID]),
-            ForwJobs = [wm_entity:set_attr({state, forwarded}, Job) || Job <- Jobs],
+            ForwJobs = [wm_entity:set({state, forwarded}, Job) || Job <- Jobs],
             wm_conf:update(ForwJobs),
             Map = maps:remove(COMMIT_ID, MState#mstate.forwardings),
             MState#mstate{forwardings = Map};
@@ -130,7 +130,7 @@ save_timetable([R | RestTimeTable]) ->
 sort_start_times([], StartTimeList) ->
     lists:sort(fun(X, Y) -> X < Y end, StartTimeList);
 sort_start_times([X | T], StartTimeList) ->
-    sort_start_times(T, [wm_entity:get_attr(start_time, X) | StartTimeList]).
+    sort_start_times(T, [wm_entity:get(start_time, X) | StartTimeList]).
 
 del_old_start_times(#mstate{} = MState) ->
     StartTimes = MState#mstate.start_times,
@@ -146,7 +146,7 @@ get_scheduler() ->
             ?LOG_ERROR("Subdivision not found"),
             {error, not_found};
         SubDiv ->
-            SchedID = wm_entity:get_attr(scheduler, SubDiv),
+            SchedID = wm_entity:get(scheduler, SubDiv),
             case wm_conf:select(scheduler, {id, SchedID}) of
                 {ok, Scheduler} ->
                     SubDivType = element(1, SubDiv),
@@ -159,17 +159,17 @@ get_scheduler() ->
 run_mock_scheduler(grid, #mstate{} = MState) ->
     ClusterIds = [ID || {cluster, ID} <- wm_topology:get_children(nosort)],
     Clusters = wm_conf:select(cluster, ClusterIds),
-    Up = lists:filter(fun(X) -> wm_entity:get_attr(state, X) == up end, Clusters),
+    Up = lists:filter(fun(X) -> wm_entity:get(state, X) == up end, Clusters),
     ?LOG_DEBUG("Up clusters: ~p", [Up]),
     case Up of
         [] ->
             ?LOG_DEBUG("No clusters in state UP were found");
         List ->
             Cluster = hd(List),
-            NodeName = wm_entity:get_attr(manager, Cluster),
+            NodeName = wm_entity:get(manager, Cluster),
             case wm_conf:select_node(NodeName) of
                 {ok, Node} ->
-                    case wm_entity:get_attr(state_power, Node) of
+                    case wm_entity:get(state_power, Node) of
                         up ->
                             send_jobs([?JOB_STATE_QUEUED], Node, MState);
                         down ->
@@ -195,7 +195,7 @@ send_jobs(JobStates, Node, #mstate{} = MState) ->
     end.
 
 start_scheduler(Scheduler, #mstate{} = MState) ->
-    DefaultSched = wm_entity:get_attr(path, Scheduler),
+    DefaultSched = wm_entity:get(path, Scheduler),
     LogDir = filename:join([MState#mstate.spool, atom_to_list(node()), "log"]),
     LogFile = filename:join([LogDir, "scheduler.log"]),
     DefaultPluginsDir = filename:join([MState#mstate.root, "current", "lib64"]),
@@ -245,7 +245,7 @@ get_binary_for_scheduler(Scheduler) ->
     Bin2 = wm_sched_utils:add_input(?DATA_TYPE_RH, RhBin, Bin1),
 
     Jobs1 = wm_db:get_many(job, state, [?JOB_STATE_QUEUED]),
-    Jobs2 = [wm_entity:set_attr({revision, wm_entity:get_attr(revision, X) + 1}, X) || X <- Jobs1],
+    Jobs2 = [wm_entity:set({revision, wm_entity:get(revision, X) + 1}, X) || X <- Jobs1],
     wm_conf:update(Jobs2), %% TODO: mark that the job has been scheduled at least once differently
     ?LOG_DEBUG("Jobs for scheduler: ~p", [length(Jobs2)]),
     JobsBin = erlang:term_to_binary(Jobs2),
@@ -271,7 +271,7 @@ get_grid_bin_entity(OldBin) ->
             GridBin = erlang:term_to_binary(Grid),
             wm_sched_utils:add_input(?DATA_TYPE_GRID, GridBin, OldBin);
         _ ->
-            GridMock = wm_entity:set_attr([{id, "grid_id"}, {name, "mock grid"}, {state, up}], wm_entity:new(grid)),
+            GridMock = wm_entity:set([{id, "grid_id"}, {name, "mock grid"}, {state, up}], wm_entity:new(grid)),
             GridMockBin = erlang:term_to_binary(GridMock),
             wm_sched_utils:add_input(?DATA_TYPE_GRID, GridMockBin, OldBin)
     end.
@@ -280,7 +280,7 @@ handle_new_timetable(SchedulerResult, #mstate{} = MState) when is_tuple(Schedule
     ?LOG_DEBUG("Received scheduling result: ~w", [SchedulerResult]),
     case erlang:element(1, SchedulerResult) =:= scheduler_result of
         true ->
-            case wm_entity:get_attr(timetable, SchedulerResult) of
+            case wm_entity:get(timetable, SchedulerResult) of
                 TT when is_list(TT) ->
                     wm_db:clear_table(timetable),
                     save_timetable(TT),
@@ -315,12 +315,12 @@ wake_me_for_job_start(TT, #mstate{} = MState) ->
 update_scheduled_jobs([]) ->
     ok;
 update_scheduled_jobs([TimetableRow | T]) ->
-    JobID = wm_entity:get_attr(job_id, TimetableRow),
+    JobID = wm_entity:get(job_id, TimetableRow),
     {ok, Job1} = wm_conf:select(job, {id, JobID}),
     Job2 =
-        case wm_entity:get_attr(start_time, TimetableRow) of
+        case wm_entity:get(start_time, TimetableRow) of
             0 ->
-                wm_entity:set_attr({state, ?JOB_STATE_WAITING}, Job1);
+                wm_entity:set({state, ?JOB_STATE_WAITING}, Job1);
             _ ->
                 Job1
         end,

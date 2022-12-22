@@ -256,7 +256,7 @@ do_initiate_resp(From, Level, FID, NodeState, MState) ->
     ?LOG_DEBUG("Respond to 'initiate' from ~p", [From]),
     {ok, RemoteNode} = wm_conf:select_node(atom_to_list(FID)),
     {ok, MyNodeId} = wm_self:get_node_id(),
-    RemoteLeaderID = wm_entity:get_attr(id, RemoteNode),
+    RemoteLeaderID = wm_entity:get(id, RemoteNode),
     {InBranch, NewFID, FC} =
         case RemoteLeaderID < MyNodeId of
             true ->

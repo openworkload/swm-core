@@ -80,8 +80,7 @@ init(Args) ->
         {ok, Remote} ->
             case wm_ssh_client:start_link(Args) of
                 {ok, TunnelClientPid} ->
-                    ?LOG_INFO("Virtual resources manager has been started, remote: ~p",
-                              [wm_entity:get_attr(name, Remote)]),
+                    ?LOG_INFO("Virtual resources manager has been started, remote: ~p", [wm_entity:get(name, Remote)]),
                     wm_factory:notify_initiated(virtres, MState#mstate.task_id),
                     {ok, sleeping, MState#mstate{remote = Remote, ssh_client_pid = TunnelClientPid}};
                 {error, Error} ->
@@ -132,7 +131,7 @@ handle_info(ssh_check,
     ?LOG_DEBUG("SSH readiness check (job ~p, virtres state: ~p)", [JobId, StateName]),
     catch timer:cancel(OldTRef),
     {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
-    ConnectToHost = wm_entity:get_attr(gateway, PartMgrNode),
+    ConnectToHost = wm_entity:get(gateway, PartMgrNode),
     ConnectToPort = wm_conf:g(ssh_daemon_listen_port, {?SSH_DAEMON_DEFAULT_PORT, integer}),
     case wm_ssh_client:connect(ConnectToHost, ConnectToPort) of
         ok ->
@@ -262,7 +261,7 @@ creating(ssh_connected,
                  part_id = PartId} =
              MState) ->
     {ok, Partition} = wm_conf:select(partition, {id, PartId}),
-    case wm_entity:get_attr(state, Partition) of
+    case wm_entity:get(state, Partition) of
         up ->
             Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
             MState2 = MState#mstate{wait_ref = undefined, rediness_timer = Timer},
@@ -406,9 +405,9 @@ start_port_forwarding(JobId, PartMgrNodeId) ->
     {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
 
     ListenHost = {127, 0, 0, 1},
-    ResourcesRequest = wm_entity:get_attr(request, Job),
+    ResourcesRequest = wm_entity:get(request, Job),
     PortsToForward = get_job_ports(ResourcesRequest) ++ get_wm_ports(),
-    JobHost = wm_entity:get_attr(gateway, PartMgrNode),
+    JobHost = wm_entity:get(gateway, PartMgrNode),
 
     lists:foldl(fun(PortToForward, OpenedPorts) ->
                    ListenPort = PortToForward,  % local and remote ports should be the same

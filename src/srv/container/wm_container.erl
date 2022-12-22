@@ -97,16 +97,16 @@ handle_call({list_images, unregistered}, _, #mstate{} = MState) ->
 handle_call({run, Job, Cmd, Envs, Owner, [create | Steps]}, _, #mstate{spool = Spool} = MState) ->
     Module = get_conteinerizer(),
     {ContID, HttpProcPid} = Module:create(Job, Cmd, Envs, self(), Steps),
-    NewJob = wm_entity:set_attr({container, ContID}, Job),
+    NewJob = wm_entity:set({container, ContID}, Job),
     wm_conf:update([NewJob]),
-    JobID = wm_entity:get_attr(id, Job),
+    JobID = wm_entity:get(id, Job),
     {ok, LoggerPid} = wm_container_log:start_link([{spool, Spool}, {job_id, JobID}]),
     Map = maps:put(ContID, {Owner, NewJob, HttpProcPid, LoggerPid}, MState#mstate.containers),
     {reply, {ok, NewJob}, MState#mstate{containers = Map}};
 handle_call({communicate, Job, Owner, [attach_ws | Steps]}, _, #mstate{spool = Spool} = MState) ->
     Module = get_conteinerizer(),
     {ContID, HttpProcPid} = Module:attach_ws(Job, self(), Steps),
-    JobID = wm_entity:get_attr(id, Job),
+    JobID = wm_entity:get(id, Job),
     {ok, LoggerPid} = wm_container_log:start_link([{spool, Spool}, {job_id, JobID}]),
     Map = maps:put(ContID, {Owner, Job, HttpProcPid, LoggerPid}, MState#mstate.containers),
     {reply, ok, MState#mstate{containers = Map}}.
@@ -245,5 +245,5 @@ clean_containers_map(ContID, #mstate{containers = OldMap} = MState) ->
 
 send_event_to_owner(Event, ContID, #mstate{} = MState) ->
     {Owner, Job, _, _} = maps:get(ContID, MState#mstate.containers),
-    JobID = wm_entity:get_attr(id, Job),
+    JobID = wm_entity:get(id, Job),
     gen_fsm:send_event(Owner, {Event, JobID}).

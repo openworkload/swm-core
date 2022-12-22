@@ -104,7 +104,7 @@ handle_info(update, MState = #mstate{refs_in_process = Refs, timer = OldTRef}) -
             Remotes when is_list(Remotes) ->
                 ?LOG_DEBUG("Update cloud information for ~p remote site(s)", [Remotes]),
                 lists:foldl(fun(Remote, Accum) ->
-                               RemoteId = wm_entity:get_attr(id, Remote),
+                               RemoteId = wm_entity:get(id, Remote),
                                {ok, Creds} = wm_conf:select(credential, {remote_id, RemoteId}),
                                {ok, RefFlavors} = wm_gate:list_flavors(?MODULE, Remote, Creds),
                                {ok, RefImages} = wm_gate:list_images(?MODULE, Remote, Creds),
@@ -160,15 +160,15 @@ handle_retrieved_images(NewImages, RemoteId) ->
         {ok, Remote} ->
             true = wm_conf:update(NewImages) == length(NewImages),
             DefaultImage = lists:nth(1, NewImages),
-            DefaultImageId = wm_entity:get_attr(id, DefaultImage),
-            case wm_entity:get_attr(default_image_id, Remote) of
+            DefaultImageId = wm_entity:get(id, DefaultImage),
+            case wm_entity:get(default_image_id, Remote) of
                 DefaultImageId ->
                     ok;
                 undefined ->
                     ?LOG_INFO("Default image ID is updated for remote ~p: ~p", [RemoteId, DefaultImageId]),
                     1 =
                         wm_conf:update(
-                            wm_entity:set_attr({default_image_id, DefaultImageId}, Remote));
+                            wm_entity:set({default_image_id, DefaultImageId}, Remote));
                 _ ->
                     ok
             end;
@@ -183,14 +183,13 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
         {ok, Remote} ->
             {PreserveNodes, DeleteNodes} =
                 lists:foldl(fun(FlavorNode, {PreserveNodes, DeleteNodes}) ->
-                               Name = wm_entity:get_attr(name, FlavorNode),
+                               Name = wm_entity:get(name, FlavorNode),
                                case lookup_node(Name, DeleteNodes) of
                                    {ok, FoundTemplateNode} ->
-                                       Resources = wm_entity:get_attr(resources, FlavorNode),
-                                       Prices = wm_entity:get_attr(prices, FlavorNode),
+                                       Resources = wm_entity:get(resources, FlavorNode),
+                                       Prices = wm_entity:get(prices, FlavorNode),
                                        UpdNode =
-                                           wm_entity:set_attr([{resources, Resources}, {prices, Prices}],
-                                                              FoundTemplateNode),
+                                           wm_entity:set([{resources, Resources}, {prices, Prices}], FoundTemplateNode),
                                        {[UpdNode | PreserveNodes], DeleteNodes -- [FoundTemplateNode]};
                                    {error, not_found} ->
                                        {[FlavorNode | PreserveNodes], DeleteNodes}
@@ -206,33 +205,33 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
                 Length ->
                     AddFlavorRes =
                         fun(Node) ->
-                           Resources1 = wm_entity:get_attr(resources, Node),
+                           Resources1 = wm_entity:get(resources, Node),
                            Resources2 =
                                Resources1
                                ++ case lists:keysearch("flavor", 2, Resources1) of
                                       false ->
-                                          Name = wm_entity:get_attr(name, Node),
+                                          Name = wm_entity:get(name, Node),
                                           Parameters = [{name, "flavor"}, {properties, [{value, Name}]}],
-                                          [wm_entity:set_attr(Parameters, wm_entity:new(resource))];
+                                          [wm_entity:set(Parameters, wm_entity:new(resource))];
                                       _ ->  % flavor resource already presents
                                           []
                                   end,
-                           wm_entity:set_attr([{resources, Resources2}], Node)
+                           wm_entity:set([{resources, Resources2}], Node)
                         end,
                     NodesToUpdate = lists:map(AddFlavorRes, PreserveNodes),
                     true = wm_conf:update(NodesToUpdate) == Length,
-                    RemoteName = wm_entity:get_attr(name, Remote),
+                    RemoteName = wm_entity:get(name, Remote),
                     add_nodes_to_new_partition(NodesToUpdate, RemoteName),
                     Default = lists:nth(1, NodesToUpdate),
-                    DefaultId = wm_entity:get_attr(id, Default),
-                    case wm_entity:get_attr(default_flavor_id, Remote) of
+                    DefaultId = wm_entity:get(id, Default),
+                    case wm_entity:get(default_flavor_id, Remote) of
                         DefaultId ->
                             ok;
                         undefined ->
                             ?LOG_INFO("Default flavor node ID is updated for remote ~p: ~p", [RemoteId, DefaultId]),
                             1 =
                                 wm_conf:update(
-                                    wm_entity:set_attr({default_flavor_id, DefaultId}, Remote));
+                                    wm_entity:set({default_flavor_id, DefaultId}, Remote));
                         _ ->
                             ok
                     end
@@ -243,41 +242,39 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
 
 -spec add_nodes_to_new_partition([#node{}], string()) -> integer().
 add_nodes_to_new_partition(Nodes, PartName) ->
-    NodeIds = [wm_entity:get_attr(id, Node) || Node <- Nodes],
+    NodeIds = [wm_entity:get(id, Node) || Node <- Nodes],
     Cluster1 = wm_topology:get_subdiv(cluster),
-    ClusterId = wm_entity:get_attr(id, Cluster1),
-    OldPartIds = wm_entity:get_attr(partitions, Cluster1),
+    ClusterId = wm_entity:get(id, Cluster1),
+    OldPartIds = wm_entity:get(partitions, Cluster1),
     ExistingParts = wm_conf:select(partition, OldPartIds),
-    PartId = case lists:any(fun(P) -> wm_entity:get_attr(name, P) == PartName end, ExistingParts) of
-        true ->
-            ?LOG_DEBUG("Partition with name ~p exists in cluster (good)", [PartName]),
-            {ok, Part1} = wm_conf:select(partition, {name, PartName}),
-            OldNodeIds = wm_entity:get_attr(nodes, Part1),
-            NewNodeIds = lists:umerge(OldNodeIds, NodeIds),
-            Part2 = wm_entity:set_attr([{nodes, NewNodeIds}], Part1),
-            1 = wm_conf:update(Part2),
-            wm_entity:get_attr(id, Part2);
-        false ->
-            NewPartId = wm_utils:uuid(v4),
-            NewPart = wm_entity:set_attr([
-                                               {id, NewPartId},
-                                               {name, PartName},
-                                               {nodes, NodeIds},
-                                               {state, up},
-                                               {subdivision, cluster},
-                                               {subdivision_id, ClusterId},
-                                               {comment, "Remote site partition"}
-                                              ],
-                                              wm_entity:new(partition)),
-            Cluster2 = wm_entity:set_attr({partitions, [NewPartId | OldPartIds]}, Cluster1),
-            1 = wm_conf:update(NewPart),
-            1 = wm_conf:update(Cluster2),
-            NewPartId
-    end,
-    UpdatedNodes = lists:map(fun(Node) ->
-                  wm_entity:set_attr([{subdivision, partition}, {subdivision_id, PartId}], Node)
-              end,
-              Nodes),
+    PartId =
+        case lists:any(fun(P) -> wm_entity:get(name, P) == PartName end, ExistingParts) of
+            true ->
+                ?LOG_DEBUG("Partition with name ~p exists in cluster (good)", [PartName]),
+                {ok, Part1} = wm_conf:select(partition, {name, PartName}),
+                OldNodeIds = wm_entity:get(nodes, Part1),
+                NewNodeIds = lists:umerge(OldNodeIds, NodeIds),
+                Part2 = wm_entity:set([{nodes, NewNodeIds}], Part1),
+                1 = wm_conf:update(Part2),
+                wm_entity:get(id, Part2);
+            false ->
+                NewPartId = wm_utils:uuid(v4),
+                NewPart =
+                    wm_entity:set([{id, NewPartId},
+                                   {name, PartName},
+                                   {nodes, NodeIds},
+                                   {state, up},
+                                   {subdivision, cluster},
+                                   {subdivision_id, ClusterId},
+                                   {comment, "Remote site partition"}],
+                                  wm_entity:new(partition)),
+                Cluster2 = wm_entity:set({partitions, [NewPartId | OldPartIds]}, Cluster1),
+                1 = wm_conf:update(NewPart),
+                1 = wm_conf:update(Cluster2),
+                NewPartId
+        end,
+    UpdatedNodes =
+        lists:map(fun(Node) -> wm_entity:set([{subdivision, partition}, {subdivision_id, PartId}], Node) end, Nodes),
     NodesNumber = length(Nodes),
     NodesNumber = wm_conf:update(UpdatedNodes).
 
@@ -291,7 +288,7 @@ lookup_node(Name, [_ | Xs]) ->
 
 -spec select_template_nodes(remote_id()) -> [#node{}].
 select_template_nodes(RemoteId) ->
-    P = fun(X) -> wm_entity:get_attr(remote_id, X) =:= RemoteId andalso wm_entity:get_attr(is_template, X) =:= true end,
+    P = fun(X) -> wm_entity:get(remote_id, X) =:= RemoteId andalso wm_entity:get(is_template, X) =:= true end,
     case wm_conf:select(node, P) of
         {ok, Xs} ->
             Xs;
@@ -308,9 +305,9 @@ select_template_nodes(RemoteId) ->
 -include_lib("eunit/include/eunit.hrl").
 
 lookup_node_test() ->
-    A = wm_entity:set_attr({name, "a"}, wm_entity:new(node)),
-    B = wm_entity:set_attr({name, "b"}, wm_entity:new(node)),
-    C = wm_entity:set_attr({name, "c"}, wm_entity:new(node)),
+    A = wm_entity:set({name, "a"}, wm_entity:new(node)),
+    B = wm_entity:set({name, "b"}, wm_entity:new(node)),
+    C = wm_entity:set({name, "c"}, wm_entity:new(node)),
 
     ?assertEqual({ok, A}, lookup_node("a", [C, A, B])),
     ?assertEqual({error, not_found}, lookup_node("z", [C, A, B])),

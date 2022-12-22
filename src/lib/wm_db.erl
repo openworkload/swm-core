@@ -72,10 +72,7 @@ get_one(Tab, Attr, Value) ->
 
 -spec get_one_2keys(atom(), {atom(), term()}, {atom(), term()}) -> [tuple()].
 get_one_2keys(Tab, {Attr1, Value1}, {Attr2, Value2}) ->
-    do(qlc:q([X
-              || X <- mnesia:table(Tab),
-                 wm_entity:get_attr(Attr1, X) =:= Value1,
-                 wm_entity:get_attr(Attr2, X) =:= Value2])).
+    do(qlc:q([X || X <- mnesia:table(Tab), wm_entity:get(Attr1, X) =:= Value1, wm_entity:get(Attr2, X) =:= Value2])).
 
 -spec get_many(atom(), atom(), list()) -> [tuple()].
 get_many(Tab, Attr, Values) ->
@@ -83,7 +80,7 @@ get_many(Tab, Attr, Values) ->
 
 -spec get_less_equal(atom(), atom(), term()) -> [tuple()].
 get_less_equal(Tab, Attr, Value) ->
-    do(qlc:q([X || X <- mnesia:table(Tab), wm_entity:get_attr(Attr, X) =< Value])).
+    do(qlc:q([X || X <- mnesia:table(Tab), wm_entity:get(Attr, X) =< Value])).
 
 -spec update_existing(atom(), {atom(), term()}, atom(), term()) -> {atomic, term()} | {aborted, term()}.
 update_existing(Tab, {KeyName, KeyVal}, Attr, AttrVal) ->
@@ -102,7 +99,7 @@ upgrade_schema(Json) ->
             [];
         Results ->
             ?LOG_DEBUG("Schema is not up-to-dated: ~p", [Results]),
-            ExistingTabBins = [wm_entity:get_attr(name, X) || X <- get_records(table)],
+            ExistingTabBins = [wm_entity:get(name, X) || X <- get_records(table)],
             ExistingTabs = [binary_to_atom(X, utf8) || X <- ExistingTabBins],
             NeedTabs = [X || {_, X} <- Results],
             RmTabs = lists:subtract(ExistingTabs, NeedTabs),
@@ -452,8 +449,8 @@ do_update([{Rec, false} | T], Result) ->
     do_update(T, Result + 1);
 do_update([Rec | T], Result) ->
     ?LOG_DEBUG("Update DB with record: ~P", [Rec, 10]),
-    %Revision = wm_entity:get_attr(revision, Rec),
-    %NewRec = wm_entity:set_attr({revision, Revision+1}, Rec),
+    %Revision = wm_entity:get(revision, Rec),
+    %NewRec = wm_entity:set({revision, Revision+1}, Rec),
     %?LOG_DEBUG("Changed revision record: ~P", [NewRec, 10]),
     F = fun() -> ok = mnesia:write(Rec) end,
     transaction(F),
@@ -600,7 +597,7 @@ do_wait_for_table(TabName) ->
 
 -spec do_get_many(atom(), atom(), [term()]) -> {ok, term()} | {error, term()}.
 do_get_many(Tab, Attr, Values) ->
-    do(qlc:q([X || X <- mnesia:table(Tab), lists:any(fun(Y) -> wm_entity:get_attr(Attr, X) =:= Y end, Values)])).
+    do(qlc:q([X || X <- mnesia:table(Tab), lists:any(fun(Y) -> wm_entity:get(Attr, X) =:= Y end, Values)])).
 
 -spec do_get_tables_meta([{atom(), binary()}], [{atom(), {struct, list()}}]) -> [{atom(), {struct, list()}}].
 do_get_tables_meta([], Meta) ->
@@ -614,7 +611,7 @@ do_get_tables_meta([{TabName, ReqHash} | T], Meta) ->
             ?LOG_DEBUG("Req hash ~p differs from ~p (~p)", [ReqHash, Other, TabName]),
             TabNameBin = list_to_binary(atom_to_list(TabName)),
             M = try
-                    do(qlc:q([X || X <- mnesia:table(table), wm_entity:get_attr(name, X) =:= TabNameBin]))
+                    do(qlc:q([X || X <- mnesia:table(table), wm_entity:get(name, X) =:= TabNameBin]))
                 catch
                     E1:E2 ->
                         ?LOG_ERROR("Transaction failed: ~p:~p", [E1, E2]),
@@ -626,8 +623,8 @@ do_get_tables_meta([{TabName, ReqHash} | T], Meta) ->
                     do_get_tables_meta(T, Meta);
                 _ ->
                     R = hd(M),
-                    Fields = wm_entity:get_attr(fields, R),
-                    Name = wm_entity:get_attr(name, R),
+                    Fields = wm_entity:get(fields, R),
+                    Name = wm_entity:get(name, R),
                     S = {Name, {struct, Fields}},
                     ?LOG_DEBUG("Got meta for table ~p: ~P", [TabNameBin, R, 10]),
                     do_get_tables_meta(T, [S | Meta])
@@ -677,7 +674,7 @@ do_get_tab_content_hash(TabName) ->
                  []
          end,
     L2 = replace_incomparible_fields(TabName, L1),
-    F = fun(X, Y) -> wm_entity:get_attr(name, X) < wm_entity:get_attr(name, Y) end,
+    F = fun(X, Y) -> wm_entity:get(name, X) < wm_entity:get(name, Y) end,
     L3 = lists:sort(F, L2),
     Data =
         lists:flatten(
@@ -687,7 +684,7 @@ do_get_tab_content_hash(TabName) ->
 -spec replace_incomparible_fields(atom(), [term()]) -> [term()].
 replace_incomparible_fields(TabName, Records) ->
     IncomFields = wm_entity:get_incomparible_fields(TabName),
-    F1 = fun(Field, Rec) -> wm_entity:set_attr({Field, incomparible}, Rec) end,
+    F1 = fun(Field, Rec) -> wm_entity:set({Field, incomparible}, Rec) end,
     F2 = fun(Rec) -> lists:foldr(F1, Rec, IncomFields) end,
     [F2(X) || X <- Records].
 
@@ -734,8 +731,8 @@ do_update_tables_table({NameBin, {struct, Fields}}) ->
     ?LOG_DEBUG("Update table 'table'"),
     ensure_table_exists(table, [], local),
     R1 = wm_entity:new(<<"table">>),
-    R2 = wm_entity:set_attr({name, NameBin}, R1),
-    R3 = wm_entity:set_attr({fields, Fields}, R2),
+    R2 = wm_entity:set({name, NameBin}, R1),
+    R3 = wm_entity:set({fields, Fields}, R2),
     ?LOG_DEBUG("Meta information for table ~p: ~P", [NameBin, R3, 10]),
     case do_update([R3], 0) of
         1 ->
@@ -763,7 +760,7 @@ do_transform_table({NameBin, {struct, Fields}}) ->
                 []
         end,
     T = fun(Old) ->
-           OldMap = get_attr_map(Old, OldFields, 2, maps:new()),
+           OldMap = get_map(Old, OldFields, 2, maps:new()),
            ?LOG_DEBUG("Map for old record ~p: ~p", [Name, maps:to_list(OldMap)]),
            NewRec = merge_records(Old, New, OldMap, NewFields, Defaults),
            ?LOG_DEBUG("Merged record: ~P", [NewRec, 5]),
@@ -799,7 +796,7 @@ record_from_json([JsonRecordField | T], NewRec, NewFields, Defaults) ->
     {FieldName, Default, _} = wm_entity:extract_json_field_info(JsonRecordField),
     NewRec2 =
         try
-            wm_entity:set_attr({FieldName, Default}, NewRec)
+            wm_entity:set({FieldName, Default}, NewRec)
         catch
             E1:E2 ->
                 ?LOG_ERROR("Attribute set exception: ~p:~p", [E1, E2]),
@@ -815,21 +812,21 @@ merge_records(Old, New, OldMap, [NewField | NewFields], [{NewField, Default} | D
     ?LOG_DEBUG("Merge records ~P and ~P", [Old, 5, New, 5]),
     NewValue = maps:get(NewField, OldMap, Default),
     ?LOG_DEBUG("Field '~p' will be merged with value: ~P", [NewField, NewValue, 5]),
-    merge_records(Old, wm_entity:set_attr({NewField, NewValue}, New), OldMap, NewFields, Defaults).
+    merge_records(Old, wm_entity:set({NewField, NewValue}, New), OldMap, NewFields, Defaults).
 
--spec get_attr_map(term(), [atom()], pos_integer(), map()) -> map().
-get_attr_map(_, [], _, Map) ->
+-spec get_map(term(), [atom()], pos_integer(), map()) -> map().
+get_map(_, [], _, Map) ->
     Map;
-get_attr_map(Rec, [Name | T], Next, Map) ->
+get_map(Rec, [Name | T], Next, Map) ->
     Value = erlang:element(Next, Rec),
-    get_attr_map(Rec, T, Next + 1, maps:put(Name, Value, Map)).
+    get_map(Rec, T, Next + 1, maps:put(Name, Value, Map)).
 
 -spec do_get_global(string(), atom(), term()) -> term().
 do_get_global(Name, string, Default) ->
     try
-        Q = qlc:q([X || X <- mnesia:table(global), wm_entity:get_attr(name, X) =:= Name]),
+        Q = qlc:q([X || X <- mnesia:table(global), wm_entity:get(name, X) =:= Name]),
         {atomic, Rs} = mnesia:transaction(fun() -> qlc:e(Q) end),
-        case wm_entity:get_attr(value, hd(Rs)) of
+        case wm_entity:get(value, hd(Rs)) of
             "" ->
                 Default;
             X ->
@@ -841,7 +838,7 @@ do_get_global(Name, string, Default) ->
     end;
 do_get_global(Name, record, Default) ->
     try
-        Q = qlc:q([X || X <- mnesia:table(global), wm_entity:get_attr(name, X) =:= Name]),
+        Q = qlc:q([X || X <- mnesia:table(global), wm_entity:get(name, X) =:= Name]),
         {atomic, Rs} = mnesia:transaction(fun() -> qlc:e(Q) end),
         hd(Rs)
     catch
@@ -850,9 +847,9 @@ do_get_global(Name, record, Default) ->
     end;
 do_get_global(Name, integer, Default) ->
     try
-        Q = qlc:q([X || X <- mnesia:table(global), wm_entity:get_attr(name, X) =:= Name]),
+        Q = qlc:q([X || X <- mnesia:table(global), wm_entity:get(name, X) =:= Name]),
         {atomic, Rs} = mnesia:transaction(fun() -> qlc:e(Q) end),
-        X = wm_entity:get_attr(value, hd(Rs)),
+        X = wm_entity:get(value, hd(Rs)),
         list_to_integer(X)
     catch
         _:_ ->
@@ -883,7 +880,7 @@ do_create_the_rest_tables() ->
 
 -spec do_get_one(atom(), atom(), term()) -> {ok, term()} | {error, term()}.
 do_get_one(Tab, Attr, Value) ->
-    do(qlc:q([X || X <- mnesia:table(Tab), wm_entity:get_attr(Attr, X) =:= Value])).
+    do(qlc:q([X || X <- mnesia:table(Tab), wm_entity:get(Attr, X) =:= Value])).
 
 -spec do_get_address(string()) -> node_address() | not_found.
 do_get_address(NodeStr) when is_list(NodeStr) ->
@@ -898,15 +895,15 @@ do_get_address(NodeStr) when is_list(NodeStr) ->
                 [Part1, Part2] = string:tokens(NodeStr, "@"),
                 do(qlc:q([X
                           || X <- mnesia:table(node),
-                             wm_entity:get_attr(name, X) =:= Part1,
-                             wm_entity:get_attr(host, X) =:= Part2]));
+                             wm_entity:get(name, X) =:= Part1,
+                             wm_entity:get(host, X) =:= Part2]));
             false ->
-                do(qlc:q([X || X <- mnesia:table(node), wm_entity:get_attr(name, X) =:= NodeStr]))
+                do(qlc:q([X || X <- mnesia:table(node), wm_entity:get(name, X) =:= NodeStr]))
         end,
     case X of
         [Rec] ->
-            Host = wm_entity:get_attr(host, Rec),
-            Port = wm_entity:get_attr(api_port, Rec),
+            Host = wm_entity:get(host, Rec),
+            Port = wm_entity:get(api_port, Rec),
             {Host, Port};
         E ->
             ?LOG_ERROR("Could not get address (got ~p)", [E]),
@@ -916,10 +913,10 @@ do_get_address(NodeStr) when is_list(NodeStr) ->
 -spec do_update_existing(atom(), atom(), term(), atom(), term()) -> {atomic, term()} | {aborted, term()}.
 do_update_existing(Tab, KeyName, KeyVal, Attr, AttrVal) ->
     F = fun() ->
-           Q = qlc:q([X || X <- mnesia:table(Tab), wm_entity:get_attr(KeyName, X) =:= KeyVal]),
+           Q = qlc:q([X || X <- mnesia:table(Tab), wm_entity:get(KeyName, X) =:= KeyVal]),
            case qlc:eval(Q) of
                [OldRec | _] ->
-                   NewRec = wm_entity:set_attr({Attr, AttrVal}, OldRec),
+                   NewRec = wm_entity:set({Attr, AttrVal}, OldRec),
                    mnesia:write(Tab, NewRec, sticky_write);
                Other ->
                    ?LOG_DEBUG("Weird search result: ~p", [Other])

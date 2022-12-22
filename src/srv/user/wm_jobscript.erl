@@ -45,19 +45,19 @@ do_parse([Line | T], Job) ->
 
 -spec add_requested_resource(string(), string(), #job{}) -> #job{}.
 add_requested_resource(Name, PropValue, Job) ->
-    ResourcesOld = wm_entity:get_attr(request, Job),
+    ResourcesOld = wm_entity:get(request, Job),
     ResourcesNew = add_resource_with_property(Name, PropValue, ResourcesOld, []),
-    wm_entity:set_attr({request, ResourcesNew}, Job).
+    wm_entity:set({request, ResourcesNew}, Job).
 
 -spec add_resource_with_property(atom(), string(), [#resource{}], [#resource{}]) -> [#resource{}].
 add_resource_with_property(Name, PropValue, [], ResourcesNew) ->
-    NewResource = wm_entity:set_attr([{name, Name}, {properties, [{value, PropValue}]}], wm_entity:new(resource)),
+    NewResource = wm_entity:set([{name, Name}, {properties, [{value, PropValue}]}], wm_entity:new(resource)),
     [NewResource | ResourcesNew];
 add_resource_with_property(Name, PropValue, [#resource{name = Name} = OldResource | ResourcesOld], ResourcesNew) ->
-    Props1 = wm_entity:get_attr(properties, OldResource),
+    Props1 = wm_entity:get(properties, OldResource),
     Props2 = proplists:delete(value, Props1),
     Props3 = [{value, PropValue} | Props2],
-    NewResource = wm_entity:set_attr({properties, Props3}, OldResource),
+    NewResource = wm_entity:set({properties, Props3}, OldResource),
     add_resource_with_property(Name, PropValue, ResourcesOld, [NewResource | ResourcesNew]);
 add_resource_with_property(Name, PropValue, [#resource{} = OldResource | ResourcesOld], ResourcesNew) ->
     add_resource_with_property(Name, PropValue, ResourcesOld, [OldResource | ResourcesNew]).
@@ -70,30 +70,30 @@ parse_line(Ws, Job) when hd(Ws) == "image", length(Ws) > 1 ->
 parse_line(Ws, Job) when hd(Ws) == "flavor", length(Ws) > 1 ->
     add_requested_resource("flavor", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "account_id", length(Ws) > 1 ->
-    wm_entity:set_attr({account_id, lists:flatten(tl(Ws))}, Job);
+    wm_entity:set({account_id, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "name", length(Ws) > 1 ->
-    wm_entity:set_attr({name, lists:flatten(tl(Ws))}, Job);
+    wm_entity:set({name, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "comment", length(Ws) > 1 ->
-    wm_entity:set_attr({comment, lists:flatten(tl(Ws))}, Job);
+    wm_entity:set({comment, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "stdin", length(Ws) > 1 ->
-    wm_entity:set_attr({stdin, lists:flatten(tl(Ws))}, Job);
+    wm_entity:set({stdin, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "stdout", length(Ws) > 1 ->
-    wm_entity:set_attr({stdout, lists:flatten(tl(Ws))}, Job);
+    wm_entity:set({stdout, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "stderr", length(Ws) > 1 ->
-    wm_entity:set_attr({stderr, lists:flatten(tl(Ws))}, Job);
+    wm_entity:set({stderr, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "workdir", length(Ws) > 1 ->
-    wm_entity:set_attr({workdir,
-                        lists:flatten(
-                            filename:absname(tl(Ws)))},
-                       Job);
+    wm_entity:set({workdir,
+                   lists:flatten(
+                       filename:absname(tl(Ws)))},
+                  Job);
 parse_line(Ws, Job) when hd(Ws) == "relocatable" ->
-    wm_entity:set_attr({relocatable, true}, Job);
+    wm_entity:set({relocatable, true}, Job);
 parse_line(Ws, Job) when hd(Ws) == "input" ->
-    Old = wm_entity:get_attr(input_files, Job),
-    wm_entity:set_attr({input_files, Old ++ tl(Ws)}, Job);
+    Old = wm_entity:get(input_files, Job),
+    wm_entity:set({input_files, Old ++ tl(Ws)}, Job);
 parse_line(Ws, Job) when hd(Ws) == "output" ->
-    Old = wm_entity:get_attr(output_files, Job),
-    wm_entity:set_attr({output_files, Old ++ tl(Ws)}, Job);
+    Old = wm_entity:get(output_files, Job),
+    wm_entity:set({output_files, Old ++ tl(Ws)}, Job);
 parse_line(Ws, Job) ->
-    ?LOG_DEBUG("Unknown jobscript statement: ~p (~p)", [Ws, wm_entity:get_attr(id, Job)]),
+    ?LOG_DEBUG("Unknown jobscript statement: ~p (~p)", [Ws, wm_entity:get(id, Job)]),
     Job.

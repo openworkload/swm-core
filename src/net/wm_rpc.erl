@@ -102,11 +102,11 @@ get_connection_args({Host, Port}) when is_list(Host) ->
     ConnArgs3 = maps:put(cert, Cert, ConnArgs2),
     maps:put(key, Key, ConnArgs3);
 get_connection_args({Node, Port}) when is_tuple(Node) ->
-    Host = wm_entity:get_attr(host, Node),
+    Host = wm_entity:get(host, Node),
     get_connection_args({Host, Port});
 get_connection_args(Node) when is_tuple(Node) ->
-    Host = wm_entity:get_attr(host, Node),
-    Port = wm_entity:get_attr(api_port, Node),
+    Host = wm_entity:get(host, Node),
+    Port = wm_entity:get(api_port, Node),
     DefaultCert = filename:join([?DEFAULT_CERT_DIR, "cert.pem"]),
     DefaultKey = filename:join([?DEFAULT_CERT_DIR, "key.pem"]),
     Cert = wm_conf:g(node_cert, {DefaultCert, string}),
@@ -142,7 +142,7 @@ get_next_destination(FinalAddr = {_, _}) ->
                             % Otherwise we send the message up to the parent.
                             case wm_conf:select_node(MyAddr) of
                                 {ok, MyNode} ->
-                                    MyNodeId = wm_entity:get_attr(id, MyNode),
+                                    MyNodeId = wm_entity:get(id, MyNode),
                                     case wm_conf:select_node(FinalAddr) of
                                         {ok, FinalNode} ->
                                             get_next_relative_destination(FinalNode, MyNodeId);
@@ -150,7 +150,7 @@ get_next_destination(FinalAddr = {_, _}) ->
                                             % This scenario happens when partitions work on separate networks
                                             % with the same network address range. In this case we have more
                                             % than one compute nodes on different networks with same address.
-                                            GetMyNode = fun(X) -> wm_entity:get_attr(id, X) == MyNodeId end,
+                                            GetMyNode = fun(X) -> wm_entity:get(id, X) == MyNodeId end,
                                             case lists:filter(GetMyNode, Nodes) of
                                                 [MyNode] when is_tuple(MyNode) ->
                                                     wm_conf:get_my_relative_address(FinalAddr);
@@ -169,7 +169,7 @@ get_next_destination(FinalAddr = {_, _}) ->
 
 -spec get_next_relative_destination(#node{}, node_id()) -> node_address() | not_found.
 get_next_relative_destination(FinalNode, MyNodeId) ->
-    FinalNodeId = wm_entity:get_attr(id, FinalNode),
+    FinalNodeId = wm_entity:get(id, FinalNode),
     case wm_topology:on_path(MyNodeId, FinalNodeId) of
         {ok, NodeId} ->
             {ok, Node} = wm_conf:select(node, {id, NodeId}),

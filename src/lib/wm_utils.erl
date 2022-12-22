@@ -118,8 +118,8 @@ node_to_fullname({_}) ->
 node_to_fullname({_, _}) ->
     none;
 node_to_fullname(Node) ->
-    NameStr = wm_entity:get_attr(name, Node),
-    HostStr = wm_entity:get_attr(host, Node),
+    NameStr = wm_entity:get(name, Node),
+    HostStr = wm_entity:get(host, Node),
     FullNameStr = NameStr ++ "@" ++ HostStr,
     list_to_atom(FullNameStr).
 
@@ -211,7 +211,7 @@ get_parent_from_conf({NodeName, Host}) ->
             not_found
     end;
 get_parent_from_conf(Node) ->
-    ParentShortName = wm_entity:get_attr(parent, Node),
+    ParentShortName = wm_entity:get(parent, Node),
     case wm_conf:select_node(ParentShortName) of
         {error, _} ->
             not_found;
@@ -289,7 +289,7 @@ get_address({node, ID}) ->
     get_address(Node);
 get_address({Type, ID}) when Type =:= grid; Type =:= cluster; Type =:= partition ->
     [Entity] = wm_db:get_one(Type, id, ID),
-    Node = wm_entity:get_attr(manager, Entity),
+    Node = wm_entity:get(manager, Entity),
     wm_utils:get_address(Node);
 get_address({Host, Port}) when is_integer(Port) ->
     {Host, Port};
@@ -298,8 +298,8 @@ get_address(Node) when is_list(Node) ->
 get_address(Node) when is_atom(Node) ->
     get_address(atom_to_list(Node));
 get_address(Node) when is_tuple(Node) ->
-    Host = wm_entity:get_attr(host, Node),
-    Port = wm_entity:get_attr(api_port, Node),
+    Host = wm_entity:get(host, Node),
+    Port = wm_entity:get(api_port, Node),
     {Host, Port}.
 
 -spec is_module_loaded(atom()) -> true | false.
@@ -369,8 +369,8 @@ multiple_to_single_space(_, [Ch | Rest]) ->
 
 -spec get_job_user(#job{}) -> {ok, #user{}} | {error, not_found}.
 get_job_user(Job) ->
-    JobID = wm_entity:get_attr(id, Job),
-    UserID = wm_entity:get_attr(user_id, Job),
+    JobID = wm_entity:get(id, Job),
+    UserID = wm_entity:get(user_id, Job),
     ?LOG_DEBUG("User ID: ~p", [UserID]),
     case wm_conf:select(user, {id, UserID}) of
         {error, not_found} ->
@@ -570,9 +570,9 @@ is_manager(Node) ->
 %% @doc Returns true if node record has role assigned
 -spec has_role(string(), #node{}) -> true | false.
 has_role(RoleName, Node) ->
-    RoleIDs = wm_entity:get_attr(roles, Node),
+    RoleIDs = wm_entity:get(roles, Node),
     Roles = wm_conf:select(role, RoleIDs),
-    RoleNames = [wm_entity:get_attr(name, Role) || Role <- Roles],
+    RoleNames = [wm_entity:get(name, Role) || Role <- Roles],
     lists:any(fun(X) -> X == RoleName end, RoleNames).
 
 %% @doc Try to get module behaviour name
@@ -665,14 +665,14 @@ get_cloud_node_name(JobId, Index) ->
 -spec get_requested_nodes_number(#job{}) -> integer().
 get_requested_nodes_number(Job) ->
     F = fun(Resource, Accum) ->
-           case wm_entity:get_attr(name, Resource) of
+           case wm_entity:get(name, Resource) of
                "node" ->
-                   Accum + wm_entity:get_attr(count, Resource);
+                   Accum + wm_entity:get(count, Resource);
                _ ->
                    Accum
            end
         end,
-    lists:foldl(F, 0, wm_entity:get_attr(request, Job)).
+    lists:foldl(F, 0, wm_entity:get(request, Job)).
 
 -spec enum_cacerts([string()], [string()]) -> term().
 enum_cacerts([], _Certs) ->

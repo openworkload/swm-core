@@ -28,7 +28,7 @@ start_link(Args) ->
 
 -spec get_suited_template_nodes(#job{}) -> [#node{}].
 get_suited_template_nodes(Job) ->
-    GetTemplates = fun(X) -> wm_entity:get_attr(is_template, X) == true end,
+    GetTemplates = fun(X) -> wm_entity:get(is_template, X) == true end,
     case wm_conf:select(node, GetTemplates) of
         {error, not_found} ->
             [];
@@ -43,7 +43,7 @@ get_suited_template_nodes(Job, Nodes) ->
 -spec select_remote_site(#job{}) -> {ok, #node{}} | {error, not_found}.
 select_remote_site(Job) ->
     Nodes = get_suited_template_nodes(Job),
-    ?LOG_DEBUG("Suited template nodes number for job ~p: ~p", [wm_entity:get_attr(id, Job), length(Nodes)]),
+    ?LOG_DEBUG("Suited template nodes number for job ~p: ~p", [wm_entity:get(id, Job), length(Nodes)]),
     select_remote_site(Job, Nodes).
 
 -spec cancel_relocation(#job{}) -> pos_integer().
@@ -52,10 +52,10 @@ cancel_relocation(Job) ->
 
 -spec remove_relocation_entities(#job{}) -> ok.
 remove_relocation_entities(Job) ->
-    JobRss = wm_entity:get_attr(resources, Job),
+    JobRss = wm_entity:get(resources, Job),
     Count = delete_resources(JobRss, Job, 0),
     wm_topology:reload(),
-    ?LOG_DEBUG("Deleted ~p entities for job ~p", [Count, wm_entity:get_attr(id, Job)]).
+    ?LOG_DEBUG("Deleted ~p entities for job ~p", [Count, wm_entity:get(id, Job)]).
 
 %% ============================================================================
 %% Server callbacks
@@ -94,7 +94,7 @@ handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job finished event received for job ~p", [JobId]),
     case wm_conf:select(relocation, {job_id, JobId}) of
         {ok, Relocation} ->
-            RelocationId = wm_entity:get_attr(id, Relocation),
+            RelocationId = wm_entity:get(id, Relocation),
             ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationId]),
             wm_conf:delete(Relocation),
             wm_compute:set_nodes_alloc_state(remote, drained, JobId),
@@ -125,8 +125,8 @@ code_change(_, #mstate{} = MState, _) ->
 
 -spec job_suited_node(#job{}, #node{}) -> boolean().
 job_suited_node(Job, Node) ->
-    JobResources = wm_entity:get_attr(resources, Job),
-    NodeResources = wm_entity:get_attr(resources, Node),
+    JobResources = wm_entity:get(resources, Job),
+    NodeResources = wm_entity:get(resources, Node),
     F = fun(JobResource) -> match_resource(JobResource, NodeResources) end,
     lists:all(fun(X) -> X end, lists:map(F, JobResources)).
 
@@ -134,8 +134,8 @@ job_suited_node(Job, Node) ->
 match_resource(_, []) ->
     false;
 match_resource(#resource{name = Name} = JobResource, [#resource{name = Name} = NodeResource | NodeResources]) ->
-    DesiredCount = wm_entity:get_attr(count, JobResource),
-    AvailableCount = wm_entity:get_attr(count, NodeResource),
+    DesiredCount = wm_entity:get(count, JobResource),
+    AvailableCount = wm_entity:get(count, NodeResource),
     case DesiredCount =< AvailableCount of
         true ->
             true;
@@ -149,34 +149,36 @@ match_resource(JobResource, [_NodeResource | NodeResources]) ->
 select_remote_site(_, []) ->
     {error, not_found};
 select_remote_site(Job, Nodes) ->
-    case wm_entity:get_attr(nodes, Job) of
+    case wm_entity:get(nodes, Job) of
         [SomeNode] ->
-            case wm_entity:get_attr(is_template, SomeNode) of
-              true ->
-                {ok, SomeNode};
-              false ->
-                {error, "Job requests non-template node"}
+            case wm_entity:get(is_template, SomeNode) of
+                true ->
+                    {ok, SomeNode};
+                false ->
+                    {error, "Job requests non-template node"}
             end;
         _ ->
-           AccountId = wm_entity:get_attr(account_id, Job),
-           Files = wm_entity:get_attr(input_files, Job),
-           Data = cumulative_files_size(Files),
-           PricesNorm =
-               norming(lists:map(fun(Node) ->
-                                   case wm_accounting:node_prices(Node) of
-                                       #{AccountId := Price} ->
-                                           Price;
-                                       #{} ->
-                                           0
-                                   end
-                                 end,
-                                 Nodes)),
-           NetworkLatenciesNorm = norming(lists:map(fun(Node) -> network_latency(Node) end, Nodes)),
-           Xs = lists:zip3(Nodes, PricesNorm, NetworkLatenciesNorm),
-           {_, Node} =
-               lists:max(
-                   lists:map(fun({Node, Price, NetworkLatency}) -> {node_weight(Price, NetworkLatency, Data), Node} end, Xs)),
-           {ok, Node}
+            AccountId = wm_entity:get(account_id, Job),
+            Files = wm_entity:get(input_files, Job),
+            Data = cumulative_files_size(Files),
+            PricesNorm =
+                norming(lists:map(fun(Node) ->
+                                     case wm_accounting:node_prices(Node) of
+                                         #{AccountId := Price} ->
+                                             Price;
+                                         #{} ->
+                                             0
+                                     end
+                                  end,
+                                  Nodes)),
+            NetworkLatenciesNorm = norming(lists:map(fun(Node) -> network_latency(Node) end, Nodes)),
+            Xs = lists:zip3(Nodes, PricesNorm, NetworkLatenciesNorm),
+            {_, Node} =
+                lists:max(
+                    lists:map(fun({Node, Price, NetworkLatency}) -> {node_weight(Price, NetworkLatency, Data), Node}
+                              end,
+                              Xs)),
+            {ok, Node}
     end.
 
 -spec cumulative_files_size([nonempty_string()]) -> number().
@@ -197,9 +199,9 @@ cumulative_files_size(Files) when is_list(Files) ->
 
 -spec network_latency(#node{}) -> number().
 network_latency(Node) ->
-    Resources = wm_entity:get_attr(resources, Node),
+    Resources = wm_entity:get(resources, Node),
     lists:foldl(fun (Resource = #resource{name = "network_latency"}, _Acc) ->
-                        wm_entity:get_attr(count, Resource);
+                        wm_entity:get(count, Resource);
                     (_Resource, Acc) ->
                         Acc
                 end,
@@ -237,21 +239,21 @@ start_relocations() ->
 
 -spec spawn_virtres_if_needed(#job{}, [#relocation{}]) -> [#relocation{}].
 spawn_virtres_if_needed(Job, Relocations) ->
-    JobId = wm_entity:get_attr(id, Job),
+    JobId = wm_entity:get(id, Job),
     case wm_conf:select(relocation, {job_id, JobId}) of
         {error, not_found} ->
             case spawn_virtres(Job) of
                 {ok, RelocationId, TemplateNodeId} ->
                     ?LOG_DEBUG("Virtres has been spawned for job ~p (~p)", [JobId, RelocationId]),
                     Relocation =
-                        wm_entity:set_attr([{id, RelocationId}, {job_id, JobId}, {template_node_id, TemplateNodeId}],
-                                           wm_entity:new(relocation)),
+                        wm_entity:set([{id, RelocationId}, {job_id, JobId}, {template_node_id, TemplateNodeId}],
+                                      wm_entity:new(relocation)),
                     [Relocation | Relocations];
                 _ ->
                     Relocations
             end;
         {ok, FoundRelocation} ->
-            FoundRelocationId = wm_entity:get_attr(id, FoundRelocation),
+            FoundRelocationId = wm_entity:get(id, FoundRelocation),
             case wm_factory:is_running(virtres, FoundRelocationId) of
                 false ->
                     ?LOG_DEBUG("Virtres is not running got job ~p (~p) => respawn", [FoundRelocationId, JobId]),
@@ -260,7 +262,7 @@ spawn_virtres_if_needed(Job, Relocations) ->
                     wm_conf:delete(FoundRelocation),
                     1 =
                         wm_conf:update(
-                            wm_entity:set_attr({id, NewRelocationId}, FoundRelocation));
+                            wm_entity:set({id, NewRelocationId}, FoundRelocation));
                 _ ->
                     ok
             end,
@@ -334,27 +336,27 @@ start_new_virtres_processes() ->
 % @doc Restart job relocation process that was started in the past but stopped by some reason
 -spec respawn_virtres(#job{}, #relocation{}) -> integer() | {error, not_found}.
 respawn_virtres(Job, Relocation) ->
-    JobId = wm_entity:get_attr(id, Job),
-    TemplateNodeId = wm_entity:get_attr(template_node_id, Relocation),
+    JobId = wm_entity:get(id, Job),
+    TemplateNodeId = wm_entity:get(template_node_id, Relocation),
     {ok, TemplateNode} = wm_conf:select(node, {id, TemplateNodeId}),
     1 =
         wm_conf:update(
-            wm_entity:set_attr({state, ?JOB_STATE_WAITING}, Job)),
+            wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
     wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)).
 
 % @doc Start relocation returning relocation ID that is a hash of the nodes involved into the relocation
 -spec spawn_virtres(#job{}) -> {ok, integer(), node_id()} | {error, not_found}.
 spawn_virtres(Job) ->
-    JobId = wm_entity:get_attr(id, Job),
+    JobId = wm_entity:get(id, Job),
     case select_remote_site(Job) of
         {ok, TemplateNode} ->
-            TemplateName = wm_entity:get_attr(name, TemplateNode),
+            TemplateName = wm_entity:get(name, TemplateNode),
             ?LOG_INFO("Found suited remote site for job ~p (~p)", [JobId, TemplateName]),
             1 =
                 wm_conf:update(
-                    wm_entity:set_attr({state, ?JOB_STATE_WAITING}, Job)),
+                    wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
             {ok, TaskId} = wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)),
-            {ok, TaskId, wm_entity:get_attr(id, TemplateNode)};
+            {ok, TaskId, wm_entity:get(id, TemplateNode)};
         {error, not_found} ->
             ?LOG_DEBUG("No suited remote site found for job ~p", [JobId]),
             {error, not_found}
@@ -363,23 +365,23 @@ spawn_virtres(Job) ->
 -spec predict_job_node_names(#job{}) -> [string()].
 predict_job_node_names(Job) ->
     Seq = lists:seq(0, wm_utils:get_requested_nodes_number(Job) - 1),
-    JobId = wm_entity:get_attr(id, Job),
+    JobId = wm_entity:get(id, Job),
     [wm_utils:get_cloud_node_name(JobId, SeqNum) || SeqNum <- Seq].
 
 -spec do_cancel_relocation(#job{}) -> atom().
 do_cancel_relocation(Job) ->
-    JobId = wm_entity:get_attr(id, Job),
+    JobId = wm_entity:get(id, Job),
     case wm_conf:select(relocation, {job_id, JobId}) of
         {error, not_found} ->
             ?LOG_DEBUG("No relocation is running => destroy related resources: ~p", [JobId]),
             {ok, TaskId} = wm_factory:new(virtres, {destroy, JobId, undefined}, []),
             RelocationDestraction =
-                wm_entity:set_attr([{id, TaskId}, {job_id, JobId}, {canceled, true}], wm_entity:new(relocation)),
+                wm_entity:set([{id, TaskId}, {job_id, JobId}, {canceled, true}], wm_entity:new(relocation)),
             remove_relocation_entities(Job),
             wm_conf:update(RelocationDestraction);
         {ok, Relocation} ->
             ?LOG_DEBUG("Relocation is running => destroy its resources (job: ~p)", [JobId]),
-            RelocationId = wm_entity:get_attr(id, Relocation),
+            RelocationId = wm_entity:get(id, Relocation),
             ok = wm_factory:send_event_locally(destroy, virtres, RelocationId),
             remove_relocation_entities(Job),
             wm_conf:delete(Relocation)
@@ -394,7 +396,7 @@ delete_resources([#resource{name = "partition",
                   | T],
                  Job,
                  Cnt) ->
-    JobId = wm_entity:get_attr(id, Job),
+    JobId = wm_entity:get(id, Job),
     case lists:keyfind(id, 1, Props) of
         false ->
             ?LOG_DEBUG("Partition resource does not have id property: ~p [job=~p]", [Props, JobId]),
@@ -407,7 +409,7 @@ delete_resources([#resource{name = "partition",
             delete_resources(T, Job, Cnt + RssCnt + 1)
     end;
 delete_resources([#resource{name = "node", properties = Props} | T], Job, Cnt) ->
-    JobId = wm_entity:get_attr(id, Job),
+    JobId = wm_entity:get(id, Job),
     case lists:keyfind(id, 1, Props) of
         false ->
             ?LOG_DEBUG("Node resource does not have id property: ~p [job=~p]", [Props, JobId]),
@@ -420,11 +422,11 @@ delete_resources([#resource{name = "node", properties = Props} | T], Job, Cnt) -
 
 -spec delete_part_id_from_cluster(#job{}, partition_id()) -> pos_integer().
 delete_part_id_from_cluster(Job, PartID) ->
-    ClusterID = wm_entity:get_attr(cluster_id, Job),
+    ClusterID = wm_entity:get(cluster_id, Job),
     {ok, Cluster1} = wm_conf:select(cluster, {id, ClusterID}),
-    Parts1 = wm_entity:get_attr(partitions, Cluster1),
+    Parts1 = wm_entity:get(partitions, Cluster1),
     Parts2 = lists:delete(PartID, Parts1),
-    Cluster2 = wm_entity:set_attr([{partitions, Parts2}], Cluster1),
+    Cluster2 = wm_entity:set([{partitions, Parts2}], Cluster1),
     1 = wm_conf:update(Cluster2).
 
 %% ============================================================================
@@ -436,40 +438,40 @@ delete_part_id_from_cluster(Job, PartID) ->
 -include_lib("eunit/include/eunit.hrl").
 
 match_resource_test() ->
-    Resource0 = wm_entity:set_attr([{name, "a"}, {count, 100}], wm_entity:new(resource)),
-    Resource1 = wm_entity:set_attr([{name, "b"}, {count, 10}], wm_entity:new(resource)),
-    Resource2 = wm_entity:set_attr([{name, "a"}, {count, 150}], wm_entity:new(resource)),
-    Resource3 = wm_entity:set_attr([{name, "c"}, {count, 100}], wm_entity:new(resource)),
-    Resource4 = wm_entity:set_attr([{name, "d"}, {count, 100}], wm_entity:new(resource)),
+    Resource0 = wm_entity:set([{name, "a"}, {count, 100}], wm_entity:new(resource)),
+    Resource1 = wm_entity:set([{name, "b"}, {count, 10}], wm_entity:new(resource)),
+    Resource2 = wm_entity:set([{name, "a"}, {count, 150}], wm_entity:new(resource)),
+    Resource3 = wm_entity:set([{name, "c"}, {count, 100}], wm_entity:new(resource)),
+    Resource4 = wm_entity:set([{name, "d"}, {count, 100}], wm_entity:new(resource)),
     ?assertEqual(false, match_resource(Resource0, [Resource1, Resource3, Resource4])),
     ?assertEqual(true, match_resource(Resource0, [Resource1, Resource2, Resource3, Resource4])),
     ?assertEqual(true, match_resource(Resource0, [Resource0, Resource1, Resource2, Resource3, Resource4])),
     ok.
 
 job_suited_node_test() ->
-    Job = wm_entity:set_attr([{resources,
-                               [wm_entity:set_attr([{name, "a"}, {count, 5}], wm_entity:new(resource)),
-                                wm_entity:set_attr([{name, "b"}, {count, 15}], wm_entity:new(resource)),
-                                wm_entity:set_attr([{name, "c"}, {count, 20}], wm_entity:new(resource))]}],
-                             wm_entity:new(job)),
+    Job = wm_entity:set([{resources,
+                          [wm_entity:set([{name, "a"}, {count, 5}], wm_entity:new(resource)),
+                           wm_entity:set([{name, "b"}, {count, 15}], wm_entity:new(resource)),
+                           wm_entity:set([{name, "c"}, {count, 20}], wm_entity:new(resource))]}],
+                        wm_entity:new(job)),
     Node0 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "a"}, {count, 1}], wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "b"}, {count, 5}], wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "c"}, {count, 10}], wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "a"}, {count, 1}], wm_entity:new(resource)),
+                         wm_entity:set([{name, "b"}, {count, 5}], wm_entity:new(resource)),
+                         wm_entity:set([{name, "c"}, {count, 10}], wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     Node1 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "a"}, {count, 10}], wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "b"}, {count, 20}], wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "c"}, {count, 30}], wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "a"}, {count, 10}], wm_entity:new(resource)),
+                         wm_entity:set([{name, "b"}, {count, 20}], wm_entity:new(resource)),
+                         wm_entity:set([{name, "c"}, {count, 30}], wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     Node2 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "x"}, {count, 10}], wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "y"}, {count, 20}], wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "z"}, {count, 30}], wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "x"}, {count, 10}], wm_entity:new(resource)),
+                         wm_entity:set([{name, "y"}, {count, 20}], wm_entity:new(resource)),
+                         wm_entity:set([{name, "z"}, {count, 30}], wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     ?assertEqual(false, job_suited_node(Job, Node2)),
     ?assertEqual(false, job_suited_node(Job, Node0)),
     ?assertEqual(true, job_suited_node(Job, Node1)),
@@ -492,30 +494,27 @@ node_weight_common_test() ->
     ok.
 
 select_remote_site_test() ->
-    Job0 = wm_entity:set_attr([{account_id, JobAccoundId = 1}, {input_files, []}], wm_entity:new(job)),
-    Job1 = wm_entity:set_attr([{account_id, JobAccoundId = 1}, {input_files, ["1.tar.gz"]}], wm_entity:new(job)),
-    Job2 = wm_entity:set_attr([{account_id, JobAccoundId = 1}, {input_files, ["2.tar.gz"]}], wm_entity:new(job)),
+    Job0 = wm_entity:set([{account_id, JobAccoundId = 1}, {input_files, []}], wm_entity:new(job)),
+    Job1 = wm_entity:set([{account_id, JobAccoundId = 1}, {input_files, ["1.tar.gz"]}], wm_entity:new(job)),
+    Job2 = wm_entity:set([{account_id, JobAccoundId = 1}, {input_files, ["2.tar.gz"]}], wm_entity:new(job)),
     Node0 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 25.0, 2 => 2.5}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "network_latency"}, {count, 1 * 1000}],
-                                                 wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 25.0, 2 => 2.5}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "network_latency"}, {count, 1 * 1000}], wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     Node1 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 30.0, 2 => 2.5}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "network_latency"}, {count, 10 * 1000}],
-                                                 wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 30.0, 2 => 2.5}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "network_latency"}, {count, 10 * 1000}], wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     Node2 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 15.0, 2 => 2.5}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "network_latency"}, {count, 50 * 1000}],
-                                                 wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 15.0, 2 => 2.5}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "network_latency"}, {count, 50 * 1000}], wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     meck:new(wm_file_utils, [unstick, passthrough]),
     meck:expect(wm_file_utils,
                 get_size,

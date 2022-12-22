@@ -28,10 +28,10 @@ job_cost(Job) ->
 
 -spec node_prices(#node{}) -> #{}.
 node_prices(Node) ->
-    Resources = wm_entity:get_attr(resources, Node),
+    Resources = wm_entity:get(resources, Node),
     lists:foldl(fun(Resource, Acc) ->
-                   Count = wm_entity:get_attr(count, Resource),
-                   Prices = wm_entity:get_attr(prices, Resource),
+                   Count = wm_entity:get(count, Resource),
+                   Prices = wm_entity:get(prices, Resource),
                    maps:fold(fun(AccountId, Price, Acc2) ->
                                 Acc2#{AccountId => maps:get(AccountId, Acc2, 0) + Count * Price}
                              end,
@@ -75,7 +75,7 @@ init(Args) ->
     {ok, MState}.
 
 handle_call(update_node_prices, _From, MState) ->
-    Pred = fun(X) -> wm_entity:get_attr(is_template, X) =:= false end,
+    Pred = fun(X) -> wm_entity:get(is_template, X) =:= false end,
     OldNodes =
         case wm_conf:select(node, Pred) of
             {ok, Xs} ->
@@ -118,8 +118,8 @@ parse_args([{_, _} | T], MState) ->
 job_cost(_, []) ->
     {error, not_found};
 job_cost(Job, Nodes) ->
-    AccountId = wm_entity:get_attr(account_id, Job),
-    Duration = wm_entity:get_attr(duration, Job),
+    AccountId = wm_entity:get(account_id, Job),
+    Duration = wm_entity:get(duration, Job),
     [X | Xs] =
         lists:map(fun(Node) ->
                      Prices = node_prices(Node),
@@ -140,17 +140,17 @@ job_cost(Job, Nodes) ->
 
 apply_price_map_to_nodes(OldNodes, Accounts) ->
     F = fun(Account, Nodes) ->
-           PriceList = wm_entity:get_attr(price_list, Account),
+           PriceList = wm_entity:get(price_list, Account),
            PriceMap = convert_price_list_to_map(PriceList, maps:new()),
            Apply =
                fun(Node) ->
-                  case wm_entity:get_attr(subdivision, Node) of
+                  case wm_entity:get(subdivision, Node) of
                       partition ->
-                          PartId = wm_entity:get_attr(subdivision_id, Node),
+                          PartId = wm_entity:get(subdivision_id, Node),
                           Part = wm_conf:select(partition, [PartId]),
                           apply_price_map(Node, Part, Account, PriceMap);
                       _ ->
-                          NodeName = wm_entity:get_attr(name, Node),
+                          NodeName = wm_entity:get(name, Node),
                           ?LOG_DEBUG("Node ~p is not in a partition!", [NodeName]),
                           Node
                   end
@@ -212,14 +212,14 @@ filter_node_price(Node, Partition, [{NewPrice, [], _} | T], _) ->
 filter_node_price(Node, Partition, [{NewPrice, _, "*"} | T], _) ->
     filter_node_price(Node, Partition, T, NewPrice);
 filter_node_price(Node, Partition, [{NewPrice, "partition", Name} | T], OldPrice) ->
-    case wm_entity:get_attr(name, Partition) of
+    case wm_entity:get(name, Partition) of
         Name ->
             filter_node_price(Node, Partition, T, NewPrice);
         _ ->
             filter_node_price(Node, Partition, T, OldPrice)
     end;
 filter_node_price(Node, Partition, [{NewPrice, "node", Name} | T], OldPrice) ->
-    case wm_entity:get_attr(name, Node) of
+    case wm_entity:get(name, Node) of
         Name ->
             filter_node_price(Node, Partition, T, NewPrice);
         _ ->
@@ -227,17 +227,17 @@ filter_node_price(Node, Partition, [{NewPrice, "node", Name} | T], OldPrice) ->
     end.
 
 apply_price_map(Node, Partition, Account, PriceMap) ->
-    AccId = wm_entity:get_attr(id, Account),
+    AccId = wm_entity:get(id, Account),
     F = fun(Res) ->
-           ResName = wm_entity:get_attr(name, Res),
+           ResName = wm_entity:get(name, Res),
            PriceList = maps:get(ResName, PriceMap, []),
            ResPrice = filter_node_price(Node, Partition, PriceList, 0),
-           OldPriceMap = wm_entity:get_attr(prices, Res),
+           OldPriceMap = wm_entity:get(prices, Res),
            NewPriceMap = maps:put(AccId, ResPrice, OldPriceMap),
-           wm_entity:set_attr({prices, NewPriceMap}, Res)
+           wm_entity:set({prices, NewPriceMap}, Res)
         end,
-    UpdatedRss = [F(R) || R <- wm_entity:get_attr(resources, Node)],
-    wm_entity:set_attr({resources, UpdatedRss}, Node).
+    UpdatedRss = [F(R) || R <- wm_entity:get(resources, Node)],
+    wm_entity:set({resources, UpdatedRss}, Node).
 
 %% ============================================================================
 %% Tests
@@ -253,28 +253,28 @@ run_test_() ->
 
 get_mock_node(Name, PartitionId, Resources) ->
     N1 = wm_entity:new(<<"node">>),
-    N2 = wm_entity:set_attr({name, Name}, N1),
-    N3 = wm_entity:set_attr({id, wm_utils:uuid(v4)}, N2),
-    N4 = wm_entity:set_attr({subdivision, partition}, N3),
-    N5 = wm_entity:set_attr({subdivision_id, PartitionId}, N4),
-    wm_entity:set_attr({resources, Resources}, N5).
+    N2 = wm_entity:set({name, Name}, N1),
+    N3 = wm_entity:set({id, wm_utils:uuid(v4)}, N2),
+    N4 = wm_entity:set({subdivision, partition}, N3),
+    N5 = wm_entity:set({subdivision_id, PartitionId}, N4),
+    wm_entity:set({resources, Resources}, N5).
 
 get_mock_partition(Name, PartitionId, NodeIds) ->
     N1 = wm_entity:new(<<"partition">>),
-    N2 = wm_entity:set_attr({name, Name}, N1),
-    N3 = wm_entity:set_attr({id, PartitionId}, N2),
-    wm_entity:set_attr({nodes, NodeIds}, N3).
+    N2 = wm_entity:set({name, Name}, N1),
+    N3 = wm_entity:set({id, PartitionId}, N2),
+    wm_entity:set({nodes, NodeIds}, N3).
 
 get_mock_account(Name, AccId) ->
     A1 = wm_entity:new(<<"account">>),
-    A2 = wm_entity:set_attr({name, Name}, A1),
-    wm_entity:set_attr({id, AccId}, A2).
+    A2 = wm_entity:set({name, Name}, A1),
+    wm_entity:set({id, AccId}, A2).
 
 get_mock_resource(Name, Count, SubResources) ->
     R1 = wm_entity:new(<<"resource">>),
-    R2 = wm_entity:set_attr({name, Name}, R1),
-    R3 = wm_entity:set_attr({count, Count}, R2),
-    wm_entity:set_attr({resources, SubResources}, R3).
+    R2 = wm_entity:set({name, Name}, R1),
+    R3 = wm_entity:set({count, Count}, R2),
+    wm_entity:set({resources, SubResources}, R3).
 
 get_mock_price_list() ->
     ["resource=cpus price=0.3 when partition=*",
@@ -307,9 +307,9 @@ get_test_nodes_with_applied_price() ->
     Node2 = get_mock_node("node002", Part1Id, [Res4, Res5, Res6]),
     Res7 = get_mock_resource("cpus", 1, []),
     Node3 = get_mock_node("node003", Part2Id, [Res7]),
-    Part1NodeIds = [wm_entity:get_attr(id, Node1), wm_entity:get_attr(id, Node2)],
+    Part1NodeIds = [wm_entity:get(id, Node1), wm_entity:get(id, Node2)],
     Part1 = get_mock_partition("part1", Part1Id, Part1NodeIds),
-    Part2NodeIds = [wm_entity:get_attr(id, Node3)],
+    Part2NodeIds = [wm_entity:get(id, Node3)],
     Part2 = get_mock_partition("part2", Part2Id, Part2NodeIds),
     Acc1Id = 1,
     Account = get_mock_account("acc1", Acc1Id),
@@ -320,9 +320,9 @@ get_test_nodes_with_applied_price() ->
 
 test_price_map_applying() ->
     [Node1, Node2, Node3] = get_test_nodes_with_applied_price(),
-    ResList1 = wm_entity:get_attr(resources, Node1),
-    ResList2 = wm_entity:get_attr(resources, Node2),
-    ResList3 = wm_entity:get_attr(resources, Node3),
+    ResList1 = wm_entity:get(resources, Node1),
+    ResList2 = wm_entity:get(resources, Node2),
+    ResList3 = wm_entity:get(resources, Node3),
     ResList1Len = length(ResList1),
     ResList2Len = length(ResList2),
     ResList3Len = length(ResList3),
@@ -343,9 +343,9 @@ test_price_map_applying() ->
         fun DoTestPrice(_, _, []) ->
                 ok;
             DoTestPrice(NodeName, AccId, [NodeRes | T]) ->
-                NodeResPriceMap = wm_entity:get_attr(prices, NodeRes),
+                NodeResPriceMap = wm_entity:get(prices, NodeRes),
                 NodeResPrice = maps:get(AccId, NodeResPriceMap),
-                ResName = wm_entity:get_attr(name, NodeRes),
+                ResName = wm_entity:get(name, NodeRes),
                 ResMap = maps:get(NodeName, Expected),
                 ExpectedPrice = maps:get(ResName, ResMap),
                 ?assertMatch(ExpectedPrice, NodeResPrice),
@@ -358,54 +358,53 @@ test_price_map_applying() ->
 
 job_cost_test() ->
     Node0 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "mem"},
-                                                  {count, 10 * 1024 * 1024 * 1024},
-                                                  {prices, #{1 => 2.0, 2 => 6.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "storage"},
-                                                  {count, 500 * 1024 * 1024 * 1024},
-                                                  {prices, #{1 => 3.0, 2 => 7.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "cpus"}, {count, 4}, {prices, #{1 => 4.0, 2 => 8.0}}],
-                                                 wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "mem"},
+                                        {count, 10 * 1024 * 1024 * 1024},
+                                        {prices, #{1 => 2.0, 2 => 6.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "storage"},
+                                        {count, 500 * 1024 * 1024 * 1024},
+                                        {prices, #{1 => 3.0, 2 => 7.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "cpus"}, {count, 4}, {prices, #{1 => 4.0, 2 => 8.0}}],
+                                       wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     Node1 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "mem"},
-                                                  {count, 15 * 1024 * 1024 * 1024},
-                                                  {prices, #{1 => 2.0, 2 => 6.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "storage"},
-                                                  {count, 100 * 1024 * 1024 * 1024},
-                                                  {prices, #{1 => 3.0, 2 => 7.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "cpus"}, {count, 4}, {prices, #{1 => 4.0, 2 => 8.0}}],
-                                                 wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "mem"},
+                                        {count, 15 * 1024 * 1024 * 1024},
+                                        {prices, #{1 => 2.0, 2 => 6.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "storage"},
+                                        {count, 100 * 1024 * 1024 * 1024},
+                                        {prices, #{1 => 3.0, 2 => 7.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "cpus"}, {count, 4}, {prices, #{1 => 4.0, 2 => 8.0}}],
+                                       wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     Node2 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "mem"},
-                                                  {count, 20 * 1024 * 1024 * 1024},
-                                                  {prices, #{1 => 2.0, 2 => 6.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "storage"},
-                                                  {count, 50 * 1024 * 1024 * 1024},
-                                                  {prices, #{1 => 3.0, 2 => 7.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "cpus"}, {count, 4}, {prices, #{1 => 4.0, 2 => 8.0}}],
-                                                 wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
-    Job = wm_entity:set_attr([{account_id, 1},
-                              {duration, 7200},
-                              {resources,
-                               [wm_entity:set_attr([{name, "cpus"}, {count, 2}, {prices, #{}}],
-                                                   wm_entity:new(resource)),
-                                wm_entity:set_attr([{name, "mem"}, {count, 10 * 1024 * 1024 * 1024}, {prices, #{}}],
-                                                   wm_entity:new(resource)),
-                                wm_entity:set_attr([{name, "storage"}, {count, 50 * 1024 * 1024 * 1024}, {prices, #{}}],
-                                                   wm_entity:new(resource))]}],
-                             wm_entity:new(job)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "mem"},
+                                        {count, 20 * 1024 * 1024 * 1024},
+                                        {prices, #{1 => 2.0, 2 => 6.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "storage"},
+                                        {count, 50 * 1024 * 1024 * 1024},
+                                        {prices, #{1 => 3.0, 2 => 7.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "cpus"}, {count, 4}, {prices, #{1 => 4.0, 2 => 8.0}}],
+                                       wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
+    Job = wm_entity:set([{account_id, 1},
+                         {duration, 7200},
+                         {resources,
+                          [wm_entity:set([{name, "cpus"}, {count, 2}, {prices, #{}}], wm_entity:new(resource)),
+                           wm_entity:set([{name, "mem"}, {count, 10 * 1024 * 1024 * 1024}, {prices, #{}}],
+                                         wm_entity:new(resource)),
+                           wm_entity:set([{name, "storage"}, {count, 50 * 1024 * 1024 * 1024}, {prices, #{}}],
+                                         wm_entity:new(resource))]}],
+                        wm_entity:new(job)),
     ?assertEqual({error, not_found}, job_cost(Job, [])),
     ?assertEqual({ok, {Node1, 708669603872.0}}, job_cost(Job, [Node0, Node1])),
     ?assertEqual({ok, {Node2, 408021893152.0}}, job_cost(Job, [Node1, Node2])),
@@ -413,27 +412,26 @@ job_cost_test() ->
 
 node_prices_test() ->
     Node0 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "compute"}, {count, 1}, {prices, #{1 => 1.0, 2 => 5.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "mem"}, {count, 1}, {prices, #{1 => 2.0, 2 => 6.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "storage"}, {count, 4}, {prices, #{1 => 3.0, 2 => 7.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "cpus"}, {count, 4}, {prices, #{1 => 4.0, 2 => 8.0}}],
-                                                 wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "compute"}, {count, 1}, {prices, #{1 => 1.0, 2 => 5.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "mem"}, {count, 1}, {prices, #{1 => 2.0, 2 => 6.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "storage"}, {count, 4}, {prices, #{1 => 3.0, 2 => 7.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "cpus"}, {count, 4}, {prices, #{1 => 4.0, 2 => 8.0}}],
+                                       wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     Node1 =
-        wm_entity:set_attr([{resources,
-                             [wm_entity:set_attr([{name, "compute"}, {count, 1}, {prices, #{1 => 10.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "mem"}, {count, 0.5}, {prices, #{1 => 20.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "storage"}, {count, 1}, {prices, #{1 => 30.0}}],
-                                                 wm_entity:new(resource)),
-                              wm_entity:set_attr([{name, "cpus"}, {count, 1}, {prices, #{1 => 40.0}}],
-                                                 wm_entity:new(resource))]}],
-                           wm_entity:new(node)),
+        wm_entity:set([{resources,
+                        [wm_entity:set([{name, "compute"}, {count, 1}, {prices, #{1 => 10.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "mem"}, {count, 0.5}, {prices, #{1 => 20.0}}], wm_entity:new(resource)),
+                         wm_entity:set([{name, "storage"}, {count, 1}, {prices, #{1 => 30.0}}],
+                                       wm_entity:new(resource)),
+                         wm_entity:set([{name, "cpus"}, {count, 1}, {prices, #{1 => 40.0}}],
+                                       wm_entity:new(resource))]}],
+                      wm_entity:new(node)),
     ?assertEqual(#{1 => 31.0, 2 => 71.0}, node_prices(Node0)),
     ?assertEqual(#{1 => 90.0}, node_prices(Node1)),
     ok.

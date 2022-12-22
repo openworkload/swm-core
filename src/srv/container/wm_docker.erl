@@ -121,7 +121,7 @@ do_get_unregistered_images() ->
 get_images_from_json([], Images) ->
     Images;
 get_images_from_json([{struct, ImageParams} | T], Images) ->
-    EmptyImage = wm_entity:set_attr([kind, docker], wm_entity:new(<<"image">>)),
+    EmptyImage = wm_entity:set([kind, docker], wm_entity:new(<<"image">>)),
     case fill_image_from_params(ImageParams, EmptyImage) of
         ignore ->
             get_images_from_json(T, Images);
@@ -136,14 +136,14 @@ fill_image_from_params([{B, _} | T], Image) when not is_binary(B) ->
 fill_image_from_params([{<<"Id">>, Value} | T], Image) ->
     List1 = binary_to_list(Value),
     List2 = lists:subtract(List1, "sha256:"),
-    Image2 = wm_entity:set_attr({id, List2}, Image),
+    Image2 = wm_entity:set({id, List2}, Image),
     fill_image_from_params(T, Image2);
 fill_image_from_params([{<<"Size">>, Value} | T], Image) ->
-    Image2 = wm_entity:set_attr({size, Value}, Image),
+    Image2 = wm_entity:set({size, Value}, Image),
     fill_image_from_params(T, Image2);
 fill_image_from_params([{<<"RepoTags">>, Value} | T], Image) ->
     Tags = [binary_to_list(B) || B <- Value],
-    Image2 = wm_entity:set_attr({tags, Tags}, Image),
+    Image2 = wm_entity:set({tags, Tags}, Image),
     case length(Tags) of
         0 ->
             ignore;
@@ -152,7 +152,7 @@ fill_image_from_params([{<<"RepoTags">>, Value} | T], Image) ->
                 "<none>:<none>" ->
                     ignore;
                 Name ->
-                    Image3 = wm_entity:set_attr({name, Name}, Image2),
+                    Image3 = wm_entity:set({name, Name}, Image2),
                     fill_image_from_params(T, Image3)
             end
     end;
@@ -246,7 +246,7 @@ get_container_image([_ | T]) ->
 
 -spec do_create_container(#job{}, string(), map(), pid(), list()) -> {string(), pid()}.
 do_create_container(Job, Porter, _Envs, Owner, Steps) ->
-    ContID = "swmjob-" ++ wm_entity:get_attr(id, Job),
+    ContID = "swmjob-" ++ wm_entity:get(id, Job),
     ?LOG_DEBUG("Create container ~p", [ContID]),
     HttpProcPid = start_http_client(Owner, ContID, "create container " ++ ContID),
     Body = generate_container_json(Job, Porter),
@@ -257,7 +257,7 @@ do_create_container(Job, Porter, _Envs, Owner, Steps) ->
 
 -spec do_delete_container(#job{}, pid()) -> ok.
 do_delete_container(Job, Owner) ->
-    ContID = wm_entity:get_attr(container, Job),
+    ContID = wm_entity:get(container, Job),
     HttpProcPid = start_http_client(Owner, ContID, "delete container " ++ ContID),
     KillBeforeDeleteOption = "?force=1",
     Path = "/containers/" ++ ContID ++ KillBeforeDeleteOption,
@@ -267,14 +267,14 @@ do_delete_container(Job, Owner) ->
     ok.
 
 do_start_container(Job, Steps) ->
-    ContID = wm_entity:get_attr(container, Job),
+    ContID = wm_entity:get(container, Job),
     ?LOG_DEBUG("Start container ~p", [ContID]),
     HttpProcPid = start_http_client(self(), ContID, "start container " ++ ContID),
     Path = "/containers/" ++ ContID ++ "/start",
     wm_docker_client:post(Path, [], [], HttpProcPid, Steps).
 
 do_attach_container(Job, Owner, Steps) ->
-    ContID = wm_entity:get_attr(container, Job),
+    ContID = wm_entity:get(container, Job),
     ?LOG_DEBUG("Attach to container ~p", [ContID]),
     HttpProcPid = start_http_client(Owner, ContID, "attach to container " ++ ContID),
     Params = "?logs=1&stream=1&stderr=1&stdout=1&stdin=0",
@@ -287,7 +287,7 @@ do_attach_container(Job, Owner, Steps) ->
     {ContID, HttpProcPid}.
 
 do_attach_ws_container(Job, Owner, Steps) ->
-    ContID = wm_entity:get_attr(container, Job),
+    ContID = wm_entity:get(container, Job),
     ?LOG_DEBUG("Attach (ws) container ~p", [ContID]),
     HttpProcPid = start_http_client(Owner, ContID, "attach to webscket container " ++ ContID),
     % We attach using websockets here only for data sending.
@@ -310,12 +310,12 @@ get_finalize_cmd(Job) ->
         {error, not_found} ->
             not_found;
         {ok, User} ->
-            Username = wm_entity:get_attr(name, User),
+            Username = wm_entity:get(name, User),
             UID = wm_posix_utils:get_system_uid(Username),
             GID = wm_posix_utils:get_system_gid(Username),
             BUID = list_to_binary(UID),
             BGID = list_to_binary(GID),
-            ContID = wm_entity:get_attr(container, Job),
+            ContID = wm_entity:get(container, Job),
             FinScript = os:getenv("SWM_FINALIZE_IN_CONTAINER", ?SWM_FINALIZE_IN_CONTAINER),
             HostIP = os:cmd("route -n | awk '/UG[ \t]/{print $2}' | tr -d '\n'"),  % docker host IP
             ?LOG_DEBUG("Finalize ~p: ~p ~p ~p ~p", [ContID, FinScript, BUID, BGID, HostIP]),
@@ -339,10 +339,10 @@ generate_finalize_json(_, start) ->
     jsx:encode(Term3).
 
 do_create_exec(Job, Steps) ->
-    ContID = wm_entity:get_attr(container, Job),
+    ContID = wm_entity:get(container, Job),
     HttpProcPid = start_http_client(self(), ContID, "exec-finalize in container " ++ ContID),
     ?LOG_DEBUG("Finalize container (HttpProcPid=~p)", [HttpProcPid]),
-    ContID = wm_entity:get_attr(container, Job),
+    ContID = wm_entity:get(container, Job),
     Path = "/containers/" ++ ContID ++ "/exec",
     Hdrs = [{<<"content-type">>, "application/json"}],
     Body = generate_finalize_json(Job, create),

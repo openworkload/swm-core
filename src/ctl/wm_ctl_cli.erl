@@ -108,7 +108,7 @@ print_show_fields([X | T], Indent, R) ->
             lists:flatten(
                 io_lib:format("~p", [X]))),
     Format = lists:flatten("~." ++ Indent ++ "s~p~n"),
-    io:format(Format, [Name, wm_entity:get_attr(X, R)]),
+    io:format(Format, [Name, wm_entity:get(X, R)]),
     print_show_fields(T, Indent, R).
 
 print_overview({header, _}, [], RawFormats, Line, Name) ->
@@ -342,14 +342,14 @@ print_list({cluster, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) ->
     LinePart =
         case What of
             "N" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(name, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(name, R)]);
             "S" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(state, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(state, R)]);
             "P" ->
-                N = length(wm_entity:get_attr(partitions, R)),
+                N = length(wm_entity:get(partitions, R)),
                 io_lib:format("~." ++ Sz ++ "s", [io_lib:format("~p", [N])]);
             "C" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(comment, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(comment, R)]);
             _ ->
                 ""
         end,
@@ -358,14 +358,14 @@ print_list({partition, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) 
     LinePart =
         case What of
             "N" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(name, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(name, R)]);
             "S" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(state, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(state, R)]);
             "H" ->
-                N = io_lib:format("~p", [length(wm_entity:get_attr(nodes, R))]),
+                N = io_lib:format("~p", [length(wm_entity:get(nodes, R))]),
                 io_lib:format("~." ++ Sz ++ "s", [N]);
             "C" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(comment, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(comment, R)]);
             _ ->
                 ""
         end,
@@ -374,20 +374,20 @@ print_list({node, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) ->
     LinePart =
         case What of
             "N" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(name, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(name, R)]);
             "S" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(state_power, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(state_power, R)]);
             "A" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(state_alloc, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(state_alloc, R)]);
             "H" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(host, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(host, R)]);
             "P" ->
-                N = io_lib:format("~p", [wm_entity:get_attr(api_port, R)]),
+                N = io_lib:format("~p", [wm_entity:get(api_port, R)]),
                 io_lib:format("~." ++ Sz ++ "s", [N]);
             "C" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(comment, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(comment, R)]);
             "G" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(gateway, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(gateway, R)]);
             _ ->
                 ok
         end,
@@ -396,15 +396,15 @@ print_list({user, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) ->
     LinePart =
         case What of
             "N" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(name, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(name, R)]);
             "G" ->
-                N = io_lib:format("~p", [length(wm_entity:get_attr(groups, R))]),
+                N = io_lib:format("~p", [length(wm_entity:get(groups, R))]),
                 io_lib:format("~." ++ Sz ++ "s", [N]);
             "P" ->
-                N = io_lib:format("~p", [length(wm_entity:get_attr(projects, R))]),
+                N = io_lib:format("~p", [length(wm_entity:get(projects, R))]),
                 io_lib:format("~." ++ Sz ++ "s", [N]);
             "C" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(comment, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(comment, R)]);
             _ ->
                 ""
         end,
@@ -413,17 +413,17 @@ print_list({queue, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) ->
     LinePart =
         case What of
             "N" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(name, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(name, R)]);
             "S" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(state, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(state, R)]);
             "H" ->
-                N = io_lib:format("~p", [length(wm_entity:get_attr(nodes, R))]),
+                N = io_lib:format("~p", [length(wm_entity:get(nodes, R))]),
                 io_lib:format("~." ++ Sz ++ "s", [N]);
             "J" ->
-                N = io_lib:format("~p", [length(wm_entity:get_attr(jobs, R))]),
+                N = io_lib:format("~p", [length(wm_entity:get(jobs, R))]),
                 io_lib:format("~." ++ Sz ++ "s", [N]);
             "C" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(comment, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(comment, R)]);
             _ ->
                 ""
         end,
@@ -432,11 +432,11 @@ print_list({scheduler, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) 
     LinePart =
         case What of
             "N" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(name, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(name, R)]);
             "S" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(state, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(state, R)]);
             "C" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(comment, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(comment, R)]);
             _ ->
                 ""
         end,
@@ -445,11 +445,11 @@ print_list({image, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) ->
     LinePart =
         case What of
             "N" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(name, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(name, R)]);
             "I" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(id, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(id, R)]);
             "C" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(comment, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(comment, R)]);
             _ ->
                 ""
         end,
@@ -458,12 +458,12 @@ print_list({global, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) ->
     LinePart =
         case What of
             "N" ->
-                io_lib:format("~." ++ Sz ++ "s", [atom_to_list(wm_entity:get_attr(name, R))]);
+                io_lib:format("~." ++ Sz ++ "s", [atom_to_list(wm_entity:get(name, R))]);
             "V" ->
-                V = wm_entity:get_attr(value, R),
+                V = wm_entity:get(value, R),
                 io_lib:format("~." ++ Sz ++ "s", [io_lib:format("~p", [V])]);
             "C" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(comment, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(comment, R)]);
             _ ->
                 ""
         end,
@@ -472,13 +472,13 @@ print_list({remote, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) ->
     LinePart =
         case What of
             "N" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(name, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(name, R)]);
             "A" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(address, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(address, R)]);
             "K" ->
-                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get_attr(kind, R)]);
+                io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(kind, R)]);
             "C" ->
-                io_lib:format("~." ++ Sz ++ "p", [wm_entity:get_attr(account_id, R)]);
+                io_lib:format("~." ++ Sz ++ "p", [wm_entity:get(account_id, R)]);
             _ ->
                 ""
         end,
@@ -488,10 +488,10 @@ print_list({X, [R | T]}, Format, RawFormats, Line) ->
     print_list({X, T}, Format, RawFormats, Line).
 
 append_state_number(Sz, Xs, State, node) ->
-    N = length([X || X <- Xs, wm_entity:get_attr(state_alloc, X) == State]),
+    N = length([X || X <- Xs, wm_entity:get(state_alloc, X) == State]),
     io_lib:format("~." ++ Sz ++ "s", [io_lib:format("~p", [N])]);
 append_state_number(Sz, Xs, State, _) ->
-    N = length([X || X <- Xs, wm_entity:get_attr(state, X) == State]),
+    N = length([X || X <- Xs, wm_entity:get(state, X) == State]),
     io_lib:format("~." ++ Sz ++ "s", [io_lib:format("~p", [N])]).
 
 split_format_tokens([], Map, _) ->

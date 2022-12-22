@@ -133,12 +133,12 @@ list_flavors(_Config) ->
     ?assertEqual(2, length(FlavorNodes)),
     Node1 = lists:nth(1, FlavorNodes),
     Node2 = lists:nth(2, FlavorNodes),
-    ?assertEqual("flavor1", wm_entity:get_attr(name, Node1)),
-    ?assertEqual("flavor2", wm_entity:get_attr(name, Node2)),
-    ?assertEqual(#{"accid123" => 3.0}, wm_entity:get_attr(prices, Node1)),
-    ?assertEqual(#{"accid123" => 8.0}, wm_entity:get_attr(prices, Node2)),
-    ?assertEqual(3, length(wm_entity:get_attr(resources, Node1))),
-    ?assertEqual(3, length(wm_entity:get_attr(resources, Node2))).
+    ?assertEqual("flavor1", wm_entity:get(name, Node1)),
+    ?assertEqual("flavor2", wm_entity:get(name, Node2)),
+    ?assertEqual(#{"accid123" => 3.0}, wm_entity:get(prices, Node1)),
+    ?assertEqual(#{"accid123" => 8.0}, wm_entity:get(prices, Node2)),
+    ?assertEqual(3, length(wm_entity:get(resources, Node1))),
+    ?assertEqual(3, length(wm_entity:get(resources, Node2))).
 
 -spec list_partitions(list()) -> atom().
 list_partitions(_Config) ->
@@ -150,10 +150,10 @@ list_partitions(_Config) ->
     ?assertEqual(2, length(Partitions)),
     Part1 = lists:nth(1, Partitions),
     Part2 = lists:nth(2, Partitions),
-    ?assertEqual("stack1", wm_entity:get_attr(name, Part1)),
-    ?assertEqual("stack2", wm_entity:get_attr(name, Part2)),
-    ?assertEqual(creating, wm_entity:get_attr(state, Part1)),
-    ?assertEqual(up, wm_entity:get_attr(state, Part2)).
+    ?assertEqual("stack1", wm_entity:get(name, Part1)),
+    ?assertEqual("stack2", wm_entity:get(name, Part2)),
+    ?assertEqual(creating, wm_entity:get(state, Part1)),
+    ?assertEqual(up, wm_entity:get(state, Part2)).
 
 -spec get_partition(list()) -> atom().
 get_partition(_Config) ->

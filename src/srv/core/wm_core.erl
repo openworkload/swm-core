@@ -57,8 +57,8 @@ get_my_gateway_address() ->
     %%TODO: move to wm_self
     case wm_self:get_node() of
         {ok, MyNode} ->
-            MyGateway = wm_entity:get_attr(gateway, MyNode),
-            MyPort = wm_entity:get_attr(api_port, MyNode),
+            MyGateway = wm_entity:get(gateway, MyNode),
+            MyPort = wm_entity:get(api_port, MyNode),
             {MyGateway, MyPort};
         _ ->
             []
@@ -157,11 +157,11 @@ load_services(MState, Args) ->
                     {error, MState2};
                 {ok, Node} ->
                     ?LOG_INFO("My node: ~p", [Node]),
-                    RoleIDs = wm_entity:get_attr(roles, Node),
+                    RoleIDs = wm_entity:get(roles, Node),
                     ?LOG_INFO("My role IDs: ~p", [RoleIDs]),
                     Roles = wm_conf:select(role, RoleIDs),
                     ?LOG_INFO("My roles: ~p", [Roles]),
-                    ServiceIDs = [wm_entity:get_attr(services, Role) || Role <- Roles],
+                    ServiceIDs = [wm_entity:get(services, Role) || Role <- Roles],
                     ?LOG_INFO("My service IDs: ~w", [ServiceIDs]),
                     Services = wm_conf:select(service, lists:flatten(ServiceIDs)),
                     NewState = start_services_suspended(Services, Args, MState),
@@ -177,10 +177,10 @@ load_services(MState, Args) ->
 start_services_suspended([], _, #mstate{} = MState) ->
     MState;
 start_services_suspended([Service | T], Args, #mstate{} = MState) ->
-    ServiceModules = wm_entity:get_attr(modules, Service),
+    ServiceModules = wm_entity:get(modules, Service),
     AtomModules = [list_to_atom(X) || X <- ServiceModules],
-    ServiceName = wm_entity:get_attr(name, Service),
-    ServiceID = wm_entity:get_attr(id, Service),
+    ServiceName = wm_entity:get(name, Service),
+    ServiceID = wm_entity:get(id, Service),
     ?LOG_INFO("Start modules for service ~p: ~p (ID=~p)", [ServiceName, AtomModules, ServiceID]),
     MState2 = start_modules(AtomModules, Args, ServiceID, MState),
     [ok = sys:suspend(X) || X <- AtomModules],
@@ -189,7 +189,7 @@ start_services_suspended([Service | T], Args, #mstate{} = MState) ->
 resume_services([]) ->
     ok;
 resume_services([Service | T]) ->
-    ServiceModules = wm_entity:get_attr(modules, Service),
+    ServiceModules = wm_entity:get(modules, Service),
     AtomModules = [list_to_atom(X) || X <- ServiceModules],
     ?LOG_DEBUG("Resume modules: ~p", [AtomModules]),
     [ok = sys:resume(M) || M <- AtomModules],
@@ -301,7 +301,7 @@ set_default_nodes_states() ->
                          set_local_node_state(Node);
                      false ->
                          wm_conf:update(
-                             wm_entity:set_attr([{state_power, down}, {state_alloc, offline}], Node))
+                             wm_entity:set([{state_power, down}, {state_alloc, offline}], Node))
                  end
          end,
     [F3(X) || X <- NodesDown ++ NodesUp].
@@ -312,10 +312,10 @@ set_local_node_state(Node) ->
     case wm_self:has_role("compute") of
         true ->
             wm_conf:update(
-                wm_entity:set_attr([{state_power, up}, {state_alloc, idle}], Node));
+                wm_entity:set([{state_power, up}, {state_alloc, idle}], Node));
         false ->
             wm_conf:update(
-                wm_entity:set_attr([{state_power, up}, {state_alloc, offline}], Node))
+                wm_entity:set([{state_power, up}, {state_alloc, offline}], Node))
     end.
 
 add_children_to_pinger() ->
@@ -326,7 +326,7 @@ add_children_to_pinger() ->
                 {ok, Rec} ->
                     case What of
                         X when X =:= grid; X =:= cluster; X =:= partition ->
-                            NodeName = wm_entity:get_attr(manager, Rec),
+                            NodeName = wm_entity:get(manager, Rec),
                             case wm_conf:select_node(NodeName) of
                                 {ok, Node} ->
                                     Node;
@@ -393,8 +393,8 @@ add_parent(ParentShortName, #mstate{} = MState) when is_list(ParentShortName) ->
     ?LOG_DEBUG("Add new parent to pstack by its short name: ~p", [ParentShortName]),
     case wm_conf:select_node(ParentShortName) of
         {ok, ParentTuple} ->
-            ParentHost = wm_entity:get_attr(host, ParentTuple),
-            ParentPort = wm_entity:get_attr(api_port, ParentTuple),
+            ParentHost = wm_entity:get(host, ParentTuple),
+            ParentPort = wm_entity:get(api_port, ParentTuple),
             add_parent({ParentHost, ParentPort}, MState);
         {error, _} ->
             ?LOG_DEBUG("Parent not found (will not be added): ~p", [ParentShortName]),
@@ -423,7 +423,7 @@ start_parent(MState) ->
     Suffix = "new1", %FIXME Imcrement index each time when new parent is started
     NewParentName = OldParentName ++ Suffix,
     {ok, MyNode} = wm_self:get_node(),
-    MyPort = wm_entity:get_attr(api_port, MyNode),
+    MyPort = wm_entity:get(api_port, MyNode),
     Port = do_allocate_port(),
     add_parent_to_db(OldParentName, NewParentName, Port, MState),
     AppArgs =
@@ -453,11 +453,11 @@ start_parent(MState) ->
 add_parent_to_db(OldParentName, NewParentName, Port, MState) ->
     {ok, Node1} = wm_conf:select_node(OldParentName),
     NewID = random:uniform(1000) + 100, %FIXME we should assign some unique ID (how to get unique one?)
-    Node2 = wm_entity:set_attr({id, NewID}, Node1),
-    Node3 = wm_entity:set_attr({name, NewParentName}, Node2),
-    Node4 = wm_entity:set_attr({api_port, Port}, Node3),
-    Node5 = wm_entity:set_attr({revision, 0}, Node4),
-    Node6 = wm_entity:set_attr({host, wm_self:get_host()}, Node5),
+    Node2 = wm_entity:set({id, NewID}, Node1),
+    Node3 = wm_entity:set({name, NewParentName}, Node2),
+    Node4 = wm_entity:set({api_port, Port}, Node3),
+    Node5 = wm_entity:set({revision, 0}, Node4),
+    Node6 = wm_entity:set({host, wm_self:get_host()}, Node5),
     case wm_conf:select_node(NewParentName) of
         {ok, ExistingNode} ->
             wm_conf:delete(ExistingNode);
@@ -471,7 +471,7 @@ add_parent_to_subdiv(Node, MState) ->
     FullName = wm_utils:node_to_fullname(Node),
     {ok, SelfNode} = wm_self:get_node(),
     SubDiv1 = wm_topology:get_direct_subdiv(SelfNode),
-    SubDiv2 = wm_entity:set_attr({manager, FullName}, SubDiv1),
+    SubDiv2 = wm_entity:set({manager, FullName}, SubDiv1),
     wm_conf:update(SubDiv2).
 
 get_parent_slave_args(MState) ->
@@ -550,9 +550,9 @@ do_has_malfunction(FailureType) ->
         {error, _} ->
             not_found;
         {ok, Node} ->
-            MfsIDs = wm_entity:get_attr(malfunctions, Node),
+            MfsIDs = wm_entity:get(malfunctions, Node),
             Mfs = wm_conf:select(malfunction, MfsIDs),
-            Failures = lists:flatten([wm_entity:get_attr(failures, X) || X <- Mfs]),
+            Failures = lists:flatten([wm_entity:get(failures, X) || X <- Mfs]),
             case lists:keysearch(FailureType, 1, Failures) of
                 false ->
                     not_found;
@@ -640,7 +640,7 @@ handle_maint_state(maint, NodeAddr, #mstate{}) ->
     ?LOG_DEBUG("Handle maint state of node ~p", [NodeAddr]),
     case wm_conf:select_node(NodeAddr) of
         {ok, Node} ->
-            NodeId = wm_entity:get_attr(id, Node),
+            NodeId = wm_entity:get(id, Node),
             case wm_topology:is_direct_child(NodeId) of
                 true ->
                     BootInfo = get_child_boot_info(NodeAddr),
@@ -658,8 +658,8 @@ handle_maint_state(_, _, _) ->
 
 get_child_boot_info({NodeHost, NodePort}) ->
     {MyHost, MyPort} = wm_conf:get_my_relative_address({NodeHost, NodePort}),
-    wm_entity:set_attr([{node_host, NodeHost}, {node_port, NodePort}, {parent_host, MyHost}, {parent_port, MyPort}],
-                       wm_entity:new(boot_info)).
+    wm_entity:set([{node_host, NodeHost}, {node_port, NodePort}, {parent_host, MyHost}, {parent_port, MyPort}],
+                  wm_entity:new(boot_info)).
 
 set_boot_info(BootInfo, MState) ->
     Node =
@@ -669,18 +669,18 @@ set_boot_info(BootInfo, MState) ->
                 X;
             {error, _} ->
                 ?LOG_DEBUG("Boot node entity is not defined => create"),
-                wm_entity:set_attr({id, wm_utils:uuid(v4)}, wm_entity:new(node))
+                wm_entity:set({id, wm_utils:uuid(v4)}, wm_entity:new(node))
         end,
-    NodeHost = wm_entity:get_attr(node_host, BootInfo),
-    NodePort = wm_entity:get_attr(node_port, BootInfo),
-    ParentHost = wm_entity:get_attr(parent_host, BootInfo),
-    ParentPort = wm_entity:get_attr(parent_port, BootInfo),
+    NodeHost = wm_entity:get(node_host, BootInfo),
+    NodePort = wm_entity:get(node_port, BootInfo),
+    ParentHost = wm_entity:get(parent_host, BootInfo),
+    ParentPort = wm_entity:get(parent_port, BootInfo),
     NewNode =
-        wm_entity:set_attr([{name, "boot_node"},
-                            {host, NodeHost},
-                            {api_port, NodePort},
-                            {parent, {ParentHost, ParentPort}},
-                            {comment, "Temporary boot settings"}],
-                           Node),
+        wm_entity:set([{name, "boot_node"},
+                       {host, NodeHost},
+                       {api_port, NodePort},
+                       {parent, {ParentHost, ParentPort}},
+                       {comment, "Temporary boot settings"}],
+                      Node),
     wm_conf:update(NewNode),
     add_parent({ParentHost, ParentPort}, MState).

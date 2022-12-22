@@ -17,8 +17,8 @@ get_api_version_json() ->
 get_resources_json(Resources) ->
     lists:foldl(fun(Resource, Acc) ->
                    Map1 =
-                       #{name => list_to_binary(wm_entity:get_attr(name, Resource)),
-                         count => wm_entity:get_attr(count, Resource)},
+                       #{name => list_to_binary(wm_entity:get(name, Resource)),
+                         count => wm_entity:get(count, Resource)},
                    Map2 =
                        case find_value_property(Resource) of
                            "" ->
@@ -37,16 +37,16 @@ get_roles_json(Node) ->
                    case wm_conf:select(role, {id, RoleId}) of
                        {ok, Role} ->
                            PropertiesMap =
-                               #{id => wm_entity:get_attr(id, Role),
-                                 name => list_to_binary(wm_entity:get_attr(name, Role)),
-                                 comment => list_to_binary(wm_entity:get_attr(comment, Role))},
+                               #{id => wm_entity:get(id, Role),
+                                 name => list_to_binary(wm_entity:get(name, Role)),
+                                 comment => list_to_binary(wm_entity:get(comment, Role))},
                            [PropertiesMap | Acc];
                        _ ->
                            Acc
                    end
                 end,
                 [],
-                wm_entity:get_attr(roles, Node)).
+                wm_entity:get(roles, Node)).
 
 -spec find_resource_count(string(), [#resource{}]) -> pos_integer().
 find_resource_count(Name, Resources) ->
@@ -54,12 +54,12 @@ find_resource_count(Name, Resources) ->
         false ->
             0;
         Resource ->
-            wm_entity:get_attr(count, Resource)
+            wm_entity:get(count, Resource)
     end.
 
 -spec find_flavor_and_remote_ids(#job{}) -> {node_id(), remote_id()}.
 find_flavor_and_remote_ids(Job) ->
-    RequestedResources = wm_entity:get_attr(request, Job),
+    RequestedResources = wm_entity:get(request, Job),
     case lists:keyfind("flavor", 2, RequestedResources) of
         false ->
             {"", ""};
@@ -67,7 +67,7 @@ find_flavor_and_remote_ids(Job) ->
             Value = find_value_property(Resource),
             case wm_conf:select(node, {name, Value}) of
                 {ok, Node} ->
-                    {wm_entity:get_attr(id, Node), wm_entity:get_attr(remote_id, Node)};
+                    {wm_entity:get(id, Node), wm_entity:get(remote_id, Node)};
                 _ ->
                     {"", ""}
             end
@@ -75,7 +75,7 @@ find_flavor_and_remote_ids(Job) ->
 
 -spec find_value_property(#resource{}) -> string().
 find_value_property(Resource) ->
-    Properties = wm_entity:get_attr(properties, Resource),
+    Properties = wm_entity:get(properties, Resource),
     case lists:keyfind(value, 1, Properties) of
         false ->
             "";

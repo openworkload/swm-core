@@ -247,11 +247,11 @@ process_show_by_name(Tab, Name) ->
     end.
 
 process_get_param(Tab, Ent, Attr) ->
-    Name = wm_entity:get_attr(name, Ent),
+    Name = wm_entity:get(name, Ent),
     ?LOG_DEBUG("Get ~p of ~p from table: ~p", [Attr, Name, Tab]),
     case wm_conf:select(Tab, {name, Name}) of
         {ok, X} ->
-            case wm_entity:get_attr(Attr, X) of
+            case wm_entity:get(Attr, X) of
                 P when is_atom(P) ->
                     {atom, [P]};
                 P when is_list(P) ->
@@ -303,7 +303,7 @@ new_defaults(node, Defaults, Rec0) ->
             DefaultHost ->
                 DefaultHost
         end,
-    Rec1 = wm_entity:set_attr({host, Host}, Rec0),
+    Rec1 = wm_entity:set({host, Host}, Rec0),
     Port =
         case maps:get(api_port, Defaults, not_found) of
             not_found ->
@@ -311,16 +311,15 @@ new_defaults(node, Defaults, Rec0) ->
             DefaultPort ->
                 DefaultPort
         end,
-    wm_entity:set_attr({api_port, Port}, Rec1).
+    wm_entity:set({api_port, Port}, Rec1).
 
 process_create(user, Name, [ID]) ->
-    User1 = wm_entity:set_attr([{id, ID}, {name, Name}], wm_entity:new(user)),
+    User1 = wm_entity:set([{id, ID}, {name, Name}], wm_entity:new(user)),
     User2 = new_defaults(user, maps:new(), User1),
     case wm_conf:select(account, {name, Name}) of
         {error, not_found} ->
             ?LOG_DEBUG("Created default account for user ~p", [Name]),
-            Account =
-                wm_entity:set_attr([{id, wm_utils:uuid(v4)}, {name, Name}, {admins, [ID]}], wm_entity:new(account)),
+            Account = wm_entity:set([{id, wm_utils:uuid(v4)}, {name, Name}, {admins, [ID]}], wm_entity:new(account)),
             wm_conf:update([Account]);
         _ ->
             ?LOG_DEBUG("Default account for user ~p already exists", [Name])
@@ -333,7 +332,7 @@ process_create(Tab, Name, []) ->
     process_create(Tab, Name, [ID]);
 process_create(Tab, Name, [ID]) ->
     ?LOG_DEBUG("Create ~p ~p (ID=~p)", [Tab, Name, ID]),
-    Rec1 = wm_entity:set_attr([{id, ID}, {name, Name}], wm_entity:new(Tab)),
+    Rec1 = wm_entity:set([{id, ID}, {name, Name}], wm_entity:new(Tab)),
     Rec2 = new_defaults(Tab, maps:new(), Rec1),
     wm_conf:update([Rec2]),
     ?LOG_DEBUG("Created record: ~p", [Rec2]),
@@ -345,8 +344,8 @@ process_clone(Tab, From, To, Args) ->
     case wm_conf:select(Tab, {name, From}) of
         {ok, Rec1} ->
             ID = wm_utils:uuid(v4),
-            Rec2 = wm_entity:set_attr({id, ID}, Rec1),
-            Rec3 = wm_entity:set_attr({name, To}, Rec2),
+            Rec2 = wm_entity:set({id, ID}, Rec1),
+            Rec3 = wm_entity:set({name, To}, Rec2),
             Rec4 = new_defaults(Tab, maps:new(), Rec3),
             wm_conf:update([Rec4]),
             {string, ID};
@@ -359,7 +358,7 @@ process_remove(Tab, Name, Args) ->
     ?LOG_DEBUG("Remove ~p ~p (args=~p)", [Tab, Name, Args]),
     ID = case wm_conf:select(Tab, {name, Name}) of
              {ok, Rec} ->
-                 wm_entity:get_attr(id, Rec);
+                 wm_entity:get(id, Rec);
              {error, not_found} ->
                  ?LOG_DEBUG("Could not find ~p ~p", [Tab, Name]),
                  "UNKNOWN"

@@ -148,15 +148,15 @@ execute(#mstate{job_id = JobId}) ->
         {error, not_found} ->
             ok;
         {ok, User} ->
-            Path = wm_entity:get_attr(execution_path, Job),
+            Path = wm_entity:get(execution_path, Job),
             ProcEnvs =
                 [{"SWM_JOB_SCRIPT", Path},
-                 {"SWM_STDIN_PATH", wm_entity:get_attr(job_stdin, Job)},
-                 {"SWM_STDOUT_PATH", wm_entity:get_attr(job_stdout, Job)},
-                 {"SWM_STDERR_PATH", wm_entity:get_attr(job_stderr, Job)},
-                 {"SWM_WORK_DIR", wm_entity:get_attr(workdir, Job)},
-                 {"SWM_USER_NAME", wm_entity:get_attr(name, User)}]
-                ++ wm_entity:get_attr(env, Job),
+                 {"SWM_STDIN_PATH", wm_entity:get(job_stdin, Job)},
+                 {"SWM_STDOUT_PATH", wm_entity:get(job_stdout, Job)},
+                 {"SWM_STDERR_PATH", wm_entity:get(job_stderr, Job)},
+                 {"SWM_WORK_DIR", wm_entity:get(workdir, Job)},
+                 {"SWM_USER_NAME", wm_entity:get(name, User)}]
+                ++ wm_entity:get(env, Job),
             ?LOG_DEBUG("Job environment variables: ~p", [ProcEnvs]),
             Porter = get_porter_path(),
             case wm_conf:g(execution_method, {?SWM_EXEC_METHOD, string}) of
@@ -228,10 +228,10 @@ prepare_porter_input(Job, User) ->
 
 -spec do_check(#process{}, #mstate{}) -> #mstate{}.
 do_check(Process, #mstate{task_id = TaskId} = MState) ->
-    Pid = wm_entity:get_attr(pid, Process),
-    State = wm_entity:get_attr(state, Process),
-    ExitCode = wm_entity:get_attr(exitcode, Process),
-    Signal = wm_entity:get_attr(signal, Process),
+    Pid = wm_entity:get(pid, Process),
+    State = wm_entity:get(state, Process),
+    ExitCode = wm_entity:get(exitcode, Process),
+    Signal = wm_entity:get(signal, Process),
     ?LOG_DEBUG("Process update: pid=~p state=~p exit=~p sig=~p [~p]", [Pid, State, ExitCode, Signal, TaskId]),
     case State of
         ?JOB_STATE_RUNNING ->
@@ -254,16 +254,16 @@ init_porter(User, #mstate{job_id = JobId}) ->
 
 -spec do_complete(#process{}, #mstate{}) -> #mstate{}.
 do_complete(Process, #mstate{job_id = JobId} = MState) ->
-    Exit = wm_entity:get_attr(pid, Process),
-    State = wm_entity:get_attr(state, Process),
-    Sig = wm_entity:get_attr(signal, Process),
-    Comment = wm_entity:get_attr(comment, Process),
+    Exit = wm_entity:get(pid, Process),
+    State = wm_entity:get(state, Process),
+    Sig = wm_entity:get(signal, Process),
+    Comment = wm_entity:get(comment, Process),
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     ?LOG_INFO("Job ~p has finished (~p/~p/~p)", [JobId, State, Exit, Sig]),
-    Job2 = wm_entity:set_attr({exitcode, Exit}, Job),
-    Job3 = wm_entity:set_attr({signal, Sig}, Job2),
-    Job4 = wm_entity:set_attr({comment, Comment}, Job3),
-    Job5 = wm_entity:set_attr({state, State}, Job4),
+    Job2 = wm_entity:set({exitcode, Exit}, Job),
+    Job3 = wm_entity:set({signal, Sig}, Job2),
+    Job4 = wm_entity:set({comment, Comment}, Job3),
+    Job5 = wm_entity:set({state, State}, Job4),
     wm_conf:update([Job5]),
     ok = wm_container:clear(Job5),
     {ok, Node} = wm_self:get_node(),
@@ -273,7 +273,7 @@ do_complete(Process, #mstate{job_id = JobId} = MState) ->
 -spec do_announce_completed(#process{}, #mstate{}) -> ok.
 do_announce_completed(Process, #mstate{job_id = JobId} = MState) ->
     EndTime = wm_utils:now_iso8601(without_ms),
-    case wm_entity:get_attr(state, Process) of
+    case wm_entity:get(state, Process) of
         X when X == ?JOB_STATE_FINISHED orelse X == ?JOB_STATE_CANCELLED ->
             EventData = {MState#mstate.task_id, {JobId, Process, EndTime, node()}},
             wm_event:announce(wm_proc_done, EventData);

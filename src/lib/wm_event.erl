@@ -159,7 +159,7 @@ do_cast_subscribers(EventType, EventData) ->
                     ?LOG_DEBUG("No subscribers found for event: '~p'", [EventType]);
                 Subscribers1 ->
                     F1 = fun(S) ->
-                            Ref = wm_entity:get_attr(ref, S),
+                            Ref = wm_entity:get(ref, S),
                             ?LOG_DEBUG("Cast ~p with event: ~p, data=~W", [Ref, EventType, EventData, 10]),
                             forward_event(Ref, {event, EventType, EventData})
                          end,
@@ -170,7 +170,7 @@ do_cast_subscribers(EventType, EventData) ->
                     ok;
                 Subscribers2 ->
                     F2 = fun(S) ->
-                            Ref = wm_entity:get_attr(ref, S),
+                            Ref = wm_entity:get(ref, S),
                             ?LOG_DEBUG("Cast ~p with event '~p', data=~W", [Ref, EventType, EventData, 10]),
                             forward_event(Ref, {event, EventType, EventData})
                          end,
@@ -187,15 +187,15 @@ do_subscribe(EventType, Node, Module) ->
     case wm_db:ensure_running() of
         ok ->
             wm_db:ensure_table_exists(subscriber, [], local_bag),
-            F = fun(A) -> wm_entity:get_attr(event, A) =:= EventType end,
+            F = fun(A) -> wm_entity:get(event, A) =:= EventType end,
             Subscribers = wm_db:get_one(subscriber, ref, {Module, Node}),
             case lists:any(F, Subscribers) of
                 true ->
                     ?LOG_DEBUG("Service ~p:~p has already been subscribed on event: ~p", [Node, Module, EventType]);
                 false ->
                     S1 = wm_entity:new(<<"subscriber">>),
-                    S2 = wm_entity:set_attr({ref, {Module, Node}}, S1),
-                    S3 = wm_entity:set_attr({event, EventType}, S2),
+                    S2 = wm_entity:set({ref, {Module, Node}}, S1),
+                    S3 = wm_entity:set({event, EventType}, S2),
                     ?LOG_DEBUG("Update ~p", S3),
                     wm_db:update([S3])
             end,
@@ -210,7 +210,7 @@ do_unsubscribe(EventType, Node, Module) ->
     case wm_db:ensure_running() of
         ok ->
             Subscribers = wm_db:get_one(subscriber, ref, {Module, Node}),
-            F1 = fun(A) -> wm_entity:get_attr(event, A) =:= EventType end,
+            F1 = fun(A) -> wm_entity:get(event, A) =:= EventType end,
             case lists:filter(F1, Subscribers) of
                 [] ->
                     ?LOG_DEBUG("Service ~p:~p is not subscribed on event: ~p", [Node, Module, EventType]);

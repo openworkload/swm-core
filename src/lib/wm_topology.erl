@@ -143,10 +143,10 @@ handle_call({is_direct_child, NodeId}, _, #mstate{} = MState) ->
             ({partition, Id}) ->
                 case wm_conf:select(partition, {id, Id}) of
                     {ok, Part} ->
-                        MgrFullName = wm_entity:get_attr(manager, Part),
+                        MgrFullName = wm_entity:get(manager, Part),
                         case wm_conf:select_node(MgrFullName) of
                             {ok, Node} ->
-                                NodeId == wm_entity:get_attr(id, Node);
+                                NodeId == wm_entity:get(id, Node);
                             _ ->
                                 false
                         end;
@@ -238,9 +238,9 @@ set_management_role(#mstate{} = MState) ->
             ?LOG_ERROR("Could not get my node information: ~p", [E]),
             MState#mstate{mrole = none};
         {ok, Node} ->
-            RoleIDs = wm_entity:get_attr(roles, Node),
+            RoleIDs = wm_entity:get(roles, Node),
             Roles = wm_conf:select(role, RoleIDs),
-            RoleNames = [wm_entity:get_attr(name, Role) || Role <- Roles],
+            RoleNames = [wm_entity:get(name, Role) || Role <- Roles],
             ?LOG_DEBUG("Roles: ~p", [RoleNames]),
             ManagementRole = get_management_role(RoleNames, none),
             ?LOG_DEBUG("Management role is set to ~p", [ManagementRole]),
@@ -292,8 +292,8 @@ do_make_rh_main(#mstate{} = MState) ->
 
 -spec get_props_res(tuple(), map()) -> map().
 get_props_res(Entity, Map) when is_tuple(Entity) ->
-    Map2 = add_properties(wm_entity:get_attr(properties, Entity), Map),
-    add_resources(wm_entity:get_attr(resources, Entity), Map2).
+    Map2 = add_properties(wm_entity:get(properties, Entity), Map),
+    add_resources(wm_entity:get(resources, Entity), Map2).
 
 -spec do_make_rh(atom(), [tuple()], map(), atom(), #mstate{}) -> map().
 do_make_rh(grid, _, RH, Owner, #mstate{} = MState) ->
@@ -307,7 +307,7 @@ do_make_rh(grid, _, RH, Owner, #mstate{} = MState) ->
         GridList when is_list(GridList) ->
             Grid = hd(GridList),
             Map1 = get_props_res(Grid, maps:new()),
-            ClusterIDs = wm_entity:get_attr(clusters, Grid),
+            ClusterIDs = wm_entity:get(clusters, Grid),
             Map2 =
                 case wm_conf:select(cluster, ClusterIDs) of
                     [] ->
@@ -316,14 +316,14 @@ do_make_rh(grid, _, RH, Owner, #mstate{} = MState) ->
                     Clusters when is_list(Clusters) ->
                         do_make_rh(cluster, Clusters, Map1, Owner, MState)
                 end,
-            GridID = wm_entity:get_attr(id, Grid),
+            GridID = wm_entity:get(id, Grid),
             maps:put({grid, GridID}, Map2, RH)
     end;
 do_make_rh(cluster, [], RH, _, _) ->
     RH;
 do_make_rh(cluster, [Cluster | T], RH, Owner, #mstate{} = MState) ->
     F = fun(Map) ->
-           PartitionIDs = wm_entity:get_attr(partitions, Cluster),
+           PartitionIDs = wm_entity:get(partitions, Cluster),
            case wm_conf:select(partition, PartitionIDs) of
                [] ->
                    ?LOG_DEBUG("No partition found with ids: ~p", [PartitionIDs]),
@@ -333,7 +333,7 @@ do_make_rh(cluster, [Cluster | T], RH, Owner, #mstate{} = MState) ->
            end
         end,
     Map1 = get_props_res(Cluster, maps:new()),
-    ClusterId = wm_entity:get_attr(id, Cluster),
+    ClusterId = wm_entity:get(id, Cluster),
     RH2 = case Owner of
               grid ->
                   maps:put({cluster, ClusterId}, F(Map1), RH);
@@ -342,12 +342,12 @@ do_make_rh(cluster, [Cluster | T], RH, Owner, #mstate{} = MState) ->
                   {ok, Host} = wm_self:get_host(),
                   {ok, Me} = wm_utils:get_my_vnode_name(long, atom, NodeName, Host),
                   Map2 =
-                      case wm_entity:get_attr(manager, Cluster) of
+                      case wm_entity:get(manager, Cluster) of
                           Me ->
                               F(Map1);
                           _ ->
                               Subdiv = do_get_my_subdiv(cluster, MState),
-                              case wm_entity:get_attr(id, Subdiv) of
+                              case wm_entity:get(id, Subdiv) of
                                   ClusterId ->
                                       F(Map1);
                                   _ ->
@@ -361,7 +361,7 @@ do_make_rh(partition, [], RH, _, _) ->
     RH;
 do_make_rh(partition, [Partition | T], RH, Owner, #mstate{} = MState) ->
     F = fun(Map) ->
-           NodeIDs = wm_entity:get_attr(nodes, Partition),
+           NodeIDs = wm_entity:get(nodes, Partition),
            MapNs =
                case wm_conf:select(node, NodeIDs) of
                    [] ->
@@ -370,7 +370,7 @@ do_make_rh(partition, [Partition | T], RH, Owner, #mstate{} = MState) ->
                    Nodes ->
                        do_make_rh(node, Nodes, Map, partition, MState)
                end,
-           PartIDs = wm_entity:get_attr(partitions, Partition),
+           PartIDs = wm_entity:get(partitions, Partition),
            case wm_conf:select(partition, PartIDs) of
                [] ->
                    ?LOG_DEBUG("No partitions found with ids: ~p", [PartIDs]),
@@ -380,7 +380,7 @@ do_make_rh(partition, [Partition | T], RH, Owner, #mstate{} = MState) ->
            end
         end,
     Map1 = get_props_res(Partition, maps:new()),
-    PartitionId = wm_entity:get_attr(id, Partition),
+    PartitionId = wm_entity:get(id, Partition),
     RH2 = case Owner of
               X when X =:= cluster; X =:= partition ->
                   maps:put({partition, PartitionId}, F(Map1), RH);
@@ -389,12 +389,12 @@ do_make_rh(partition, [Partition | T], RH, Owner, #mstate{} = MState) ->
                   {ok, Host} = wm_self:get_host(),
                   {ok, Me} = wm_utils:get_my_vnode_name(long, atom, NodeName, Host),
                   Map2 =
-                      case wm_entity:get_attr(manager, Partition) of
+                      case wm_entity:get(manager, Partition) of
                           Me ->
                               F(Map1);
                           _ ->
                               Subdiv = do_get_my_subdiv(partition, MState),
-                              case wm_entity:get_attr(id, Subdiv) of
+                              case wm_entity:get(id, Subdiv) of
                                   PartitionId ->
                                       F(Map1);
                                   _ ->
@@ -407,7 +407,7 @@ do_make_rh(partition, [Partition | T], RH, Owner, #mstate{} = MState) ->
 do_make_rh(node, [], RH, _, _) ->
     RH;
 do_make_rh(node, [Node | T], RH, Owner, #mstate{} = MState) ->
-    NodeId = wm_entity:get_attr(id, Node),
+    NodeId = wm_entity:get(id, Node),
     %Map = get_props_res(Node, maps:new()),
     Map = #{}, % swm-sched does not support node resources within RH for now
     RH2 = maps:put({node, NodeId}, Map, RH),
@@ -423,10 +423,10 @@ add_properties([{X, Y} | T], Map) ->
 add_resources([], Map) ->
     Map;
 add_resources([R | T], Map) ->
-    Name = wm_entity:get_attr(name, R),
+    Name = wm_entity:get(name, R),
     RMap = maps:new(),
-    RMap2 = add_properties(wm_entity:get_attr(properties, R), RMap),
-    RMap3 = add_resources(wm_entity:get_attr(resources, R), RMap2),
+    RMap2 = add_properties(wm_entity:get(properties, R), RMap),
+    RMap3 = add_resources(wm_entity:get(resources, R), RMap2),
     Map2 = maps:put({resource, Name}, RMap3, Map),
     add_resources(T, Map2).
 
@@ -445,7 +445,7 @@ do_get_neighbours_addresses(SortBy, #mstate{rh = RH}) ->
                    wm_utils:get_address(Entity);
                X when X =:= cluster; X =:= partition; X =:= grid ->
                    wm_utils:get_address(
-                       wm_entity:get_attr(manager, Entity))
+                       wm_entity:get(manager, Entity))
            end
         end,
     [F(X) || X <- Neightbours].
@@ -507,7 +507,7 @@ get_my_children(Filter, _, #mstate{mrole = Role, rh = RH} = MState) ->
                                     not_found ->
                                         #{};
                                     SubDiv ->
-                                        SubDivID = wm_entity:get_attr(id, SubDiv),
+                                        SubDivID = wm_entity:get(id, SubDiv),
                                         SearchFor = {Role, SubDivID},
                                         case maps:find(SearchFor, maps:get(Root, RH)) of
                                             {ok, X} ->
@@ -610,9 +610,9 @@ do_update_latency(Node, #mstate{}) ->
 -spec do_get_latency(#node{}, #node{}, #mstate{}) -> pos_integer().
 do_get_latency(SrcNode, DstNode, #mstate{} = MState) ->
     X = maps:get(
-            wm_entity:get_attr(id, SrcNode), MState#mstate.ct_map),
+            wm_entity:get(id, SrcNode), MState#mstate.ct_map),
     Y = maps:get(
-            wm_entity:get_attr(id, DstNode), MState#mstate.ct_map),
+            wm_entity:get(id, DstNode), MState#mstate.ct_map),
     Size = round(byte_size(MState#mstate.nl) * ?BITS_IN_BYTE / ?BINARY_WEIGHT_BITS),
     get_integer_by_pos(X, Y, Size, MState#mstate.ct).
 
@@ -647,8 +647,8 @@ get_direct_subdiv(Entity) ->
     try
         case element(1, Entity) of
             X when X =:= node; X =:= partition ->
-                Subdiv = wm_entity:get_attr(subdivision, Entity),
-                ID = wm_entity:get_attr(subdivision_id, Entity),
+                Subdiv = wm_entity:get(subdivision, Entity),
+                ID = wm_entity:get(subdivision_id, Entity),
                 case wm_conf:select(Subdiv, {id, ID}) of
                     {error, Error} ->
                         ?LOG_DEBUG("Could not find ~p with id=~p: ~p", [Subdiv, ID, Error]),
@@ -711,7 +711,7 @@ do_get_tree_nodes(WithTemplates, #mstate{rh = RH}) when is_map(RH) ->
     Nodes = wm_conf:select(node, NodeIDs),
     case WithTemplates of
         false ->
-            lists:filter(fun(X) -> wm_entity:get_attr(is_template, X) == false end, Nodes);
+            lists:filter(fun(X) -> wm_entity:get(is_template, X) == false end, Nodes);
         true ->
             Nodes
     end;
@@ -757,7 +757,7 @@ find_rh_path(FromNodeId, ToNodeId, RH) ->
             CheckNeightbours =
                 fun ({node, Id}) ->
                         {ok, Node} = wm_conf:select(node, {id, Id}),
-                        wm_entity:get_attr(id, Node) == ToNodeId;
+                        wm_entity:get(id, Node) == ToNodeId;
                     ({SubDiv, Id}) ->
                         {ok, X} = wm_conf:select(SubDiv, {id, Id}),
                         case is_subdiv_manager(ToNodeId, X) of
@@ -781,9 +781,9 @@ find_rh_path(FromNodeId, ToNodeId, RH) ->
 -spec get_node_rh({{atom(), string()}, map()}, node_id(), {boolean(), map()}) -> map().
 get_node_rh({{Division, Id}, SubRH}, NodeId, {false, LastSubRH}) when Division =/= node ->
     {ok, DivisionEntity} = wm_conf:select(Division, {id, Id}),
-    MgrName = wm_entity:get_attr(manager, DivisionEntity),
+    MgrName = wm_entity:get(manager, DivisionEntity),
     {ok, Node} = wm_conf:select_node(MgrName),
-    case wm_entity:get_attr(id, Node) of
+    case wm_entity:get(id, Node) of
         NodeId ->
             {true, LastSubRH};
         _ ->
@@ -839,9 +839,9 @@ find_child_rh_path(NodeId, RH, Path) ->
 
 -spec is_subdiv_manager(node_id(), tuple()) -> true | {false, node_id()}.
 is_subdiv_manager(NodeId, Entity) ->
-    MgrName = wm_entity:get_attr(manager, Entity),
+    MgrName = wm_entity:get(manager, Entity),
     {ok, Node} = wm_conf:select_node(MgrName),
-    case wm_entity:get_attr(id, Node) of
+    case wm_entity:get(id, Node) of
         NodeId ->
             true;
         OtherId ->
@@ -854,10 +854,10 @@ get_parent_id(NodeId) ->
         {error, _} ->
             {error, not_found};
         {ok, Node} ->
-            ParentName = wm_entity:get_attr(parent, Node),
+            ParentName = wm_entity:get(parent, Node),
             case wm_conf:select_node(ParentName) of
                 {ok, Parent} ->
-                    case wm_entity:get_attr(id, Parent) of
+                    case wm_entity:get(id, Parent) of
                         [] ->
                             {error, not_found};
                         ParentId ->
@@ -930,48 +930,48 @@ search_path_test() ->
                  {cluster, "c3"} => #{}}},
     SetParent =
         fun ("c1_n0", Node) ->
-                wm_entity:set_attr([{parent, "g1_n0"}], Node);
+                wm_entity:set([{parent, "g1_n0"}], Node);
             ("p11_n0", Node) ->
-                wm_entity:set_attr([{parent, "c1_n0"}], Node);
+                wm_entity:set([{parent, "c1_n0"}], Node);
             ("c2_n0", Node) ->
-                wm_entity:set_attr([{parent, "g1_n0"}], Node);
+                wm_entity:set([{parent, "g1_n0"}], Node);
             ("p21_n0", Node) ->
-                wm_entity:set_attr([{parent, "c2_n0"}], Node);
+                wm_entity:set([{parent, "c2_n0"}], Node);
             ("p21_n1", Node) ->
-                wm_entity:set_attr([{parent, "p21_n0"}], Node);
+                wm_entity:set([{parent, "p21_n0"}], Node);
             ("p21_n2", Node) ->
-                wm_entity:set_attr([{parent, "p21_n0"}], Node);
+                wm_entity:set([{parent, "p21_n0"}], Node);
             ("p211_n0", Node) ->
-                wm_entity:set_attr([{parent, "p21_n0"}], Node);
+                wm_entity:set([{parent, "p21_n0"}], Node);
             ("p211_n1", Node) ->
-                wm_entity:set_attr([{parent, "p211_n0"}], Node);
+                wm_entity:set([{parent, "p211_n0"}], Node);
             ("p211_n2", Node) ->
-                wm_entity:set_attr([{parent, "p211_n0"}], Node);
+                wm_entity:set([{parent, "p211_n0"}], Node);
             ("p211_n3", Node) ->
-                wm_entity:set_attr([{parent, "p211_n0"}], Node);
+                wm_entity:set([{parent, "p211_n0"}], Node);
             ("p2111_n0", Node) ->
-                wm_entity:set_attr([{parent, "p211_n0"}], Node);
+                wm_entity:set([{parent, "p211_n0"}], Node);
             ("p22_n0", Node) ->
-                wm_entity:set_attr([{parent, "c2_n0"}], Node);
+                wm_entity:set([{parent, "c2_n0"}], Node);
             ("p221_n0", Node) ->
-                wm_entity:set_attr([{parent, "p22_n0"}], Node);
+                wm_entity:set([{parent, "p22_n0"}], Node);
             ("p2211_n0", Node) ->
-                wm_entity:set_attr([{parent, "p221_n0"}], Node);
+                wm_entity:set([{parent, "p221_n0"}], Node);
             ("p22111_n0", Node) ->
-                wm_entity:set_attr([{parent, "p2211_n0"}], Node);
+                wm_entity:set([{parent, "p2211_n0"}], Node);
             ("p22111_n1", Node) ->
-                wm_entity:set_attr([{parent, "p22111_n0"}], Node);
+                wm_entity:set([{parent, "p22111_n0"}], Node);
             ("c3_n0", Node) ->
-                wm_entity:set_attr([{parent, "g1_n0"}], Node);
+                wm_entity:set([{parent, "g1_n0"}], Node);
             (_, Node) ->
                 Node
         end,
     SelectById =
         fun (node, {id, Id}) ->
-                Node = wm_entity:set_attr([{id, Id}, {name, Id}], wm_entity:new(node)),
+                Node = wm_entity:set([{id, Id}, {name, Id}], wm_entity:new(node)),
                 {ok, SetParent(Id, Node)};
             (SubDiv, {id, Id}) ->
-                {ok, wm_entity:set_attr([{id, Id}, {name, Id}, {manager, Id ++ "_n0"}], wm_entity:new(SubDiv))}
+                {ok, wm_entity:set([{id, Id}, {name, Id}, {manager, Id ++ "_n0"}], wm_entity:new(SubDiv))}
         end,
     SelectByName = fun(NameIsAlsoId) -> SelectById(node, {id, NameIsAlsoId}) end,
     meck:new(wm_conf),

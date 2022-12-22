@@ -6,8 +6,8 @@
 
 -include("wm_log.hrl").
 
--export([new/1, rec/1, pretty/1, get_attr/2, get_type/2, set_attr/2, get_names/1, get_fields/1,
-         extract_json_field_info/1, get_incomparible_fields/1, descriptions_to_recs/1]).
+-export([new/1, rec/1, pretty/1, get/2, set/2, get_type/2, get_names/1, get_fields/1, extract_json_field_info/1,
+         get_incomparible_fields/1, descriptions_to_recs/1]).
 
 % https://www.python.org/about/success/cog
 -define(ENTITIES,
@@ -840,16 +840,16 @@ get_fields(Rec) ->
     '#info-'(Rec).
 
 %% @doc get an attribute by name
--spec get_attr(atom(), tuple()) -> term().
-get_attr(Attr, Rec) when is_atom(Attr) ->
+-spec get(atom(), tuple()) -> term().
+get(Attr, Rec) when is_atom(Attr) ->
     '#get-'(Attr, Rec).
 
 %% @doc set an attribute by name
--spec set_attr({atom(), term()} | [{atom(), term()}], tuple()) -> term().
-set_attr({Attr, Value}, Rec) when is_atom(Attr) ->
+-spec set({atom(), term()} | [{atom(), term()}], tuple()) -> term().
+set({Attr, Value}, Rec) when is_atom(Attr) ->
     '#set-'([{Attr, Value}], Rec);
-set_attr(Xs, Rec) when is_list(Xs) ->
-    lists:foldl(fun({Attr, Value}, Acc) -> set_attr({Attr, Value}, Acc) end, Rec, Xs).
+set(Xs, Rec) when is_list(Xs) ->
+    lists:foldl(fun({Attr, Value}, Acc) -> set({Attr, Value}, Acc) end, Rec, Xs).
 
 -spec pretty([tuple()] | tuple()) -> [string()].
 pretty(Recs) when is_list(Recs) ->
@@ -943,8 +943,8 @@ description_to_entity([{resources, ResDescList} | T], Rec) when is_list(ResDescL
            description_to_entity(ResAttrs, ResRec)
         end,
     ResRecs = lists:map(F, ResDescList),
-    Rec2 = ?MODULE:set_attr({resources, ResRecs}, Rec),
+    Rec2 = ?MODULE:set({resources, ResRecs}, Rec),
     description_to_entity(T, Rec2);
 description_to_entity([AttrPair | T], Rec) ->
-    Rec2 = ?MODULE:set_attr(AttrPair, Rec),
+    Rec2 = ?MODULE:set(AttrPair, Rec),
     description_to_entity(T, Rec2).
