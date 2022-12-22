@@ -149,25 +149,35 @@ match_resource(JobResource, [_NodeResource | NodeResources]) ->
 select_remote_site(_, []) ->
     {error, not_found};
 select_remote_site(Job, Nodes) ->
-    AccountId = wm_entity:get_attr(account_id, Job),
-    Files = wm_entity:get_attr(input_files, Job),
-    Data = cumulative_files_size(Files),
-    PricesNorm =
-        norming(lists:map(fun(Node) ->
-                             case wm_accounting:node_prices(Node) of
-                                 #{AccountId := Price} ->
-                                     Price;
-                                 #{} ->
-                                     0
-                             end
-                          end,
-                          Nodes)),
-    NetworkLatenciesNorm = norming(lists:map(fun(Node) -> network_latency(Node) end, Nodes)),
-    Xs = lists:zip3(Nodes, PricesNorm, NetworkLatenciesNorm),
-    {_, Node} =
-        lists:max(
-            lists:map(fun({Node, Price, NetworkLatency}) -> {node_weight(Price, NetworkLatency, Data), Node} end, Xs)),
-    {ok, Node}.
+    case wm_entity:get_attr(nodes, Job) of
+        [SomeNode] ->
+            case wm_entity:get_attr(is_template, SomeNode) of
+              true ->
+                {ok, SomeNode};
+              false ->
+                {error, "Job requests non-template node"}
+            end;
+        _ ->
+           AccountId = wm_entity:get_attr(account_id, Job),
+           Files = wm_entity:get_attr(input_files, Job),
+           Data = cumulative_files_size(Files),
+           PricesNorm =
+               norming(lists:map(fun(Node) ->
+                                   case wm_accounting:node_prices(Node) of
+                                       #{AccountId := Price} ->
+                                           Price;
+                                       #{} ->
+                                           0
+                                   end
+                                 end,
+                                 Nodes)),
+           NetworkLatenciesNorm = norming(lists:map(fun(Node) -> network_latency(Node) end, Nodes)),
+           Xs = lists:zip3(Nodes, PricesNorm, NetworkLatenciesNorm),
+           {_, Node} =
+               lists:max(
+                   lists:map(fun({Node, Price, NetworkLatency}) -> {node_weight(Price, NetworkLatency, Data), Node} end, Xs)),
+           {ok, Node}
+    end.
 
 -spec cumulative_files_size([nonempty_string()]) -> number().
 cumulative_files_size([]) ->
