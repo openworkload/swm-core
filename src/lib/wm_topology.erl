@@ -165,7 +165,16 @@ handle_call({get_subdiv, Name}, _, #mstate{} = MState) ->
 handle_call({get_tree, list}, _, #mstate{rh = RH} = MState) ->
     {reply, wm_utils:map_to_list(RH), MState};
 handle_call({get_tree, static}, _, #mstate{rh = RH} = MState) ->
-    {reply, RH, MState};
+    F = fun({EntityType, EntityId}) ->
+            case wm_conf:select(EntityType, {id, EntityId}) of
+                {error, Error} ->
+                    {EntityType, Error};
+                {ok, Entity} ->
+                    {EntityType, wm_entity:get(name, Entity)}
+            end
+    end,
+    Tree = wm_utils:update_map(RH, F, #{}),
+    {reply, Tree, MState};
 handle_call({get_min_latency_to, NodeNames}, _, #mstate{} = MState) ->
     {ok, SelfNode} = wm_self:get_node(),
     {reply, do_get_min_latency(SelfNode, NodeNames, {}, MState), MState};

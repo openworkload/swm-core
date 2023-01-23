@@ -370,7 +370,7 @@ global(update, ["schema" | Args], Ent, ConnArgs) ->
 grid(route, [From, To | _], Ent, ConnArgs) ->
     rpc_generic(grid, {route, From, To}, ConnArgs),
     get_entity_submode(Ent);
-grid(tree, ["static" | _], Ent, ConnArgs) ->
+grid(tree, _, Ent, ConnArgs) ->
     case wm_rpc:call(wm_admin, grid, {tree, static}) of
         [{map, Map}] ->
             wm_ctl_cli:show(tree, Map);

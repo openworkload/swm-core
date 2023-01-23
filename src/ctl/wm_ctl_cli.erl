@@ -34,11 +34,11 @@ print_show(tree, Map) when is_map(Map) ->
                  Line =
                      case Indent of
                          0 ->
-                             io_lib:format("~p (id=~p)~n", [Ent, ID]);
+                             io_lib:format("~p: ~s~n", [Ent, ID]);
                          X ->
                              IndentStr = integer_to_list(X - 2),
                              Spaces = io_lib:format("~." ++ IndentStr ++ "s", [" "]),
-                             io_lib:format("~s\\_~p (id=~p)~n", [Spaces, Ent, ID])
+                             io_lib:format("~s\\_~p: ~s~n", [Spaces, Ent, ID])
                      end,
                  Lines1 =
                      case Lines0 of

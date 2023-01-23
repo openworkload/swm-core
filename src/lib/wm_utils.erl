@@ -15,6 +15,7 @@
 -export([localtime/0, now_iso8601/1, timestamp/0, timestamp/1]).
 -export([get_cloud_node_name/2, get_requested_nodes_number/1]).
 -export([get_cert_partial_chain_fun/1, get_node_cert_paths/1]).
+-export([update_map/3]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -701,3 +702,9 @@ get_node_cert_paths(Spool) ->
     KeyFile = wm_conf:g(node_key, {DefaultKey, string}),
     CertFile = wm_conf:g(node_cert, {DefaultCert, string}),
     {CaFile, KeyFile, CertFile}.
+
+-spec update_map(map(), fun(), map()) -> map().
+update_map(Map, F, NewMap) ->
+    maps:fold(fun(K, V, Acc) -> maps:put(F(K), update_map(V, F, #{}), Acc) end, NewMap, Map);
+update_map(#{}, _, NewMap) ->
+    NewMap.
