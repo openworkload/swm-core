@@ -24,6 +24,8 @@ SP consists of 3 main components:
 
 The idea here is the following: API of the Core and the Gate is well described. Thus each of the components can be replaced to more suitable for the user problem ones. The core component code is located in the current repository and can be considered as a reference and a prove of concept. The project is started recently and requires some time for stabilization of the API. Thus one can consider this code for now as highly experimental.
 
+See also [openworkload.github.io](https://openworkload.github.io) 
+
 ## How to run
 
 User can pull or build docker container that will run the Core. The procedure of building and running swm-core container is [described here](https://github.com/openworkload/swm-core/blob/master/priv/prod/README.md) 
