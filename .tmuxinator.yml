@@ -5,7 +5,7 @@
 ################################################################
 
 name: skyport
-root: ~/projects/swm-core
+root: <%= ENV["SOURCES_PARENT_DIR"] %>/swm-core
 pre_window: make cr
 startup_window: core
 
@@ -23,29 +23,37 @@ windows:
         - scheduler-logs:
           - tail -f /opt/swm/spool/node\@*/log/scheduler.log
   - terminal:
-      layout: even-vertical
+      layout: df20,137x56,0,0{35x56,0,0,2,101x56,36,0[101x27,36,0,7,101x28,36,28,8]}
       panes:
+        - grid-tree:
+          - sleep 3
+          - watch ./scripts/swmctl grid tree
         - list-jobs:
           - sleep 3
-          - cd ~/projects/swm-console-term
+          - cd <%= ENV["SOURCES_PARENT_DIR"] %>/swm-console-term
           - watch ./swm-console --job-list
         - list-nodes:
           - sleep 3
-          - cd ~/projects/swm-console-term
+          - cd <%= ENV["SOURCES_PARENT_DIR"] %>/swm-console-term
           - watch ./swm-console --node-list
-        - flavor-nodes:
-          - sleep 3
-          - cd ~/projects/swm-console-term
-          - watch ./swm-console --flavor-list
   - jupyter:
       panes:
         - jupyterlab:
-          - cd ~/projects/swm-jupyter-term
+          - clear
+          - cd <%= ENV["SOURCES_PARENT_DIR"] %>/swm-jupyter-term
           - conda activate swm-jupyter
           - . .venv/bin/activate
           - jupyterhub
   - gate:
       panes:
         - cloud-gate:
-          - cd ~/projects/swm-cloud-gate
+          - clear
+          - cd <%= ENV["SOURCES_PARENT_DIR"] %>/swm-cloud-gate
           - ./run.sh
+  - openstack:
+      pre_window: make cr
+      root: <%= ENV["SOURCES_PARENT_DIR"] %>/openstack-box
+      panes:
+        - vagrant:
+          - clear
+          - vagrant status 2>/dev/null | grep "Current machine states" -A 2
