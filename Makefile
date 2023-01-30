@@ -103,7 +103,7 @@ lint:		##@DEV Run erlang linter to validate the code
 			$(REBAR) lint
 
 tmux:	##@DEV Run tmux with Sky Port development layout
-	tmuxinator
+	SOURCES_PARENT_DIR=~/projects tmuxinator
 
 update_rebar:
 	$(REBAR) local upgrade
