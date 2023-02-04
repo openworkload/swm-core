@@ -238,7 +238,7 @@ get_binary_for_scheduler(Scheduler) ->
     SchedsBin = erlang:term_to_binary([Scheduler]),
     Bin1 = wm_sched_utils:add_input(?DATA_TYPE_SCHEDULERS, SchedsBin, Bin0),
 
-    RH = wm_topology:get_tree(static),
+    RH = wm_topology:get_tree(rh),
     RhBin =
         erlang:term_to_binary(
             wm_utils:map_to_list(RH)),

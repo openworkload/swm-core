@@ -7,6 +7,7 @@
 -export([get_suited_template_nodes/1, get_suited_template_nodes/2]).
 -export([select_remote_site/1]).
 -export([cancel_relocation/1, remove_relocation_entities/1]).
+-export([get_base_partition/1]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
@@ -97,7 +98,7 @@ handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
             RelocationId = wm_entity:get(id, Relocation),
             ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationId]),
             wm_conf:delete(Relocation),
-            wm_compute:set_nodes_alloc_state(remote, drained, JobId),
+            wm_compute:set_nodes_alloc_state(remote, offline, JobId),
             ok = wm_factory:send_event_locally(job_finished, virtres, RelocationId);
         _ ->  % no relocation was created for the job
             ok
@@ -405,7 +406,7 @@ delete_resources([#resource{name = "partition",
             ?LOG_DEBUG("Delete partition entity ~p [job=~p]", [PartID, JobId]),
             ok = wm_conf:delete(partition, PartID),
             RssCnt = delete_resources(Rss, Job, 0),
-            delete_part_id_from_cluster(Job, PartID),
+            delete_partition_entity(Job, PartID),
             delete_resources(T, Job, Cnt + RssCnt + 1)
     end;
 delete_resources([#resource{name = "node", properties = Props} | T], Job, Cnt) ->
@@ -420,14 +421,33 @@ delete_resources([#resource{name = "node", properties = Props} | T], Job, Cnt) -
             delete_resources(T, Job, Cnt + 1)
     end.
 
--spec delete_part_id_from_cluster(#job{}, partition_id()) -> pos_integer().
-delete_part_id_from_cluster(Job, PartID) ->
+-spec get_base_partition(#job{}) -> {ok, #partition{}} | {error, term()}.
+get_base_partition(Job) ->
+    AccountID = wm_entity:get(account_id, Job),
+    {ok, Remote} = wm_conf:select(remote, {account_id, AccountID}),
+    RemoteName = wm_entity:get(name, Remote),
     ClusterID = wm_entity:get(cluster_id, Job),
-    {ok, Cluster1} = wm_conf:select(cluster, {id, ClusterID}),
-    Parts1 = wm_entity:get(partitions, Cluster1),
-    Parts2 = lists:delete(PartID, Parts1),
-    Cluster2 = wm_entity:set([{partitions, Parts2}], Cluster1),
-    1 = wm_conf:update(Cluster2).
+    {ok, Cluster} = wm_conf:select(cluster, {id, ClusterID}),
+    ClusterPartIds = wm_entity:get(partitions, Cluster),
+    ClusterPartitions = wm_conf:select(partition, ClusterPartIds),
+    case lists:search(fun(P) -> wm_entity:get(name, P) == RemoteName end, ClusterPartitions) of
+        {value, Partition} ->
+            {ok, Partition};
+        _ ->
+            {error, not_found}
+    end.
+
+-spec delete_partition_entity(#job{}, partition_id()) -> pos_integer().
+delete_partition_entity(Job, PartID) ->
+    case get_base_partition(Job) of
+        {ok, BasePartition1} ->
+            Parts1 = wm_entity:get(partitions, BasePartition1),
+            Parts2 = lists:delete(PartID, Parts1),
+            BasePartition2 = wm_entity:set([{partitions, Parts2}], BasePartition1),
+            1 = wm_conf:update(BasePartition2);
+        {error, not_found} ->
+            {error, not_found}
+    end.
 
 %% ============================================================================
 %% Tests
