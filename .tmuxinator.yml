@@ -23,7 +23,7 @@ windows:
         - scheduler-logs:
           - tail -f /opt/swm/spool/node\@*/log/scheduler.log
   - terminal:
-      layout: df20,137x56,0,0{35x56,0,0,2,101x56,36,0[101x27,36,0,7,101x28,36,28,8]}
+      layout: 2b0d,137x56,0,0{26x56,0,0,2,110x56,27,0[110x27,27,0,7,110x28,27,28,8]}
       panes:
         - grid-tree:
           - sleep 3
