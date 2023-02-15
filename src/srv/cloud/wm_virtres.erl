@@ -248,6 +248,7 @@ creating({partition_fetched, Ref, Partition},
                  wait_ref = Ref,
                  template_node = TplNode} =
              MState) ->
+    ?LOG_DEBUG("Partition fetched for job ~p", [JobId]),
     {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
     Timer = wm_virtres_handler:wait_for_ssh_connection(),
     {next_state,

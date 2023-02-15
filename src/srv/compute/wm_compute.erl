@@ -180,25 +180,43 @@ handle_timetable([X | T], MState) ->
             update_job(JobID, nodes, JobNodeIds),
             MState2 = start_job_processes(Nodes, JobID, MState),
             handle_timetable(T, MState2);
-        _ ->
-            ?LOG_DEBUG("Job will be sent to its compute nodes, job id: ~p", [JobID]),
-            Records = wm_db:get_one(job, id, JobID),
-            {ok, MyNode} = wm_self:get_node(),
-            F = fun(Z) -> wm_conf:get_relative_address(Z, MyNode) end,
-            Nodes = wm_conf:select_many(node, id, JobNodeIds),
-            wm_conf:set_nodes_state(state_alloc, busy, Nodes),
-            update_job(JobID, nodes, JobNodeIds),
-            NodeAddrs = [F(Z) || Z <- Nodes],
-            case NodeAddrs of
-                [] ->
-                    ?LOG_ERROR("No job nodes found in configuration: ~p", [JobNodeIds]),
-                    handle_timetable(T, MState);
-                _ ->
-                    ?LOG_DEBUG("Propagate job ~p to nodes: ~p", [JobID, NodeAddrs]),
-                    {ok, COMMIT_ID} = wm_factory:new(commit, Records, NodeAddrs),
-                    Map = maps:put(COMMIT_ID, {NodeAddrs, JobID}, MState#mstate.transfers),
-                    handle_timetable(T, MState#mstate{transfers = Map})
+        OtherNodeIds ->
+            case OtherNodeIds of
+                [SingleNodeId] ->
+                    {ok, Node} = wm_conf:select(node, {id, SingleNodeId}),
+                    case Node#node.is_template of
+                        true ->
+                            wm_relocator:relocate_job(JobID),
+                            handle_timetable(T, MState);
+                        false ->
+                            MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
+                            handle_timetable(T, MState2)
+                    end;
+                 _ ->
+                    MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
+                    handle_timetable(T, MState2)
             end
+    end.
+
+-spec propagate_job_to_nodes(job_id(), [node_id()], #mstate{}) -> #mstate{}.
+propagate_job_to_nodes(JobID, JobNodeIds, MState) ->
+    ?LOG_DEBUG("Job will be sent to its compute nodes, job id: ~p", [JobID]),
+    {ok, MyNode} = wm_self:get_node(),  %TODO cache the node
+    F = fun(Z) -> wm_conf:get_relative_address(Z, MyNode) end,
+    Nodes = wm_conf:select_many(node, id, JobNodeIds),
+    wm_conf:set_nodes_state(state_alloc, busy, Nodes),
+    update_job(JobID, nodes, JobNodeIds),
+    NodeAddrs = [F(Z) || Z <- Nodes],
+    case NodeAddrs of
+        [] ->
+            ?LOG_ERROR("No job nodes found in configuration: ~p", [JobNodeIds]),
+            MState;
+        _ ->
+            ?LOG_DEBUG("Propagate job ~p to nodes: ~p", [JobID, NodeAddrs]),
+            Records = wm_db:get_one(job, id, JobID),
+            {ok, COMMIT_ID} = wm_factory:new(commit, Records, NodeAddrs),
+            Map = maps:put(COMMIT_ID, {NodeAddrs, JobID}, MState#mstate.transfers),
+            MState#mstate{transfers = Map}
     end.
 
 -spec start_job_processes([#node{}], job_id(), #mstate{}) -> #mstate{}.

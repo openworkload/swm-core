@@ -4,14 +4,12 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([get_suited_template_nodes/1, get_suited_template_nodes/2]).
--export([select_remote_site/1]).
 -export([cancel_relocation/1, remove_relocation_entities/1]).
 -export([get_base_partition/1]).
+-export([relocate_job/1]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
--include("../../../include/wm_general.hrl").
 -include("../../../include/wm_scheduler.hrl").
 
 -define(DEFAULT_RELOCATION_INTERVAL, 20000).
@@ -27,26 +25,6 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
--spec get_suited_template_nodes(#job{}) -> [#node{}].
-get_suited_template_nodes(Job) ->
-    GetTemplates = fun(X) -> wm_entity:get(is_template, X) == true end,
-    case wm_conf:select(node, GetTemplates) of
-        {error, not_found} ->
-            [];
-        {ok, Nodes} ->
-            get_suited_template_nodes(Job, Nodes)
-    end.
-
--spec get_suited_template_nodes(#job{}, [#node{}]) -> [#node{}].
-get_suited_template_nodes(Job, Nodes) ->
-    lists:filter(fun(Node) -> job_suited_node(Job, Node) end, Nodes).
-
--spec select_remote_site(#job{}) -> {ok, #node{}} | {error, not_found}.
-select_remote_site(Job) ->
-    Nodes = get_suited_template_nodes(Job),
-    ?LOG_DEBUG("Suited template nodes number for job ~p: ~p", [wm_entity:get(id, Job), length(Nodes)]),
-    select_remote_site(Job, Nodes).
-
 -spec cancel_relocation(#job{}) -> pos_integer().
 cancel_relocation(Job) ->
     gen_server:call(?MODULE, {cancel_relocation, Job}).
@@ -57,6 +35,10 @@ remove_relocation_entities(Job) ->
     Count = delete_resources(JobRss, Job, 0),
     wm_topology:reload(),
     ?LOG_DEBUG("Deleted ~p entities for job ~p", [Count, wm_entity:get(id, Job)]).
+
+-spec relocate_job(job_id()) -> ok | {error, term()}.
+relocate_job(JobId) ->
+    gen_server:call(?MODULE, {relocate, JobId}).
 
 %% ============================================================================
 %% Server callbacks
@@ -85,9 +67,11 @@ init(_) ->
     ?LOG_INFO("Relocator module has been started"),
     MState = #mstate{},
     wm_event:subscribe(job_finished, node(), ?MODULE),
-    schedule_new_relocations(),
+    restart_stopped_virtres_processes(),
     {ok, MState}.
 
+handle_call({relocate, JobId}, _, #mstate{} = MState) ->
+    {reply, start_new_virtres_processes(JobId), MState};
 handle_call({cancel_relocation, Job}, _, MState = #mstate{}) ->
     {reply, do_cancel_relocation(Job), MState}.
 
@@ -107,10 +91,6 @@ handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
 handle_cast(_, #mstate{} = MState) ->
     {noreply, MState}.
 
-handle_info(relocate_jobs, #mstate{} = MState) ->
-    start_relocations(),
-    schedule_new_relocations(),
-    {noreply, MState};
 handle_info(_, #mstate{} = MState) ->
     {noreply, MState}.
 
@@ -123,120 +103,6 @@ code_change(_, #mstate{} = MState, _) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
-
--spec job_suited_node(#job{}, #node{}) -> boolean().
-job_suited_node(Job, Node) ->
-    JobResources = wm_entity:get(resources, Job),
-    NodeResources = wm_entity:get(resources, Node),
-    F = fun(JobResource) -> match_resource(JobResource, NodeResources) end,
-    lists:all(fun(X) -> X end, lists:map(F, JobResources)).
-
--spec match_resource(#resource{}, [#resource{}]) -> boolean().
-match_resource(_, []) ->
-    false;
-match_resource(#resource{name = Name} = JobResource, [#resource{name = Name} = NodeResource | NodeResources]) ->
-    DesiredCount = wm_entity:get(count, JobResource),
-    AvailableCount = wm_entity:get(count, NodeResource),
-    case DesiredCount =< AvailableCount of
-        true ->
-            true;
-        false ->
-            match_resource(JobResource, NodeResources)
-    end;
-match_resource(JobResource, [_NodeResource | NodeResources]) ->
-    match_resource(JobResource, NodeResources).
-
--spec select_remote_site(#job{}, [#node{}]) -> {ok, #node{}} | {error, not_found}.
-select_remote_site(_, []) ->
-    {error, not_found};
-select_remote_site(Job, Nodes) ->
-    case wm_entity:get(nodes, Job) of
-        [SomeNode] ->
-            case wm_entity:get(is_template, SomeNode) of
-                true ->
-                    {ok, SomeNode};
-                false ->
-                    {error, "Job requests non-template node"}
-            end;
-        _ ->
-            AccountId = wm_entity:get(account_id, Job),
-            Files = wm_entity:get(input_files, Job),
-            Data = cumulative_files_size(Files),
-            PricesNorm =
-                norming(lists:map(fun(Node) ->
-                                     case wm_accounting:node_prices(Node) of
-                                         #{AccountId := Price} ->
-                                             Price;
-                                         #{} ->
-                                             0
-                                     end
-                                  end,
-                                  Nodes)),
-            NetworkLatenciesNorm = norming(lists:map(fun(Node) -> network_latency(Node) end, Nodes)),
-            Xs = lists:zip3(Nodes, PricesNorm, NetworkLatenciesNorm),
-            {_, Node} =
-                lists:max(
-                    lists:map(fun({Node, Price, NetworkLatency}) -> {node_weight(Price, NetworkLatency, Data), Node}
-                              end,
-                              Xs)),
-            {ok, Node}
-    end.
-
--spec cumulative_files_size([nonempty_string()]) -> number().
-cumulative_files_size([]) ->
-    1;
-cumulative_files_size(Files) when is_list(Files) ->
-    lists:sum(
-        lists:map(fun(File) ->
-                     case wm_file_utils:get_size(File) of
-                         {ok, Bytes} ->
-                             Bytes;
-                         Reason ->
-                             ?LOG_ERROR("Can not obtain file ~p size due ~p", [File, Reason]),
-                             1
-                     end
-                  end,
-                  Files)).
-
--spec network_latency(#node{}) -> number().
-network_latency(Node) ->
-    Resources = wm_entity:get(resources, Node),
-    lists:foldl(fun (Resource = #resource{name = "network_latency"}, _Acc) ->
-                        wm_entity:get(count, Resource);
-                    (_Resource, Acc) ->
-                        Acc
-                end,
-                ?NETWORK_LATENCY_MCS,
-                Resources).
-
--spec norming([number()]) -> [number()].
-norming(Xs) ->
-    case lists:max(Xs) of
-        0 ->
-            Xs;
-        Max ->
-            lists:map(fun(X) -> X / Max end, Xs)
-    end.
-
--spec koef(number()) -> number().
-koef(X) ->
-    Y = math:log10(X + 1) / 3.0103,
-    0.5 - 1 / math:pi() * math:atan(Y - 2).
-
--spec node_weight(number(), number(), pos_integer()) -> number().
-node_weight(Price, NetworkLatency, Data) ->
-    K = koef(Data),
-    1 / (K * Price + (1 - K) * NetworkLatency).
-
--spec schedule_new_relocations() -> reference().
-schedule_new_relocations() ->
-    Ms = wm_conf:g(relocation_interval, {?DEFAULT_RELOCATION_INTERVAL, integer}),
-    wm_utils:wake_up_after(Ms, relocate_jobs).
-
--spec start_relocations() -> ok.
-start_relocations() ->
-    restart_stopped_virtres_processes(),
-    start_new_virtres_processes().
 
 -spec spawn_virtres_if_needed(#job{}, [#relocation{}]) -> [#relocation{}].
 spawn_virtres_if_needed(Job, Relocations) ->
@@ -295,44 +161,26 @@ restart_stopped_virtres_processes() ->
             end
     end.
 
--spec start_new_virtres_processes() -> ok.
-start_new_virtres_processes() ->
-    Filter =
-        fun (#job{state = ?JOB_STATE_QUEUED,
-                  nodes = [],
-                  relocatable = true,
-                  revision = R})
-                when R > 0 ->
-                true;
-            (_) ->
-                false
-        end,
-    case wm_conf:select(job, Filter) of
-        {ok, Jobs} ->
+-spec start_new_virtres_processes(job_id()) -> ok | {error, term()}.
+start_new_virtres_processes(JobId) ->
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, Job} ->
+            ?LOG_DEBUG("Start relocation for job ~p", [JobId]),
             RelocationsNum = wm_conf:get_size(relocation),
             Max = wm_conf:g(max_relocations, {?MAX_RELOCATIONS, integer}),
             case RelocationsNum < Max of
                 true ->
-                    JobsNum = length(Jobs),
-                    AllowToRelocate = Max - RelocationsNum,
-                    JobsToRelocate =
-                        case JobsNum > AllowToRelocate of
-                            true ->
-                                {List, _} = lists:split(AllowToRelocate, Jobs),
-                                List;
-                            false ->
-                                Jobs
-                        end,
-                    ?LOG_INFO("Try to relocate ~p jobs (out of queued ~p jobs)", [JobsToRelocate, JobsNum]),
-                    Relocations = lists:foldl(fun spawn_virtres_if_needed/2, [], JobsToRelocate),
-                    wm_conf:update(Relocations);
+                    [NewRelocation] = spawn_virtres_if_needed(Job, []),
+                    wm_conf:update(NewRelocation),
+                    ok;
                 false ->
-                    ?LOG_DEBUG("Too many relocations (~p) when max=~p", [RelocationsNum, Max])
+                    %TODO: restart job relocation eventually
+                    ?LOG_DEBUG("Too many relocations (~p), job will wait: ~p", [RelocationsNum, JobId])
             end;
         {error, not_found} ->
-            ok
-    end,
-    ok.
+           ?LOG_ERROR("Relocatable job not found: ~p", [JobId]),
+           {error, "Relocatable job not found"} 
+    end.
 
 % @doc Restart job relocation process that was started in the past but stopped by some reason
 -spec respawn_virtres(#job{}, #relocation{}) -> integer() | {error, not_found}.
@@ -349,8 +197,8 @@ respawn_virtres(Job, Relocation) ->
 -spec spawn_virtres(#job{}) -> {ok, integer(), node_id()} | {error, not_found}.
 spawn_virtres(Job) ->
     JobId = wm_entity:get(id, Job),
-    case select_remote_site(Job) of
-        {ok, TemplateNode} ->
+    case wm_entity:get(nodes, Job) of
+        [TemplateNode] ->
             TemplateName = wm_entity:get(name, TemplateNode),
             ?LOG_INFO("Found suited remote site for job ~p (~p)", [JobId, TemplateName]),
             1 =
@@ -448,106 +296,3 @@ delete_partition_entity(Job, PartID) ->
         {error, not_found} ->
             {error, not_found}
     end.
-
-%% ============================================================================
-%% Tests
-%% ============================================================================
-
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-match_resource_test() ->
-    Resource0 = wm_entity:set([{name, "a"}, {count, 100}], wm_entity:new(resource)),
-    Resource1 = wm_entity:set([{name, "b"}, {count, 10}], wm_entity:new(resource)),
-    Resource2 = wm_entity:set([{name, "a"}, {count, 150}], wm_entity:new(resource)),
-    Resource3 = wm_entity:set([{name, "c"}, {count, 100}], wm_entity:new(resource)),
-    Resource4 = wm_entity:set([{name, "d"}, {count, 100}], wm_entity:new(resource)),
-    ?assertEqual(false, match_resource(Resource0, [Resource1, Resource3, Resource4])),
-    ?assertEqual(true, match_resource(Resource0, [Resource1, Resource2, Resource3, Resource4])),
-    ?assertEqual(true, match_resource(Resource0, [Resource0, Resource1, Resource2, Resource3, Resource4])),
-    ok.
-
-job_suited_node_test() ->
-    Job = wm_entity:set([{resources,
-                          [wm_entity:set([{name, "a"}, {count, 5}], wm_entity:new(resource)),
-                           wm_entity:set([{name, "b"}, {count, 15}], wm_entity:new(resource)),
-                           wm_entity:set([{name, "c"}, {count, 20}], wm_entity:new(resource))]}],
-                        wm_entity:new(job)),
-    Node0 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 1}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "b"}, {count, 5}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "c"}, {count, 10}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    Node1 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 10}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "b"}, {count, 20}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "c"}, {count, 30}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    Node2 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "x"}, {count, 10}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "y"}, {count, 20}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "z"}, {count, 30}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    ?assertEqual(false, job_suited_node(Job, Node2)),
-    ?assertEqual(false, job_suited_node(Job, Node0)),
-    ?assertEqual(true, job_suited_node(Job, Node1)),
-    ok.
-
-node_weight_common_test() ->
-    Prices = [25.0, 30.0, 15.0],
-    NetworkLatencies = [1000, 10 * 1000, 50 * 1000],
-    [PN1, PN2, PN3] = norming(Prices),
-    [NLN1, NLN2, NLN3] = norming(NetworkLatencies),
-    ?assert(wm_utils:match_floats(1.4126172213833292, node_weight(PN1, NLN1, 1), 5)),
-    ?assert(wm_utils:match_floats(1.1407338024430969, node_weight(PN2, NLN2, 1), 5)),
-    ?assert(wm_utils:match_floats(1.7327807511042153, node_weight(PN3, NLN3, 1), 5)),
-    ?assert(wm_utils:match_floats(1.5873475143912377, node_weight(PN1, NLN1, 1024), 5)),
-    ?assert(wm_utils:match_floats(1.2500280148714087, node_weight(PN2, NLN2, 1024), 5)),
-    ?assert(wm_utils:match_floats(1.5999713139289142, node_weight(PN3, NLN3, 1024), 5)),
-    ?assert(wm_utils:match_floats(5.3560809346836940, node_weight(PN1, NLN1, 10 * 1024 * 1024 * 1024), 5)),
-    ?assert(wm_utils:match_floats(2.7474729303989958, node_weight(PN2, NLN2, 10 * 1024 * 1024 * 1024), 5)),
-    ?assert(wm_utils:match_floats(1.1141834944983267, node_weight(PN3, NLN3, 10 * 1024 * 1024 * 1024), 5)),
-    ok.
-
-select_remote_site_test() ->
-    Job0 = wm_entity:set([{account_id, JobAccoundId = 1}, {input_files, []}], wm_entity:new(job)),
-    Job1 = wm_entity:set([{account_id, JobAccoundId = 1}, {input_files, ["1.tar.gz"]}], wm_entity:new(job)),
-    Job2 = wm_entity:set([{account_id, JobAccoundId = 1}, {input_files, ["2.tar.gz"]}], wm_entity:new(job)),
-    Node0 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 25.0, 2 => 2.5}}],
-                                       wm_entity:new(resource)),
-                         wm_entity:set([{name, "network_latency"}, {count, 1 * 1000}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    Node1 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 30.0, 2 => 2.5}}],
-                                       wm_entity:new(resource)),
-                         wm_entity:set([{name, "network_latency"}, {count, 10 * 1000}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    Node2 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 15.0, 2 => 2.5}}],
-                                       wm_entity:new(resource)),
-                         wm_entity:set([{name, "network_latency"}, {count, 50 * 1000}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    meck:new(wm_file_utils, [unstick, passthrough]),
-    meck:expect(wm_file_utils,
-                get_size,
-                fun ("1.tar.gz") ->
-                        {ok, 1024};
-                    ("2.tar.gz") ->
-                        {ok, 1024 * 1024 * 1024}
-                end),
-    ?assertEqual({error, not_found}, select_remote_site(Job0, [])),
-    ?assertEqual({ok, Node2}, select_remote_site(Job0, [Node0, Node1, Node2])),
-    ?assertEqual({ok, Node2}, select_remote_site(Job1, [Node0, Node1, Node2])),
-    ?assertEqual({ok, Node0}, select_remote_site(Job2, [Node0, Node1, Node2])),
-    meck:unload(wm_file_utils),
-    ok.
-
--endif.

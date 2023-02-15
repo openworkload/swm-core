@@ -240,9 +240,16 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
             [ok = wm_conf:delete(Node) || Node <- TemplateNodes]
     end.
 
+-spec merge_partition_node_ids([node_id()], [#node{}]) -> [node_id()].
+merge_partition_node_ids(OldNodeIds, NewNodes) ->
+    OldNodes = wm_conf:select(node, OldNodeIds),
+    OldNameIdPairs = [{Node#node.name, Node#node.id} || Node <- OldNodes],
+    NewNameIdPairs = [{Node#node.name, Node#node.id} || Node <- NewNodes],
+    FinalNameIdPairs = lists:ukeymerge(1, lists:ukeysort(1, OldNameIdPairs), lists:ukeysort(1, NewNameIdPairs)),
+    [Id || {_, Id} <- FinalNameIdPairs].
+
 -spec add_nodes_to_new_partition([#node{}], string()) -> integer().
 add_nodes_to_new_partition(Nodes, PartName) ->
-    NodeIds = [wm_entity:get(id, Node) || Node <- Nodes],
     Cluster1 = wm_topology:get_subdiv(cluster),
     ClusterId = wm_entity:get(id, Cluster1),
     OldPartIds = wm_entity:get(partitions, Cluster1),
@@ -253,12 +260,13 @@ add_nodes_to_new_partition(Nodes, PartName) ->
                 ?LOG_DEBUG("Partition with name ~p exists in cluster (good)", [PartName]),
                 {ok, Part1} = wm_conf:select(partition, {name, PartName}),
                 OldNodeIds = wm_entity:get(nodes, Part1),
-                NewNodeIds = lists:umerge(OldNodeIds, NodeIds),
+                NewNodeIds = merge_partition_node_ids(OldNodeIds, Nodes),
                 Part2 = wm_entity:set([{nodes, NewNodeIds}], Part1),
                 1 = wm_conf:update(Part2),
                 wm_entity:get(id, Part2);
             false ->
                 NewPartId = wm_utils:uuid(v4),
+                NodeIds = [Node#node.id || Node <- Nodes],
                 NewPart =
                     wm_entity:set([{id, NewPartId},
                                    {name, PartName},

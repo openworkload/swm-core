@@ -121,14 +121,15 @@ delete_partition(PartId, Remote) ->
 spawn_partition(Job, Remote) ->
     JobId = wm_entity:get(id, Job),
     PartName = get_partition_name(JobId),
+    {ok, Creds} = get_credentials(Remote),
     Options =
         #{name => PartName,
-          image_name => get_resource_value_property(image, image, Job, Remote, fun get_default_image_name/1),
-          flavor_name => get_resource_value_property(node, flavor, Job, Remote, fun get_default_flavor_name/1),
+          image_name => get_resource_value_property(image, "image", Job, Remote, fun get_default_image_name/1),
+          flavor_name => get_resource_value_property(node, "flavor", Job, Remote, fun get_default_flavor_name/1),
+          tenant_name => wm_entity:get(tenant_name, Creds),
           partition_name => PartName,
           node_count => wm_utils:get_requested_nodes_number(Job)},
     ?LOG_DEBUG("Start partition options: ~w", [Options]),
-    {ok, Creds} = get_credentials(Remote),
     wm_gate:create_partition(self(), Remote, Creds, Options).
 
 -spec ensure_entities_created(job_id(), #partition{}, #node{}) -> {atom(), string()}.
@@ -140,16 +141,13 @@ ensure_entities_created(JobId, Partition, TplNode) ->
 %% Implementation functions
 %% ============================================================================
 
--spec get_resource_value_property(atom(), atom(), #job{}, #remote{}, fun((#remote{}) -> string())) -> string().
+-spec get_resource_value_property(atom(), string(), #job{}, #remote{}, fun((#remote{}) -> string())) -> string().
 get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
-    case lists:search(fun (#resource{name = X}) when X == Name ->
-                              true;
-                          (_) ->
-                              false
-                      end,
-                      wm_entity:get(request, Job))
-    of
-        {value, Resource} ->
+    %case lists:search(fun (#resource{name = X}) when X == Name ->
+    case lists:keyfind(Name, 2, wm_entity:get(request, Job)) of
+        false ->
+            FunGetDefault(Remote);
+        Resource ->
             Properties = wm_entity:get(properties, Resource),
             case proplists:get_value(value, Properties) of
                 undefined ->
@@ -162,9 +160,7 @@ get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
                             JobId = wm_entity:get(id, Job),
                             throw(io_lib:format("Entity ~p ~p (job ~p) is unknown", [Tab, EntityName, JobId]))
                     end
-            end;
-        false ->
-            FunGetDefault(Remote)
+            end
     end.
 
 -spec get_default_image_name(#remote{}) -> string().

@@ -250,6 +250,7 @@ handle_http_call(Func, Label, CallbackModule, MState = #mstate{children = Childr
 
 -spec do_partition_create(#remote{}, #credential{}, string(), map()) -> {ok, string(), string()} | {error, string()}.
 do_partition_create(Remote, Creds, Spool, Options) ->
+    ?LOG_DEBUG("Create partition options: ~p", [Options]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Headers =
