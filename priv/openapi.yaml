@@ -215,8 +215,8 @@ paths:
           description: Job not found
 
 externalDocs:
-  description: Find out more about Sky Port
-  url: 'http://openworkload.com'
+  description: Find out more about Sky Port project
+  url: 'https://openworkload.org'
 
 components:
   schemas:

@@ -26,7 +26,7 @@ TESTS_SCHED_ROOT=$SWM_SRC_ROOT/../swm-sched/tests
 MOUNT_SWM="-v $SWM_SRC_ROOT:/tmp/swm -v $SWM_SCHED_SRC_ROOT:/tmp/swm-sched"
 MOUNT_ETC="-v /etc/shadow:/etc/shadow -v /etc/group:/etc/group -v /etc/passwd:/etc/passwd"
 
-SET_HOSTNAME="-h test.openworkload.com"
+SET_HOSTNAME="-h test.openworkload.org"
 DOCKER_SOCKET=/var/run/docker.sock
 TMP_DIR=/tmp
 BRIDGE=docker0

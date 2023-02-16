@@ -30,7 +30,7 @@ if [ "$?" = "1" ]; then
     -e DISPLAY=${DISPLAY}\
     --name ${CONTAINER_NAME}\
     --hostname $(hostname)\
-    --domainname=openworkload.com\
+    --domainname=openworkload.org\
     --add-host host:${HOST_IP}\
     --workdir ${PWD}\
     --tty\
