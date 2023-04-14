@@ -149,7 +149,6 @@ match_resource(#resource{name = Name} = JobResource, [#resource{name = Name} = N
         false ->
             match_resource(JobResource, NodeResources)
     end;
-
 match_resource(JobResource, [_NodeResource | NodeResources]) ->
     match_resource(JobResource, NodeResources).
 

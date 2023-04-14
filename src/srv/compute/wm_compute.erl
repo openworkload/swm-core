@@ -192,7 +192,7 @@ handle_timetable([X | T], MState) ->
                             MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
                             handle_timetable(T, MState2)
                     end;
-                 _ ->
+                _ ->
                     MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
                     handle_timetable(T, MState2)
             end

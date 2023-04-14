@@ -178,8 +178,8 @@ start_new_virtres_processes(JobId) ->
                     ?LOG_DEBUG("Too many relocations (~p), job will wait: ~p", [RelocationsNum, JobId])
             end;
         {error, not_found} ->
-           ?LOG_ERROR("Relocatable job not found: ~p", [JobId]),
-           {error, "Relocatable job not found"} 
+            ?LOG_ERROR("Relocatable job not found: ~p", [JobId]),
+            {error, "Relocatable job not found"}
     end.
 
 % @doc Restart job relocation process that was started in the past but stopped by some reason
