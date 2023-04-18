@@ -117,9 +117,13 @@ COPY ./scripts/swm-docker-finalize.sh /var/run/swm/
 # Build and install Google Tests
 WORKDIR /tmp
 RUN git clone https://github.com/google/googletest &&\
-    cd googletest &&\
-    cmake . -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr/local/GTest &&\
-    make &&\
-    make install
+ cd googletest &&\
+ cmake . -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr/local/GTest &&\
+ make &&\
+ make install
+
+# Install Anaconda (useful for jupyter related development)
+RUN curl -O https://repo.anaconda.com/archive/Anaconda3-2023.03-Linux-x86_64.sh
+RUN bash /tmp/Anaconda3-2023.03-Linux-x86_64.sh -b -p /usr/anaconda3
 
 WORKDIR /tmp/swm
