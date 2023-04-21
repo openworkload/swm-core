@@ -311,70 +311,74 @@ cacluster_dirname() ->
 %openssl x509 -in /opt/swm/spool/secure/users/taras/cert.pem -noout -text
 -spec req_cnf(string(), string()) -> list().
 req_cnf(DN, Dir) ->
-    ["# Purpose: Configuration for requests "
-     "(end users and CAs).\nROOTDIR       "
-     "         = ",
-     Dir,
-     "\n\n[req]\ninput_password         = "
-     "secret\noutput_password        = secret\ndefa"
-     "ult_bits           = 2048\nRANDFILE "
-     "              = $ROOTDIR/RAND\nencrypt_key "
-     "           = no\ndefault_md         "
-     "    = sha1\nprompt                 = "
-     "no\ndistinguished_name     = name\n\n[name]\n"
-     "commonName             = ",
-     DN#dn.commonName,
-     "\norganizationalUnitName = ",
-     DN#dn.organizationalUnitName,
-     "\norganizationName       = ",
-     DN#dn.organizationName,
-     "\nlocalityName           = ",
-     DN#dn.localityName,
-     "\ncountryName            = ",
-     DN#dn.countryName,
-     "\nemailAddress           = ",
-     DN#dn.emailAddress,
-     "\nsubjectAltName         = ",
-     DN#dn.id,
-     "\n"].
+    ["# Purpose: Configuration for requests (end users and CAs).\n"
+     "ROOTDIR                = ", Dir, "\n"
+     "\n"
+     "[req]\n"
+     "input_password         = secret\n"
+     "output_password        = secret\n"
+     "default_bits           = 2048\n"
+     "RANDFILE               = $ROOTDIR/RAND\n"
+     "encrypt_key            = no\n"
+     "default_md             = sha1\n"
+     "prompt                 = no\n"
+     "distinguished_name     = name\n"
+     "\n"
+     "[name]\n"
+     "commonName             = ", DN#dn.commonName, "\n"
+     "organizationalUnitName = ", DN#dn.organizationalUnitName, "\n"
+     "organizationName       = ", DN#dn.organizationName, "\n"
+     "localityName           = ", DN#dn.localityName, "\n"
+     "countryName            = ", DN#dn.countryName, "\n"
+     "emailAddress           = ", DN#dn.emailAddress, "\n"
+     "subjectAltName         = ", DN#dn.id, "\n"
+    ].
 
 -spec ca_cnf(string()) -> list().
 ca_cnf(CA) ->
-    ["# Purpose: Configuration for CAs.\n\nROOTDIR "
-     "               = $ENV::ROOTDIR\ndefault_ca "
-     "            = ca\n\n[ca]\ndir       "
-     "             = $ROOTDIR/",
-     CA,
-     "\ncerts                  = $dir/certs\ncrl_di"
-     "r                = $dir/crl\ndatabase "
-     "              = $dir/index.txt\nnew_certs_dir "
-     "         = $dir/newcerts\ncertificate "
-     "           = $dir/cert.pem\nserial  "
-     "               = $dir/serial\ncrl   "
-     "                 = $dir/crl.pem\nprivate_key "
-     "           = $dir/private/key.pem\nRANDFILE "
-     "              = $dir/private/RAND\n\nx509_ext"
-     "ensions        = user_cert\ndefault_days "
-     "          = 365\ndefault_md         "
-     "    = sha1\npreserve               = "
-     "no\npolicy                 = policy_match\n\n"
-     "[policy_match]\ncommonName          "
-     "   = supplied\norganizationalUnitName "
-     "= optional\norganizationName       = "
-     "optional\ncountryName            = optional\n"
-     "localityName           = optional\nemailAddre"
-     "ss           = supplied\nsubjectAltName "
-     "        = supplied\n\n[user_cert]\nbasicConst"
-     "raints       = CA:false\nkeyUsage   "
-     "            = nonRepudiation,digitalSignature"
-     ",keyEncipherment\nsubjectKeyIdentifier "
-     "  = hash\nauthorityKeyIdentifier = keyid,issu"
-     "er:always\nissuerAltName          = "
-     "issuer:copy\n\n[ca_cert]\nbasicConstraints "
-     "      = critical,CA:true\nkeyUsage  "
-     "             = cRLSign, keyCertSign\nsubjectK"
-     "eyIdentifier   = hash\nissuerAltName "
-     "         = issuer:copy\n"].
+    ["# Purpose: Configuration for CAs.\n\n"
+     "ROOTDIR                = $ENV::ROOTDIR\n"
+     "default_ca             = ca\n"
+     "\n"
+     "[ca]\n"
+     "dir                    = $ROOTDIR/", CA, "\n"
+     "certs                  = $dir/certs\n"
+     "crl_dir                = $dir/crl\n"
+     "database               = $dir/index.txt\n"
+     "new_certs_dir          = $dir/newcerts\n"
+     "certificate            = $dir/cert.pem\n"
+     "serial                 = $dir/serial\n"
+     "crl                    = $dir/crl.pem\n"
+     "private_key            = $dir/private/key.pem\n"
+     "RANDFILE               = $dir/private/RAND\n"
+     "x509_extensions        = user_cert\n"
+     "default_days           = 365\n"
+     "default_md             = sha1\n"
+     "preserve               = no\n"
+     "policy                 = policy_match\n"
+     "\n"
+     "[policy_match]\n"
+     "commonName             = supplied\n"
+     "organizationalUnitName = optional\n"
+     "organizationName       = optional\n"
+     "countryName            = optional\n"
+     "localityName           = optional\n"
+     "emailAddress           = supplied\n"
+     "subjectAltName         = supplied\n"
+     "\n"
+     "[user_cert]\n"
+     "basicConstraints       = CA:false\n"
+     "keyUsage               = nonRepudiation,digitalSignature,keyEncipherment\n"
+     "subjectKeyIdentifier   = hash\n"
+     "authorityKeyIdentifier = keyid,issuer:always\n"
+     "issuerAltName          = issuer:copy\n"
+     "\n"
+     "[ca_cert]\n"
+     "basicConstraints       = critical,CA:true\n"
+     "keyUsage               = cRLSign, keyCertSign\n"
+     "subjectKeyIdentifier   = hash\n"
+     "issuerAltName          = issuer:copy\n"
+    ].
 
 -spec do_get_altname(term()) -> atom() | string().
 do_get_altname(Cert) ->
