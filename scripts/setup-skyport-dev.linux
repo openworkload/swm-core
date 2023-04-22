@@ -91,5 +91,5 @@ echo "Stop swm"
 ${ROOT_DIR}/scripts/run-in-shell.sh -x -s
 
 echo
-echo "Skyt Port development setup has finished"
+echo "Sky Port development setup has finished"
 echo
