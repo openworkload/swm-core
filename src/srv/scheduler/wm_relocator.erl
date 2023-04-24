@@ -188,9 +188,7 @@ respawn_virtres(Job, Relocation) ->
     JobId = wm_entity:get(id, Job),
     TemplateNodeId = wm_entity:get(template_node_id, Relocation),
     {ok, TemplateNode} = wm_conf:select(node, {id, TemplateNodeId}),
-    1 =
-        wm_conf:update(
-            wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
+    1 = wm_conf:update(wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
     wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)).
 
 % @doc Start relocation returning relocation ID that is a hash of the nodes involved into the relocation
@@ -198,16 +196,20 @@ respawn_virtres(Job, Relocation) ->
 spawn_virtres(Job) ->
     JobId = wm_entity:get(id, Job),
     case wm_entity:get(nodes, Job) of
-        [TemplateNode] ->
-            TemplateName = wm_entity:get(name, TemplateNode),
-            ?LOG_INFO("Found suited remote site for job ~p (~p)", [JobId, TemplateName]),
-            1 =
-                wm_conf:update(
-                    wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
-            {ok, TaskId} = wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)),
-            {ok, TaskId, wm_entity:get(id, TemplateNode)};
+        [TemplateNodeId] ->
+            case wm_conf:select(node, {id, TemplateNodeId}) of
+                {error, not_found} ->
+                    ?LOG_WARN("Job provided unknown template node id ~p (job id: ~p}", [TemplateNodeId, JobId]),
+                    {error, not_found};
+                {ok, TemplateNode} ->
+                    TemplateName = wm_entity:get(name, TemplateNode),
+                    ?LOG_INFO("Spawn virtres for job ~p and template node ~p", [JobId, TemplateName]),
+                    1 = wm_conf:update(wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
+                    {ok, TaskId} = wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)),
+                    {ok, TaskId, TemplateNodeId}
+            end;
         {error, not_found} ->
-            ?LOG_DEBUG("No suited remote site found for job ~p", [JobId]),
+            ?LOG_WARN("No template node is defined for job ~p", [JobId]),
             {error, not_found}
     end.
 
