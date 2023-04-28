@@ -65,8 +65,10 @@ add_resource_with_property(Name, PropValue, [#resource{} = OldResource | Resourc
 -spec parse_line([string()], #job{}) -> #job{}.
 parse_line(Ws, Job) when hd(Ws) == "ports", length(Ws) > 1 ->
     add_requested_resource("ports", lists:flatten(tl(Ws)), Job);
-parse_line(Ws, Job) when hd(Ws) == "image", length(Ws) > 1 ->
-    add_requested_resource("image", lists:flatten(tl(Ws)), Job);
+parse_line(Ws, Job) when hd(Ws) == "cloud-image", length(Ws) > 1 ->
+    add_requested_resource("cloud-image", lists:flatten(tl(Ws)), Job);
+parse_line(Ws, Job) when hd(Ws) == "container-image", length(Ws) > 1 ->
+    add_requested_resource("container-image", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "flavor", length(Ws) > 1 ->
     add_requested_resource("flavor", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "account_id", length(Ws) > 1 ->

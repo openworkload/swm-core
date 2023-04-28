@@ -121,7 +121,7 @@ do_get_unregistered_images() ->
 get_images_from_json([], Images) ->
     Images;
 get_images_from_json([{struct, ImageParams} | T], Images) ->
-    EmptyImage = wm_entity:set([kind, docker], wm_entity:new(<<"image">>)),
+    EmptyImage = wm_entity:set([kind, container], wm_entity:new(<<"image">>)),
     case fill_image_from_params(ImageParams, EmptyImage) of
         ignore ->
             get_images_from_json(T, Images);

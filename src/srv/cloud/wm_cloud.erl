@@ -108,7 +108,7 @@ handle_info(update, MState = #mstate{refs_in_process = Refs, timer = OldTRef}) -
                                {ok, Creds} = wm_conf:select(credential, {remote_id, RemoteId}),
                                {ok, RefFlavors} = wm_gate:list_flavors(?MODULE, Remote, Creds),
                                {ok, RefImages} = wm_gate:list_images(?MODULE, Remote, Creds),
-                               ?LOG_DEBUG("Requested lists of flavors and images: ~p and ~p", [RefFlavors, RefImages]),
+                               ?LOG_DEBUG("Flavors and images requested, refs: ~p and ~p", [RefFlavors, RefImages]),
                                Accum#{RefFlavors => RemoteId, RefImages => RemoteId}
                             end,
                             Refs,
@@ -178,6 +178,7 @@ handle_retrieved_images(NewImages, RemoteId) ->
 
 -spec handle_retrieved_flavors([#node{}], remote_id()) -> atom().
 handle_retrieved_flavors(FlavorNodes, RemoteId) ->
+    ?LOG_DEBUG("Handle retrieved ~p flavors for remote ~p", [length(FlavorNodes), RemoteId]),
     TemplateNodes = select_template_nodes(RemoteId),
     case wm_conf:select(remote, {id, RemoteId}) of
         {ok, Remote} ->

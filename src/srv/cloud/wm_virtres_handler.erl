@@ -124,7 +124,7 @@ spawn_partition(Job, Remote) ->
     {ok, Creds} = get_credentials(Remote),
     Options =
         #{name => PartName,
-          image_name => get_resource_value_property(image, "image", Job, Remote, fun get_default_image_name/1),
+          image_name => get_resource_value_property(image, "cloud-image", Job, Remote, fun get_default_image_name/1),
           flavor_name => get_resource_value_property(node, "flavor", Job, Remote, fun get_default_flavor_name/1),
           tenant_name => wm_entity:get(tenant_name, Creds),
           partition_name => PartName,

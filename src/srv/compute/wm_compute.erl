@@ -167,6 +167,7 @@ handle_timetable([], MState) ->
 handle_timetable([X | T], MState) ->
     JobID = wm_entity:get(job_id, X),
     JobNodeIds = wm_entity:get(job_nodes, X),
+    update_job(JobID, nodes, JobNodeIds),
     ?LOG_DEBUG("Handle job ~p, node IDs: ~p", [JobID, JobNodeIds]),
     SelfNodeId = wm_self:get_node_id(),
     case JobNodeIds of
@@ -177,7 +178,6 @@ handle_timetable([X | T], MState) ->
             Nodes = wm_conf:select_many(node, id, JobNodeIds),
             ?LOG_DEBUG("Job will be started locally (on ~p)", [wm_entity:get(name, hd(Nodes))]),
             wm_conf:set_nodes_state(state_alloc, busy, Nodes),
-            update_job(JobID, nodes, JobNodeIds),
             MState2 = start_job_processes(Nodes, JobID, MState),
             handle_timetable(T, MState2);
         OtherNodeIds ->
@@ -186,13 +186,17 @@ handle_timetable([X | T], MState) ->
                     {ok, Node} = wm_conf:select(node, {id, SingleNodeId}),
                     case Node#node.is_template of
                         true ->
+                            ?LOG_INFO("Job will be started remotely (template: ~p)", [wm_entity:get(name, Node)]),
                             wm_relocator:relocate_job(JobID),
                             handle_timetable(T, MState);
                         false ->
+                            Nodes = wm_conf:select_many(node, id, JobNodeIds),
+                            ?LOG_INFO("Job will be started remotely (main node: ~p)", [wm_entity:get(name, hd(Nodes))]),
                             MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
                             handle_timetable(T, MState2)
                     end;
-                _ ->
+                [FirstNode | _] ->
+                    ?LOG_DEBUG("Job will be started on remote node ~p", [wm_entity:get(name, FirstNode)]),
                     MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
                     handle_timetable(T, MState2)
             end

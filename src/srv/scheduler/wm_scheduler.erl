@@ -246,7 +246,7 @@ get_binary_for_scheduler(Scheduler) ->
 
     Jobs1 = wm_db:get_many(job, state, [?JOB_STATE_QUEUED]),
     Jobs2 = [wm_entity:set({revision, wm_entity:get(revision, X) + 1}, X) || X <- Jobs1],
-    wm_conf:update(Jobs2), %% TODO: mark that the job has been scheduled at least once differently
+    wm_conf:update(Jobs2),
     ?LOG_DEBUG("Jobs for scheduler: ~p", [length(Jobs2)]),
     JobsBin = erlang:term_to_binary(Jobs2),
     Bin3 = wm_sched_utils:add_input(?DATA_TYPE_JOBS, JobsBin, Bin2),

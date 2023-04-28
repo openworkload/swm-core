@@ -188,7 +188,9 @@ respawn_virtres(Job, Relocation) ->
     JobId = wm_entity:get(id, Job),
     TemplateNodeId = wm_entity:get(template_node_id, Relocation),
     {ok, TemplateNode} = wm_conf:select(node, {id, TemplateNodeId}),
-    1 = wm_conf:update(wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
+    1 =
+        wm_conf:update(
+            wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
     wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)).
 
 % @doc Start relocation returning relocation ID that is a hash of the nodes involved into the relocation
@@ -204,11 +206,13 @@ spawn_virtres(Job) ->
                 {ok, TemplateNode} ->
                     TemplateName = wm_entity:get(name, TemplateNode),
                     ?LOG_INFO("Spawn virtres for job ~p and template node ~p", [JobId, TemplateName]),
-                    1 = wm_conf:update(wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
+                    1 =
+                        wm_conf:update(
+                            wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
                     {ok, TaskId} = wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)),
                     {ok, TaskId, TemplateNodeId}
             end;
-        {error, not_found} ->
+        [] ->
             ?LOG_WARN("No template node is defined for job ~p", [JobId]),
             {error, not_found}
     end.

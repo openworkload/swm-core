@@ -138,6 +138,7 @@ handle_info(ssh_check,
             gen_fsm:send_event(self(), ssh_connected),
             {next_state, creating, MState};
         {error, Error} ->
+            ?LOG_DEBUG("SSH server is not ready yet, connection will be repeated: ~p", [Error]),
             Timer = wm_virtres_handler:wait_for_ssh_connection(),
             {next_state, creating, MState#mstate{ssh_conn_timer = Timer}}
     end;
@@ -256,11 +257,7 @@ creating({partition_fetched, Ref, Partition},
      MState#mstate{wait_ref = Ref,
                    ssh_conn_timer = Timer,
                    part_mgr_id = PartMgrNodeId}};
-creating(ssh_connected,
-         #mstate{wait_ref = Ref,
-                 job_id = JobId,
-                 part_id = PartId} =
-             MState) ->
+creating(ssh_connected, #mstate{job_id = JobId, part_id = PartId} = MState) ->
     {ok, Partition} = wm_conf:select(partition, {id, PartId}),
     case wm_entity:get(state, Partition) of
         up ->
@@ -268,7 +265,7 @@ creating(ssh_connected,
             MState2 = MState#mstate{wait_ref = undefined, rediness_timer = Timer},
             {next_state, creating, MState2};
         Other ->
-            ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p", [Other]),
+            ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p, job: ~p", [Other, JobId]),
             Timer = wm_virtres_handler:wait_for_partition_fetch(),
             {next_state, creating, MState#mstate{part_check_timer = Timer}}
     end;
@@ -370,10 +367,10 @@ is_local_job(_) ->
 -spec get_job_ports([#resource{}]) -> [integer()].
 get_job_ports([]) ->
     [];
-get_job_ports([#resource{name = "ports", properties = Properties} | T]) ->
+get_job_ports([#resource{name = "ports", properties = Properties} | _]) ->
     Value = proplists:get_value(value, Properties), % example of the Value: "8888/tcp,6001/udp"
     lists:foldl(fun(PortStr, List) ->
-                   Parts = string:split(Value, "/", all),
+                   Parts = string:split(PortStr, "/", all),
                    case length(Parts) of
                        1 ->
                            [list_to_integer(Value) | List];
@@ -395,10 +392,10 @@ get_job_ports([#resource{name = "ports", properties = Properties} | T]) ->
 get_job_ports([_ | T]) ->
     get_job_ports(T).
 
--spec get_wm_ports() -> [inet:port_number()].
-get_wm_ports() ->
-    %TODO DO WE WANT TO USE LOCAL PORT ALWAYS FOR PARENT COMMUNICATIONS?
-    [].
+-spec get_wm_api_port() -> inet:port_number().
+get_wm_api_port() ->
+    {ok, SelfNode} = wm_self:get_node(),
+    wm_entity:get(api_port, SelfNode).
 
 -spec start_port_forwarding(job_id(), node_id()) -> [inet:port_number()].
 start_port_forwarding(JobId, PartMgrNodeId) ->
@@ -407,7 +404,7 @@ start_port_forwarding(JobId, PartMgrNodeId) ->
 
     ListenHost = {127, 0, 0, 1},
     ResourcesRequest = wm_entity:get(request, Job),
-    PortsToForward = get_job_ports(ResourcesRequest) ++ get_wm_ports(),
+    PortsToForward = get_job_ports(ResourcesRequest) ++ [get_wm_api_port()],
     JobHost = wm_entity:get(gateway, PartMgrNode),
 
     lists:foldl(fun(PortToForward, OpenedPorts) ->
@@ -416,8 +413,8 @@ start_port_forwarding(JobId, PartMgrNodeId) ->
                        {ok, OpenedPort} ->
                            [OpenedPort | OpenedPorts];
                        {error, Error} ->
-                           ?LOG_ERROR("Can't make ssh tunnel: ~p:~p -> ~p:~p",
-                                      [ListenHost, ListenPort, JobHost, PortToForward]),
+                           ?LOG_ERROR("Can't make ssh tunnel: ~p:~p -> ~p:~p, error: ~p",
+                                      [ListenHost, ListenPort, JobHost, PortToForward, Error]),
                            OpenedPorts
                    end
                 end,
@@ -425,5 +422,5 @@ start_port_forwarding(JobId, PartMgrNodeId) ->
                 PortsToForward).
 
 -spec stop_port_forwarding(job_id()) -> ok.
-stop_port_forwarding(JobId) ->
+stop_port_forwarding(_JobId) ->
     ok.  %TODO: stop port forwarding?
