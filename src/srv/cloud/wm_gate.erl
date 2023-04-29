@@ -215,21 +215,21 @@ close_connection(ConnPid) ->
 -spec wait_response_boby(pid(), reference()) -> {ok, term()} | {error, term()}.
 wait_response_boby(ConnPid, StreamRef) ->
     case gun:await(ConnPid, StreamRef) of
-        {response, nofin, 200, _} ->
+        {response, nofin, 200, Headers} ->
             case gun:await_body(ConnPid, StreamRef) of
                 {ok, Body} ->
-                    ?LOG_DEBUG("Response body: ~p", [Body]),
+                    ?LOG_DEBUG("Gate response (200) body: ~p, headers: ~p", [Body, Headers]),
                     {ok, Body};
                 ResponseError ->
-                    ?LOG_WARN("Response error: ~p", [ResponseError]),
+                    ?LOG_WARN("Gate response (200) error: ~p, headers: ~p", [ResponseError, Headers]),
                     {error, ResponseError}
             end;
-        {response, nofin, 404, _} ->
-            ?LOG_WARN("Waiting response: not found"),
+        {response, nofin, 404, Headers} ->
+            ?LOG_WARN("Gate response (404), headers: ~p", [Headers]),
             {error, not_found};
-        AwaitError ->
-            ?LOG_WARN("Await error: ~p", [AwaitError]),
-            {error, AwaitError}
+        {error, Error} ->
+            ?LOG_WARN("Gate response error: ~p", [Error]),
+            {error, Error}
     end.
 
 -spec handle_http_call(fun(() -> {atom(), string(), any()}), atom(), atom() | pid(), #mstate{}) ->
@@ -250,7 +250,8 @@ handle_http_call(Func, Label, CallbackModule, MState = #mstate{children = Childr
 
 -spec do_partition_create(#remote{}, #credential{}, string(), map()) -> {ok, string(), string()} | {error, string()}.
 do_partition_create(Remote, Creds, Spool, Options) ->
-    ?LOG_DEBUG("Create partition options: ~p", [Options]),
+    KeyName = wm_entity:get(key_name, Creds),
+    ?LOG_DEBUG("Create partition options: ~p, key name: ~p", [Options, KeyName]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Headers =
@@ -259,8 +260,9 @@ do_partition_create(Remote, Creds, Spool, Options) ->
                     {<<"tenantname">>, list_to_binary(maps:get(tenant_name, Options, ""))},
                     {<<"imagename">>, list_to_binary(maps:get(image_name, Options, ""))},
                     {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
-                    {<<"keyname">>, list_to_binary(maps:get(key_name, Options, ""))},
+                    {<<"keyname">>, list_to_binary(KeyName)},
                     {<<"count">>, integer_to_binary(maps:get(nodes_count, Options, 1))}],
+            ?LOG_DEBUG("Partition creation HTTP headers: ~p", [Headers]),
             StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of

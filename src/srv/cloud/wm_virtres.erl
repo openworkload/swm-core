@@ -270,7 +270,7 @@ creating(ssh_connected, #mstate{job_id = JobId, part_id = PartId} = MState) ->
             {next_state, creating, MState#mstate{part_check_timer = Timer}}
     end;
 creating({error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
-    ?LOG_DEBUG("Partition creation failed: ~p", [Error]),
+    ?LOG_DEBUG("Partition creation failed: ~p, job id: ~p", [Error, JobId]),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
     handle_remote_failure(MState);
 creating({Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
