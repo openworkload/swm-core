@@ -71,8 +71,8 @@ parse_line(Ws, Job) when hd(Ws) == "container-image", length(Ws) > 1 ->
     add_requested_resource("container-image", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "flavor", length(Ws) > 1 ->
     add_requested_resource("flavor", lists:flatten(tl(Ws)), Job);
-parse_line(Ws, Job) when hd(Ws) == "account_id", length(Ws) > 1 ->
-    wm_entity:set({account_id, lists:flatten(tl(Ws))}, Job);
+parse_line(Ws, Job) when hd(Ws) == "account", length(Ws) > 1 ->
+    wm_entity:set({account_id, get_account_id(lists:flatten(tl(Ws)))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "name", length(Ws) > 1 ->
     wm_entity:set({name, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "comment", length(Ws) > 1 ->
@@ -99,3 +99,8 @@ parse_line(Ws, Job) when hd(Ws) == "output" ->
 parse_line(Ws, Job) ->
     ?LOG_DEBUG("Unknown jobscript statement: ~p (~p)", [Ws, wm_entity:get(id, Job)]),
     Job.
+
+-spec get_account_id(string()) -> account_id().
+get_account_id(AccountName) ->
+  {ok, Account} = wm_conf:select(account, {name, AccountName}),
+  wm_entity:get(id, Account).

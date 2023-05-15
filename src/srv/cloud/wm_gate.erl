@@ -161,7 +161,9 @@ parse_args([{_, _} | T], MState) ->
 
 -spec get_address(string(), #remote{}) -> string().
 get_address(SectionName, Remote) ->
-    "/" ++ atom_to_list(wm_entity:get(kind, Remote)) ++ "/" ++ SectionName.
+    Path = "/" ++ atom_to_list(wm_entity:get(kind, Remote)) ++ "/" ++ SectionName,
+    ?LOG_DEBUG("HTTP RPC path: ~p", [Path]),
+    Path.
 
 -spec get_auth_headers(#credential{}) -> [tuple()].
 get_auth_headers(Creds) ->
