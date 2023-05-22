@@ -5,14 +5,16 @@
 
 FROM ubuntu:18.04
 
-RUN DEBIAN_FRONTEND=noninteractive apt-get clean
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing
-RUN DEBIAN_FRONTEND=noninteractive apt-get install openssl -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install openssh-client -y  # for host certificates
-RUN DEBIAN_FRONTEND=noninteractive apt-get install python3 -y  # for setup
-RUN DEBIAN_FRONTEND=noninteractive apt-get install rlwrap -y  # for swmctl during setup
-RUN DEBIAN_FRONTEND=noninteractive apt-get install vim less mc -y  # for debug
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get clean
+RUN apt-get update
+RUN apt-get update --fix-missing
+RUN apt-get install openssl -y
+RUN apt-get install openssh-client -y  # for host certificates
+RUN apt-get install python3 -y  # for setup
+RUN apt-get install rlwrap -y  # for swmctl during setup
+RUN apt-get install vim less mc -y  # for debug
 
 ARG SWM_VERSION=$SWM_VERSION
 RUN mkdir -p /opt/swm/$SWM_VERSION

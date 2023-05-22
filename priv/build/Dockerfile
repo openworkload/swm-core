@@ -20,66 +20,68 @@ ENV KERL_CONFIGURE_OPTIONS="--without-odbc\
                             --enable-kernel-poll\
                             --with-ssl"
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Base linux packages
-RUN DEBIAN_FRONTEND=noninteractive apt-get clean
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing
-RUN DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install apt-utils -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install aptitude -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install git -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install rlwrap -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install vim -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install sudo -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install mc -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install gcc-8 -y
+RUN apt-get clean
+RUN apt-get update
+RUN apt-get update --fix-missing
+RUN apt-get upgrade -y
+RUN apt-get install apt-utils -y
+RUN apt-get install aptitude -y
+RUN apt-get install git -y
+RUN apt-get install rlwrap -y
+RUN apt-get install vim -y
+RUN apt-get install sudo -y
+RUN apt-get install mc -y
+RUN apt-get install gcc-8 -y
 
 # For python 3.9
-RUN DEBIAN_FRONTEND=noninteractive apt-get install software-properties-common -y
-RUN DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:deadsnakes/ppa -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get install python3.9 -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install python3.9-distutils -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install python3-all-dev -y
+RUN apt-get install software-properties-common -y
+RUN add-apt-repository ppa:deadsnakes/ppa -y
+RUN apt-get update
+RUN apt-get install python3.9 -y
+RUN apt-get install python3.9-distutils -y
+RUN apt-get install python3-all-dev -y
 
-RUN DEBIAN_FRONTEND=noninteractive update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 2
-RUN DEBIAN_FRONTEND=noninteractive update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 1
-RUN DEBIAN_FRONTEND=noninteractive update-alternatives --config python3 --skip-auto
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 2
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 1
+RUN update-alternatives --config python3 --skip-auto
 
 # For Erlang Runtime compilation
-RUN DEBIAN_FRONTEND=noninteractive apt-get install autoconf -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install build-essential -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install libncurses5-dev -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install openssl -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install libssl-dev -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install fop -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install xsltproc -y
+RUN apt-get install autoconf -y
+RUN apt-get install build-essential -y
+RUN apt-get install libncurses5-dev -y
+RUN apt-get install openssl -y
+RUN apt-get install libssl-dev -y
+RUN apt-get install fop -y
+RUN apt-get install xsltproc -y
 
 # Development and debugging tools
-RUN DEBIAN_FRONTEND=noninteractive apt-get install curl -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install openssh-server -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install gdb -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install gdbserver -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install htop -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install net-tools -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install iputils-ping -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install telnet -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install cmake -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install gnuplot -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install strace -y
+RUN apt-get install curl -y
+RUN apt-get install openssh-server -y
+RUN apt-get install gdb -y
+RUN apt-get install gdbserver -y
+RUN apt-get install htop -y
+RUN apt-get install net-tools -y
+RUN apt-get install iputils-ping -y
+RUN apt-get install telnet -y
+RUN apt-get install cmake -y
+RUN apt-get install gnuplot -y
+RUN apt-get install strace -y
 
 # For documentation build
-RUN DEBIAN_FRONTEND=noninteractive apt-get install texlive-full -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install libxml2-utils -y
+RUN apt-get install texlive-full -y
+RUN apt-get install libxml2-utils -y
 
 # For building Erlang/OTP with wxWidgets
-RUN DEBIAN_FRONTEND=noninteractive apt-get install libwxgtk3.0-dev -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install libgl1-mesa-dev -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install libglu1-mesa-dev -y
-RUN DEBIAN_FRONTEND=noninteractive apt-get install libpng16* -y
+RUN apt-get install libwxgtk3.0-dev -y
+RUN apt-get install libgl1-mesa-dev -y
+RUN apt-get install libglu1-mesa-dev -y
+RUN apt-get install libpng16* -y
 
 # For cogapp
-RUN DEBIAN_FRONTEND=noninteractive apt-get install python3-pip -y
+RUN apt-get install python3-pip -y
 RUN python3.9 -m pip install --upgrade pip
 RUN pip3 install --upgrade pip
 RUN pip3 install --upgrade setuptools
@@ -96,7 +98,7 @@ RUN pip3 install virtualenv
 RUN pip3 install openapi-python-client
 
 # For using docker inside docker container
-RUN DEBIAN_FRONTEND=noninteractive apt-get install docker.io -y
+RUN apt-get install docker.io -y
 
 # Build and install Erlang/OTP
 WORKDIR /tmp/kerl/
