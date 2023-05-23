@@ -102,5 +102,5 @@ parse_line(Ws, Job) ->
 
 -spec get_account_id(string()) -> account_id().
 get_account_id(AccountName) ->
-  {ok, Account} = wm_conf:select(account, {name, AccountName}),
-  wm_entity:get(id, Account).
+    {ok, Account} = wm_conf:select(account, {name, AccountName}),
+    wm_entity:get(id, Account).

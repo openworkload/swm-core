@@ -181,7 +181,7 @@ create_partition(_Config) ->
     Options =
         #{part_name => "stack42",
           flavor_name => "flavor1",
-          image_name => "ubuntu18.04",
+          image_name => "ubuntu22.04",
           tenant_name => "dude",
           key_name => "key1",
           count => 1},

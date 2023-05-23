@@ -1,6 +1,6 @@
 #######################################################################
 # This Dockerfile can be used to prepare a Docker image that contains #
-# everything required for SWM build (including Erlang).               #
+# everything required for Sky Port build (including Erlang).          #
 # Example:                                                            #
 # cd ~/projects/swm-core/priv/build                                   #
 # docker build -t swm-build:24.2 .                                    #
@@ -9,7 +9,7 @@
 #  /bin/bash -c "make && make release"                                #
 #######################################################################
 
-FROM ubuntu:18.04
+FROM ubuntu:22.04
 
 ENV ERL_VER="24.2"
 ENV ERL_TAG="24_2_SSL"
@@ -32,9 +32,10 @@ RUN apt-get install aptitude -y
 RUN apt-get install git -y
 RUN apt-get install rlwrap -y
 RUN apt-get install vim -y
+RUN apt-get install tmuxinator -y
 RUN apt-get install sudo -y
 RUN apt-get install mc -y
-RUN apt-get install gcc-8 -y
+RUN apt-get install gcc -y
 
 # For python 3.9
 RUN apt-get install software-properties-common -y
@@ -45,7 +46,7 @@ RUN apt-get install python3.9-distutils -y
 RUN apt-get install python3-all-dev -y
 
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 2
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 1
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 RUN update-alternatives --config python3 --skip-auto
 
 # For Erlang Runtime compilation
@@ -75,7 +76,7 @@ RUN apt-get install texlive-full -y
 RUN apt-get install libxml2-utils -y
 
 # For building Erlang/OTP with wxWidgets
-RUN apt-get install libwxgtk3.0-dev -y
+RUN apt-get install libwxgtk3.0-gtk3-dev -y
 RUN apt-get install libgl1-mesa-dev -y
 RUN apt-get install libglu1-mesa-dev -y
 RUN apt-get install libpng16* -y
@@ -102,7 +103,7 @@ RUN apt-get install docker.io -y
 
 # Build and install Erlang/OTP
 WORKDIR /tmp/kerl/
-RUN curl -O https://raw.githubusercontent.com/kerl/kerl/1.8.0/kerl
+RUN curl -O https://raw.githubusercontent.com/kerl/kerl/2.6.0/kerl
 RUN chmod +x kerl
 RUN ./kerl build ${ERL_VER} ${ERL_TAG}
 RUN mkdir -p /usr/erlang

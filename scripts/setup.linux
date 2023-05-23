@@ -357,7 +357,7 @@ def add_default_users(opts):
 def get_setup_options():
     args = get_args()
     opts = {}
-    opts["SWM_USER"] = args.user_name
+    opts["SWM_USER"] = args.user_name or "root"
     opts["NO_SERVICE"] = args.no_service
     opts["SWM_SKY_PORT"] = args.skyport
     if args.spool:
