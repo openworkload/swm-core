@@ -243,7 +243,8 @@ update_division_entities(JobId, NewPartition, PartMgrNode, ComputeNodeIds) ->
                                {nodes, [PartMgrNodeId | ComputeNodeIds]}],
                               NewPartition),
             1 = wm_conf:update(NewPartitionUpdated),
-            1 = wm_conf:update(BasePartitionUpdated);
+            1 = wm_conf:update(BasePartitionUpdated),
+            ok;
         {error, not_found} ->
             ?LOG_ERROR("Partition for job ~p not found", [JobId]),
             {error, not_found}

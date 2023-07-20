@@ -193,7 +193,8 @@ job_to_json(Job, FullJson) ->
             NodeIds ->
                 wm_conf:select_many(node, id, NodeIds)
         end,
-    JobNodeHostnames = [list_to_binary(wm_entity:get(host, X)) || X <- JobNodes],
+    JobHosts = [wm_entity:get(host, X) || X <- JobNodes],
+    JobNodeHostnames = [list_to_binary(X) || X <- JobHosts, is_list(X)],
     JobNodeIps = nodes_to_ips(JobNodes),
     {FlavorId, RemoteId} = wm_user_json:find_flavor_and_remote_ids(Job),
     JobJson =

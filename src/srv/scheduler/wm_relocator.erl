@@ -124,12 +124,16 @@ spawn_virtres_if_needed(Job, Relocations) ->
             case wm_factory:is_running(virtres, FoundRelocationId) of
                 false ->
                     ?LOG_DEBUG("Virtres is not running got job ~p (~p) => respawn", [FoundRelocationId, JobId]),
-                    {ok, NewRelocationId} = respawn_virtres(Job, FoundRelocation),
-                    ?LOG_DEBUG("Relocation ID is updated for job ~p: ~p", [JobId, NewRelocationId]),
-                    wm_conf:delete(FoundRelocation),
-                    1 =
-                        wm_conf:update(
-                            wm_entity:set({id, NewRelocationId}, FoundRelocation));
+                    case respawn_virtres(Job, FoundRelocation) of
+                        {ok, NewRelocationId} ->
+                            ?LOG_DEBUG("Relocation ID is updated for job ~p: ~p", [JobId, NewRelocationId]),
+                            wm_conf:delete(FoundRelocation),
+                            1 =
+                                wm_conf:update(
+                                    wm_entity:set({id, NewRelocationId}, FoundRelocation));
+                        {error, Error} ->
+                            ?LOG_DEBUG("Can't respawn virtres: ~p", [Error])
+                    end;
                 _ ->
                     ok
             end,
@@ -183,15 +187,20 @@ start_new_virtres_processes(JobId) ->
     end.
 
 % @doc Restart job relocation process that was started in the past but stopped by some reason
--spec respawn_virtres(#job{}, #relocation{}) -> integer() | {error, not_found}.
+-spec respawn_virtres(#job{}, #relocation{}) -> integer() | {error, string()}.
 respawn_virtres(Job, Relocation) ->
     JobId = wm_entity:get(id, Job),
     TemplateNodeId = wm_entity:get(template_node_id, Relocation),
-    {ok, TemplateNode} = wm_conf:select(node, {id, TemplateNodeId}),
-    1 =
-        wm_conf:update(
-            wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
-    wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job)).
+    case wm_conf:select(node, {id, TemplateNodeId}) of
+        {ok, TemplateNode} ->
+            1 =
+                wm_conf:update(
+                    wm_entity:set({state, ?JOB_STATE_WAITING}, Job)),
+            wm_factory:new(virtres, {create, JobId, TemplateNode}, predict_job_node_names(Job));
+        {error, not_found} ->
+            ?LOG_ERROR("Template node not found with id=~p, relocation: ~p", [TemplateNodeId, Relocation]),
+            {error, "Template node not found"}
+    end.
 
 % @doc Start relocation returning relocation ID that is a hash of the nodes involved into the relocation
 -spec spawn_virtres(#job{}) -> {ok, integer(), node_id()} | {error, not_found}.

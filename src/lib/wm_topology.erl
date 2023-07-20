@@ -381,13 +381,17 @@ do_make_rh(partition, [Partition | T], RH, Owner, #mstate{} = MState) ->
                    Nodes ->
                        do_make_rh(node, Nodes, Map, partition, MState)
                end,
-           PartIDs = wm_entity:get(partitions, Partition),
-           case wm_conf:select(partition, PartIDs) of
+           case wm_entity:get(partitions, Partition) of
                [] ->
-                   ?LOG_DEBUG("No partitions found with ids: ~p", [PartIDs]),
                    MapNs;
-               Parts ->
-                   do_make_rh(partition, Parts, MapNs, partition, MState)
+               PartIDs ->
+                   case wm_conf:select(partition, PartIDs) of
+                       [] ->
+                           ?LOG_DEBUG("No partitions found with ids: ~p", [PartIDs]),
+                           MapNs;
+                       Parts ->
+                           do_make_rh(partition, Parts, MapNs, partition, MState)
+                   end
            end
         end,
     Map1 = get_props_res(Partition, maps:new()),

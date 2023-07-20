@@ -120,9 +120,13 @@ node_to_fullname({_, _}) ->
     none;
 node_to_fullname(Node) ->
     NameStr = wm_entity:get(name, Node),
-    HostStr = wm_entity:get(host, Node),
-    FullNameStr = NameStr ++ "@" ++ HostStr,
-    list_to_atom(FullNameStr).
+    case wm_entity:get(host, Node) of
+        null ->
+            null;
+        HostStr ->
+            FullNameStr = NameStr ++ "@" ++ HostStr,
+            list_to_atom(FullNameStr)
+    end.
 
 -spec protected_call(atom() | pid(), term(), term()) -> term().
 protected_call(Mod, Msg, Default) ->
