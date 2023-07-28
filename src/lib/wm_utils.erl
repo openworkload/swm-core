@@ -16,6 +16,7 @@
 -export([get_cloud_node_name/2, get_requested_nodes_number/1]).
 -export([get_cert_partial_chain_fun/1, get_node_cert_paths/1]).
 -export([update_map/3]).
+-export([find_property_in_resource/3]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -712,3 +713,16 @@ update_map(Map, F, NewMap) ->
     maps:fold(fun(K, V, Acc) -> maps:put(F(K), update_map(V, F, #{}), Acc) end, NewMap, Map);
 update_map(#{}, _, NewMap) ->
     NewMap.
+
+-spec find_property_in_resource(string(), atom(), [#resource{}]) -> {ok, term()} | {error, not_found}.
+find_property_in_resource(_, _, []) ->
+    {error, not_found};
+find_property_in_resource(ResourceName, PropertyName, [#resource{name = ResourceName, properties = Properties} | T]) ->
+    case proplists:get_value(PropertyName, Properties, not_found) of
+        not_found ->
+            {error, not_found};
+        Value ->
+            {ok, Value}
+    end;
+find_property_in_resource(ResourceName, PropertyName, [_ | T]) ->
+    find_property_in_resource(ResourceName, PropertyName, T).
