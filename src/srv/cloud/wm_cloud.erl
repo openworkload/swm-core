@@ -259,7 +259,7 @@ add_nodes_to_new_partition(Nodes, PartName) ->
         case lists:any(fun(P) -> wm_entity:get(name, P) == PartName end, ExistingParts) of
             true ->
                 ?LOG_DEBUG("Partition with name ~p exists in cluster (good)", [PartName]),
-                {ok, [Part1 | _]} = wm_conf:select(partition, {name, PartName}),
+                {ok, Part1} = wm_conf:select(partition, {name, PartName}),
                 OldNodeIds = wm_entity:get(nodes, Part1),
                 NewNodeIds = merge_partition_node_ids(OldNodeIds, Nodes),
                 Part2 = wm_entity:set([{nodes, NewNodeIds}], Part1),

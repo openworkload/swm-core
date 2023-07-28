@@ -229,6 +229,10 @@ wait_response_boby(ConnPid, StreamRef) ->
         {response, nofin, 404, Headers} ->
             ?LOG_WARN("Gate response (404), headers: ~p", [Headers]),
             {error, not_found};
+        {response, nofin, 500, _} ->
+            {ok, Body} = gun:await_body(ConnPid, StreamRef),
+            ?LOG_WARN("Gate internal error (500): ~p", [Body]),
+            {error, "Gate error"};
         {error, Error} ->
             ?LOG_WARN("Gate response error: ~p", [Error]),
             {error, Error}
