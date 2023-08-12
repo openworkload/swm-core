@@ -1,6 +1,6 @@
 -module(wm_parent).
 
--export([find_my_parents/5, get_current/1]).
+-export([find_my_parents/4, get_current/1]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
@@ -16,8 +16,8 @@ get_current(PStack) ->
     end.
 
 %% @doc Search for my parent and return a new parents list
--spec find_my_parents(string(), string(), pos_integer(), string(), string()) -> list().
-find_my_parents(ParentName, ParentHost, ParentPort, NodeName, Host) ->
+-spec find_my_parents(string(), string(), pos_integer(), string()) -> list().
+find_my_parents(ParentName, ParentHost, ParentPort, NodeName) ->
     case is_grid_management_node(NodeName) of
         true -> % grid management node never has any parents
             ?LOG_DEBUG("No parents are set (I am a grid management node)"),

@@ -601,8 +601,7 @@ fill_pstack(#mstate{} = MState) ->
         wm_parent:find_my_parents(MState#mstate.boot_parent_sname,
                                   MState#mstate.boot_parent_host,
                                   MState#mstate.boot_parent_port,
-                                  SName,
-                                  Host),
+                                  SName),
     F = fun(Addr, MStateAcc) -> add_parent(Addr, MStateAcc) end,
     lists:foldl(F, MState, List).
 

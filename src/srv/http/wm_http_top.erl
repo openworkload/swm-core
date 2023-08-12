@@ -2,9 +2,9 @@
 
 -export([init/2]).
 
+-spec init(map(), map()) -> {ok, map(), map()}.
 init(Req, Opts) ->
-    S = "~s v~s~nModules: ~p~nErlang v~s~nApplications"
-        ":~n~p~n",
+    S = "~s v~s~nModules: ~p~nErlang v~s~nApplications:~n~p~n",
     {ok, MyVer} = application:get_key(vsn),
     {ok, MyName} = application:get_key(description),
     {ok, MyMods} = application:get_key(modules),
