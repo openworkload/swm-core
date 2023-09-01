@@ -251,7 +251,8 @@
     cog.outl()
 
     includes, outputs = out_init_ctor(entity_name, entity_properties)
-    for include in includes:
+    includes_list = list(includes)
+    for include in includes_list:
       cog.outl('#include "wm_' + include + '.h"')
 
     cog.outl()
