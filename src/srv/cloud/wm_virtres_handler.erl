@@ -197,7 +197,7 @@ get_default_flavor_name(Remote) ->
             end
     end.
 
--spec create_relocation_entities(job_id(), #partition{}, #node{}) -> {atom(), string()}.
+-spec create_relocation_entities(job_id(), #partition{}, #node{}) -> {ok, node_id()} | {error, string()}.
 create_relocation_entities(JobId, Partition, TplNode) ->
     ?LOG_INFO("Remote partition [job ~p]: ~p", [JobId, Partition]),
     Addresses = wm_entity:get(addresses, Partition),

@@ -80,7 +80,8 @@ init(Args) ->
         {ok, Remote} ->
             case wm_ssh_client:start_link(Args) of
                 {ok, TunnelClientPid} ->
-                    ?LOG_INFO("Virtual resources manager has been started, remote: ~p", [wm_entity:get(name, Remote)]),
+                    ?LOG_INFO("SSH client process has been started, remote: ~p, pid: ~p",
+                              [wm_entity:get(name, Remote), TunnelClientPid]),
                     wm_factory:notify_initiated(virtres, MState#mstate.task_id),
                     {ok, sleeping, MState#mstate{remote = Remote, ssh_client_pid = TunnelClientPid}};
                 {error, Error} ->
@@ -126,6 +127,7 @@ handle_info(ssh_check,
             StateName,
             MState =
                 #mstate{ssh_conn_timer = OldTRef,
+                        ssh_client_pid = TunnelClientPid,
                         job_id = JobId,
                         part_mgr_id = PartMgrNodeId}) ->
     ?LOG_DEBUG("SSH readiness check (job ~p, virtres state: ~p)", [JobId, StateName]),
@@ -133,12 +135,12 @@ handle_info(ssh_check,
     {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
     ConnectToHost = wm_entity:get(gateway, PartMgrNode),
     ConnectToPort = wm_conf:g(ssh_daemon_listen_port, {?SSH_DAEMON_DEFAULT_PORT, integer}),
-    case wm_ssh_client:connect(ConnectToHost, ConnectToPort) of
+    case wm_ssh_client:connect(TunnelClientPid, ConnectToHost, ConnectToPort) of
         ok ->
             gen_fsm:send_event(self(), ssh_connected),
             {next_state, creating, MState};
-        {error, Error} ->
-            ?LOG_DEBUG("SSH server is not ready yet, connection will be repeated: ~p", [Error]),
+        {error, _} ->
+            ?LOG_DEBUG("SSH server is not ready yet, connection will be repeated"),
             Timer = wm_virtres_handler:wait_for_ssh_connection(),
             {next_state, creating, MState#mstate{ssh_conn_timer = Timer}}
     end;
@@ -249,25 +251,33 @@ creating({partition_fetched, Ref, Partition},
                  wait_ref = Ref,
                  template_node = TplNode} =
              MState) ->
-    ?LOG_DEBUG("Partition fetched for job ~p", [JobId]),
+    PartId = wm_entity:get(id, Partition),
+    ?LOG_DEBUG("Partition fetched for job ~p, partition id: ~p", [JobId, PartId]),
     {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
     Timer = wm_virtres_handler:wait_for_ssh_connection(),
     {next_state,
      creating,
      MState#mstate{wait_ref = Ref,
+                   part_id = PartId,
                    ssh_conn_timer = Timer,
                    part_mgr_id = PartMgrNodeId}};
 creating(ssh_connected, #mstate{job_id = JobId, part_id = PartId} = MState) ->
-    {ok, Partition} = wm_conf:select(partition, {id, PartId}),
-    case wm_entity:get(state, Partition) of
-        up ->
-            Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
-            MState2 = MState#mstate{wait_ref = undefined, rediness_timer = Timer},
-            {next_state, creating, MState2};
-        Other ->
-            ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p, job: ~p", [Other, JobId]),
-            Timer = wm_virtres_handler:wait_for_partition_fetch(),
-            {next_state, creating, MState#mstate{part_check_timer = Timer}}
+    case wm_conf:select(partition, {id, PartId}) of
+        {ok, Partition} ->
+            case wm_entity:get(state, Partition) of
+                up ->
+                    Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
+                    MState2 = MState#mstate{wait_ref = undefined, rediness_timer = Timer},
+                    % At this point we just wait when nodes necome UP waiting for part_check periodic message
+                    {next_state, creating, MState2};
+                Other ->
+                    ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p, job: ~p", [Other, JobId]),
+                    Timer = wm_virtres_handler:wait_for_partition_fetch(),
+                    {next_state, creating, MState#mstate{part_check_timer = Timer}}
+            end;
+        {error, not_found} ->
+            ?LOG_WARN("Partition ~p not found (still creating?), job: ~p", [PartId, JobId]),
+            {next_state, creating, MState}
     end;
 creating({error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Partition creation failed: ~p, job id: ~p", [Error, JobId]),

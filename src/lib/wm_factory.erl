@@ -12,6 +12,7 @@
 -record(mstate,
         {module :: atom(),
          root :: string(),
+         spool :: string(),
          regname :: atom(),
          done_event :: atom(),
          activate_passive = true :: boolean(),
@@ -203,6 +204,8 @@ parse_args([{activate_passive, Activate} | T], MState) ->
     parse_args(T, MState#mstate{activate_passive = Activate});
 parse_args([{root, Root} | T], MState) ->
     parse_args(T, MState#mstate{root = Root});
+parse_args([{spool, Spool} | T], MState) ->
+    parse_args(T, MState#mstate{spool = Spool});
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
@@ -252,7 +255,12 @@ start_module(ModuleTaskId, ExtraData, Nodes, MState) ->
     Module = MState#mstate.module,
     AddrList = [wm_utils:get_address(X) || X <- Nodes],
     ?LOG_DEBUG("Start ~p for ~p nodes, ~p", [Module, length(AddrList), ModuleTaskId]),
-    Args = [{extra, ExtraData}, {nodes, AddrList}, {task_id, ModuleTaskId}, {root, MState#mstate.root}],
+    Args =
+        [{extra, ExtraData},
+         {nodes, AddrList},
+         {task_id, ModuleTaskId},
+         {root, MState#mstate.root},
+         {spool, MState#mstate.spool}],
     case wm_sup:start_link({[Module], Args}) of
         {ok, SupPid} ->
             ModPid = wm_sup:get_child_pid(SupPid),

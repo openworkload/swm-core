@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, connect/2, make_tunnel/4]).
+-export([start_link/1, connect/3, make_tunnel/4]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../lib/wm_log.hrl").
@@ -17,11 +17,12 @@
 
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
+    ?LOG_INFO("Start SSH client process with args: ~p", [Args]),
     gen_server:start_link(?MODULE, Args, []).
 
--spec connect(inet:ip_address(), inet:port_number()) -> ok | {error, term()}.
-connect(Host, Port) ->
-    gen_server:call(?MODULE, {connect, Host, Port}).
+-spec connect(pid(), inet:ip_address(), inet:port_number()) -> ok | {error, term()}.
+connect(ProcessPid, Host, Port) ->
+    gen_server:call(ProcessPid, {connect, Host, Port}).
 
 -spec make_tunnel(inet:ip_address(), inet:port_number(), inet:ip_address(), inet:port_number()) ->
                      {ok, inet:port_number()} | {error, term()}.
