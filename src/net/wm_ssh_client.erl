@@ -117,6 +117,7 @@ do_connect(Host, Port, Spool, #mstate{} = MState) ->
                      #mstate{}) ->
                         {ok, inet:port_number()} | {error, term()}.
 do_make_tunnel(ListenHost, ListenPort, ConnectToHost, ConnectToPort, #mstate{connection = Connection}) ->
+    ?LOG_INFO("Open ssh tunnel: ~p:~p <==> ~p:~p", [ListenHost, ListenPort, ConnectToHost, ConnectToPort]),
     ssh:tcpip_tunnel_to_server(Connection, ListenHost, ListenPort, ConnectToHost, ConnectToPort, ?TCPIP_CONN_TIMEOUT).
 
 -spec do_close_connection(#mstate{}) -> ok | {error, term()}.

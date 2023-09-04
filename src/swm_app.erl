@@ -17,7 +17,7 @@ start(_StartType, _StartArgs) ->
     Port = os:getenv("SWM_API_PORT", 10001),
     Name = os:getenv("SWM_SNAME", "node"),
     ParentHost = os:getenv("SWM_PARENT_HOST", none),
-    ParentPort = os:getenv("SWM_PARENT_PORT", none),
+    ParentPort = list_to_integer(os:getenv("SWM_PARENT_PORT", 0)),
     Args =
         [{spool, Spool},
          {parent_sname, Parent},

@@ -183,6 +183,7 @@ terminate(State, StateName, #mstate{job_id = JobId}) ->
 %% FSM state transitions
 %% ============================================================================
 
+-spec sleeping(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 sleeping(activate,
          #mstate{task_id = ID,
                  job_id = JobId,
@@ -192,6 +193,7 @@ sleeping(activate,
     {ok, WaitRef} = wm_virtres_handler:request_partition_existence(JobId, Remote),
     {next_state, validating, MState#mstate{wait_ref = WaitRef}}.
 
+-spec validating(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 validating({partition_exists, Ref, false},
            #mstate{action = create,
                    job_id = JobId,
@@ -242,6 +244,7 @@ validating({Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MSt
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, validating, MState#mstate{part_check_timer = Timer}}.
 
+-spec creating(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 creating({partition_spawned, Ref, NewPartExtId}, #mstate{job_id = JobId, wait_ref = Ref} = MState) ->
     ?LOG_INFO("Partition spawned => check status: ~p, job ~p", [NewPartExtId, JobId]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
@@ -261,15 +264,20 @@ creating({partition_fetched, Ref, Partition},
                    part_id = PartId,
                    ssh_conn_timer = Timer,
                    part_mgr_id = PartMgrNodeId}};
-creating(ssh_connected, #mstate{job_id = JobId, part_id = PartId} = MState) ->
+creating(ssh_connected,
+         #mstate{job_id = JobId,
+                 part_id = PartId,
+                 part_mgr_id = PartMgrNodeId} =
+             MState) ->
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
             case wm_entity:get(state, Partition) of
                 up ->
+                    ForwardedPorts = start_port_forwarding(JobId, PartMgrNodeId),
                     Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
                     MState2 = MState#mstate{wait_ref = undefined, rediness_timer = Timer},
-                    % At this point we just wait when nodes necome UP waiting for part_check periodic message
-                    {next_state, creating, MState2};
+                    % At this point we just start waiting for nodes state UP (see part_check)
+                    {next_state, creating, MState2#mstate{forwarded_ports = ForwardedPorts}};
                 Other ->
                     ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p, job: ~p", [Other, JobId]),
                     Timer = wm_virtres_handler:wait_for_partition_fetch(),
@@ -288,16 +296,12 @@ creating({Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MStat
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, creating, MState#mstate{part_check_timer = Timer}}.
 
-uploading({Ref, ok},
-          #mstate{upload_ref = Ref,
-                  job_id = JobId,
-                  part_mgr_id = PartMgrNodeId} =
-              MState) ->
+-spec uploading(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+uploading({Ref, ok}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Uploading has finished (~p)", [Ref]),
     ?LOG_DEBUG("Let the job be scheduled again with preset node ids (~p)", [JobId]),
-    ForwardedPorts = start_port_forwarding(JobId, PartMgrNodeId),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
-    {next_state, running, MState#mstate{upload_ref = finished, forwarded_ports = ForwardedPorts}};
+    {next_state, running, MState#mstate{upload_ref = finished}};
 uploading({Ref, {error, Node, Reason}}, #mstate{upload_ref = Ref} = MState) ->
     ?LOG_DEBUG("Uploading to ~p has failed: ~s", [Node, Reason]),
     handle_remote_failure(MState);
@@ -305,10 +309,12 @@ uploading({Ref, 'EXIT', Reason}, #mstate{upload_ref = Ref} = MState) ->
     ?LOG_DEBUG("Uploading has unexpectedly exited: ~p", [Reason]),
     handle_remote_failure(MState).
 
+-spec running(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 running({Ref, Status}, #mstate{} = MState) ->
     ?LOG_INFO("Got orphaned message with reference ~p [running, ~p]", [Ref, Status]),
     {next_state, running, MState}.
 
+-spec downloading(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 downloading({Ref, ok}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Downloading has finished => delete entities [~p, ~p]", [Ref, JobId]),
     ok = wm_virtres_handler:remove_relocation_entities(JobId),
@@ -325,6 +331,7 @@ downloading({Ref, Status}, MState) ->
     ?LOG_ERROR("Got orphaned message with reference ~p [downloading, ~p]", [Ref, Status]),
     {next_state, downloading, MState}.
 
+-spec destroying(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 destroying(start_destroying,
            #mstate{task_id = TaskId,
                    job_id = JobId,
@@ -423,7 +430,7 @@ start_port_forwarding(JobId, PartMgrNodeId) ->
                        {ok, OpenedPort} ->
                            [OpenedPort | OpenedPorts];
                        {error, Error} ->
-                           ?LOG_ERROR("Can't make ssh tunnel: ~p:~p -> ~p:~p, error: ~p",
+                           ?LOG_ERROR("Can't make ssh tunnel: ~p:~p <==> ~p:~p, error: ~p",
                                       [ListenHost, ListenPort, JobHost, PortToForward, Error]),
                            OpenedPorts
                    end

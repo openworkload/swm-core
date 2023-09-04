@@ -515,10 +515,20 @@ def get_defaults(opts):
 
 
 def get_from_user(opts):
-    default_port = "10001"
+    default_api_port = "10001"
     if "SWM_API_PORT" not in opts:
-        opts["SWM_API_PORT"] = default_port
-    userInput("SWM_API_PORT", default_port, "API port", opts)
+        opts["SWM_API_PORT"] = default_api_port
+    userInput("SWM_API_PORT", default_api_port, "API port", opts)
+
+    default_parent_port = "10002"
+    if "SWM_PARENT_PORT" not in opts:
+        opts["SWM_PARENT_PORT"] = default_parent_port
+    userInput("SWM_PARENT_PORT", default_parent_port, "Parent port", opts)
+
+    default_parent_host = "localhost"
+    if "SWM_PARENT_HOST" not in opts:
+        opts["SWM_PARENT_HOST"] = default_parent_host
+    userInput("SWM_PARENT_HOST", default_parent_host, "Parent host", opts)
 
     hostname = socket.gethostname()
     userInput("SWM_SNAME", "ghead" + "@" + hostname,

@@ -10,7 +10,7 @@ Restart=always
 RestartSec=5
 EnvironmentFile=/etc/swm.conf
 Environment=HOME=/root
-ExecStart=/bin/bash -c 'source {ENV} && {SCRIPT} start'
+ExecStart=/bin/bash -c 'source {ENV} && {SCRIPT} daemon'
 ExecStop={SCRIPT} stop
 
 [Install]
