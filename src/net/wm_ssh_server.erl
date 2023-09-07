@@ -58,7 +58,8 @@ init(Args) ->
     ListenPort = wm_conf:g(ssh_daemon_listen_port, {?SSH_DAEMON_DEFAULT_PORT, integer}),
     case spawn_ssh_daemon(any,  % TODO: don't listen to all interfaces
                           ListenPort,
-                          [{tcpip_tunnel_in, true},
+                          [{tcpip_tunnel_in, true},   % TODO: do we really need tcpip_tunnel_in?
+                           {tcpip_tunnel_out, true},
                            {system_dir, SystemDir},
                            {user_dir, UserDir},
                            {user_passwords, [{"swm", "swm"}]},

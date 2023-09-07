@@ -45,18 +45,18 @@ one_server_two_clients(_Config) ->
     {ok, ClientModulePid} = wm_ssh_client:start_link(Args),
 
     {ok, RemoteHost, RemotePort} = wm_ssh_server:get_address(),
-    ok = wm_ssh_client:connect(RemoteHost, RemotePort),
+    ok = wm_ssh_client:connect(ClientModulePid, RemoteHost, RemotePort),
 
     {JobSock1, LocalHost1, JobPort1} = tunnel_local_listner(),
 
     ListenHost = {127, 0, 0, 1},
-    {ok, JobPort1_2} = wm_ssh_client:make_tunnel(ListenHost, 0, RemoteHost, JobPort1),
+    {ok, JobPort1_2} = wm_ssh_client:make_tunnel(ClientModulePid, ListenHost, 0, RemoteHost, JobPort1),
     % We use 2 job ports in the test because the both daemon and client are running on the same machine.
     % In this case JobPort1_2 is selected randomly (we pass 0 to tcpip_tunnel_to_server).
     test_tunneling(JobSock1, LocalHost1, JobPort1_2),
 
     {JobSock2, LocalHost2, JobPort2} = tunnel_local_listner(),
-    {ok, JobPort2_2} = wm_ssh_client:make_tunnel(ListenHost, 0, RemoteHost, JobPort2),
+    {ok, JobPort2_2} = wm_ssh_client:make_tunnel(ClientModulePid, ListenHost, 0, RemoteHost, JobPort2),
     test_tunneling(JobSock2, LocalHost2, JobPort2_2),
 
     gen_server:stop(ClientModulePid),

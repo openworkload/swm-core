@@ -256,36 +256,39 @@ creating({partition_fetched, Ref, Partition},
              MState) ->
     PartId = wm_entity:get(id, Partition),
     ?LOG_DEBUG("Partition fetched for job ~p, partition id: ~p", [JobId, PartId]),
-    {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
-    Timer = wm_virtres_handler:wait_for_ssh_connection(),
-    {next_state,
-     creating,
-     MState#mstate{wait_ref = Ref,
-                   part_id = PartId,
-                   ssh_conn_timer = Timer,
-                   part_mgr_id = PartMgrNodeId}};
+    case wm_entity:get(state, Partition) of
+        up ->
+            {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
+            Timer = wm_virtres_handler:wait_for_ssh_connection(),
+            {next_state,
+             creating,
+             MState#mstate{wait_ref = Ref,
+                           part_id = PartId,
+                           ssh_conn_timer = Timer,
+                           part_mgr_id = PartMgrNodeId}};
+        Other ->
+            ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p, job: ~p", [Other, JobId]),
+            Timer = wm_virtres_handler:wait_for_partition_fetch(),
+            {next_state, creating, MState#mstate{part_check_timer = Timer}}
+    end;
 creating(ssh_connected,
          #mstate{job_id = JobId,
                  part_id = PartId,
-                 part_mgr_id = PartMgrNodeId} =
+                 ssh_client_pid = TunnelClientPid} =
              MState) ->
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
-            case wm_entity:get(state, Partition) of
-                up ->
-                    ForwardedPorts = start_port_forwarding(JobId, PartMgrNodeId),
-                    Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
-                    MState2 = MState#mstate{wait_ref = undefined, rediness_timer = Timer},
-                    % At this point we just start waiting for nodes state UP (see part_check)
-                    {next_state, creating, MState2#mstate{forwarded_ports = ForwardedPorts}};
-                Other ->
-                    ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p, job: ~p", [Other, JobId]),
-                    Timer = wm_virtres_handler:wait_for_partition_fetch(),
-                    {next_state, creating, MState#mstate{part_check_timer = Timer}}
-            end;
+            ForwardedPorts = start_port_forwarding(TunnelClientPid, JobId),
+            Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
+            {next_state,
+             creating,
+             MState#mstate{wait_ref = undefined,
+                           rediness_timer = Timer,
+                           forwarded_ports = ForwardedPorts}};
         {error, not_found} ->
             ?LOG_WARN("Partition ~p not found (still creating?), job: ~p", [PartId, JobId]),
-            {next_state, creating, MState}
+            Timer = wm_virtres_handler:wait_for_partition_fetch(),
+            {next_state, creating, MState#mstate{part_check_timer = Timer}}
     end;
 creating({error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Partition creation failed: ~p, job id: ~p", [Error, JobId]),
@@ -390,11 +393,13 @@ get_job_ports([#resource{name = "ports", properties = Properties} | _]) ->
                    Parts = string:split(PortStr, "/", all),
                    case length(Parts) of
                        1 ->
-                           [list_to_integer(Value) | List];
+                           PortNumber = list_to_integer(Value),
+                           [{PortNumber, PortNumber} | List];
                        2 ->
                            case lists:nth(2, Parts) of
                                "tcp" ->
-                                   [list_to_integer(lists:nth(1, Parts)) | List];
+                                   PortNumber = list_to_integer(lists:nth(1, Parts)),
+                                   [{PortNumber, PortNumber} | List];
                                OtherType ->
                                    ?LOG_DEBUG("Requested job port type is not supported: ~p", [OtherType]),
                                    List
@@ -412,25 +417,27 @@ get_job_ports([_ | T]) ->
 -spec get_wm_api_port() -> inet:port_number().
 get_wm_api_port() ->
     {ok, SelfNode} = wm_self:get_node(),
-    wm_entity:get(api_port, SelfNode).
+    ApiPort = wm_entity:get(api_port, SelfNode),
+    ParentPort = 10002,  %FIXME get port from somewhere
+    {ParentPort, ApiPort}.
 
--spec start_port_forwarding(job_id(), node_id()) -> [inet:port_number()].
-start_port_forwarding(JobId, PartMgrNodeId) ->
+-spec start_port_forwarding(pid(), job_id()) -> [inet:port_number()].
+start_port_forwarding(TunnelClientPid, JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
-    {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
 
     ListenHost = {127, 0, 0, 1},
     ResourcesRequest = wm_entity:get(request, Job),
     PortsToForward = get_job_ports(ResourcesRequest) ++ [get_wm_api_port()],
-    JobHost = wm_entity:get(gateway, PartMgrNode),
+    JobHost = {127, 0, 0, 1},
 
-    lists:foldl(fun(PortToForward, OpenedPorts) ->
-                   ListenPort = PortToForward,  % local and remote ports should be the same
-                   case wm_ssh_client:make_tunnel(ListenHost, ListenPort, JobHost, PortToForward) of
+    lists:foldl(fun({ListenPort, PortToForward}, OpenedPorts) ->
+                   case wm_ssh_client:make_tunnel(TunnelClientPid, ListenHost, ListenPort, JobHost, PortToForward) of
                        {ok, OpenedPort} ->
+                           ?LOG_INFO("Tunnel is opened successfully for ports: ~p -> ~p (job: ~p)",
+                                     [OpenedPort, PortToForward, JobId]),
                            [OpenedPort | OpenedPorts];
                        {error, Error} ->
-                           ?LOG_ERROR("Can't make ssh tunnel: ~p:~p <==> ~p:~p, error: ~p",
+                           ?LOG_ERROR("Can't open ssh tunnel (~p:~p <=> ~p:~p), error: ~p",
                                       [ListenHost, ListenPort, JobHost, PortToForward, Error]),
                            OpenedPorts
                    end

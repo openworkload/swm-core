@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, connect/3, make_tunnel/4]).
+-export([start_link/1, connect/3, make_tunnel/5]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../lib/wm_log.hrl").
@@ -24,10 +24,10 @@ start_link(Args) ->
 connect(ProcessPid, Host, Port) ->
     gen_server:call(ProcessPid, {connect, Host, Port}).
 
--spec make_tunnel(inet:ip_address(), inet:port_number(), inet:ip_address(), inet:port_number()) ->
+-spec make_tunnel(pid(), inet:ip_address(), inet:port_number(), inet:ip_address(), inet:port_number()) ->
                      {ok, inet:port_number()} | {error, term()}.
-make_tunnel(ListenHost, ListenPort, ConnectToHost, ConnectToPort) ->
-    gen_server:call(?MODULE, {make_tunnel, ListenHost, ListenPort, ConnectToHost, ConnectToPort}).
+make_tunnel(ProcessPid, ListenHost, ListenPort, ConnectToHost, ConnectToPort) ->
+    gen_server:call(ProcessPid, {make_tunnel, ListenHost, ListenPort, ConnectToHost, ConnectToPort}).
 
 %% ============================================================================
 %% Server callbacks
@@ -53,7 +53,7 @@ make_tunnel(ListenHost, ListenPort, ConnectToHost, ConnectToPort) ->
 -spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     MState = parse_args(Args, #mstate{}),
-    ?LOG_INFO("SSH tunnel server has been started"),
+    ?LOG_INFO("SSH client has been started"),
     {ok, MState}.
 
 handle_call({connect, Host, Port}, _From, #mstate{spool = Spool} = MState) ->
@@ -117,8 +117,8 @@ do_connect(Host, Port, Spool, #mstate{} = MState) ->
                      #mstate{}) ->
                         {ok, inet:port_number()} | {error, term()}.
 do_make_tunnel(ListenHost, ListenPort, ConnectToHost, ConnectToPort, #mstate{connection = Connection}) ->
-    ?LOG_INFO("Open ssh tunnel: ~p:~p <==> ~p:~p", [ListenHost, ListenPort, ConnectToHost, ConnectToPort]),
-    ssh:tcpip_tunnel_to_server(Connection, ListenHost, ListenPort, ConnectToHost, ConnectToPort, ?TCPIP_CONN_TIMEOUT).
+    ?LOG_DEBUG("Open ssh tunnel: ~p:~p <=> ~p:~p", [ListenHost, ListenPort, ConnectToHost, ConnectToPort]),
+    ssh:tcpip_tunnel_from_server(Connection, ListenHost, ListenPort, ConnectToHost, ConnectToPort, ?TCPIP_CONN_TIMEOUT).
 
 -spec do_close_connection(#mstate{}) -> ok | {error, term()}.
 do_close_connection(#mstate{connection = Connection}) ->
