@@ -448,7 +448,7 @@ do_update([{Rec, false} | T], Result) ->
     transaction(F),
     do_update(T, Result + 1);
 do_update([Rec | T], Result) ->
-    ?LOG_DEBUG("Update DB with record: ~P", [Rec, 10]),
+    ?LOG_DEBUG("Update DB with record: ~1000P", [Rec, 10]),
     %Revision = wm_entity:get(revision, Rec),
     %NewRec = wm_entity:set({revision, Revision+1}, Rec),
     %?LOG_DEBUG("Changed revision record: ~P", [NewRec, 10]),
@@ -479,7 +479,7 @@ create_table(TabName, Index, Type) ->
             local_bag ->
                 get_tab_opts(TabName, Index, local_bag)
         end,
-    ?LOG_DEBUG("Create table ~p with options: ~p", [TabName, Opts]),
+    ?LOG_DEBUG("Create table ~p with options: ~10000p", [TabName, Opts]),
     case mnesia:create_table(TabName, Opts) of
         {atomic, ok} ->
             ?LOG_DEBUG("Empty ~p table has been created: ~w", [Type, TabName]);
@@ -736,14 +736,10 @@ do_update_tables_table({NameBin, {struct, Fields}}) ->
     ?LOG_DEBUG("Meta information for table ~p: ~P", [NameBin, R3, 10]),
     case do_update([R3], 0) of
         1 ->
-            ?LOG_DEBUG("Meta information for table ~p has been "
-                       "updated",
-                       [NameBin]),
+            ?LOG_DEBUG("Meta information for table ~p has been updated", [NameBin]),
             ok;
         Other ->
-            ?LOG_DEBUG("Error in updating meta information for "
-                       "table ~p",
-                       [NameBin]),
+            ?LOG_DEBUG("Error in updating meta information for table ~p", [NameBin]),
             {error, Other}
     end.
 

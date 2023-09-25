@@ -102,7 +102,8 @@ handle_info(update, MState = #mstate{refs_in_process = Refs, timer = OldTRef}) -
     NewRefs =
         case wm_conf:select([remote], all) of
             Remotes when is_list(Remotes) ->
-                ?LOG_DEBUG("Update cloud information for ~p remote site(s)", [Remotes]),
+                SiteNames = [wm_entity:get(name, X) || X <- Remotes],
+                ?LOG_DEBUG("Update cloud information for ~p remote site(s)", [SiteNames]),
                 lists:foldl(fun(Remote, Accum) ->
                                RemoteId = wm_entity:get(id, Remote),
                                {ok, Creds} = wm_conf:select(credential, {remote_id, RemoteId}),
@@ -268,11 +269,13 @@ add_nodes_to_new_partition(Nodes, PartName) ->
             false ->
                 NewPartId = wm_utils:uuid(v4),
                 NodeIds = [Node#node.id || Node <- Nodes],
+                {ok, SelfNode} = wm_self:get_node(),
                 NewPart =
                     wm_entity:set([{id, NewPartId},
                                    {name, PartName},
                                    {nodes, NodeIds},
                                    {state, up},
+                                   {manager, wm_entity:get(name, SelfNode)},
                                    {subdivision, cluster},
                                    {subdivision_id, ClusterId},
                                    {comment, "Remote site partition"}],

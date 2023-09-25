@@ -79,7 +79,7 @@ init(Args) ->
     add_parent_to_pinger(MState2),
     check_required_mode(),
     set_default_nodes_states(),
-    ?LOG_DEBUG("Core state: ~p", [MState2]),
+    ?LOG_DEBUG("Core state: ~10000p", [MState2]),
     start_heavy_works(Args, MState2).
 
 handle_call(allocate_port, _, #mstate{} = MState) ->
@@ -156,11 +156,11 @@ load_services(MState, Args) ->
                     MState2 = start_modules([wm_admin], Args, 0, MState),
                     {error, MState2};
                 {ok, Node} ->
-                    ?LOG_INFO("My node: ~p", [Node]),
+                    ?LOG_INFO("My node: ~10000p", [Node]),
                     RoleIDs = wm_entity:get(roles, Node),
                     ?LOG_INFO("My role IDs: ~p", [RoleIDs]),
                     Roles = wm_conf:select(role, RoleIDs),
-                    ?LOG_INFO("My roles: ~p", [Roles]),
+                    ?LOG_INFO("My roles: ~10000p", [Roles]),
                     ServiceIDs = [wm_entity:get(services, Role) || Role <- Roles],
                     ?LOG_INFO("My service IDs: ~w", [ServiceIDs]),
                     Services = wm_conf:select(service, lists:flatten(ServiceIDs)),
@@ -218,6 +218,7 @@ handle_event(nodeup, {AllocState, NodeName}, MState) ->
         not_found ->  % assume this is a grid manager node
             ?LOG_DEBUG("Parent will not be notified about state change (not set): ~p", [NodeName]);
         Parent ->
+            ?LOG_DEBUG("Notify parent (~p) about node ~p state change: ~p", [Parent, NodeName, AllocState]),
             wm_api:cast_self({event, nodeup, {AllocState, NodeName}}, [Parent])
     end,
     MState;
@@ -293,7 +294,7 @@ set_default_nodes_states() ->
     NodesDown = wm_conf:get_nodes_with_state({state_power, down}),
     L = length(NodesUp) + length(NodesDown),
     ?LOG_DEBUG("Set default node states for ~p nodes", [L]),
-    F3 = fun (#node{is_template = true} = Node) ->
+    F3 = fun (#node{is_template = true}) ->
                  ok;
              (Node) ->
                  case wm_self:is_local_node(Node) of
@@ -319,42 +320,16 @@ set_local_node_state(Node) ->
     end.
 
 add_children_to_pinger() ->
-    Children = wm_topology:get_children(nosort),
-    ?LOG_DEBUG("Found children: ~p", [Children]),
-    F1 = fun({What, ID}) ->
-            case wm_conf:select(What, {id, ID}) of
-                {ok, Rec} ->
-                    case What of
-                        X when X =:= grid; X =:= cluster; X =:= partition ->
-                            NodeName = wm_entity:get(manager, Rec),
-                            case wm_conf:select_node(NodeName) of
-                                {ok, Node} ->
-                                    Node;
-                                _ ->
-                                    not_found
-                            end;
-                        _ ->
-                            Rec
-                    end;
-                _ ->
-                    not_found
-            end
-         end,
-    ChildRecs1 = lists:map(F1, Children),
-    F2 = fun (not_found) ->
-                 false;
-             (_) ->
-                 true
-         end,
-    ChildRecs2 = lists:filter(F2, ChildRecs1),
-    ?LOG_DEBUG("We will ping ~p children", [length(ChildRecs2)]),
     case wm_self:get_node() of
-        {ok, MyNode} ->
+        {ok, #node{id = NodeId} = MyNode} ->
+            ChildrenNodes = wm_topology:get_children_nodes(NodeId),
+            NodeNames = [wm_entity:get(name, Node) || Node <- ChildrenNodes],
+            ?LOG_DEBUG("Children nodes to ping: ~10000p", [NodeNames]),
             Add = fun(ChildNode) ->
                      Addr = wm_conf:get_relative_address(ChildNode, MyNode),
                      wm_pinger:add(Addr)
                   end,
-            lists:map(Add, ChildRecs2);
+            lists:map(Add, ChildrenNodes);
         Error ->
             ?LOG_ERROR("Cannot get my node, no nodes will be pinged"),
             Error
@@ -425,7 +400,7 @@ start_parent(MState) ->
     {ok, MyNode} = wm_self:get_node(),
     MyPort = wm_entity:get(api_port, MyNode),
     Port = do_allocate_port(),
-    add_parent_to_db(OldParentName, NewParentName, Port, MState),
+    add_parent_to_db(OldParentName, NewParentName, Port),
     AppArgs =
         [{spool, MState#mstate.spool},
          {boot_type, clean},
@@ -435,7 +410,7 @@ start_parent(MState) ->
          {root, MState#mstate.root},
          {api_port, Port},
          {sname, NewParentName}],
-    SlaveArgs = get_parent_slave_args(MState),
+    SlaveArgs = get_parent_slave_args(),
     FullName = lists:flatten(NewParentName ++ "@" ++ tl(ParentParts)),
     ?LOG_INFO("Start new parent: ~p", [NewParentName]),
     ?LOG_DEBUG("New parent app args: ~p", [AppArgs]),
@@ -450,9 +425,9 @@ start_parent(MState) ->
     end,
     MState.
 
-add_parent_to_db(OldParentName, NewParentName, Port, MState) ->
+add_parent_to_db(OldParentName, NewParentName, Port) ->
     {ok, Node1} = wm_conf:select_node(OldParentName),
-    NewID = random:uniform(1000) + 100, %FIXME we should assign some unique ID (how to get unique one?)
+    NewID = rand:uniform(1000) + 100, %FIXME we should assign some unique ID (how to get unique one?)
     Node2 = wm_entity:set({id, NewID}, Node1),
     Node3 = wm_entity:set({name, NewParentName}, Node2),
     Node4 = wm_entity:set({api_port, Port}, Node3),
@@ -465,16 +440,16 @@ add_parent_to_db(OldParentName, NewParentName, Port, MState) ->
             ok
     end,
     wm_conf:update(Node6),
-    add_parent_to_subdiv(Node6, MState).
+    add_parent_to_subdiv(Node6).
 
-add_parent_to_subdiv(Node, MState) ->
+add_parent_to_subdiv(Node) ->
     FullName = wm_utils:node_to_fullname(Node),
     {ok, SelfNode} = wm_self:get_node(),
     SubDiv1 = wm_topology:get_direct_subdiv(SelfNode),
     SubDiv2 = wm_entity:set({manager, FullName}, SubDiv1),
     wm_conf:update(SubDiv2).
 
-get_parent_slave_args(MState) ->
+get_parent_slave_args() ->
     %TODO Make these parameters configurable
     AppConf = wm_utils:get_env("SWM_SYS_CONFIG"),
     Config = "'" ++ AppConf ++ "'",
@@ -596,7 +571,6 @@ monitor_parent(ParentHost, ParentPort, MState) ->
 
 fill_pstack(#mstate{} = MState) ->
     {ok, SName} = wm_self:get_sname(),
-    {ok, Host} = wm_self:get_host(),
     List =
         wm_parent:find_my_parents(MState#mstate.boot_parent_sname,
                                   MState#mstate.boot_parent_host,
@@ -662,7 +636,7 @@ get_child_boot_info({NodeHost, NodePort}) ->
 
 set_boot_info(BootInfo, MState) ->
     Node =
-        case wm_conf:select_node(boot_node) of
+        case wm_conf:select_node("boot_node") of
             {ok, X} ->
                 ?LOG_DEBUG("Boot node entity is already defined => update"),
                 X;

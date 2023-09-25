@@ -257,7 +257,7 @@ handle_http_call(Func, Label, CallbackModule, MState = #mstate{children = Childr
 -spec do_partition_create(#remote{}, #credential{}, string(), map()) -> {ok, string(), string()} | {error, string()}.
 do_partition_create(Remote, Creds, Spool, Options) ->
     KeyName = wm_entity:get(key_name, Creds),
-    ?LOG_DEBUG("Create partition options: ~p, key name: ~p", [Options, KeyName]),
+    ?LOG_DEBUG("Create partition key=~p, options: ~10000p", [KeyName, Options]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Headers =

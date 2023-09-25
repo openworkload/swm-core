@@ -49,6 +49,7 @@ compile:	##@SKYPORT Compile Core
 			$(REBAR) compile
 
 release:	##@SKYPORT Build release tar.gz package
+			rm -fr ./_build/default/rel/swm
 			$(REBAR) release
 			# relx can't copy files from directory by wildcard, but it can copy full directory
 			# like {copy, "priv/", "priv/"}, but result will be priv/priv, workaround for that

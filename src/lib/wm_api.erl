@@ -6,6 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("wm_log.hrl").
+-include("../../include/wm_general.hrl").
 
 -record(mstate, {parent :: string(), sname :: string(), parent_port = unknown :: integer()}).
 
@@ -25,16 +26,14 @@ call_self(Msg, Node) ->
     Mod = wm_utils:get_calling_module_name(),
     RequestID = wm_utils:uuid(v4),
     Pid = spawn(?MODULE, call_self_process, [Mod, Msg, self(), Node, RequestID]),
-    ?LOG_DEBUG("Waiting for message {~p, Answer} from "
-               "~p ...",
-               [RequestID, Pid]),
+    ?LOG_DEBUG("Wait for a message '{~p, Answer}' from ~p", [RequestID, Pid]),
     Ms = wm_conf:g(conn_timeout, {?DEFAULT_CONN_TIMEOUT, integer}),
     receive
         {RequestID, Answer} ->
             Answer
     after Ms ->
         ?LOG_ERROR("API call timeout (~pms), ID=~p", [Ms, RequestID]),
-        []
+        {error, timeout}
     end.
 
 %% @doc Cast gen_server module
@@ -93,15 +92,13 @@ handle_cast({send, _, _, []}, #mstate{} = MState) ->
     {noreply, MState};
 handle_cast({send, Mod, Msg, Nodes}, #mstate{} = MState) ->
     NodesStr = io_lib:format("~p", [Nodes]),
-    ?LOG_DEBUG("Perform remote self-cast init'ed by "
-               "~p to ~s",
-               [Mod, lists:flatten(NodesStr)]),
+    ?LOG_DEBUG("Perform remote self-cast init'ed by ~p to ~s", [Mod, lists:flatten(NodesStr)]),
     Args = [Mod, Msg, Nodes, no_wait],
     Pid = spawn(?MODULE, cast_all_nodes_process, Args),
     ?LOG_DEBUG("Cast process started with pid=~p, nodes=~p", [Pid, Nodes]),
     {noreply, MState};
 handle_cast({recv, Mod, Msg}, #mstate{} = MState) ->
-    ?LOG_DEBUG("Received self-cast request: ~p, Msg=~p", [Mod, Msg]),
+    ?LOG_DEBUG("Received self-cast request: ~p, Msg=~10000p", [Mod, Msg]),
     gen_server:cast(Mod, Msg),
     {noreply, MState};
 handle_cast({event, EventType, EventData}, MState) ->
@@ -178,6 +175,22 @@ split_rpc_msg(Msg) ->
 -spec cast_all_nodes_process(atom(), string(), list(), atom()) -> atom().
 cast_all_nodes_process(_, _, [], _) ->
     ok;
+cast_all_nodes_process(Mod, Msg, [Addr = {"localhost", Port} | Nodes], Wait) when is_integer(Port) ->
+    case wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer}) of
+        Port ->
+            {Arg0, Args} = split_rpc_msg(Msg),
+            ?LOG_DEBUG("no_wait-cast of parent: ~p, ~p --> ~p", [Mod, Arg0, Addr]),
+            wm_rpc:cast(Mod, Arg0, Args, Addr);
+        _ ->
+            case wm_entity:get(api_port, wm_self:get_node()) of
+                Port ->
+                    gen_server:cast(?MODULE, {recv, Mod, Msg}),
+                    cast_all_nodes_process(Mod, Msg, Nodes, Wait);
+                _ ->
+                    ?LOG_ERROR("API: destination address is not recognized: ~p", [Addr])
+            end
+    end,
+    cast_all_nodes_process(Mod, Msg, Nodes, Wait);
 cast_all_nodes_process(Mod, Msg, [Node | Nodes], Wait) when Node =:= node() ->
     gen_server:cast(?MODULE, {recv, Mod, Msg}),
     cast_all_nodes_process(Mod, Msg, Nodes, Wait);
@@ -223,7 +236,7 @@ do_send_event(Mod, Event) ->
 
 -spec call_self_process(atom(), string(), atom(), atom(), string()) -> atom().
 call_self_process(Module, Msg, From, To, ID) ->
-    ?LOG_DEBUG("call_self_process [remote]: M=~p, Msg=~p, From=~p,To=~p, ID=~p", [Module, Msg, From, To, ID]),
+    ?LOG_DEBUG("call_self_process [remote]: M=~p, Msg=~p, From=~p, To=~100p, ID=~p", [Module, Msg, From, To, ID]),
     Answer = wm_rpc:call(?MODULE, recv, {Module, Msg}, To),
     From ! {ID, Answer},
     exit(normal).

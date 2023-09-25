@@ -151,7 +151,7 @@ do_cast_nodes(Nodes, EventType, EventData) ->
 
 -spec do_cast_subscribers(atom(), term()) -> ok.
 do_cast_subscribers(EventType, EventData) ->
-    ?LOG_DEBUG("Cast subscribers on event: ~p ~p", [EventType, EventData]),
+    ?LOG_DEBUG("Cast subscribers on event: ~p, ~10000p", [EventType, EventData]),
     case wm_db:table_exists(subscriber) of
         true ->
             case wm_db:get_many(subscriber, event, [EventType]) of
@@ -196,7 +196,7 @@ do_subscribe(EventType, Node, Module) ->
                     S1 = wm_entity:new(<<"subscriber">>),
                     S2 = wm_entity:set({ref, {Module, Node}}, S1),
                     S3 = wm_entity:set({event, EventType}, S2),
-                    ?LOG_DEBUG("Update ~p", S3),
+                    ?LOG_DEBUG("Update ~10000p", S3),
                     wm_db:update([S3])
             end,
             ok;

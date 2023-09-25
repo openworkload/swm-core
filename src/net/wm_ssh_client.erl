@@ -17,7 +17,7 @@
 
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
-    ?LOG_INFO("Start SSH client process with args: ~p", [Args]),
+    ?LOG_INFO("Start SSH client process with args: ~10000p", [Args]),
     gen_server:start_link(?MODULE, Args, []).
 
 -spec connect(pid(), inet:ip_address(), inet:port_number()) -> ok | {error, term()}.

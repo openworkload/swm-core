@@ -101,7 +101,7 @@ init(Args) ->
     MState1 = parse_args(Args, #mstate{}),
     MState2 = subscribe(MState1),
     ?LOG_INFO("Factory to produce ~p has been started", [MState2#mstate.module]),
-    ?LOG_DEBUG("Factory initial MState: ~p", [MState2]),
+    ?LOG_DEBUG("Factory initial MState: ~10000p", [MState2]),
     {ok, MState2}.
 
 handle_call({is_running, ModuleTaskId}, _, MState) ->

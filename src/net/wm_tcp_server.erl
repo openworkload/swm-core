@@ -6,6 +6,7 @@
 -export([init/1, recv/1, reply/2, code_change/3, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -include("../lib/wm_log.hrl").
+-include("../lib/wm_entity.hrl").
 
 -define(DEFAULT_TIMEOUT, 60000).
 -define(SSL_HANDSHAKE_TIMEOUT, 5000).
@@ -139,8 +140,8 @@ init(Args) ->
                         ?LOG_DEBUG("Going to start TCP server on port ~p", [ConfPort]),
                         ConfPort
                 end;
-            {ok, SelfNode} ->
-                ?LOG_DEBUG("My node ~p was found in the local db", [SelfNode]),
+            {ok, #node{name = Name} = SelfNode} ->
+                ?LOG_DEBUG("My node ~p was found in the local db", [Name]),
                 wm_entity:get(api_port, SelfNode)
         end,
     %FIXME If port of node001 was X and port of node002

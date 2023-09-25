@@ -4,15 +4,15 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([schedule_latency_update/1, get_children/1, get_neighbours/1, get_neighbour_addresses/1, get_latency/2,
-         get_min_latency_to/1, get_tree/1, get_subdiv/1, get_subdiv/0, on_path/2, get_tree_nodes/1, reload/0,
-         is_direct_child/1]).
+-export([schedule_latency_update/1, get_children/0, get_children_nodes/1, get_neighbours/1, get_neighbour_addresses/1,
+         get_latency/2, get_min_latency_to/1, get_tree/1, get_subdiv/1, get_subdiv/0, on_path/2, get_tree_nodes/1,
+         reload/0, is_direct_child/1]).
 
 -include("wm_log.hrl").
 -include("wm_entity.hrl").
 
 -record(mstate,
-        {rh :: map(),            %% Resource Hierarchy
+        {rh :: map(),            %% Resource Hierarchy: {{DevisionAtom, DevisionId} => Resouce sub hierarchy}
          nl :: binary(),         %% Neighbour List (binary vector)
          ct :: binary(),         %% Connection Tolopogy (binary matrix)
          ct_map :: map(),        %% NodeId --> Position in CT
@@ -48,10 +48,15 @@ schedule_latency_update(Node) ->
 get_neighbours(SortBy) ->
     wm_utils:protected_call(?MODULE, {get_neighbours, SortBy}, []).
 
-%% @doc Get all children records
--spec get_children(atom()) -> [{atom(), number()}].
-get_children(SortBy) ->
-    wm_utils:protected_call(?MODULE, {get_children, SortBy}, []).
+%% @doc Get all children records of my node
+-spec get_children() -> [{atom(), number()}].
+get_children() ->
+    wm_utils:protected_call(?MODULE, get_children, []).
+
+%% @doc Get all children records of the specified division
+-spec get_children_nodes(node_id()) -> [#node{}].
+get_children_nodes(NodeId) ->
+    wm_utils:protected_call(?MODULE, {get_children_nodes, NodeId}, []).
 
 %% @doc Get neightbour nodenames
 -spec get_neighbour_addresses(atom()) -> list().
@@ -137,7 +142,7 @@ handle_call({get_path, FromNodeId, ToNodeId}, _, #mstate{rh = RH} = MState) ->
         end,
     {reply, NextNodeId, MState};
 handle_call({is_direct_child, NodeId}, _, #mstate{} = MState) ->
-    Children = get_my_children([cluster, partition, node], unsorted, MState),
+    Children = get_my_children([cluster, partition, node], MState),
     F = fun ({node, Id}) ->
                 NodeId == Id;
             ({partition, Id}) ->
@@ -183,14 +188,13 @@ handle_call({get_min_latency_to, NodeNames}, _, #mstate{} = MState) ->
 handle_call({get_latency, SrcNode, DstNode}, _, #mstate{} = MState) ->
     {reply, do_get_latency(SrcNode, DstNode, MState), MState};
 handle_call({get_neighbours, SortBy}, _, #mstate{rh = RH} = MState) ->
-    Xs = get_my_neighbours([cluster, partition, node], SortBy, RH),
-    {reply, Xs, MState};
-handle_call({get_children, SortBy}, _, #mstate{} = MState) ->
-    Xs = get_my_children([cluster, partition, node], SortBy, MState),
-    {reply, Xs, MState};
+    {reply, get_my_neighbours([cluster, partition, node], SortBy, RH), MState};
+handle_call(get_children, _, #mstate{} = MState) ->
+    {reply, get_my_children([cluster, partition, node], MState), MState};
+handle_call({get_children_nodes, NodeId}, _, #mstate{rh = RH} = MState) ->
+    {reply, do_get_children_nodes(NodeId, RH), MState};
 handle_call({get_neightbour_addresses, SortBy}, _, #mstate{} = MState) ->
-    Xs = do_get_neighbours_addresses(SortBy, MState),
-    {reply, Xs, MState};
+    {reply, do_get_neighbours_addresses(SortBy, MState), MState};
 handle_call(construct_data_types, _, #mstate{} = MState) ->
     ?LOG_INFO("Construct topology"),
     MState1 = set_management_role(MState),
@@ -241,12 +245,12 @@ set_management_role(#mstate{} = MState) ->
                 X;
             {error, _} ->
                 [];
-            Y ->
-                ?LOG_ERROR("Cannot get my node name: ~p", [Y])
+            _Y ->
+                ?LOG_ERROR("Can not get my node name: ~p", [_Y])
         end,
     case wm_conf:select_node(Name) of
-        {error, E} ->
-            ?LOG_ERROR("Could not get my node information: ~p", [E]),
+        {error, _E} ->
+            ?LOG_ERROR("Could not get my node information: ~p", [_E]),
             MState#mstate{mrole = none};
         {ok, Node} ->
             RoleIDs = wm_entity:get(roles, Node),
@@ -295,7 +299,6 @@ do_make_rh_main(#mstate{mrole = Role} = MState) when Role =/= none ->
                  ?LOG_DEBUG("My subdivision: ~p", [Subdiv]),
                  do_make_rh(element(1, Subdiv), [Subdiv], maps:new(), node, MState)
          end,
-    ?LOG_DEBUG("RH: ~p", [RH]),
     MState#mstate{rh = RH};
 do_make_rh_main(#mstate{} = MState) ->
     ?LOG_INFO("Not ready to make RH"),
@@ -491,12 +494,12 @@ get_my_neighbours(Filter, _, RH) ->
             end
     end.
 
-get_my_children(Filters, SortBy, #mstate{} = MState) when is_list(Filters) ->
-    %TODO sort the children checking SortBy
-    F = fun(Filter, Acc) -> [get_my_children(Filter, SortBy, MState) | Acc] end,
+-spec get_my_children([atom()] | atom(), #mstate{}) -> [{atom(), string()}].
+get_my_children(Filters, #mstate{} = MState) when is_list(Filters) ->
+    F = fun(Filter, Acc) -> [get_my_children(Filter, MState) | Acc] end,
     lists:flatten(
         lists:foldl(F, [], Filters));
-get_my_children(Filter, _, #mstate{mrole = Role, rh = RH} = MState) ->
+get_my_children(Filter, #mstate{mrole = Role, rh = RH} = MState) ->
     case RH of
         undefined ->
             ?LOG_ERROR("Could not get my children"),
@@ -587,8 +590,8 @@ do_make_nl(compute, #mstate{rh = RH, mrole = Role} = MState) when Role =/= none 
         end,
     ?LOG_DEBUG("NL: ~p, CtMap=~p", [NL, M]),
     MState#mstate{nl = NL, ct_map = M};
-do_make_nl(X, #mstate{} = MState) ->
-    ?LOG_INFO("No need to make NL for ~p", [X]),
+do_make_nl(_X, #mstate{} = MState) ->
+    ?LOG_INFO("No need to make NL for ~p", [_X]),
     NL = <<>>,
     MState#mstate{nl = NL}.
 
@@ -616,8 +619,8 @@ init_ct(CT, N1, N2, Len, #mstate{} = MState) ->
 do_update_latency(Node, #mstate{}) ->
     Trials = wm_conf:g(latency_trials, {?DEFAULT_TRIALS, integer}),
     NodeName = wm_utils:node_to_fullname(Node),
-    Latency = wm_latency:ping(NodeName, Trials),
-    ?LOG_DEBUG("Measured latency for ~p: ~p microseconds", [Node, Latency]),
+    _Latency = wm_latency:ping(NodeName, Trials),
+    ?LOG_DEBUG("Measured latency for ~p: ~p microseconds", [Node, _Latency]),
     %TODO Implement latency saving
     %TODO Rename latency to roundtrip
     ok.
@@ -665,8 +668,8 @@ get_direct_subdiv(Entity) ->
                 Subdiv = wm_entity:get(subdivision, Entity),
                 ID = wm_entity:get(subdivision_id, Entity),
                 case wm_conf:select(Subdiv, {id, ID}) of
-                    {error, Error} ->
-                        ?LOG_DEBUG("Could not find ~p with id=~p: ~p", [Subdiv, ID, Error]),
+                    {error, _Error} ->
+                        ?LOG_DEBUG("Could not find ~p with id=~p: ~p", [Subdiv, ID, _Error]),
                         not_found;
                     {ok, S} ->
                         S
@@ -675,8 +678,8 @@ get_direct_subdiv(Entity) ->
                 Entity
         end
     catch
-        E1:E2 ->
-            ?LOG_ERROR("Cannot get direct subdiv ~p: ~p", [E1, E2]),
+        _E1:_E2 ->
+            ?LOG_ERROR("Can not get direct subdiv ~p: ~p", [_E1, _E2]),
             Entity
     end.
 
@@ -722,7 +725,6 @@ do_get_tree_nodes(WithTemplates, #mstate{rh = RH}) when is_map(RH) ->
                 maps:fold(FoldFun, IDs, V)
         end,
     NodeIDs = maps:fold(F, [], RH),
-    ?LOG_DEBUG("RH node ids: ~p", [NodeIDs]),
     Nodes = wm_conf:select(node, NodeIDs),
     case WithTemplates of
         false ->
@@ -730,8 +732,8 @@ do_get_tree_nodes(WithTemplates, #mstate{rh = RH}) when is_map(RH) ->
         true ->
             Nodes
     end;
-do_get_tree_nodes(_, #mstate{rh = RH}) ->
-    ?LOG_DEBUG("RH has not been constructed yet: ~p", [RH]),
+do_get_tree_nodes(_, #mstate{rh = _RH}) ->
+    ?LOG_DEBUG("RH has not been constructed yet: ~p", [_RH]),
     [].
 
 %% @doc Finds a list of intermediate nodes (excluding the destination) on path between two nodes
@@ -757,17 +759,17 @@ find_rh_path(_, ToNodeId, _RH = undefined) ->
 find_rh_path(FromNodeId, ToNodeId, RH) ->
     ?LOG_DEBUG("Try to find the RH path: ~p --> ~p", [FromNodeId, ToNodeId]),
     case get_parent_id(FromNodeId) of
-        {error, not_found} ->  % assume cluster without parent
-            Path1 = find_child_rh_path(ToNodeId, RH, []),
-            Path2 = lists:filter(fun(X) -> X =/= FromNodeId end, Path1),
-            Path3 = lists:reverse(Path2),
-            Path3;
+        {error, not_found} ->
+            % assume cluster without parent
+            %Path1 = find_child_rh_path(ToNodeId, RH, []),
+            %Path2 = lists:filter(fun(X) -> X =/= FromNodeId end, Path1),
+            %Path3 = lists:reverse(Path2),
+            %Path3;
+            [];
         {ok, ToNodeId} ->
             [ToNodeId];
         _ ->
-            [Root] = maps:keys(RH), % RH should have only one root
-            RootRH = maps:get(Root, RH),
-            {true, NodeRH} = get_node_rh({Root, RootRH}, FromNodeId, {false, #{}}),
+            NodeRH = get_node_rh(FromNodeId, RH, false),
             Neighbours = lists:map(fun({X, _}) -> X end, maps:to_list(NodeRH)),
             CheckNeightbours =
                 fun ({node, Id}) ->
@@ -793,38 +795,62 @@ find_rh_path(FromNodeId, ToNodeId, RH) ->
             end
     end.
 
--spec get_node_rh({{atom(), string()}, map()}, node_id(), {boolean(), map()}) -> map().
-get_node_rh({{Division, Id}, SubRH}, NodeId, {false, LastSubRH}) when Division =/= node ->
+% ./rebar3 eunit --test=wm_topology:find_node_children_rh_test
+
+%% @doc Returns sub-tree of RH of a node (with children and neightbour nodes included if needed)
+-spec get_node_rh(node_id(), map(), boolean()) -> map().
+get_node_rh(NodeId, RH, ChildrenOnly) ->
+    [RootKey] = maps:keys(RH), % RH should have only one root
+    RootRH = maps:get(RootKey, RH),
+    case get_node_surrounding_rh({RootKey, RootRH}, NodeId, {false, {}, RH}) of
+        {false, _, #{}} ->
+            #{};
+        {true, {}, SubRH} ->
+            SubRH;
+        {true, _, Map} when map_size(Map) == 0 ->
+            #{};
+        {true, FoundKey, SubRH} ->
+            case ChildrenOnly of
+                false ->
+                    SubRH;
+                true ->
+                    maps:get(FoundKey, SubRH)
+            end
+    end.
+
+-spec get_node_surrounding_rh({{atom(), string()}, map()}, node_id(), {boolean(), {atom(), string()}, map()}) ->
+                                 {boolean(), {atom(), string()}, map()}.
+get_node_surrounding_rh({{Division, Id}, SubRH}, NodeId, {false, FoundKey, LastSubRH}) when Division =/= node ->
     {ok, DivisionEntity} = wm_conf:select(Division, {id, Id}),
     MgrName = wm_entity:get(manager, DivisionEntity),
-    {ok, Node} = wm_conf:select_node(MgrName),
-    case wm_entity:get(id, Node) of
+    {ok, MgrNode} = wm_conf:select_node(MgrName),
+    case wm_entity:get(id, MgrNode) of
         NodeId ->
-            {true, LastSubRH};
+            {true, {Division, Id}, LastSubRH};
         _ ->
-            F = fun(P) -> get_node_rh(P, NodeId, {false, SubRH}) end,
+            F = fun(P) -> get_node_surrounding_rh(P, NodeId, {false, FoundKey, SubRH}) end,
             case lists:flatten(
                      lists:map(F, maps:to_list(SubRH)))
             of
                 [] ->
-                    {false, #{}};
+                    {false, {}, #{}};
                 List ->
                     UniqueList = lists:usort(List), % remove duplicates
-                    case lists:filter(fun({B, _}) -> B =:= true end, UniqueList) of
+                    case lists:filter(fun({B, _, _}) -> B =:= true end, UniqueList) of
                         [] ->
-                            {false, #{}};
-                        [{true, RH}] ->
-                            {true, RH}
+                            {false, {}, #{}};
+                        [Found] ->
+                            Found
                     end
             end
     end;
-get_node_rh({{_, Id}, _}, NodeId, {false, LastSubRH}) when Id == NodeId ->
-    {true, LastSubRH};
-get_node_rh({{_, _}, SubRH}, NodeId, {false, LastSubRH}) ->
-    F = fun(P, Acc) -> get_node_rh(P, NodeId, Acc) end,
-    lists:foldl(F, {false, LastSubRH}, maps:to_list(SubRH));
-get_node_rh({{_, _}, _}, _, {true, LastSubRH}) ->
-    {true, LastSubRH}.
+get_node_surrounding_rh({{_, Id}, _}, NodeId, {false, FoundKey, LastSubRH}) when Id == NodeId ->
+    {true, FoundKey, LastSubRH};
+get_node_surrounding_rh({{_, _}, SubRH}, NodeId, {false, FoundKey, LastSubRH}) ->
+    F = fun(P, Acc) -> get_node_surrounding_rh(P, NodeId, Acc) end,
+    lists:foldl(F, {false, FoundKey, LastSubRH}, maps:to_list(SubRH));
+get_node_surrounding_rh({{_, _}, _}, _, {true, FoundKey, LastSubRH}) ->
+    {true, FoundKey, LastSubRH}.
 
 -spec find_child_rh_path(node_id(), map(), [node_id()]) -> [node_id()].
 find_child_rh_path(_, RH, _) when map_size(RH) == 0 ->
@@ -883,6 +909,34 @@ get_parent_id(NodeId) ->
             end
     end.
 
+-spec do_get_children_nodes(node_id(), map()) -> [#node{}].
+do_get_children_nodes(NodeId, RH) ->
+    SubRH = get_node_rh(NodeId, RH, true),
+    F = fun ({node, EntityId}, _, Nodes) ->
+                case wm_conf:select(node, {id, EntityId}) of
+                    {ok, #node{is_template = false} = Node} ->
+                        [Node | Nodes];
+                    _ ->
+                        Nodes
+                end;
+            ({DivisionType, DivisionId}, EntityRH, Nodes) ->
+                case wm_conf:select(DivisionType, {id, DivisionId}) of
+                    {error, _} ->
+                        Nodes;
+                    {ok, Division} ->
+                        case wm_utils:get_division_manager(DivisionType, Division, false) of
+                            {ok, #node{id = NodeId}} ->
+                                SubSubRH = maps:put({DivisionType, DivisionId}, EntityRH, maps:new()),
+                                do_get_children_nodes(NodeId, SubSubRH) ++ Nodes;
+                            {ok, Node} ->
+                                [Node | Nodes];
+                            _ ->
+                                Nodes
+                        end
+                end
+        end,
+    maps:fold(F, [], SubRH).
+
 %% ============================================================================
 %% Tests
 %% ============================================================================
@@ -891,6 +945,7 @@ get_parent_id(NodeId) ->
 
 -include_lib("eunit/include/eunit.hrl").
 
+-spec get_mock_ct() -> #mstate{}.
 get_mock_ct() ->
     RH = #{{grid, 1} =>
                #{{cluster, 1} => #{},
@@ -905,6 +960,7 @@ get_mock_ct() ->
     MState2 = do_make_nl(cluster, MState1),
     init_ct(MState2).
 
+-spec init_ct_test() -> ok.
 init_ct_test() ->
     MState = get_mock_ct(),
     RefCt =
@@ -914,6 +970,7 @@ init_ct_test() ->
     ?LOG_DEBUG("~p", MState#mstate.ct),
     ?assert(MState#mstate.ct == RefCt).
 
+-spec get_value_from_cl_test() -> ok.
 get_value_from_cl_test() ->
     CT = <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
            0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7,
@@ -923,26 +980,12 @@ get_value_from_cl_test() ->
     ?assert(get_integer_by_pos(2, 1, 4, CT) == 8),
     ?assert(get_integer_by_pos(3, 3, 4, CT) == 72340172838076673).
 
-search_path_test() ->
-    % In this test a node id is also its name (for simplification),
+-spec prepare_test_rh1() -> #{}.
+prepare_test_rh1() ->
+    % NOTE: in this RH id is also its name (for simplification),
     % grid, cluster and partition manager nodes have names/ids equals
     % to its subdivision id plus "_n0". All non-manager node names/ids
     % are formed as SUBDIVISION_ID plus "_nX", where X > 0.
-    RH = #{{grid, "g1"} =>
-               #{{cluster, "c1"} => #{{partition, "p11"} => #{}},
-                 {cluster, "c2"} =>
-                     #{{partition, "p21"} =>
-                           #{{node, "p21_n1"} => #{},
-                             {node, "p21_n2"} => #{},
-                             {partition, "p211"} =>
-                                 #{{node, "p211_n1"} => #{},
-                                   {node, "p211_n2"} => #{},
-                                   {node, "p211_n3"} => #{},
-                                   {partition, "p2111"} => #{}}},
-                       {partition, "p22"} =>
-                           #{{partition, "p221"} =>
-                                 #{{partition, "p2211"} => #{{partition, "p22111"} => #{{node, "p22111_n1"} => #{}}}}}},
-                 {cluster, "c3"} => #{}}},
     SetParent =
         fun ("c1_n0", Node) ->
                 wm_entity:set([{parent, "g1_n0"}], Node);
@@ -992,6 +1035,131 @@ search_path_test() ->
     meck:new(wm_conf),
     meck:expect(wm_conf, select, SelectById),
     meck:expect(wm_conf, select_node, SelectByName),
+    meck:new(wm_self),
+    meck:expect(wm_self, get_node_id, fun() -> "c2_n0" end),
+    #{{grid, "g1"} =>
+          #{{cluster, "c1"} => #{{partition, "p11"} => #{}},
+            {cluster, "c2"} =>
+                #{{partition, "p21"} =>
+                      #{{node, "p21_n1"} => #{},
+                        {node, "p21_n2"} => #{},
+                        {partition, "p211"} =>
+                            #{{node, "p211_n1"} => #{},
+                              {node, "p211_n2"} => #{},
+                              {node, "p211_n3"} => #{},
+                              {partition, "p2111"} => #{}}},
+                  {partition, "p22"} =>
+                      #{{partition, "p221"} =>
+                            #{{partition, "p2211"} => #{{partition, "p22111"} => #{{node, "p22111_n1"} => #{}}}}}},
+            {cluster, "c3"} => #{}}}.
+
+-spec prepare_test_rh2() -> #{}.
+prepare_test_rh2() ->
+    % NOTE: in this RH node id is also its name (for simplification)
+    SetExtraProperties =
+        fun ("compute-node-1", Node) ->
+                wm_entity:set([{parent, "node-skyport"}], Node);
+            ("compute-node-2", Node) ->
+                wm_entity:set([{parent, "compute-node-1"}], Node);
+            ("template-node-1", Node) ->
+                wm_entity:set([{is_template, true}], Node);
+            ("template-node-2", Node) ->
+                wm_entity:set([{is_template, true}], Node);
+            ("template-node-3", Node) ->
+                wm_entity:set([{is_template, true}], Node);
+            ("template-node-4", Node) ->
+                wm_entity:set([{is_template, true}], Node);
+            ("template-node-5", Node) ->
+                wm_entity:set([{is_template, true}], Node);
+            ("template-node-6", Node) ->
+                wm_entity:set([{is_template, true}], Node);
+            (_, Node) ->
+                Node
+        end,
+    SelectById =
+        fun (node, {id, Id}) ->
+                Node = wm_entity:set([{id, Id}, {name, Id}], wm_entity:new(node)),
+                {ok, SetExtraProperties(Id, Node)};
+            (cluster, {id, Id = "cluster"}) ->
+                {ok,
+                 wm_entity:set([{id, Id},
+                                {name, Id},
+                                {manager, "node-skyport"},
+                                {partitions, ["remote-partition", "local-partition"]}],
+                               wm_entity:new(cluster))};
+            (partition, {id, Id = "remote-partition"}) ->
+                {ok,
+                 wm_entity:set([{id, Id},
+                                {name, Id},
+                                {manager, "node-skyport"},
+                                {partitions, ["remote-sub-partition"]}],
+                               wm_entity:new(partition))};
+            (partition, {id, Id = "local-partition"}) ->
+                {ok, wm_entity:set([{id, Id}, {name, Id}, {manager, "node-skyport"}], wm_entity:new(partition))};
+            (partition, {id, Id = "remote-sub-partition"}) ->
+                {ok, wm_entity:set([{id, Id}, {name, Id}, {manager, "compute-node-1"}], wm_entity:new(partition))}
+        end,
+    SelectByName = fun(NameIsAlsoId) -> SelectById(node, {id, NameIsAlsoId}) end,
+    meck:new(wm_conf),
+    meck:expect(wm_conf, select, SelectById),
+    meck:expect(wm_conf, select_node, SelectByName),
+    meck:new(wm_self),
+    meck:expect(wm_self, get_node_id, fun() -> "node-skyport" end),
+    #{{cluster, "cluster"} =>
+          #{{partition, "remote-partition"} =>
+                #{{node, "template-node-1"} => #{},
+                  {node, "template-node-2"} => #{},
+                  {node, "template-node-3"} => #{},
+                  {node, "template-node-4"} => #{},
+                  {node, "template-node-5"} => #{},
+                  {node, "template-node-6"} => #{},
+                  {partition, "remote-sub-partition"} =>
+                      #{{node, "compute-node-1"} => #{}, {node, "compute-node-2"} => #{}}},
+            {partition, "local-partition"} => #{{node, "node-skyport"} => #{}}}}.
+
+-spec finalize() -> ok.
+finalize() ->
+    meck:unload().
+
+-spec node_surrounding_rh_test() -> ok.
+node_surrounding_rh_test() ->
+    RH = prepare_test_rh1(),
+    Expected =
+        #{{node, "p21_n1"} => #{},
+          {node, "p21_n2"} => #{},
+          {partition, "p211"} =>
+              #{{node, "p211_n1"} => #{},
+                {node, "p211_n2"} => #{},
+                {node, "p211_n3"} => #{},
+                {partition, "p2111"} => #{}}},
+    ?assertEqual(Expected, get_node_rh("p211_n0", RH, false)),
+    finalize().
+
+-spec node_children_rh_test() -> ok.
+node_children_rh_test() ->
+    RH = prepare_test_rh1(),
+    Expected =
+        #{{node, "p211_n1"} => #{},
+          {node, "p211_n2"} => #{},
+          {node, "p211_n3"} => #{},
+          {partition, "p2111"} => #{}},
+    ?assertEqual(Expected, get_node_rh("p211_n0", RH, true)),
+    finalize().
+
+-spec children_nodes_test() -> ok.
+children_nodes_test() ->
+    RH = prepare_test_rh1(),
+    Result = do_get_children_nodes("p211_n0", RH),
+    ?assertEqual(4, length(Result)),
+    ?assertMatch(#node{id = "p2111_n0"}, lists:nth(1, Result)),
+    ?assertMatch(#node{id = "p211_n3"}, lists:nth(2, Result)),
+    ?assertMatch(#node{id = "p211_n2"}, lists:nth(3, Result)),
+    ?assertMatch(#node{id = "p211_n1"}, lists:nth(4, Result)),
+    finalize().
+
+-spec search_path_in_rh_test() -> ok.
+search_path_in_rh_test() ->
+    RH = prepare_test_rh1(),
     % From top to bottom:
     ?assertEqual([], find_rh_path("c2_n0", "foo", RH)),
     ?assertEqual(["c2_n0", "p22_n0", "p221_n0", "p2211_n0", "p22111_n0", "p22111_n1"],
@@ -1008,6 +1176,14 @@ search_path_test() ->
     ?assertEqual(["p21_n0"], find_rh_path("p211_n0", "p21_n0", RH)),
     ?assertEqual([], find_rh_path("p2111_n0", "c2_n0", RH)),
     ?assertEqual([], find_rh_path("p22111_n1", "c2_n0", RH)),
-    ?assertEqual([], find_rh_path("p211_n3", "c1_n0", RH)).
+    ?assertEqual([], find_rh_path("p211_n3", "c1_n0", RH)),
+    finalize().
+
+-spec children_duplicate_managers_test() -> ok.
+children_duplicate_managers_test() ->
+    RH = prepare_test_rh2(),
+    Result = do_get_children_nodes("node-skyport", RH),
+    ?assertEqual(2, length(Result)),
+    finalize().
 
 -endif.

@@ -11,6 +11,7 @@
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
+-include("../../include/wm_general.hrl").
 
 -define(DEFAULT_SYCN_INTERVAL, 60000).
 -define(DEFAULT_PULL_TIMEOUT, 10000).
@@ -57,7 +58,7 @@ select(Tab, Condition) ->
     do_select(Tab, Condition).
 
 %% @doc Search for node by name
--spec select_node(string() | tuple() | atom()) -> term().
+-spec select_node(string() | tuple() | atom()) -> {ok, #node{}} | {error, atom()}.
 select_node(Name) when is_atom(Name) ->
     NameStr = atom_to_list(Name),
     select_node(NameStr);
@@ -140,6 +141,8 @@ get_my_address() ->
     end.
 
 -spec is_my_address(string() | {string(), integer()}) -> true | false.
+is_my_address({"localhost", Port}) ->
+    Port == wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer});
 is_my_address(Addr) ->
     case get_my_address() of
         not_found ->
@@ -166,7 +169,7 @@ get_relative_address(_To = #node{gateway = Gateway, api_port = Port}, _) ->
     {Gateway, Port}.
 
 %% @doc Get self address that depends on what exact node it is going to communicate
--spec get_my_relative_address({string(), integer()}) -> {string(), integer()}.
+-spec get_my_relative_address({string(), integer()}) -> {string(), integer()} | {error, not_found}.
 get_my_relative_address(DestAddr = {_, _}) ->
     case do_select_node(DestAddr) of
         {ok, Node} ->
@@ -339,7 +342,7 @@ handle_cast({pull_config, Node}, MState) when MState#mstate.sync == false ->
     Hashes = wm_db:get_hashes(schema),
     ?LOG_DEBUG("Pull hashes: ~p from ~p", [Hashes, Node]),
     case get_my_relative_address(Node) of
-        not_found ->
+        {error, not_found} ->
             ?LOG_DEBUG("Self address not known => do not pull config for now"),
             {noreply, MState};
         MyAddr ->

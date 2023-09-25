@@ -8,6 +8,7 @@
 
 -include("../../lib/wm_log.hrl").
 -include("../../../include/wm_scheduler.hrl").
+-include("../../../include/wm_general.hrl").
 -include("../../lib/wm_entity.hrl").
 
 -define(SSH_DAEMON_DEFAULT_PORT, 10022).
@@ -271,25 +272,12 @@ creating({partition_fetched, Ref, Partition},
             Timer = wm_virtres_handler:wait_for_partition_fetch(),
             {next_state, creating, MState#mstate{part_check_timer = Timer}}
     end;
-creating(ssh_connected,
-         #mstate{job_id = JobId,
-                 part_id = PartId,
-                 ssh_client_pid = TunnelClientPid} =
-             MState) ->
-    case wm_conf:select(partition, {id, PartId}) of
-        {ok, Partition} ->
-            ForwardedPorts = start_port_forwarding(TunnelClientPid, JobId),
-            Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
-            {next_state,
-             creating,
-             MState#mstate{wait_ref = undefined,
-                           rediness_timer = Timer,
-                           forwarded_ports = ForwardedPorts}};
-        {error, not_found} ->
-            ?LOG_WARN("Partition ~p not found (still creating?), job: ~p", [PartId, JobId]),
-            Timer = wm_virtres_handler:wait_for_partition_fetch(),
-            {next_state, creating, MState#mstate{part_check_timer = Timer}}
-    end;
+creating(ssh_connected, #mstate{job_id = JobId, ssh_client_pid = TunnelClientPid} = MState) ->
+    {next_state,
+     creating,
+     MState#mstate{wait_ref = undefined,
+                   rediness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
+                   forwarded_ports = start_port_forwarding(TunnelClientPid, JobId)}};
 creating({error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Partition creation failed: ~p, job id: ~p", [Error, JobId]),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
@@ -418,27 +406,27 @@ get_job_ports([_ | T]) ->
 get_wm_api_port() ->
     {ok, SelfNode} = wm_self:get_node(),
     ApiPort = wm_entity:get(api_port, SelfNode),
-    ParentPort = 10002,  %FIXME get port from somewhere
+    ParentPort = wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer}),
     {ParentPort, ApiPort}.
 
 -spec start_port_forwarding(pid(), job_id()) -> [inet:port_number()].
 start_port_forwarding(TunnelClientPid, JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
 
-    ListenHost = {127, 0, 0, 1},
+    ListenHost = "localhost",
+    RemoteHost = "localhost",
     ResourcesRequest = wm_entity:get(request, Job),
     PortsToForward = get_job_ports(ResourcesRequest) ++ [get_wm_api_port()],
-    JobHost = {127, 0, 0, 1},
 
     lists:foldl(fun({ListenPort, PortToForward}, OpenedPorts) ->
-                   case wm_ssh_client:make_tunnel(TunnelClientPid, ListenHost, ListenPort, JobHost, PortToForward) of
+                   case wm_ssh_client:make_tunnel(TunnelClientPid, ListenHost, ListenPort, RemoteHost, PortToForward) of
                        {ok, OpenedPort} ->
                            ?LOG_INFO("Tunnel is opened successfully for ports: ~p -> ~p (job: ~p)",
                                      [OpenedPort, PortToForward, JobId]),
                            [OpenedPort | OpenedPorts];
                        {error, Error} ->
                            ?LOG_ERROR("Can't open ssh tunnel (~p:~p <=> ~p:~p), error: ~p",
-                                      [ListenHost, ListenPort, JobHost, PortToForward, Error]),
+                                      [ListenHost, ListenPort, RemoteHost, PortToForward, Error]),
                            OpenedPorts
                    end
                 end,

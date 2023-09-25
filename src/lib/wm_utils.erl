@@ -17,6 +17,7 @@
 -export([get_cert_partial_chain_fun/1, get_node_cert_paths/1]).
 -export([update_map/3]).
 -export([find_property_in_resource/3]).
+-export([get_division_manager/3]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -726,3 +727,27 @@ find_property_in_resource(ResourceName, PropertyName, [#resource{name = Resource
     end;
 find_property_in_resource(ResourceName, PropertyName, [_ | T]) ->
     find_property_in_resource(ResourceName, PropertyName, T).
+
+-spec get_division_manager(atom(), tuple(), bool()) -> {ok, tuple()} | {ok, self} | {error, not_found}.
+get_division_manager(node, Node, IndicateSelf) ->
+    {ok, Node};
+get_division_manager(Type, Entity, IndicateSelf) ->
+    NodeName = wm_entity:get(manager, Entity),
+    SelfNodeId = wm_self:get_node_id(),
+    case wm_conf:select_node(NodeName) of
+        {ok, Node} ->
+            ?LOG_DEBUG("Manager of ~p found: ~p", [Type, wm_entity:get(name, Node)]),
+            case wm_entity:get(id, Node) of
+                SelfNodeId ->
+                    case IndicateSelf of
+                        true ->
+                            {ok, self};
+                        false ->
+                            {ok, Node}
+                    end;
+                _ ->
+                    {ok, Node}
+            end;
+        _ ->
+            {error, not_found}
+    end.

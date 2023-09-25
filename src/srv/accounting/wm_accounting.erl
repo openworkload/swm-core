@@ -363,7 +363,7 @@ node_weight(Price, NetworkLatency, Data) ->
 %% Tests
 %% ============================================================================
 
--ifdef(TEST).
+-ifdef(EUNIT).
 
 -include_lib("eunit/include/eunit.hrl").
 

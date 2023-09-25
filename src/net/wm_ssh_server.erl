@@ -58,8 +58,7 @@ init(Args) ->
     ListenPort = wm_conf:g(ssh_daemon_listen_port, {?SSH_DAEMON_DEFAULT_PORT, integer}),
     case spawn_ssh_daemon(any,  % TODO: don't listen to all interfaces
                           ListenPort,
-                          [{tcpip_tunnel_in, true},   % TODO: do we really need tcpip_tunnel_in?
-                           {tcpip_tunnel_out, true},
+                          [{tcpip_tunnel_out, true},
                            {system_dir, SystemDir},
                            {user_dir, UserDir},
                            {user_passwords, [{"swm", "swm"}]},
@@ -112,11 +111,11 @@ parse_args([{_, _} | T], MState) ->
 -spec spawn_ssh_daemon(string() | inet:ip_address() | loopback | any, integer(), list()) ->
                           {pid(), inet:port_number(), inet:ip_address()} | {error, term()}.
 spawn_ssh_daemon(Host, Port, Options) ->
-    ?LOG_INFO("~p:~p run ssh:daemon(~p, ~p, ~p)", [?MODULE, ?LINE, Host, Port, Options]),
+    ?LOG_INFO("~p:~p run ssh:daemon(~p, ~p, ~10000p)", [?MODULE, ?LINE, Host, Port, Options]),
     case ssh:daemon(Host, Port, Options) of
         {ok, Pid} ->
             R = ssh:daemon_info(Pid),
-            ?LOG_DEBUG("~p:~p ssh:daemon_info(~p) ->~n ~p", [?MODULE, ?LINE, Pid, R]),
+            ?LOG_DEBUG("~p:~p ssh:daemon_info(~p) ->~n ~10000p", [?MODULE, ?LINE, Pid, R]),
             {ok, L} = R,
             ListenPort = proplists:get_value(port, L),
             ListenIP = proplists:get_value(ip, L),

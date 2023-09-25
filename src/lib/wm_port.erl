@@ -74,7 +74,7 @@ close(WmPortPid) ->
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
-    ?LOG_DEBUG("Port manager has been started (~p)", [MState]),
+    ?LOG_DEBUG("Port manager has been started (~10000p)", [MState]),
     {ok, MState}.
 
 handle_call({run, Args, Envs, PortOpts}, _, MState) ->

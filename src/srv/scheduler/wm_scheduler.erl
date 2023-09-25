@@ -28,7 +28,7 @@ handle_call(start_scheduling, _, #mstate{} = MState) ->
             ?LOG_ERROR("Cannot get scheduler: ~w", [Error]),
             {reply, error, MState};
         {SubDivType, Scheduler} ->
-            ?LOG_DEBUG("Start scheduler using record (subdiv=~p): ~w", [SubDivType, Scheduler]),
+            ?LOG_DEBUG("Start scheduler for ~p: ~10000p", [SubDivType, Scheduler]),
             case start_scheduler(Scheduler, MState) of
                 {ok, NewMState} ->
                     {reply, erlang:send(self(), schedule), NewMState};
@@ -157,7 +157,7 @@ get_scheduler() ->
     end.
 
 run_mock_scheduler(grid, #mstate{} = MState) ->
-    ClusterIds = [ID || {cluster, ID} <- wm_topology:get_children(nosort)],
+    ClusterIds = [ID || {cluster, ID} <- wm_topology:get_children()],
     Clusters = wm_conf:select(cluster, ClusterIds),
     Up = lists:filter(fun(X) -> wm_entity:get(state, X) == up end, Clusters),
     ?LOG_DEBUG("Up clusters: ~p", [Up]),

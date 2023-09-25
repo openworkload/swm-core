@@ -49,7 +49,7 @@ connect(Args) ->
                 ?LOG_DEBUG("SSL connection from ~s to ~s has established", [From, To]),
                 {ok, Socket};
             Error ->
-                ?LOG_ERROR("Could not connect to ~s: ~p", [To, Error]),
+                ?LOG_ERROR("Could not connect to ~s: ~10000p", [To, Error]),
                 Error
         end
     catch

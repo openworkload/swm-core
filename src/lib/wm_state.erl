@@ -65,7 +65,7 @@ init(_Args) ->
     {ok, stopped, #mstate{}}.
 
 handle_sync_event(get_current, From, State, MState) ->
-    ?LOG_DEBUG("Asked for current state (~p) by ~p", [State, From]),
+    ?LOG_DEBUG("Asked for current state (~p) by ~10000p", [State, From]),
     {reply, State, State, MState}.
 
 handle_event(_Event, State, MState) ->

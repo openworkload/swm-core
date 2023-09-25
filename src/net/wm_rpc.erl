@@ -4,12 +4,10 @@
 
 -include("../lib/wm_log.hrl").
 -include("../lib/wm_entity.hrl").
+-include("../../include/wm_general.hrl").
 
-%TODO: When DB does not exist we need to define default global values in a file
 %TODO: Implement batch JSON-RPC calls
 %TODO: Return JSON-RPC errors
-
--define(DEFAULT_CERT_DIR, "/opt/swm/spool/secure/node/").
 
 %% ============================================================================
 %% API functions
@@ -63,7 +61,7 @@ cast(Module, Function, Args, FinalAddr = {_, _}) ->
         {ok, Socket} ->
             Tag = wm_utils:uuid(v4),
             RPC = {cast, Module, Function, Args, Tag, FinalAddr},
-            send_metrics_to_mon(NextAddr),
+            %send_metrics_to_mon(NextAddr),
             wm_tcp_client:rpc(RPC, Socket),
             wm_tcp_client:disconnect(Socket);
         Error ->
@@ -116,7 +114,21 @@ get_connection_args(Node) when is_tuple(Node) ->
     ConnArgs3 = maps:put(cert, Cert, ConnArgs2),
     maps:put(key, Key, ConnArgs3).
 
--spec get_next_destination(node_address()) -> node_address().
+-spec get_next_destination(node_address()) -> node_address() | {error, not_found}.
+get_next_destination(FinalAddr = {"localhost", Port}) ->
+    case wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer}) of
+        Port ->
+            FinalAddr;
+        _ ->
+            SelfNode = wm_self:get_node(),
+            case wm_entity:get(api_port, SelfNode) of
+                Port ->
+                    FinalAddr;
+                _ ->
+                    ?LOG_ERROR("Next destination address is not recognized: ~p", [FinalAddr]),
+                    {error, not_found}
+            end
+    end;
 get_next_destination(FinalAddr = {_, _}) ->
     ?LOG_DEBUG("Find next node when forwarding to ~p", [FinalAddr]),
     case wm_conf:is_my_address(FinalAddr) of
@@ -130,7 +142,7 @@ get_next_destination(FinalAddr = {_, _}) ->
                 true ->
                     FinalAddr;
                 false ->
-                    Children = wm_topology:get_children(nosort),
+                    Children = wm_topology:get_children(),
                     case lists:any(fun(Y) -> Y =:= FinalAddr end, Children) of
                         true ->
                             FinalAddr;

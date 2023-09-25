@@ -200,8 +200,8 @@ do_ping(Map) when is_map(Map) ->
                [{pong, AllocState}] ->
                    ?LOG_DEBUG("Ping OK: ~p (alloc=~p)", [Address, AllocState]),
                    maps:put(Address, {pong, AllocState}, Answers);
-               Error ->
-                   ?LOG_DEBUG("Ping FAILED: ~p (~p)", [Address, Error]),
+               {error, Msg} ->
+                   ?LOG_DEBUG("Ping to ~p FAILED: ~10000p", [Address, Msg]),
                    maps:put(Address, {pang, stopped}, Answers)
            end
         end,
