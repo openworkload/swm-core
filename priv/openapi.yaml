@@ -394,6 +394,7 @@ components:
             - stopped
             - offline
             - busy
+            - maint
         resources:
           type: array
           items:
