@@ -338,8 +338,8 @@ add_children_to_pinger() ->
 ensure_parent_alive(NodeName, MState) ->
     case wm_parent:get_current(MState#mstate.pstack) of
         NodeName ->
-            Nodes = wm_topology:get_neighbours(sort_by_weight),
-            {ok, MST_ID} = wm_factory:new(mst, [], Nodes),
+            Addresses = wm_topology:get_my_neighbour_addresses(),
+            {ok, MST_ID} = wm_factory:new(mst, [], Addresses),
             MState#mstate{mst_id = MST_ID};
         _ ->
             MState
@@ -614,17 +614,16 @@ handle_maint_state(maint, NodeAddr, #mstate{}) ->
     case wm_conf:select_node(NodeAddr) of
         {ok, Node} ->
             NodeId = wm_entity:get(id, Node),
-            case wm_topology:is_direct_child(NodeId) of
+            case wm_topology:is_my_direct_child(NodeId) of
                 true ->
                     BootInfo = get_child_boot_info(NodeAddr),
                     ?LOG_DEBUG("Child boot info: ~p", [BootInfo]),
                     wm_api:cast_self({event, new_boot_info, BootInfo}, [NodeAddr]);
                 false ->
-                    ok
+                    ?LOG_DEBUG("Node ~p is not a direct child, no new boot info for it", [NodeId])
             end;
         {error, _} ->
-            ?LOG_ERROR("Cannot handle maint state: node not known: ~p", [NodeAddr]),
-            ok
+            ?LOG_ERROR("Cannot handle maint state: node not known: ~p", [NodeAddr])
     end;
 handle_maint_state(_, _, _) ->
     ok.

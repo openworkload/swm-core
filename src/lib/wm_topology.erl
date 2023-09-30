@@ -4,12 +4,13 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([schedule_latency_update/1, get_children/0, get_children_nodes/1, get_neighbours/1, get_neighbour_addresses/1,
+-export([schedule_latency_update/1, get_children/0, get_children_nodes/1, get_neighbour_nodes/0, get_my_neighbour_addresses/0,
          get_latency/2, get_min_latency_to/1, get_tree/1, get_subdiv/1, get_subdiv/0, on_path/2, get_tree_nodes/1,
-         reload/0, is_direct_child/1]).
+         reload/0, is_my_direct_child/1]).
 
 -include("wm_log.hrl").
 -include("wm_entity.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -record(mstate,
         {rh :: map(),            %% Resource Hierarchy: {{DevisionAtom, DevisionId} => Resouce sub hierarchy}
@@ -34,9 +35,9 @@ start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 %% @doc Returns true if node is direct child of self node
--spec is_direct_child(string()) -> true | false.
-is_direct_child(NodeId) ->
-    wm_utils:protected_call(?MODULE, {is_direct_child, NodeId}, false).
+-spec is_my_direct_child(string()) -> true | false.
+is_my_direct_child(NodeId) ->
+    wm_utils:protected_call(?MODULE, {is_my_direct_child, NodeId}, false).
 
 %% @doc Initiate latency update to the specified node
 -spec schedule_latency_update(tuple()) -> ok.
@@ -44,9 +45,9 @@ schedule_latency_update(Node) ->
     gen_server:cast(?MODULE, {update_latency, Node}).
 
 %% @doc Get all neightbour records
--spec get_neighbours(atom()) -> [{atom(), number()}].
-get_neighbours(SortBy) ->
-    wm_utils:protected_call(?MODULE, {get_neighbours, SortBy}, []).
+-spec get_neighbour_nodes() -> [{atom(), number()}].
+get_neighbour_nodes() ->
+    wm_utils:protected_call(?MODULE, get_neighbour_nodes, []).
 
 %% @doc Get all children records of my node
 -spec get_children() -> [{atom(), number()}].
@@ -59,9 +60,9 @@ get_children_nodes(NodeId) ->
     wm_utils:protected_call(?MODULE, {get_children_nodes, NodeId}, []).
 
 %% @doc Get neightbour nodenames
--spec get_neighbour_addresses(atom()) -> list().
-get_neighbour_addresses(SortBy) ->
-    wm_utils:protected_call(?MODULE, {get_neightbour_addresses, SortBy}, []).
+-spec get_my_neighbour_addresses() -> list().
+get_my_neighbour_addresses() ->
+    wm_utils:protected_call(?MODULE, get_my_neighbour_addresses, []).
 
 %% @doc Get latency that are calculated between two nodes
 -spec get_latency(atom(), atom()) -> pos_integer().
@@ -141,27 +142,9 @@ handle_call({get_path, FromNodeId, ToNodeId}, _, #mstate{rh = RH} = MState) ->
                 {ok, hd(List)}
         end,
     {reply, NextNodeId, MState};
-handle_call({is_direct_child, NodeId}, _, #mstate{} = MState) ->
-    Children = get_my_children([cluster, partition, node], MState),
-    F = fun ({node, Id}) ->
-                NodeId == Id;
-            ({partition, Id}) ->
-                case wm_conf:select(partition, {id, Id}) of
-                    {ok, Part} ->
-                        MgrFullName = wm_entity:get(manager, Part),
-                        case wm_conf:select_node(MgrFullName) of
-                            {ok, Node} ->
-                                NodeId == wm_entity:get(id, Node);
-                            _ ->
-                                false
-                        end;
-                    _ ->
-                        false
-                end;
-            (_) ->
-                false
-        end,
-    Result = lists:any(F, Children),
+handle_call({is_my_direct_child, NodeId}, _, #mstate{rh=RH} = MState) ->
+    F = fun (#node{id=Id}) when Id == NodeId -> true; (_) -> false end,
+    Result = lists:any(F, do_get_children_nodes(NodeId, RH, true)),
     {reply, Result, MState};
 handle_call({get_tree_nodes, WithTemplates}, _, #mstate{} = MState) ->
     {reply, do_get_tree_nodes(WithTemplates, MState), MState};
@@ -187,14 +170,16 @@ handle_call({get_min_latency_to, NodeNames}, _, #mstate{} = MState) ->
     {reply, do_get_min_latency(SelfNode, NodeNames, {}, MState), MState};
 handle_call({get_latency, SrcNode, DstNode}, _, #mstate{} = MState) ->
     {reply, do_get_latency(SrcNode, DstNode, MState), MState};
-handle_call({get_neighbours, SortBy}, _, #mstate{rh = RH} = MState) ->
-    {reply, get_my_neighbours([cluster, partition, node], SortBy, RH), MState};
+handle_call(get_my_neighbour_addresses, _, #mstate{rh = RH} = MState) ->
+    Nodes = do_get_children_nodes(wm_self:get_node_id(), RH, false),
+    Addresses = [wm_util:get_address(Node) || Node <- Nodes],
+    {reply, Addresses, MState};
+handle_call(get_my_neighbour_nodes, _, #mstate{rh = RH} = MState) ->
+    {reply, do_get_children_nodes(wm_self:get_node_id(), RH, false), MState};
 handle_call(get_children, _, #mstate{} = MState) ->
     {reply, get_my_children([cluster, partition, node], MState), MState};
 handle_call({get_children_nodes, NodeId}, _, #mstate{rh = RH} = MState) ->
-    {reply, do_get_children_nodes(NodeId, RH), MState};
-handle_call({get_neightbour_addresses, SortBy}, _, #mstate{} = MState) ->
-    {reply, do_get_neighbours_addresses(SortBy, MState), MState};
+    {reply, do_get_children_nodes(NodeId, RH, true), MState};
 handle_call(construct_data_types, _, #mstate{} = MState) ->
     ?LOG_INFO("Construct topology"),
     MState1 = set_management_role(MState),
@@ -452,28 +437,11 @@ add_resources([R | T], Map) ->
 append_id_to_binary(ID, Binary) ->
     <<Binary/binary, ID:(?BINARY_ID_BITS)/unsigned-integer>>.
 
--spec do_get_neighbours_addresses(atom(), #mstate{}) -> [node_address()].
-do_get_neighbours_addresses(SortBy, #mstate{rh = RH}) ->
-    %TODO sort the neightbours
-    Neightbours = get_my_neighbours([cluster, partition, node], SortBy, RH),
-    F = fun({EntityType, ID}) ->
-           {ok, Entity} = wm_conf:select(EntityType, {id, ID}),
-           case element(1, Entity) of
-               node ->
-                   wm_utils:get_address(Entity);
-               X when X =:= cluster; X =:= partition; X =:= grid ->
-                   wm_utils:get_address(
-                       wm_entity:get(manager, Entity))
-           end
-        end,
-    [F(X) || X <- Neightbours].
-
-get_my_neighbours(Filters, SortBy, RH) when is_list(Filters) ->
-    %TODO sort the neightbours
-    F = fun(Filter, Acc) -> [get_my_neighbours(Filter, SortBy, RH) | Acc] end,
+get_my_neightbour_addresses(Filters, RH) when is_list(Filters) ->
+    F = fun(Filter, Acc) -> [get_my_neightbour_addresses(Filter, RH) | Acc] end,
     lists:flatten(
         lists:foldl(F, [], Filters));
-get_my_neighbours(Filter, _, RH) ->
+get_my_neightbour_addresses(Filter, RH) ->
     case RH of
         undefined -> %FIXME do not check if undefined (should always be defined)
             ?LOG_DEBUG("Could not get my neighbours"),
@@ -558,7 +526,7 @@ do_make_nl(Entity, #mstate{rh = RH, mrole = Role} = MState)
                 A
         end,
     {NL, M} =
-        case get_my_neighbours(Entity, unsorted, RH) of
+        case get_my_neightbour_addresses(Entity, RH) of
             [] ->
                 ?LOG_DEBUG("No neighbours found"),
                 {<<>>, maps:new()};
@@ -578,7 +546,7 @@ do_make_nl(compute, #mstate{rh = RH, mrole = Role} = MState) when Role =/= none 
                 A
         end,
     {NL, M} =
-        case get_my_neighbours(node, unsorted, RH) of
+        case get_my_neightbour_addresses(node, RH) of
             [] ->
                 ?LOG_DEBUG("No neighbours has found"),
                 <<>>;
@@ -909,12 +877,12 @@ get_parent_id(NodeId) ->
             end
     end.
 
--spec do_get_children_nodes(node_id(), map()) -> [#node{}].
-do_get_children_nodes(NodeId, RH) ->
-    SubRH = get_node_rh(NodeId, RH, true),
+-spec do_get_children_nodes(node_id(), map(), boolean()) -> [#node{}].
+do_get_children_nodes(NodeId, RH, ChildrenOnly) ->
+    SubRH = get_node_rh(NodeId, RH, ChildrenOnly),
     F = fun ({node, EntityId}, _, Nodes) ->
                 case wm_conf:select(node, {id, EntityId}) of
-                    {ok, #node{is_template = false} = Node} ->
+                    {ok, #node{is_template = false, id = Id} = Node} when Id =/= NodeId ->
                         [Node | Nodes];
                     _ ->
                         Nodes
@@ -927,7 +895,7 @@ do_get_children_nodes(NodeId, RH) ->
                         case wm_utils:get_division_manager(DivisionType, Division, false) of
                             {ok, #node{id = NodeId}} ->
                                 SubSubRH = maps:put({DivisionType, DivisionId}, EntityRH, maps:new()),
-                                do_get_children_nodes(NodeId, SubSubRH) ++ Nodes;
+                                do_get_children_nodes(NodeId, SubSubRH, ChildrenOnly) ++ Nodes;
                             {ok, Node} ->
                                 [Node | Nodes];
                             _ ->
@@ -1149,7 +1117,7 @@ node_children_rh_test() ->
 -spec children_nodes_test() -> ok.
 children_nodes_test() ->
     RH = prepare_test_rh1(),
-    Result = do_get_children_nodes("p211_n0", RH),
+    Result = do_get_children_nodes("p211_n0", RH, true),
     ?assertEqual(4, length(Result)),
     ?assertMatch(#node{id = "p2111_n0"}, lists:nth(1, Result)),
     ?assertMatch(#node{id = "p211_n3"}, lists:nth(2, Result)),
@@ -1182,8 +1150,9 @@ search_path_in_rh_test() ->
 -spec children_duplicate_managers_test() -> ok.
 children_duplicate_managers_test() ->
     RH = prepare_test_rh2(),
-    Result = do_get_children_nodes("node-skyport", RH),
-    ?assertEqual(2, length(Result)),
+    Result = do_get_children_nodes("node-skyport", RH, true),
+    ?assertEqual(1, length(Result)),
+    ?assertMatch(#node{id = "compute-node-1"}, lists:nth(1, Result)),
     finalize().
 
 -endif.

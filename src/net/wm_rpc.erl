@@ -137,7 +137,7 @@ get_next_destination(FinalAddr = {_, _}) ->
         false ->
             ?LOG_DEBUG("Address is not mine: ~p", [FinalAddr]),
             MyAddr = wm_conf:get_my_relative_address(FinalAddr),
-            Neighbours = wm_topology:get_neighbours(nosort),
+            Neighbours = wm_topology:get_my_neighbour_addresses(),
             case lists:any(fun(X) -> X =:= FinalAddr end, Neighbours) of
                 true ->
                     FinalAddr;

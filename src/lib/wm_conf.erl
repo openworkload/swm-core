@@ -174,7 +174,7 @@ get_my_relative_address(DestAddr = {_, _}) ->
     case do_select_node(DestAddr) of
         {ok, Node} ->
             NodeId = wm_entity:get(id, Node),
-            case wm_topology:is_direct_child(NodeId) of
+            case wm_topology:is_my_direct_child(NodeId) of
                 true ->
                     get_my_relative_direct_address(Node);
                 false ->
@@ -337,13 +337,13 @@ handle_call({set, Records}, _From, MState) ->
 
 handle_cast({pull_config, Node}, MState) when MState#mstate.sync == false ->
     NewSyncId = wm_utils:uuid(v4),
-    N = ?MODULE:g(sync_timeout, {?DEFAULT_PULL_TIMEOUT, integer}),
-    wm_utils:wake_up_after(N, {sync_timeout, NewSyncId}),
+    Timeout = ?MODULE:g(sync_timeout, {?DEFAULT_PULL_TIMEOUT, integer}),
+    wm_utils:wake_up_after(Timeout, {sync_timeout, NewSyncId}),
     Hashes = wm_db:get_hashes(schema),
     ?LOG_DEBUG("Pull hashes: ~p from ~p", [Hashes, Node]),
     case get_my_relative_address(Node) of
         {error, not_found} ->
-            ?LOG_DEBUG("Self address not known => do not pull config for now"),
+            ?LOG_DEBUG("Self address unknown => do not pull config for now"),
             {noreply, MState};
         MyAddr ->
             wm_api:cast_self({sync_schema_request, Hashes, MyAddr}, [Node]),
@@ -565,7 +565,7 @@ do_get_my_address() ->
                 ?LOG_DEBUG("Could not get my node => look at boot node"),
                 case wm_db:get_one(node, name, "boot_node") of
                     [] ->
-                        ?LOG_DEBUG("Could not get any nodes => my address is not known"),
+                        ?LOG_DEBUG("Could not get any nodes => my address is unknown"),
                         {error, not_found};
                     [BootNode] ->
                         NodeHost = wm_entity:get(host, BootNode),
