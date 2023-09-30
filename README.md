@@ -1,3 +1,9 @@
+<p align="center">
+    <a href="https://github.com/openworkload/swm-core/actions/workflows/erlang.yml" alt="Erlang latest CI tests result">
+        <img src="https://github.com/openworkload/swm-core/actions/workflows/erlang.yml/badge.svg?event=push" />
+    </a>
+</p>
+
 Sky Port
 ========
 
