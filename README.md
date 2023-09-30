@@ -2,11 +2,11 @@
     <a href="https://www.erlang.org/" alt="Supported Erlang version">
         <img src="https://img.shields.io/badge/Erlang-24-green.svg" />
     </a>
-    <a href="https://github.com/openworkload/swm-core/actions/workflows/erlang.yml" alt="Erlang latest CI tests result">
-        <img src="https://github.com/openworkload/swm-core/actions/workflows/erlang.yml/badge.svg?event=push" />
-    </a>
     <a href="https://github.com/openworkload/swm-core/blob/master/LICENSE" alt="License">
         <img src="https://img.shields.io/github/license/openworkload/swm-core" />
+    </a>
+    <a href="https://github.com/openworkload/swm-core/actions/workflows/erlang.yml" alt="Erlang latest CI tests result">
+        <img src="https://github.com/openworkload/swm-core/actions/workflows/erlang.yml/badge.svg?event=push" />
     </a>
 </p>
 
@@ -16,7 +16,7 @@ Sky Port
 
 ## Introduction
 
-[This](https://github.com/openworkload/swm-core) is a core component of the Sky Port (SP) project. SP is an universal bus between user software and compute resources. In other words this is a transportation layer between workload producers and compute resource providers. Sky Port makes it easy to connect user software to different cloud resources.
+[This](https://github.com/openworkload/swm-core) is a core component of the Sky Port project. It is an universal bus between user software and compute resources. In other words this is a transportation layer between workload producers and compute resource providers. Sky Port makes it easy to connect user software to different cloud resources.
 
 
 ## Design
@@ -29,7 +29,7 @@ Terminology:
 * Gate: a plugin for swm that is in charge of all communications with one particular remote site.
 
 
-SP consists of 3 main components:
+Sky Port consists of 3 main components:
    * [Core](https://github.com/openworkload/swm-core) (this repository).
    * Gate. See the [default cloud gate](https://github.com/openworkload/swm-cloud-gate) as a gate example.
    * Terminal. See the [JupyterLab terminal](https://github.com/openworkload/swm-jupyter-term) as a terminal example.
