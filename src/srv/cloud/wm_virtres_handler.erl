@@ -9,9 +9,9 @@
 -include("../../lib/wm_log.hrl").
 
 -define(DEFAULT_CLOUD_NODE_API_PORT, 10001).
--define(REDINESS_CHECK_PERIOD, 10000).
--define(SSH_CHECK_PERIOD, 10000).
--define(PARTITION_FETCH_PERIOD, 10000).
+-define(REDINESS_CHECK_PERIOD, 30000).
+-define(SSH_CHECK_PERIOD, 30000).
+-define(PARTITION_FETCH_PERIOD, 30000).
 
 %% ============================================================================
 %% Module API

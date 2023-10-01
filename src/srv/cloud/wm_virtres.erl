@@ -279,9 +279,9 @@ creating(ssh_connected, #mstate{job_id = JobId, ssh_client_pid = TunnelClientPid
                    rediness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
                    forwarded_ports = start_port_forwarding(TunnelClientPid, JobId)}};
 creating({error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
-    ?LOG_DEBUG("Partition creation failed: ~p, job id: ~p", [Error, JobId]),
-    wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
-    handle_remote_failure(MState);
+    ?LOG_INFO("Partition creation failed: ~p, job id: ~p => try later", [Error, JobId]),
+    Timer = wm_virtres_handler:wait_for_partition_fetch(),
+    {next_state, creating, MState#mstate{part_check_timer = Timer}};
 creating({Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Timeout when creating partition for job ~p => check it later", [JobId]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
