@@ -29,7 +29,6 @@ connect(Args) ->
         end,
     NativeCert = filename:nativename(Cert),
     NativeKey = filename:nativename(Key),
-    ssl:start(),
     Port2 =
         case is_list(Port) of
             true ->
@@ -39,9 +38,10 @@ connect(Args) ->
                 Port
         end,
     To = io_lib:format("~p:~p", [Host, Port2]),
+    Opts = mk_opts(NativeCert, NativeKey),
     ?LOG_DEBUG("Connect to ~s", [To]),
     try
-        case ssl:connect(Host, Port2, mk_opts(NativeCert, NativeKey), Timeout) of
+        case ssl:connect(Host, Port2, Opts, Timeout) of
             {ok, Socket} ->
                 {ok, {IPv4, LocalPort}} = ssl:sockname(Socket),
                 {IP1, IP2, IP3, IP4} = IPv4,

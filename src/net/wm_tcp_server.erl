@@ -270,7 +270,9 @@ mk_opts(Cert, Key, CA) ->
      {keyfile, Key}].
 
 listen(Port, NodeCert, NodeKey, CA, MState) ->
-    case ssl:listen(Port, mk_opts(NodeCert, NodeKey, CA)) of
+    Opts = mk_opts(NodeCert, NodeKey, CA),
+    ?LOG_DEBUG("TCP server options: ~1000p", [Opts]),
+    case ssl:listen(Port, Opts) of
         {ok, ListenSocket} ->
             {ok, accept(MState#mstate{lsocket = ListenSocket})};
         {error, Reason} ->
