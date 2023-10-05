@@ -4,6 +4,7 @@
 main([]) ->
   process_flag(trap_exit, true),
   add_paths(),
+  ok = ssl:start(),
   Pid = wm_shell:start_link([{parent, wmctl},
                              {printer, stdout}
                             ]),
@@ -12,6 +13,7 @@ main(Args) ->
   process_flag(trap_exit, true),
   add_paths(),
   ArgsDict = wm_args:normalize(Args),
+  ok = ssl:start(),
   case wm_args:fetch(command, unknown, ArgsDict) of
     "-h" ->
       usage();
@@ -27,6 +29,7 @@ main(Args) ->
 loop(Pid) ->
   receive
     {'EXIT', Pid, normal} ->
+      ssl:stop(),
       halt();
     {'EXIT', From, Reason} ->
       io:format("New message from ~p: ~p~n", [From, Reason]),

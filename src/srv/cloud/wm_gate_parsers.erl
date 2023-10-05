@@ -272,9 +272,7 @@ parse_images_test() ->
 parse_flavors_test() ->
     AccountId = "899cd1a8-5f9f-11eb-9812-878c21b6d2b9",
     RemoteId = "75c7a748-5ed4-11ee-b279-83ee40f8d3f7",
-    Remote = wm_entity:set([{id, RemoteId},
-                            {account_id, AccountId}],
-                            wm_entity:new(remote)),
+    Remote = wm_entity:set([{id, RemoteId}, {account_id, AccountId}], wm_entity:new(remote)),
     Input =
         <<"{\"flavors\":[",
           "{\"id\":\"f1\",\"name\":\"flavor1\",\"cpus\":"

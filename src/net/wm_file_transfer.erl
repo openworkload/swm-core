@@ -871,8 +871,7 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                              {St,
                               {error,
                                File,
-                               io_lib:format("Checksum mismatch, source file ~p (~p) "
-                                             "and destination file ~p (~p)",
+                               io_lib:format("Checksum mismatch, source file ~p (~p) and destination file ~p (~p)",
                                              [SrcFile, SrcHash, DstFile, DstHash])}}
                      end]),
     %% Add opration to history
@@ -1178,18 +1177,10 @@ with_ssh_connection(Node, Fun) ->
                     Result;
                 {error, Reason} ->
                     ok = ssh:close(ConnectionRef),
-                    {error,
-                     Node,
-                     io_lib:format("Connection via SSH to remote node ~p "
-                                   "failed due ~p",
-                                   [Node, Reason])}
+                    {error, Node, io_lib:format("Connection via SSH to remote node ~p failed due ~p", [Node, Reason])}
             end;
         {error, Reason} ->
-            {error,
-             Node,
-             io_lib:format("Connection via SSH to remote node ~p "
-                           "failed due ~p",
-                           [Node, Reason])}
+            {error, Node, io_lib:format("Connection via SSH to remote node ~p failed due ~p", [Node, Reason])}
     end.
 
 -spec preserve_connectivity_state(node(), fun((...) -> term())) -> {error, node(), nonempty_string()} | term().

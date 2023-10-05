@@ -199,7 +199,7 @@ get_default_flavor_name(Remote) ->
 
 -spec create_relocation_entities(job_id(), #partition{}, #node{}) -> {ok, node_id()} | {error, string()}.
 create_relocation_entities(JobId, Partition, TplNode) ->
-    ?LOG_INFO("Remote partition [job ~p]: ~p", [JobId, Partition]),
+    ?LOG_INFO("Remote partition [job ~p]: ~10000p", [JobId, Partition]),
     Addresses = wm_entity:get(addresses, Partition),
     NodeIps = maps:get(compute_instances_ips, Addresses, []),
     PubPartMgrIp = maps:get(master_public_ip, Addresses, ""),
@@ -216,10 +216,10 @@ create_relocation_entities(JobId, Partition, TplNode) ->
             ok = update_division_entities(JobId, Partition, PartMgrNode, ComputeNodeIds),
             NewNodes = [PartMgrNode | ComputeNodes],
             wm_conf:update(NewNodes),
-            ?LOG_INFO("Remote nodes [job ~p]: ~p", [JobId, NewNodes]),
+            ?LOG_INFO("Remote nodes [job ~p]: ~10000p", [JobId, NewNodes]),
             PartMgrNodeId = wm_entity:get(id, PartMgrNode),
             JobRss = get_allocated_resources(PartID, [PartMgrNodeId | ComputeNodeIds]),
-            ?LOG_DEBUG("New job resources [job ~p]: ~p", [JobId, JobRss]),
+            ?LOG_DEBUG("New job resources [job ~p]: ~10000p", [JobId, JobRss]),
             wm_virtres_handler:update_job([{nodes, ComputeNodeIds}, {resources, JobRss}], JobId),
             wm_topology:reload(),
             {ok, PartMgrNodeId}

@@ -173,27 +173,33 @@ get_relative_address(_To = #node{gateway = Gateway, api_port = Port}, _) ->
 get_my_relative_address(DestAddr = {_, _}) ->
     case do_select_node(DestAddr) of
         {ok, Node} ->
-            NodeId = wm_entity:get(id, Node),
-            case wm_topology:is_my_direct_child(NodeId) of
+            case wm_utils:is_cloud_node(Node) of
                 true ->
-                    get_my_relative_direct_address(Node);
+                    % On cloud nodes swm connects to its parent directly via a tunnel:
+                    {"localhost", wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer})};
                 false ->
-                    case select_my_node() of
-                        {ok, MyNode} ->
-                            MyNodeId = wm_entity:get(id, MyNode),
-                            case wm_topology:on_path(MyNodeId, NodeId) of
-                                {ok, NextNodeId} ->
-                                    case select_one({node, id}, NextNodeId) of
-                                        [NextNode] ->
-                                            get_my_relative_direct_address(NextNode);
+                    NodeId = wm_entity:get(id, Node),
+                    case wm_topology:is_my_direct_child(NodeId) of
+                        true ->
+                            get_my_relative_direct_address(Node);
+                        false ->
+                            case select_my_node() of
+                                {ok, MyNode} ->
+                                    MyNodeId = wm_entity:get(id, MyNode),
+                                    case wm_topology:on_path(MyNodeId, NodeId) of
+                                        {ok, NextNodeId} ->
+                                            case select_one({node, id}, NextNodeId) of
+                                                [NextNode] ->
+                                                    get_my_relative_direct_address(NextNode);
+                                                _ ->
+                                                    do_get_my_address()
+                                            end;
                                         _ ->
                                             do_get_my_address()
                                     end;
-                                _ ->
+                                {error, not_found} ->
                                     do_get_my_address()
-                            end;
-                        {error, not_found} ->
-                            do_get_my_address()
+                            end
                     end
             end;
         _ ->

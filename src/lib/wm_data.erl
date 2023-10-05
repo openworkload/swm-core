@@ -78,8 +78,9 @@ handle_cast(Msg, #mstate{} = MState) ->
 handle_info(collect, #mstate{} = MState) ->
     MState2 = do_collect(MState),
     gen_server:cast(?MODULE, transfer), % TODO: use scheduler for the transferring
-    N = wm_conf:g(collect_data_interval, {?DEFAULT_COLLECT, integer}),
-    wm_utils:wake_up_after(N, collect),
+    %N = wm_conf:g(collect_data_interval, {?DEFAULT_COLLECT, integer}),
+    %wm_utils:wake_up_after(N, collect),
+    %TODO: enable data collection when we have useful data to collect
     {noreply, MState2};
 handle_info(Msg, #mstate{} = MState) ->
     ?LOG_DEBUG("Received info message: ~p", [Msg]),

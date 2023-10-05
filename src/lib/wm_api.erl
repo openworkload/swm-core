@@ -87,8 +87,7 @@ handle_cast({recv_event, Mod, Event}, #mstate{} = MState) ->
     do_send_event(Mod, Event),
     {noreply, MState};
 handle_cast({send, _, _, []}, #mstate{} = MState) ->
-    ?LOG_DEBUG("Sent a self-cast to empty node list "
-               "(just ignore)"),
+    ?LOG_DEBUG("Sent a self-cast to empty node list (just ignore)"),
     {noreply, MState};
 handle_cast({send, Mod, Msg, Nodes}, #mstate{} = MState) ->
     NodesStr = io_lib:format("~p", [Nodes]),

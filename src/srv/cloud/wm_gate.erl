@@ -220,7 +220,7 @@ wait_response_boby(ConnPid, StreamRef) ->
         {response, nofin, 200, Headers} ->
             case gun:await_body(ConnPid, StreamRef) of
                 {ok, Body} ->
-                    ?LOG_DEBUG("Gate response (200) body: ~p, headers: ~p", [Body, Headers]),
+                    ?LOG_DEBUG("Gate response (200) body: ~10000p, headers: ~10000p", [Body, Headers]),
                     {ok, Body};
                 ResponseError ->
                     ?LOG_WARN("Gate response (200) error: ~p, headers: ~p", [ResponseError, Headers]),

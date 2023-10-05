@@ -114,21 +114,13 @@ get_connection_args(Node) when is_tuple(Node) ->
     ConnArgs3 = maps:put(cert, Cert, ConnArgs2),
     maps:put(key, Key, ConnArgs3).
 
+-spec is_local_address(node_address()) -> boolean().
+is_local_address({"localhost", _}) ->
+    true;
+is_local_address(_) ->
+    false.
+
 -spec get_next_destination(node_address()) -> node_address() | {error, not_found}.
-get_next_destination(FinalAddr = {"localhost", Port}) ->
-    case wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer}) of
-        Port ->
-            FinalAddr;
-        _ ->
-            SelfNode = wm_self:get_node(),
-            case wm_entity:get(api_port, SelfNode) of
-                Port ->
-                    FinalAddr;
-                _ ->
-                    ?LOG_ERROR("Next destination address is not recognized: ~p", [FinalAddr]),
-                    {error, not_found}
-            end
-    end;
 get_next_destination(FinalAddr = {_, _}) ->
     ?LOG_DEBUG("Find next node when forwarding to ~p", [FinalAddr]),
     case wm_conf:is_my_address(FinalAddr) of
@@ -152,28 +144,33 @@ get_next_destination(FinalAddr = {_, _}) ->
                             % source node, then we just send the message along the path
                             % (to the node next in the path toward the destination node).
                             % Otherwise we send the message up to the parent.
-                            case wm_conf:select_node(MyAddr) of
-                                {ok, MyNode} ->
-                                    MyNodeId = wm_entity:get(id, MyNode),
-                                    case wm_conf:select_node(FinalAddr) of
-                                        {ok, FinalNode} ->
-                                            get_next_relative_destination(FinalNode, MyNodeId);
-                                        {error, found_multiple, Nodes} ->
-                                            % This scenario happens when partitions work on separate networks
-                                            % with the same network address range. In this case we have more
-                                            % than one compute nodes on different networks with same address.
-                                            GetMyNode = fun(X) -> wm_entity:get(id, X) == MyNodeId end,
-                                            case lists:filter(GetMyNode, Nodes) of
-                                                [MyNode] when is_tuple(MyNode) ->
-                                                    wm_conf:get_my_relative_address(FinalAddr);
+                            case is_local_address(MyAddr) of
+                                true ->
+                                    FinalAddr;
+                                false ->
+                                    case wm_conf:select_node(MyAddr) of
+                                        {ok, MyNode} ->
+                                            MyNodeId = wm_entity:get(id, MyNode),
+                                            case wm_conf:select_node(FinalAddr) of
+                                                {ok, FinalNode} ->
+                                                    get_next_relative_destination(FinalNode, MyNodeId);
+                                                {error, found_multiple, Nodes} ->
+                                                    % This scenario happens when partitions work on separate networks
+                                                    % with the same network address range. In this case we have more
+                                                    % than one compute nodes on different networks with same address.
+                                                    GetMyNode = fun(X) -> wm_entity:get(id, X) == MyNodeId end,
+                                                    case lists:filter(GetMyNode, Nodes) of
+                                                        [MyNode] when is_tuple(MyNode) ->
+                                                            wm_conf:get_my_relative_address(FinalAddr);
+                                                        _ ->
+                                                            wm_core:get_parent()
+                                                    end;
                                                 _ ->
                                                     wm_core:get_parent()
                                             end;
-                                        _ ->
+                                        {error, not_found} ->
                                             wm_core:get_parent()
-                                    end;
-                                _ ->
-                                    wm_core:get_parent()
+                                    end
                             end
                     end
             end

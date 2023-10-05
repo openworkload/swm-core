@@ -8,7 +8,6 @@
          terminate_msg/2, match_floats/3, read_file/2, read_stdin/0, is_manager/1, has_role/2, get_behaviour/1, cast/2,
          await/3, await/2]).
 -export([do/2, itr/2]).
--export([host_port_uri/1, path_query_uri/1]).
 -export([named_substitution/2]).
 -export([priv/0, priv/1]).
 -export([to_float/1, to_string/1, to_binary/1, to_integer/1]).
@@ -18,6 +17,7 @@
 -export([update_map/3]).
 -export([find_property_in_resource/3]).
 -export([get_division_manager/3]).
+-export([is_cloud_node/1]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -417,20 +417,6 @@ itr(N, Fun) ->
             itr(N - 1, Fun)
     end.
 
--spec host_port_uri(nonempty_string() | binary()) -> {string(), non_neg_integer()}.
-host_port_uri(URI) when is_binary(URI) ->
-    host_port_uri(binary_to_list(URI));
-host_port_uri(URI) when is_list(URI) ->
-    {ok, {_Scheme, _UserInfo, Host, Port, _Path, _Query}} = http_uri:parse(URI),
-    {Host, Port}.
-
--spec path_query_uri(nonempty_string() | binary()) -> {string(), string()}.
-path_query_uri(URI) when is_binary(URI) ->
-    path_query_uri(binary_to_list(URI));
-path_query_uri(URI) when is_list(URI) ->
-    {ok, {_Scheme, _UserInfo, _Host, _Port, Path, Query}} = http_uri:parse(URI),
-    {Path, Query}.
-
 -spec named_substitution(string(), #{}) -> binary().
 named_substitution(Str, Parameters) ->
     Parts = re:split(Str, "{{ (\\w+) }}", [{return, binary}, group, trim]),
@@ -711,14 +697,12 @@ get_node_cert_paths(Spool) ->
 
 -spec update_map(map(), fun(), map()) -> map().
 update_map(Map, F, NewMap) ->
-    maps:fold(fun(K, V, Acc) -> maps:put(F(K), update_map(V, F, #{}), Acc) end, NewMap, Map);
-update_map(#{}, _, NewMap) ->
-    NewMap.
+    maps:fold(fun(K, V, Acc) -> maps:put(F(K), update_map(V, F, #{}), Acc) end, NewMap, Map).
 
 -spec find_property_in_resource(string(), atom(), [#resource{}]) -> {ok, term()} | {error, not_found}.
 find_property_in_resource(_, _, []) ->
     {error, not_found};
-find_property_in_resource(ResourceName, PropertyName, [#resource{name = ResourceName, properties = Properties} | T]) ->
+find_property_in_resource(ResourceName, PropertyName, [#resource{name = ResourceName, properties = Properties} | _]) ->
     case proplists:get_value(PropertyName, Properties, not_found) of
         not_found ->
             {error, not_found};
@@ -728,8 +712,8 @@ find_property_in_resource(ResourceName, PropertyName, [#resource{name = Resource
 find_property_in_resource(ResourceName, PropertyName, [_ | T]) ->
     find_property_in_resource(ResourceName, PropertyName, T).
 
--spec get_division_manager(atom(), tuple(), bool()) -> {ok, tuple()} | {ok, self} | {error, not_found}.
-get_division_manager(node, Node, IndicateSelf) ->
+-spec get_division_manager(atom(), tuple(), boolean()) -> {ok, tuple()} | {ok, self} | {error, not_found}.
+get_division_manager(node, Node, _) ->
     {ok, Node};
 get_division_manager(Type, Entity, IndicateSelf) ->
     NodeName = wm_entity:get(manager, Entity),
@@ -750,4 +734,18 @@ get_division_manager(Type, Entity, IndicateSelf) ->
             end;
         _ ->
             {error, not_found}
+    end.
+
+-spec is_cloud_node(#node{}) -> boolean().
+is_cloud_node(#node{remote_id = RemoteId}) ->
+    case wm_conf:select(remote, {id, RemoteId}) of
+        {ok, #remote{kind = Kind}} ->
+            lists:any(fun (X) when X == Kind ->
+                              true;
+                          (_) ->
+                              false
+                      end,
+                      [openstack, azure, aws, oci, gcp, forge]);
+        {error, not_found} ->
+            false
     end.

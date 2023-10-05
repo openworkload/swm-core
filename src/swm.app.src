@@ -11,6 +11,7 @@
     crypto,
     public_key,
     ssh,
+    ssl,
     mnesia,
     json_rec,
     parse_trans,

@@ -19,13 +19,7 @@
 
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
-    case ssl:start() of
-        ok ->
-            gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []);
-        {error, Reason} ->
-            ?LOG_ERROR("Cannot start ssl: ~p", [Reason]),
-            {stop, Reason}
-    end.
+    gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 reply(Data, Socket) ->
     ?LOG_DEBUG("Reply ~P", [Data, 5]),
@@ -116,8 +110,7 @@ handle_info(Msg, MState) ->
     {noreply, MState}.
 
 terminate(Reason, _) ->
-    wm_utils:terminate_msg(?MODULE, Reason),
-    ssl:stop().
+    wm_utils:terminate_msg(?MODULE, Reason).
 
 code_change(_OldVersion, Library, _Extra) ->
     {ok, Library}.

@@ -811,7 +811,7 @@ get_names(local) ->
 get_names(local_bag) ->
     [subscriber, timetable, relocation];
 get_names(non_replicable) ->
-    [schema, subscriber, timetable, job];
+    [schema, subscriber, timetable, job, credential];
 get_names(with_ids) ->
     [malfunction,
      hook,
