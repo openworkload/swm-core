@@ -1,6 +1,11 @@
 #!/usr/bin/env escript
 %%! -smp enable
 
+%% To run:
+%%  export PATH=/opt/swm/0.2.0/erts-12.2/bin:$PATH
+%%  export SWM_LIB=/opt/swm/current/lib/swm-0.2.0+build.191.ref0586b0d/ebin
+%%  ./ping.erl localhost 1001
+
 main([Hostname, Port]) ->
     process_flag(trap_exit, true),
     add_paths(),
@@ -35,15 +40,15 @@ do_ping(Hostname, Port) ->
             io:format("Connection info: ~p:~p~n", [IP, ClientPort]),
             ssl:send(Socket, wm_utils:encode_to_binary({call, wm_api, recv, {wm_pinger, ping}})),
             case ssl:recv(Socket, 0) of
-              {ok, Data} ->
+                {ok, Data} ->
                    case binary_to_term(Data) of
-                     {pong, State} ->
-                       io:format("Pong: ~p~n", [State]);
-                     Other ->
-                       io:format("Unexpected ping data: ~p~n", [Other])
-                    end;
-              {error, Reason} ->
-                io:format("Receiving data error: ~p~n", [Reason])
+                       {pong, State} ->
+                           io:format("Pong: ~p~n", [State]);
+                       Other ->
+                           io:format("Unexpected ping data: ~p~n", [Other])
+                   end;
+                {error, Reason} ->
+                    io:format("Receiving data error: ~p~n", [Reason])
             end;
         {error, Error} ->
             io:format("Connection error: ~p~n", [Error])
@@ -56,21 +61,21 @@ usage() ->
 
 add_paths() ->
   LibDirs = case os:getenv("SWM_LIB", "./_build/default/lib/swm/ebin/") of
-              false ->
-                io:format("ERROR: SWM_LIB is undefined~n");
-              [] ->
-                io:format("ERROR: SWM_LIB environment variable is empty~n"),
-                [];
-              Dirs ->
-                string:tokens(Dirs, ":")
+                false ->
+                    io:format("ERROR: SWM_LIB is undefined~n");
+                [] ->
+                    io:format("ERROR: SWM_LIB environment variable is empty~n"),
+                    [];
+                Dirs ->
+                    string:tokens(Dirs, ":")
             end,
   F = fun(Dir) ->
-        case filelib:is_dir(Dir) of
-          false ->
-            io:format("ERROR: directory not found: '" ++ Dir ++ "'~n");
-          true ->
-            true = code:add_path(Dir)
-        end
+          case filelib:is_dir(Dir) of
+              false ->
+                  io:format("ERROR: directory not found: '" ++ Dir ++ "'~n");
+              true ->
+                  true = code:add_path(Dir)
+          end
       end,
   [F(X) || X <- lists:foldl(fun(X, Acc) -> filelib:wildcard(X) ++ Acc end, [], LibDirs)].
 
