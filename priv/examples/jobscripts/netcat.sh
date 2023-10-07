@@ -1,15 +1,19 @@
 #!/bin/sh
 
-#SWM name Sleep Job
+#SWM name Netcat
 #SWM relocatable
-#SWM account_id a02bd1ce-60cb-11e8-a356-172ec08db3e9
-#SWM comment This is a simple sleep example of a job script
+#SWM comment This is a simple netcat example of a job script
+#SWM account openstack
+#SWM flavor m1.medium
+#SWM ports 1234/tcp
+#SWM cloud-image ubuntu-22.04
+#SWM container-image subfuzion/netcat
+#SWM nodes 5
 
 echo "Hello from job $SWM_JOBID"
 date
 pwd
 
-sleep 120
-env
+timeout 360s netcat localhost 8888
 
 exit 0

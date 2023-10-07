@@ -260,6 +260,7 @@ do_partition_create(Remote, Creds, Spool, Options) ->
     ?LOG_DEBUG("Create partition key=~p, options: ~10000p", [KeyName, Options]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
+            ExtraNodesCount = maps:get(node_count, Options, 1) - 1,  % minus one becuase main node is always created
             Headers =
                 get_auth_headers(Creds)
                 ++ [{<<"partname">>, list_to_binary(maps:get(name, Options, ""))},
@@ -267,7 +268,7 @@ do_partition_create(Remote, Creds, Spool, Options) ->
                     {<<"imagename">>, list_to_binary(maps:get(image_name, Options, ""))},
                     {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
                     {<<"keyname">>, list_to_binary(KeyName)},
-                    {<<"count">>, integer_to_binary(maps:get(nodes_count, Options, 1))}],
+                    {<<"count">>, integer_to_binary(ExtraNodesCount)}],
             ?LOG_DEBUG("Partition creation HTTP headers: ~p", [Headers]),
             StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers),
             Result =

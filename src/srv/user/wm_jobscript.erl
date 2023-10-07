@@ -30,7 +30,7 @@ do_parse([Line | T], Job) ->
     Words =
         re:split(
             string:strip(Line), "\\s+", [{return, list}, {parts, 3}]),
-    ?LOG_DEBUG("Parse job script line '~s', Words=~p", [Line, Words]),
+    ?LOG_DEBUG("Parse job script line '~s': ~1000p", [Line, Words]),
     case length(Words) > 1 of
         true ->
             case hd(Words) of

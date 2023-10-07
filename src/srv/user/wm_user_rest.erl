@@ -23,7 +23,6 @@
 
 -spec init(map(), term()) -> {atom(), map(), map()}.
 init(Req, _Opts) ->
-    ?LOG_INFO("Load user manager HTTP handler"),
     {ok, json_handler(Req), #mstate{}}.
 
 %% ============================================================================
@@ -221,10 +220,14 @@ job_to_json(Job, FullJson) ->
     [binary_to_list(JobJson) | FullJson].
 
 -spec nodes_to_ips([#node{}]) -> [string()].
+nodes_to_ips([]) ->
+    [];
 nodes_to_ips(Nodes) ->
     {ok, SelfHostname} = inet:gethostname(),
     Hostnames = [wm_entity:get(host, Node) || Node <- Nodes],
-    lists:map(fun(Hostname) ->
+    lists:map(fun([]) ->
+                    <<>>;
+                 (Hostname) ->
                  HostnameToResolve =
                      case hd(string:split(Hostname, ".")) of
                          SelfHostname ->

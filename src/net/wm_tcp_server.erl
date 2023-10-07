@@ -187,7 +187,7 @@ loop({Server, ListenSocket, Module}) ->
                         {IP1, IP2, IP3, IP4} = IPv4,
                         {ok, [{protocol, ProtoVer}, {selected_cipher_suite, CipherSuite}]} =
                             ssl:connection_information(SslSocket, [protocol, selected_cipher_suite]),
-                        ?LOG_DEBUG("SSL handshake performed with peer: ~p.~p.~p.~p:~p; proto: ~p, cipher: ~w",
+                        ?LOG_DEBUG("SSL handshake performed with peer: ~p.~p.~p.~p:~p; proto: ~p, cipher: ~10000p",
                                    [IP1, IP2, IP3, IP4, Port, ProtoVer, CipherSuite]),
                         {ok, CertBin} = ssl:peercert(SslSocket),
                         Cert = public_key:pkix_decode_cert(CertBin, otp),
@@ -195,8 +195,7 @@ loop({Server, ListenSocket, Module}) ->
                         ?LOG_DEBUG("Peer certificate user id: ~p", [UserId]),
                         gen_server:cast(Server, {accepted, self()}),
                         T = wm_conf:g(conn_timeout, {?DEFAULT_TIMEOUT, integer}),
-                        %?LOG_DEBUG("Call ~p with message ~p",
-                        %[Module, {accept_conn, SslSocket}]),
+                        %?LOG_DEBUG("Call ~p with message ~p", [Module, {accept_conn, SslSocket}]),
                         ServerPid = self(),
                         case gen_server:call(Module, {accept_conn, ServerPid, SslSocket}, T) of
                             ok ->

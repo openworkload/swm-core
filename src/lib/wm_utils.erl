@@ -12,7 +12,7 @@
 -export([priv/0, priv/1]).
 -export([to_float/1, to_string/1, to_binary/1, to_integer/1]).
 -export([localtime/0, now_iso8601/1, timestamp/0, timestamp/1]).
--export([get_cloud_node_name/2, get_requested_nodes_number/1]).
+-export([get_partition_manager_name/1, get_cloud_node_name/2, get_requested_nodes_number/1]).
 -export([get_cert_partial_chain_fun/1, get_node_cert_paths/1]).
 -export([update_map/3]).
 -export([find_property_in_resource/3]).
@@ -654,6 +654,10 @@ await(Ref, Ms) ->
 -spec get_cloud_node_name(job_id(), integer()) -> string().
 get_cloud_node_name(JobId, Index) ->
     "swm-" ++ string:slice(JobId, 0, 8) ++ "-node" ++ integer_to_list(Index).
+
+-spec get_partition_manager_name(job_id()) -> string().
+get_partition_manager_name(JobId) ->
+    "swm-" ++ string:slice(JobId, 0, 8) ++ "-main".
 
 -spec get_requested_nodes_number(#job{}) -> integer().
 get_requested_nodes_number(Job) ->

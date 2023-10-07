@@ -79,7 +79,7 @@ start_uploading(PartMgrNodeID, JobId) ->
     WorkDir = wm_entity:get(workdir, Job),
     StdInFile = wm_entity:get(job_stdin, Job),
     InputFiles = wm_entity:get(input_files, Job),
-    JobScript = wm_entity:get(script, Job),
+    JobScript = wm_entity:get(script_content, Job),
     %TODO: transfer also container image
     Files = lists:filter(fun(X) -> X =/= [] end, [JobScript, StdInFile | InputFiles]),
     {ok, ToNode} = wm_conf:select(node, {id, PartMgrNodeID}),
@@ -205,25 +205,21 @@ create_relocation_entities(JobId, Partition, TplNode) ->
     PubPartMgrIp = maps:get(master_public_ip, Addresses, ""),
     PriPartMgrIp = maps:get(master_private_ip, Addresses, ""),
     PartID = wm_entity:get(id, Partition),
-    PartMgrName = get_partition_manager_name(JobId),
+    PartMgrName = wm_utils:get_partition_manager_name(JobId),
 
-    case ensure_nodes_cloned(PartID, PartMgrName, NodeIps, JobId, TplNode) of
-        [] ->
-            {error, "Could not clone nodes for job " ++ JobId};
-        ComputeNodes ->
-            ComputeNodeIds = [wm_entity:get(id, X) || X <- ComputeNodes],
-            PartMgrNode = create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode),
-            ok = update_division_entities(JobId, Partition, PartMgrNode, ComputeNodeIds),
-            NewNodes = [PartMgrNode | ComputeNodes],
-            wm_conf:update(NewNodes),
-            ?LOG_INFO("Remote nodes [job ~p]: ~10000p", [JobId, NewNodes]),
-            PartMgrNodeId = wm_entity:get(id, PartMgrNode),
-            JobRss = get_allocated_resources(PartID, [PartMgrNodeId | ComputeNodeIds]),
-            ?LOG_DEBUG("New job resources [job ~p]: ~10000p", [JobId, JobRss]),
-            wm_virtres_handler:update_job([{nodes, ComputeNodeIds}, {resources, JobRss}], JobId),
-            wm_topology:reload(),
-            {ok, PartMgrNodeId}
-    end.
+    ExtraNodes = clone_extra_nodes(PartID, PartMgrName, NodeIps, JobId, TplNode),
+    ComputeNodeIds = [wm_entity:get(id, X) || X <- ExtraNodes],
+    PartMgrNode = create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode),
+    ok = update_division_entities(JobId, Partition, PartMgrNode, ComputeNodeIds),
+    NewNodes = [PartMgrNode | ExtraNodes],
+    wm_conf:update(NewNodes),
+    ?LOG_INFO("Remote nodes [job ~p]: ~10000p", [JobId, NewNodes]),
+    PartMgrNodeId = wm_entity:get(id, PartMgrNode),
+    JobRss = get_allocated_resources(PartID, [PartMgrNodeId | ComputeNodeIds]),
+    ?LOG_DEBUG("New job resources [job ~p]: ~10000p", [JobId, JobRss]),
+    wm_virtres_handler:update_job([{nodes, ComputeNodeIds}, {resources, JobRss}], JobId),
+    wm_topology:reload(),
+    {ok, PartMgrNodeId}.
 
 -spec update_division_entities(job_id(), #partition{}, #node{}, [string()]) -> ok | {error, not_found}.
 update_division_entities(JobId, NewPartition, PartMgrNode, ComputeNodeIds) ->
@@ -271,43 +267,39 @@ get_allocated_resources(PartID, NodeIds) ->
                       wm_entity:new(resource)),
     [PartRes].
 
+-spec get_job_pin_resource(job_id()) -> #resource{}.
+get_job_pin_resource(JobId) ->
+    wm_entity:set([{name, "job"}, {count, 1}, {properties, [{id, JobId}]}], wm_entity:new(resource)).
+
 -spec create_partition_manager_node(partition_id(), job_id(), string(), string(), #node{}) -> #node{}.
 create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode) when TplNode =/= undefined ->
     RemoteID = wm_entity:get(remote_id, TplNode),
-    NodeName = get_partition_manager_name(JobId),
+    NodeName = wm_utils:get_partition_manager_name(JobId),
     ApiPort = get_cloud_node_api_port(),
     NodeID = wm_utils:uuid(v4),
+    Resources = [get_job_pin_resource(JobId) | wm_entity:get(resources, TplNode)],
     wm_entity:set([{id, NodeID},
                    {name, NodeName},
                    {host, PriPartMgrIp},
                    {gateway, PubPartMgrIp},
                    {api_port, ApiPort},
-                   {roles, [get_role_id("partition")]},
+                   {roles, [get_role_id("partition"), get_role_id("compute")]},
                    {remote_id, RemoteID},
-                   {resources, []},
+                   {resources, Resources},
                    {subdivision, partition},
                    {subdivision_id, PartID},
                    {parent, wm_utils:get_short_name(node())},
-                   {comment, "Cloud partition manager node for job " ++ JobId}],
+                   {comment, "Main cloud node for job " ++ JobId}],
                   wm_entity:new(node)).
 
--spec get_partition_manager_name(job_id()) -> string().
-get_partition_manager_name(JobId) ->
-    "swm-" ++ string:slice(JobId, 0, 8) ++ "-phead".
-
--spec ensure_nodes_cloned(partition_id(), string(), [string()], job_id(), #node{}) -> list().
-ensure_nodes_cloned(_, _, [], _, _) ->
-    ?LOG_ERROR("Could not clone nodes, because there are no IPs"),
+-spec clone_extra_nodes(partition_id(), string(), [string()], job_id(), #node{}) -> list().
+clone_extra_nodes(_, _, [], _, _) ->
+    ?LOG_DEBUG("No extra nodes to clone (no IPs retrieved)"),
     [];
-ensure_nodes_cloned(PartID, ParentName, NodeIps, JobId, TplNode) when TplNode =/= undefined ->
+clone_extra_nodes(PartID, ParentName, NodeIps, JobId, TplNode) when TplNode =/= undefined ->
     RemoteID = wm_entity:get(remote_id, TplNode),
     ApiPort = get_cloud_node_api_port(),
-    JobRes =
-        wm_entity:set([{name, "job"}, % special resource to pin node to job
-                       {count, 1},
-                       {properties, [{id, JobId}]}],
-                      wm_entity:new(resource)),
-    Rss = [JobRes | wm_entity:get(resources, TplNode)],
+    Resources = [get_job_pin_resource(JobId) | wm_entity:get(resources, TplNode)],
     NewNode =
         fun({SeqNum, IP}) ->
            wm_entity:set([{id, wm_utils:uuid(v4)},
@@ -318,9 +310,9 @@ ensure_nodes_cloned(PartID, ParentName, NodeIps, JobId, TplNode) when TplNode =/
                           {subdivision, partition},
                           {subdivision_id, PartID},
                           {remote_id, RemoteID},
-                          {resources, Rss},
+                          {resources, Resources},
                           {parent, ParentName},
-                          {comment, "Cloud compute node for job " ++ JobId}],
+                          {comment, "Cloud extra compute node for job " ++ JobId}],
                          wm_entity:new(node))
         end,
     ListOfPairs =

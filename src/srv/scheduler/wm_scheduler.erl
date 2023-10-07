@@ -46,7 +46,6 @@ handle_info({exit_status, ExitCode, _}, #mstate{} = MState) ->
 handle_info({output, BinOut, _}, #mstate{} = MState) ->
     ?LOG_DEBUG("Received new scheduling result (size=~p)", [byte_size(BinOut)]),
     Term = erlang:binary_to_term(BinOut),
-    ?LOG_DEBUG("New scheduling result: ~w", [Term]),
     MState2 = handle_new_timetable(Term, MState),
     {noreply, MState2};
 handle_info(job_start_time, #mstate{} = MState) ->
@@ -123,7 +122,7 @@ handle_event(wm_commit_done, {COMMIT_ID, _}, #mstate{} = MState) ->
 save_timetable([]) ->
     ok;
 save_timetable([R | RestTimeTable]) ->
-    ?LOG_DEBUG("Insert new timetable record: ~p", [R]),
+    ?LOG_DEBUG("Insert new timetable record: ~10000p", [R]),
     wm_conf:update(R),
     save_timetable(RestTimeTable).
 
@@ -277,7 +276,7 @@ get_grid_bin_entity(OldBin) ->
     end.
 
 handle_new_timetable(SchedulerResult, #mstate{} = MState) when is_tuple(SchedulerResult) ->
-    ?LOG_DEBUG("Received scheduling result: ~w", [SchedulerResult]),
+    ?LOG_DEBUG("Received scheduling result: ~10000p", [SchedulerResult]),
     case erlang:element(1, SchedulerResult) =:= scheduler_result of
         true ->
             case wm_entity:get(timetable, SchedulerResult) of
