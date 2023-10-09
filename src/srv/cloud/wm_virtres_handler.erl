@@ -79,9 +79,8 @@ start_uploading(PartMgrNodeID, JobId) ->
     WorkDir = wm_entity:get(workdir, Job),
     StdInFile = wm_entity:get(job_stdin, Job),
     InputFiles = wm_entity:get(input_files, Job),
-    JobScript = wm_entity:get(script_content, Job),
     %TODO: transfer also container image
-    Files = lists:filter(fun(X) -> X =/= [] end, [JobScript, StdInFile | InputFiles]),
+    Files = lists:filter(fun(X) -> X =/= [] end, [StdInFile | InputFiles]),
     {ok, ToNode} = wm_conf:select(node, {id, PartMgrNodeID}),
     {ok, MyNode} = wm_self:get_node(),
     {ToAddr, _} = wm_conf:get_relative_address(ToNode, MyNode),
@@ -217,7 +216,7 @@ create_relocation_entities(JobId, Partition, TplNode) ->
     PartMgrNodeId = wm_entity:get(id, PartMgrNode),
     JobRss = get_allocated_resources(PartID, [PartMgrNodeId | ComputeNodeIds]),
     ?LOG_DEBUG("New job resources [job ~p]: ~10000p", [JobId, JobRss]),
-    wm_virtres_handler:update_job([{nodes, ComputeNodeIds}, {resources, JobRss}], JobId),
+    wm_virtres_handler:update_job([{nodes, [PartMgrNode | ComputeNodeIds]}, {resources, JobRss}], JobId),
     wm_topology:reload(),
     {ok, PartMgrNodeId}.
 

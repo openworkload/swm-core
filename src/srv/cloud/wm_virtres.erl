@@ -290,7 +290,7 @@ creating({Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MStat
 -spec uploading(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 uploading({Ref, ok}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Uploading has finished (~p)", [Ref]),
-    ?LOG_DEBUG("Let the job be scheduled again with preset node ids (~p)", [JobId]),
+    ?LOG_DEBUG("Let the job be scheduled again with preset nodes request (~p)", [JobId]),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
     {next_state, running, MState#mstate{upload_ref = finished}};
 uploading({Ref, {error, Node, Reason}}, #mstate{upload_ref = Ref} = MState) ->

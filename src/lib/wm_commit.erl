@@ -66,7 +66,7 @@ init(Args) ->
     %FIXME: temporary hack to use gateway address:
     MyAddr = wm_conf:get_my_relative_address(hd(MState1#mstate.nodes)),
     MState2 = MState1#mstate{my_addr = MyAddr},
-    ?LOG_INFO("Commit module has been started (state: ~p)", [MState2]),
+    ?LOG_DEBUG("Commit module has been started (state: ~1000P)", [MState2, 20]),
     wm_factory:subscribe(mst, MState2#mstate.tid, wm_mst_done),
     wm_factory:notify_initiated(commit, MState2#mstate.tid),
     {ok, phase1, MState2}.

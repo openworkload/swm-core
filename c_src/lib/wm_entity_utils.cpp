@@ -533,6 +533,9 @@ int swm::ei_buffer_to_map(const char* buf, int &index, std::map<std::string, std
             return -1;
           }
           break;
+        case ERL_NIL_EXT:
+          ei_skip_term(buf, &index);
+          break;
         default:
           // unsupported or empty
           std::cerr << "Unsupported type of map value: " << term_type << std::endl;

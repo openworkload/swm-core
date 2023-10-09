@@ -43,6 +43,9 @@ handle_cast({event, EventType, EventData}, #mstate{} = MState) ->
 handle_info({exit_status, ExitCode, _}, #mstate{} = MState) ->
     ?LOG_INFO("Scheduler exit status: ~p", [ExitCode]),
     {noreply, MState};
+handle_info({output, <<"0">>, _}, #mstate{} = MState) ->
+    ?LOG_ERROR("No scheduler output"),
+    {noreply, MState};
 handle_info({output, BinOut, _}, #mstate{} = MState) ->
     ?LOG_DEBUG("Received new scheduling result (size=~p)", [byte_size(BinOut)]),
     Term = erlang:binary_to_term(BinOut),
