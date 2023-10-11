@@ -170,7 +170,18 @@ get_relative_address(_To = #node{gateway = Gateway, api_port = Port}, _) ->
 
 %% @doc Get self address that depends on what exact node it is going to communicate
 -spec get_my_relative_address({string(), integer()}) -> {string(), integer()} | {error, not_found}.
+get_my_relative_address(DestAddr={"localhost", _}) ->
+    case wm_self:get_node() of
+       {ok, #node{gateway = Gateway, api_port = Port}} ->
+          {Gateway, Port};
+      {error, not_found} ->  % too early stage, self node is not set yet
+          select_my_relative_address(DestAddr)
+    end;
 get_my_relative_address(DestAddr = {_, _}) ->
+  select_my_relative_address(DestAddr).
+
+-spec select_my_relative_address({string(), integer()}) -> {string(), integer()} | {error, not_found}.
+select_my_relative_address(DestAddr = {_, _}) ->
     case do_select_node(DestAddr) of
         {ok, Node} ->
             case wm_utils:is_cloud_node(Node) of

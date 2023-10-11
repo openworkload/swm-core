@@ -8,6 +8,7 @@
 
 -include("wm_log.hrl").
 -include("wm_entity.hrl").
+-include("../../include/wm_general.hrl").
 
 -record(mstate,
         {tid :: integer(),
@@ -63,10 +64,20 @@ start_link(Args) ->
 init(Args) ->
     process_flag(trap_exit, true),
     MState1 = parse_args(Args, #mstate{}),
-    %FIXME: temporary hack to use gateway address:
-    MyAddr = wm_conf:get_my_relative_address(hd(MState1#mstate.nodes)),
+    TunnelParentAddr = {"localhost", wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer})},
+    MyAddr = case wm_self:get_node() of
+      {ok, MyNode} ->
+        case wm_utils:is_cloud_node(MyNode) of
+          false ->
+              wm_conf:get_my_relative_address(hd(MState1#mstate.nodes));
+          true ->
+              wm_conf:get_my_relative_address(TunnelParentAddr)
+        end;
+      {error, not_found} ->  % nodes are unknown yet => assume cloud node is booting
+              wm_conf:get_my_relative_address(TunnelParentAddr)
+    end,
     MState2 = MState1#mstate{my_addr = MyAddr},
-    ?LOG_DEBUG("Commit module has been started (state: ~1000P)", [MState2, 20]),
+    ?LOG_DEBUG("Commit module has been started (state: ~1000p)", [MState2]),
     wm_factory:subscribe(mst, MState2#mstate.tid, wm_mst_done),
     wm_factory:notify_initiated(commit, MState2#mstate.tid),
     {ok, phase1, MState2}.
@@ -196,12 +207,14 @@ phase2({pre_committed, From}, #mstate{my_addr = MyAddr} = MState) ->
             send_all(Msg, one_state, MState2),
             {next_state, phase3, clean_replies(MState2)};
         false ->
-            ?LOG_INFO("E3PC: no quorum"),
+            Replies = MState2#mstate.replies,
+            ?LOG_ERROR("E3PC[2]: no quorum, replies: ~10000p", [Replies]),
             case all_replied(MState2) of
                 true ->
                     Msg = {abort, MState2#mstate.last_elected, MState2#mstate.last_attempt, MyAddr},
                     send_all(Msg, all_state, MState2);
                 false ->
+                    ?LOG_ERROR("E3PC[2]: not all nodes replied"),
                     ignore
             end,
             {next_state, phase3, MState2}
@@ -379,15 +392,15 @@ add_reply(Reply, From, MState) ->
 all_replied(MState) ->
     error == maps:find(no, MState#mstate.replies).
 
--spec quorum_of(atom(), #mstate{}) -> #mstate{}.
-quorum_of(Element, MState) ->
+-spec quorum_of(atom(), #mstate{}) -> boolean().
+quorum_of(Element, #mstate{replies=Replies}) ->
     F = fun (_, V, Acc) when V == Element ->
                 Acc + 1;
             (_, _, Acc) ->
                 Acc
         end,
-    YesN = maps:fold(F, 0, MState#mstate.replies),
-    YesN >= trunc(maps:size(MState#mstate.replies) / 2 + 1).
+    YesN = maps:fold(F, 0, Replies),
+    YesN >= trunc(maps:size(Replies) / 2 + 1).
 
 -spec recover() -> ok.
 recover() ->

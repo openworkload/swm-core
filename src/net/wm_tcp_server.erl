@@ -35,7 +35,7 @@ recv(Socket) ->
                     ?LOG_DEBUG("Received CALL-RPC ~p:~p(~P)", [M, F, Args, 10]),
                     {call, M, F, Args};
                 {cast, M, F, Args, Tag, FinalNodeName} ->
-                    ?LOG_DEBUG("Received CAST-RPC ~p:~p(~P) tag=~p addr=~p", [M, F, Args, 10, Tag, FinalNodeName]),
+                    ?LOG_DEBUG("Received CAST-RPC ~p:~p(~10000p) tag=~p addr=~1000p", [M, F, Args, Tag, FinalNodeName]),
                     {cast, M, F, Args, Tag, FinalNodeName};
                 {error, closed} ->
                     ?LOG_ERROR("Socket closed"),

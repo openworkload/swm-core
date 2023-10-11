@@ -749,7 +749,7 @@ is_cloud_node(#node{remote_id = RemoteId}) ->
                           (_) ->
                               false
                       end,
-                      [openstack, azure, aws, oci, gcp, forge]);
+                      [openstack, azure, aws, oci, gcp]);
         {error, not_found} ->
             false
     end.

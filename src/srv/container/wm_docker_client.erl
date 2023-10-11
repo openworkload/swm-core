@@ -204,7 +204,7 @@ handle_info({'DOWN', MRef, process, ConnPid, Msg = {undef, [{gun_raw, _, _, _} |
     {stop, shutdown, MState};
 handle_info({'DOWN', MRef, process, ConnPid, {shutdown, econnrefused}},
             #mstate{mref = MRef, conn_pid = ConnPid} = MState) ->
-    ?LOG_DEBUG("CAN'T CONNECT TO DOCKER!: [~p]", [ConnPid]),
+    ?LOG_ERROR("CAN'T CONNECT TO DOCKER!: [~p]", [ConnPid]),
     shutdown(MState),
     {stop, shutdown, MState};
 handle_info({'DOWN', MRef, process, ConnPid, Msg}, #mstate{mref = MRef, conn_pid = ConnPid} = MState) ->

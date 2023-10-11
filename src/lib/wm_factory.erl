@@ -319,7 +319,8 @@ send_event_to_module(AllState, ModuleTaskId, Msg, MState) ->
         not_found ->
             ?LOG_DEBUG("Cannot send event, no such task id: ~p", [ModuleTaskId]);
         Pid ->
-            ?LOG_DEBUG("Send event to ~p: ~P (~p, ~p) ~p", [MState#mstate.module, Msg, 8, Pid, ModuleTaskId, AllState]),
+            ?LOG_DEBUG("Send event to ~p: ~10000p (~p, ~p) ~p",
+                       [MState#mstate.module, Msg, Pid, ModuleTaskId, AllState]),
             case AllState of
                 one_state ->
                     gen_fsm:send_event(Pid, Msg);

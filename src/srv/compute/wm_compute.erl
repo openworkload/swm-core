@@ -138,7 +138,7 @@ handle_event(job_finished, {JobID, Process, EndTime, Node}, MState) ->
 handle_event(wm_commit_failed, {COMMIT_ID, _}, MState) ->
     case maps:get(COMMIT_ID, MState#mstate.transfers, not_found) of
         {_Nodes, JobID} ->
-            %TODO restart the commit
+            %TODO restart the commit on failure
             ?LOG_DEBUG("Failed commit spotted: ~p (jobid=~p)", [COMMIT_ID, JobID]),
             Map = maps:remove(COMMIT_ID, MState#mstate.transfers),
             MState#mstate{transfers = Map};
@@ -204,8 +204,8 @@ handle_timetable([X | T], MState) ->
 
 -spec propagate_job_to_nodes(job_id(), [node_id()], #mstate{}) -> #mstate{}.
 propagate_job_to_nodes(JobID, JobNodeIds, MState) ->
-    ?LOG_DEBUG("Job will be sent to its compute nodes, job id: ~p", [JobID]),
-    {ok, MyNode} = wm_self:get_node(),  %TODO cache the node
+    ?LOG_DEBUG("Job will be propagated to its main compute node, job id: ~p", [JobID]),
+    {ok, MyNode} = wm_self:get_node(),
     F = fun(Z) -> wm_conf:get_relative_address(Z, MyNode) end,
     Nodes = wm_conf:select_many(node, id, JobNodeIds),
     wm_conf:set_nodes_state(state_alloc, busy, Nodes),
@@ -216,7 +216,7 @@ propagate_job_to_nodes(JobID, JobNodeIds, MState) ->
             ?LOG_ERROR("No job nodes found in configuration: ~p", [JobNodeIds]),
             MState;
         _ ->
-            ?LOG_DEBUG("Propagate job ~p to nodes: ~p", [JobID, NodeAddrs]),
+            ?LOG_DEBUG("Propagate job ~p to nodes: ~10000p", [JobID, NodeAddrs]),
             Records = wm_db:get_one(job, id, JobID),
             {ok, COMMIT_ID} = wm_factory:new(commit, Records, NodeAddrs),
             Map = maps:put(COMMIT_ID, {NodeAddrs, JobID}, MState#mstate.transfers),

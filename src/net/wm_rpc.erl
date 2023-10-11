@@ -53,7 +53,7 @@ cast(Module, Function, Args) ->
 
 -spec cast(atom(), fun(), list(), node_address()) -> {ok, any()} | {error, term()}.
 cast(Module, Function, Args, FinalAddr = {_, _}) ->
-    ?LOG_DEBUG("m=~p f=~p, a=~P, n=~p", [Module, Function, Args, 3, FinalAddr]),
+    ?LOG_DEBUG("m=~p f=~p, a=~P, n=~1000p", [Module, Function, Args, 3, FinalAddr]),
     NextAddr = get_next_destination(FinalAddr),
     ?LOG_DEBUG("Next destination address: ~p", [NextAddr]),
     ConnArgs = get_connection_args(NextAddr),

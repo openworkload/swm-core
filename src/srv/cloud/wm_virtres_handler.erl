@@ -70,6 +70,7 @@ is_job_partition_ready(JobId) ->
 update_job(NewParams, JobId) ->
     {ok, Job1} = wm_conf:select(job, {id, JobId}),
     Job2 = wm_entity:set(NewParams, Job1),
+    ?LOG_DEBUG("Update job ~p with new parameters: ~10000p", [JobId, NewParams]),
     1 = wm_conf:update(Job2).
 
 -spec start_uploading(node_id(), job_id()) -> {ok, string()}.
@@ -198,7 +199,7 @@ get_default_flavor_name(Remote) ->
 
 -spec create_relocation_entities(job_id(), #partition{}, #node{}) -> {ok, node_id()} | {error, string()}.
 create_relocation_entities(JobId, Partition, TplNode) ->
-    ?LOG_INFO("Remote partition [job ~p]: ~10000p", [JobId, Partition]),
+    ?LOG_INFO("Create relocation entities for remote partition [job ~p]: ~10000p", [JobId, Partition]),
     Addresses = wm_entity:get(addresses, Partition),
     NodeIps = maps:get(compute_instances_ips, Addresses, []),
     PubPartMgrIp = maps:get(master_public_ip, Addresses, ""),
@@ -207,16 +208,16 @@ create_relocation_entities(JobId, Partition, TplNode) ->
     PartMgrName = wm_utils:get_partition_manager_name(JobId),
 
     ExtraNodes = clone_extra_nodes(PartID, PartMgrName, NodeIps, JobId, TplNode),
-    ComputeNodeIds = [wm_entity:get(id, X) || X <- ExtraNodes],
+    ExtraNodeIds = [wm_entity:get(id, X) || X <- ExtraNodes],
     PartMgrNode = create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode),
-    ok = update_division_entities(JobId, Partition, PartMgrNode, ComputeNodeIds),
+    ok = update_division_entities(JobId, Partition, PartMgrNode, ExtraNodeIds),
     NewNodes = [PartMgrNode | ExtraNodes],
     wm_conf:update(NewNodes),
-    ?LOG_INFO("Remote nodes [job ~p]: ~10000p", [JobId, NewNodes]),
+    ?LOG_INFO("New nodes for job ~p: ~10000p", [JobId, NewNodes]),
     PartMgrNodeId = wm_entity:get(id, PartMgrNode),
-    JobRss = get_allocated_resources(PartID, [PartMgrNodeId | ComputeNodeIds]),
+    JobRss = get_allocated_resources(PartID, [PartMgrNodeId | ExtraNodeIds]),
     ?LOG_DEBUG("New job resources [job ~p]: ~10000p", [JobId, JobRss]),
-    wm_virtres_handler:update_job([{nodes, [PartMgrNode | ComputeNodeIds]}, {resources, JobRss}], JobId),
+    wm_virtres_handler:update_job([{nodes, [PartMgrNodeId | ExtraNodeIds]}, {resources, JobRss}], JobId),
     wm_topology:reload(),
     {ok, PartMgrNodeId}.
 
