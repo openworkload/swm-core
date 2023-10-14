@@ -234,7 +234,7 @@ get_container_exposed_ports([_ | T]) ->
 -spec get_container_image([#resource{}]) -> binary().
 get_container_image([]) ->
     <<"">>;
-get_container_image([#resource{name = "image", properties = Properties} | T]) ->
+get_container_image([#resource{name = "container-image", properties = Properties} | T]) ->
     case proplists:get_value(value, Properties) of
         Value when is_list(Value) ->
             list_to_binary(Value);
@@ -311,8 +311,11 @@ get_finalize_cmd(Job) ->
             not_found;
         {ok, User} ->
             Username = wm_entity:get(name, User),
-            UID = wm_posix_utils:get_system_uid(Username),
-            GID = wm_posix_utils:get_system_gid(Username),
+            %UID = wm_posix_utils:get_system_uid(Username),
+            %GID = wm_posix_utils:get_system_gid(Username),
+            %FIXME: get UID/GID from somewhere
+            UID = "2000",
+            GID = "2000",
             BUID = list_to_binary(UID),
             BGID = list_to_binary(GID),
             ContID = wm_entity:get(container, Job),
