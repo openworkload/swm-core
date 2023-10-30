@@ -53,6 +53,9 @@ void swm_loge(const char* message, ...) {
     fprintf(LOG_OUT_STREAM, "\n");
   } else {
     _print_log_format("ERROR", message, args, true);
+    if (errno) {
+      _print_log_format("ERRNO", strerror(errno), NULL, true);
+    }
   }
   va_end(args);
   fflush(LOG_OUT_STREAM);

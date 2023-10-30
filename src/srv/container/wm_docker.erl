@@ -175,7 +175,8 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term12 = jwalk:set({"ExposedPorts"}, Term11, get_container_exposed_ports(Request)),
     Term13 = jwalk:set({"WorkingDir"}, Term12, <<"/tmp">>),
     Term14 = jwalk:set({"AutoRemove"}, Term13, true),
-    jsx:encode(Term14).
+    Term15 = jwalk:set({"User"}, Term14, <<"root">>),
+    jsx:encode(Term15).
 
 -spec get_volumes() -> map().
 get_volumes() ->
@@ -262,7 +263,8 @@ do_delete_container(Job, Owner) ->
     KillBeforeDeleteOption = "?force=1",
     Path = "/containers/" ++ ContID ++ KillBeforeDeleteOption,
     ?LOG_DEBUG("Delete docker container with path=~p [~p]", [Path, HttpProcPid]),
-    ok = wm_docker_client:delete(Path, [], HttpProcPid, []),
+    % FIXME: uncomment when debug is over:
+    %ok = wm_docker_client:delete(Path, [], HttpProcPid, []),
     wm_docker_client:stop(HttpProcPid),
     ok.
 
@@ -311,19 +313,19 @@ get_finalize_cmd(Job) ->
             not_found;
         {ok, User} ->
             Username = wm_entity:get(name, User),
-            %UID = wm_posix_utils:get_system_uid(Username),
-            %GID = wm_posix_utils:get_system_gid(Username),
-            %FIXME: get UID/GID from somewhere
-            UID = "2000",
-            GID = "2000",
-            BUID = list_to_binary(UID),
-            BGID = list_to_binary(GID),
-            ContID = wm_entity:get(container, Job),
             FinScript = os:getenv("SWM_FINALIZE_IN_CONTAINER", ?SWM_FINALIZE_IN_CONTAINER),
+            ContID = wm_entity:get(container, Job),
             HostIP = os:cmd("route -n | awk '/UG[ \t]/{print $2}' | tr -d '\n'"),  % docker host IP
-            ?LOG_DEBUG("Finalize ~p: ~p ~p ~p ~p", [ContID, FinScript, BUID, BGID, HostIP]),
-            W = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID ++ " " ++ HostIP,
-            [<<"/bin/bash">>, <<"-c">>, list_to_binary(W)]
+            {UID, GID} =
+                case wm_posix_utils:get_system_uid_gid(Username) of
+                    {ok, FoundUID, FoundGID} ->
+                        {FoundUID, FoundGID};
+                    {error, not_found} ->
+                        {"1000", "1000"}
+                end,
+            ?LOG_DEBUG("Finalize ~p: ~p ~p ~p ~p", [ContID, FinScript, UID, GID, HostIP]),
+            Command = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID ++ " " ++ HostIP,
+            [<<"/bin/bash">>, <<"-c">>, list_to_binary(Command)]
     end.
 
 generate_finalize_json(Job, create) ->

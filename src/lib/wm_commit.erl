@@ -65,17 +65,18 @@ init(Args) ->
     process_flag(trap_exit, true),
     MState1 = parse_args(Args, #mstate{}),
     TunnelParentAddr = {"localhost", wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer})},
-    MyAddr = case wm_self:get_node() of
-      {ok, MyNode} ->
-        case wm_utils:is_cloud_node(MyNode) of
-          false ->
-              wm_conf:get_my_relative_address(hd(MState1#mstate.nodes));
-          true ->
-              wm_conf:get_my_relative_address(TunnelParentAddr)
-        end;
-      {error, not_found} ->  % nodes are unknown yet => assume cloud node is booting
-              wm_conf:get_my_relative_address(TunnelParentAddr)
-    end,
+    MyAddr =
+        case wm_self:get_node() of
+            {ok, MyNode} ->
+                case wm_utils:is_cloud_node(MyNode) of
+                    false ->
+                        wm_conf:get_my_relative_address(hd(MState1#mstate.nodes));
+                    true ->
+                        wm_conf:get_my_relative_address(TunnelParentAddr)
+                end;
+            {error, not_found} ->  % nodes are unknown yet => assume cloud node is booting
+                wm_conf:get_my_relative_address(TunnelParentAddr)
+        end,
     MState2 = MState1#mstate{my_addr = MyAddr},
     ?LOG_DEBUG("Commit module has been started (state: ~1000p)", [MState2]),
     wm_factory:subscribe(mst, MState2#mstate.tid, wm_mst_done),
@@ -393,7 +394,7 @@ all_replied(MState) ->
     error == maps:find(no, MState#mstate.replies).
 
 -spec quorum_of(atom(), #mstate{}) -> boolean().
-quorum_of(Element, #mstate{replies=Replies}) ->
+quorum_of(Element, #mstate{replies = Replies}) ->
     F = fun (_, V, Acc) when V == Element ->
                 Acc + 1;
             (_, _, Acc) ->

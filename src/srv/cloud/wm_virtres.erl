@@ -416,7 +416,8 @@ start_port_forwarding(TunnelClientPid, JobId) ->
     ListenHost = "localhost",
     RemoteHost = "localhost",
     ResourcesRequest = wm_entity:get(request, Job),
-    PortsToForward = get_job_ports(ResourcesRequest) ++ [get_wm_api_port()],
+    %PortsToForward = get_job_ports(ResourcesRequest) ++ [get_wm_api_port()],
+    PortsToForward = [get_wm_api_port()],
 
     lists:foldl(fun({ListenPort, PortToForward}, OpenedPorts) ->
                    case wm_ssh_client:make_tunnel(TunnelClientPid, ListenHost, ListenPort, RemoteHost, PortToForward) of

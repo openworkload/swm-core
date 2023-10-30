@@ -224,24 +224,30 @@ nodes_to_ips([]) ->
     [];
 nodes_to_ips(Nodes) ->
     {ok, SelfHostname} = inet:gethostname(),
-    Hostnames = [wm_entity:get(host, Node) || Node <- Nodes],
-    lists:map(fun([]) ->
-                    <<>>;
-                 (Hostname) ->
-                 HostnameToResolve =
-                     case hd(string:split(Hostname, ".")) of
-                         SelfHostname ->
-                             "host";
-                         _ ->
-                             Hostname
-                     end,
-                 case inet:getaddr(HostnameToResolve, inet) of
-                     {ok, IP} ->
-                         list_to_binary(inet:ntoa(IP));
-                     _ ->
-                         ?LOG_WARN("Can't resolve job hostname ~p => use localhost", [Hostname]),
-                         <<"127.0.0.1">>
-                 end
+    Hostnames =
+        lists:map(fun (#node{gateway = [], host = Hostname}) ->
+                          Hostname;
+                      (#node{gateway = Gateway}) ->
+                          Gateway
+                  end,
+                  Nodes),
+    lists:map(fun ([]) ->
+                      <<>>;
+                  (Hostname) ->
+                      HostnameToResolve =
+                          case hd(string:split(Hostname, ".")) of
+                              SelfHostname ->
+                                  "host";
+                              _ ->
+                                  Hostname
+                          end,
+                      case inet:getaddr(HostnameToResolve, inet) of
+                          {ok, IP} ->
+                              list_to_binary(inet:ntoa(IP));
+                          _ ->
+                              ?LOG_WARN("Can't resolve job hostname ~p => use localhost", [Hostname]),
+                              <<"127.0.0.1">>
+                      end
               end,
               Hostnames).
 

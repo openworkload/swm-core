@@ -31,7 +31,7 @@
 
 using namespace swm;
 
-void set_uid_gid(uid_t uid, uid_t gid) {
+void set_uid_gid(const uid_t uid, const uid_t gid) {
   int status = -1;
   status = setregid(gid, gid);
   if (status < 0) {
@@ -43,6 +43,7 @@ void set_uid_gid(uid_t uid, uid_t gid) {
     swm_loge("Can't set uid, status=", status);
     exit(status);
   }
+  swm_logi("Current process new UID: %d", getuid());
 }
 
 void set_workdir(passwd *pw, SwmJob &job) {
@@ -51,17 +52,27 @@ void set_workdir(passwd *pw, SwmJob &job) {
     workdir = pw->pw_dir;
   }
   chdir(workdir.c_str());
-  swm_logi("Job working directory: %s", workdir.c_str());
+
+  // Validate current working directory
+  char cwd[PATH_MAX];
+  if (getcwd(cwd, sizeof(cwd))) {
+     swm_logi("Current working directory: %s", cwd);
+   } else {
+     perror("getcwd() error");
+     exit(EXIT_SYSTEM_ERROR);
+   }
 }
 
 void switch_stdout(const std::string &path) {
   FILE *outfile = fopen(path.c_str(), "w");
   if (!outfile) {
     swm_loge("Can't open %s", path.c_str());
+    perror("Stdout file opening error");
     exit(EXIT_FILE_ERROR);
   }
   if (dup2(fileno(outfile), STDOUT_FILENO) < 0) {
     swm_loge("Can't duplicate out file descriptor for %s: %s", path.c_str(), std::strerror(errno));
+    perror("Stderr file opening error");
     exit(EXIT_SYSTEM_ERROR);
   }
   fclose(outfile);
@@ -235,6 +246,15 @@ std::string save_script(const std::string &job_id, const uid_t uid, const gid_t 
   return path;
 }
 
+void set_job_dir_ownership(const SwmJob &job, const uid_t uid, const gid_t gid) {
+  const auto workdir = job.get_workdir();
+  if (chown(workdir.c_str(), uid, gid) == -1) {
+    const std::string msg = "Could not chown directory " + workdir;
+    std::perror(msg.c_str());
+    exit(EXIT_FAILURE);
+  }
+}
+
 int main(int argc, char* const argv[]) {
   // Fix docker issue: exec does not wait for its command completion
   // thus user creation and send to porter started at the same time.
@@ -267,29 +287,28 @@ int main(int argc, char* const argv[]) {
     swm_loge("Fork error!");
     exit(EXIT_FAILURE);
   } else if (child_pid == 0) { /* This is the child */
-    swm_logi("Job process started");
-
     const auto username = info.user.get_name().c_str();
-    swm_logi("User: \"%s\"", username);
+    swm_logi("Job process forked (UID=%d), user name: \"%s\"", getuid(), username);
 
     size_t counter = 0;
     const uint64_t max_attempts = 20;
     passwd *pw = nullptr;
     while ((pw = getpwnam(username)) == nullptr) {
       if (++counter >= max_attempts) {
-        swm_logd("User \"%s\" not found => exit", username);
+        swm_logd("User \"%s\" not found after %d attempts => exit", username, max_attempts);
         exit(EXIT_USER_NOT_FOUND);
       }
       swm_logd("User \"%s\" not found (yet) => wait and repeat", username);
       sleep(1);
     };
-    swm_logd("User found: uid=%d gid=%d", pw->pw_uid, pw->pw_gid);
+    swm_logd("User \"%s\" found: uid=%d gid=%d", username, pw->pw_uid, pw->pw_gid);
 
     const auto content = info.job.get_script_content();
     const auto job_id = info.job.get_id();
     const auto path = save_script(job_id, pw->pw_uid, pw->pw_gid, content);
     swm_logi("Temporary execution path: \"%s\"", path.c_str());
 
+    set_job_dir_ownership(info.job, pw->pw_uid, pw->pw_gid);
     set_uid_gid(pw->pw_uid, pw->pw_gid);
     set_env(pw, info.job);
     set_workdir(pw, info.job);
@@ -306,9 +325,9 @@ int main(int argc, char* const argv[]) {
     execve("/bin/sh", &argv[0], environ);
 
   } else {  /* This is the parent */
-    swm_logi("Parent process started, job process pid=%d", child_pid);
+    swm_logi("Parent process started, job process PID=%d", child_pid);
 
-    int status;
+    int status = 0;
 
     while(1) {
       pid_t end_pid = waitpid(child_pid, &status, WNOHANG|WUNTRACED);

@@ -1,6 +1,6 @@
 -module(wm_posix_utils).
 
--export([get_system_uid/1, get_system_gid/1, get_current_user/0, errno/1]).
+-export([get_system_uid_gid/1, get_current_user/0, errno/1]).
 
 -define(ERRNO,
         #{eacces => "Permission denied (POSIX.1-2001).",
@@ -62,17 +62,24 @@
               "filesystems.",
           exdev => "Improper link (POSIX.1-2001)."}).
 
-%% @doc Get system UID as a string by username
--spec get_system_uid(list()) -> list().
-get_system_uid(Username) when is_list(Username) ->
-    UID = os:cmd("id -u " ++ Username),
-    string:strip(UID, right, $\n).
-
-%% @doc Get system GID as a string by username
--spec get_system_gid(list()) -> list().
-get_system_gid(Username) when is_list(Username) ->
-    GID = os:cmd("id -g " ++ Username),
-    string:strip(GID, right, $\n).
+%% @doc Get system UID and GID by username
+-spec get_system_uid_gid(list()) -> {ok, list(), list()} | {error, not_found}.
+get_system_uid_gid(Username) when is_list(Username) ->
+    Output1 = os:cmd("id -u " ++ Username),
+    case string:str(Output1, "no such user") of
+        0 ->
+            Output2 = os:cmd("id -g " ++ Username),
+            case string:str(Output2, "no such user") of
+                0 ->
+                    UID = string:strip(Output1, right, $\n),
+                    GID = string:strip(Output2, right, $\n),
+                    {ok, UID, GID};
+                _ ->
+                    {error, not_found}
+            end;
+        _ ->
+            {error, not_found}
+    end.
 
 %% @doc Get current username
 -spec get_current_user() -> list().
