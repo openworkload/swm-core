@@ -372,24 +372,23 @@ is_local_job(#job{nodes = [Node]}) ->
 is_local_job(_) ->
     false.
 
--spec get_job_ports([#resource{}]) -> [integer()].
+-spec get_job_ports([#resource{}]) -> {[{integer(), integer()}], []}.
 get_job_ports([]) ->
     [];
 get_job_ports([#resource{name = "ports", properties = Properties} | _]) ->
     Value = proplists:get_value(value, Properties), % example of the Value: "8888/tcp,6001/udp"
-    lists:foldl(fun(PortStr, List) ->
+    lists:foldl(fun(PortStr,
+                    List) ->  % Example: "8081/tcp/in" or "8888/tcp/out"
                    Parts = string:split(PortStr, "/", all),
                    case length(Parts) of
-                       1 ->
-                           PortNumber = list_to_integer(Value),
-                           [{PortNumber, PortNumber} | List];
-                       2 ->
+                       3 ->
+                           PortDirection = lists:nth(3, Parts),
                            case lists:nth(2, Parts) of
                                "tcp" ->
                                    PortNumber = list_to_integer(lists:nth(1, Parts)),
-                                   [{PortNumber, PortNumber} | List];
+                                   [{PortDirection, PortNumber, PortNumber} | List];
                                OtherType ->
-                                   ?LOG_DEBUG("Requested job port type is not supported: ~p", [OtherType]),
+                                   ?LOG_DEBUG("Requested port protocol is not supported: ~p", [OtherType]),
                                    List
                            end;
                        WrongFormat ->
@@ -407,7 +406,7 @@ get_wm_api_port() ->
     {ok, SelfNode} = wm_self:get_node(),
     ApiPort = wm_entity:get(api_port, SelfNode),
     ParentPort = wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer}),
-    {ParentPort, ApiPort}.
+    {"out", ParentPort, ApiPort}.
 
 -spec start_port_forwarding(pid(), job_id()) -> [inet:port_number()].
 start_port_forwarding(TunnelClientPid, JobId) ->
@@ -416,20 +415,26 @@ start_port_forwarding(TunnelClientPid, JobId) ->
     ListenHost = "localhost",
     RemoteHost = "localhost",
     ResourcesRequest = wm_entity:get(request, Job),
-    %PortsToForward = get_job_ports(ResourcesRequest) ++ [get_wm_api_port()],
-    PortsToForward = [get_wm_api_port()],
+    PortsToForward = get_job_ports(ResourcesRequest) ++ [get_wm_api_port()],
 
-    lists:foldl(fun({ListenPort, PortToForward}, OpenedPorts) ->
-                   case wm_ssh_client:make_tunnel(TunnelClientPid, ListenHost, ListenPort, RemoteHost, PortToForward) of
-                       {ok, OpenedPort} ->
-                           ?LOG_INFO("Tunnel is opened successfully for ports: ~p -> ~p (job: ~p)",
-                                     [OpenedPort, PortToForward, JobId]),
-                           [OpenedPort | OpenedPorts];
-                       {error, Error} ->
-                           ?LOG_ERROR("Can't open ssh tunnel (~p:~p <=> ~p:~p), error: ~p",
-                                      [ListenHost, ListenPort, RemoteHost, PortToForward, Error]),
-                           OpenedPorts
-                   end
+    lists:foldl(fun ({"out", ListenPort, PortToForward}, OpenedPorts) ->
+                        case wm_ssh_client:make_tunnel(TunnelClientPid,
+                                                       ListenHost,
+                                                       ListenPort,
+                                                       RemoteHost,
+                                                       PortToForward)
+                        of
+                            {ok, OpenedPort} ->
+                                ?LOG_INFO("Tunnel is opened successfully for ports: ~p -> ~p (job: ~p)",
+                                          [OpenedPort, PortToForward, JobId]),
+                                [OpenedPort | OpenedPorts];
+                            {error, Error} ->
+                                ?LOG_ERROR("Can't open ssh tunnel (~p:~p <=> ~p:~p), error: ~p",
+                                           [ListenHost, ListenPort, RemoteHost, PortToForward, Error]),
+                                OpenedPorts
+                        end;
+                    ({"in", RemotePortToOpen, _}, OpenedPorts) ->
+                        [RemotePortToOpen | OpenedPorts]
                 end,
                 [],
                 PortsToForward).

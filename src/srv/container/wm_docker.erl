@@ -188,7 +188,8 @@ get_volumes() ->
 get_host_config(Request) ->
     RootBin = list_to_binary(wm_utils:get_env("SWM_ROOT")),
     #{<<"Binds">> => [<<"/home:/home">>, <<"/tmp:/tmp">>, <<RootBin/binary, <<":">>/binary, RootBin/binary>>],
-      <<"PortBindings">> => get_container_port_binding(Request),
+      %<<"PortBindings">> => get_container_port_binding(Request),
+      <<"NetworkMode">> => <<"host">>,
       <<"PublishAllPorts">> => true}.
 
 -spec get_cmd(string()) -> [binary()].
@@ -199,6 +200,15 @@ get_cmd(Porter) ->
 get_volumes_from() ->
     [list_to_binary(os:getenv("SWM_DOCKER_VOLUMES_FROM", "swm-core:ro"))].
 
+-spec get_input_port_with_proto(string()) -> {ok, string()} | {error, not_found}.
+get_input_port_with_proto(Port) ->
+    case string:substr(Port, string:len(Port)-1) of
+        "in" ->
+            {ok, string:substr(Port, 1, string:len(Port)-3)};
+        _ ->
+            {error, not_found}
+    end.
+
 -spec get_container_port_binding([#resource{}]) -> map().
 get_container_port_binding([]) ->
     #{};
@@ -206,9 +216,14 @@ get_container_port_binding([#resource{name = "ports", properties = Properties} |
     case proplists:get_value(value, Properties) of
         Value when is_list(Value) ->
             Ports = string:split(Value, ",", all),
-            lists:foldl(fun(PortProto, Map) ->
-                           PortBin = list_to_binary(hd(string:split(PortProto, "/"))),
-                           maps:put(list_to_binary(PortProto), [#{<<"HostPort">> => PortBin}], Map)
+            lists:foldl(fun(Port, Map) ->
+                           case get_input_port_with_proto(Port) of
+                              {ok, PortAndProto} ->
+                                  PortBin = list_to_binary(hd(string:split(PortAndProto, "/"))),
+                                  maps:put(list_to_binary(PortAndProto), [#{<<"HostPort">> => PortBin}], Map);
+                              {error, not_found} ->
+                                  Map
+                          end
                         end,
                         #{},
                         Ports);
@@ -225,7 +240,17 @@ get_container_exposed_ports([#resource{name = "ports", properties = Properties} 
     case proplists:get_value(value, Properties) of
         Value when is_list(Value) ->
             Ports = string:split(Value, ",", all),
-            lists:foldl(fun(Port, Map) -> maps:put(list_to_binary(Port), #{}, Map) end, #{}, Ports);
+            lists:foldl(fun(Port, Map) ->
+                            case get_input_port_with_proto(Port) of
+                              {ok, PortAndProto} ->
+                                    PortNumberStr = hd(string:split(PortAndProto, "/")),
+                                    maps:put(list_to_binary(PortNumberStr), #{}, Map);
+                              {error, not_found} ->
+                                    Map
+                            end
+                        end,
+                        #{},
+                        Ports);
         _ ->
             get_container_exposed_ports(T)
     end;
