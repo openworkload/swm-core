@@ -120,7 +120,7 @@ restarter_process() ->
 
 -spec restart_children() -> none().
 restart_children() ->
-    Exceptions = [wm_log, wm_conf, wm_db],
+    Exceptions = [wm_log, wm_conf, wm_db, wm_ssh_server],
     Children = [Name || {Name, _, _, _} <- supervisor:which_children(?MODULE)],
     F2 = fun(Name) ->
             ?LOG_DEBUG("Restart ~p", [Name]),
