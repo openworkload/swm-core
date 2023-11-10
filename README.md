@@ -5,6 +5,9 @@
     <a href="https://github.com/openworkload/swm-core/blob/master/LICENSE" alt="License">
         <img src="https://img.shields.io/github/license/openworkload/swm-core" />
     </a>
+    <a href="CODE_OF_CONDUCT.md" alt="Contributor Covenant">
+        <img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg" />
+    </a>
     <a href="https://github.com/openworkload/swm-core/actions/workflows/erlang.yml" alt="Erlang latest CI tests result">
         <img src="https://github.com/openworkload/swm-core/actions/workflows/erlang.yml/badge.svg?event=push" />
     </a>
