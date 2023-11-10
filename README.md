@@ -2,7 +2,7 @@
     <a href="https://www.erlang.org/" alt="Supported Erlang version">
         <img src="https://img.shields.io/badge/Erlang-24-green.svg" />
     </a>
-    <a href="https://github.com/openworkload/swm-core/blob/master/LICENSE" alt="License">
+    <a href="LICENSE" alt="License">
         <img src="https://img.shields.io/github/license/openworkload/swm-core" />
     </a>
     <a href="CODE_OF_CONDUCT.md" alt="Contributor Covenant">
@@ -43,12 +43,12 @@ See also [openworkload.org](https://openworkload.org)
 
 ## How to run
 
-Pull or build a container that will run the Core. The procedure of building and running swm-core container is [described here](https://github.com/openworkload/swm-core/blob/master/priv/prod/README.md) 
+Pull or build a container that will run the Core. The procedure of building and running swm-core container is [described here](BUILD.md).
 
 
 ## Contributing
 
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us.
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Our code of conduct can be found [here](CODE_OF_CONDUCT.md).
 
 
 ## License
