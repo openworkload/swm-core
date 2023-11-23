@@ -103,7 +103,7 @@ RUN apt-get install docker.io -y
 
 # Build and install Erlang/OTP
 WORKDIR /tmp/kerl/
-RUN curl -O https://raw.githubusercontent.com/kerl/kerl/2.6.0/kerl
+RUN curl -O https://raw.githubusercontent.com/kerl/kerl/4.0.0/kerl
 RUN chmod +x kerl
 RUN ./kerl build ${ERL_VER} ${ERL_TAG}
 RUN mkdir -p /usr/erlang
