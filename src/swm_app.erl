@@ -11,19 +11,17 @@
 
 -spec start(any(), any()) -> no_return().
 start(_StartType, _StartArgs) ->
-    Parent = os:getenv("SWM_PARENT_SNAME", none),
     Root = os:getenv("SWM_ROOT", "/opt/swm"),
     Spool = os:getenv("SWM_SPOOL", "/opt/swm/spool"),
     Port = os:getenv("SWM_API_PORT", 10001),
-    Name = os:getenv("SWM_SNAME", "node"),
+    MyShortName = os:getenv("SWM_SNAME", "node"),
     ParentHost = os:getenv("SWM_PARENT_HOST", none),
     ParentPort = list_to_integer(os:getenv("SWM_PARENT_PORT", 0)),
     Args =
         [{spool, Spool},
-         {parent_sname, Parent},
          {parent_host, ParentHost},
          {parent_port, ParentPort},
-         {sname, Name},
+         {sname, MyShortName},
          {default_api_port, Port},
          {root, Root},
          {printer, file}],
