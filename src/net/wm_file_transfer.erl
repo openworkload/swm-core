@@ -17,6 +17,7 @@
 
 -include("../lib/wm_log.hrl").
 
+-include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/file.hrl").
 
 -record(mstate,
@@ -233,6 +234,7 @@ get_file_info(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef
     case ssh_sftp:read_file_info(Pid, File) of
         {ok, Info} ->
             {ok,
+             %TODO https://github.com/erlang/otp/issues/7897
              Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid),
                             uid = wm_utils:to_integer(Info#file_info.uid)}};
         {error, Reason} ->
@@ -242,6 +244,7 @@ get_file_info(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {get_file_info, File}) of
         {ok, Info} ->
             {ok,
+             %TODO https://github.com/erlang/otp/issues/7897
              Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid),
                             uid = wm_utils:to_integer(Info#file_info.uid)}};
         {error, Reason} -> %% gen_server exception -> {error, Reason}
@@ -250,17 +253,17 @@ get_file_info(ServerRef, File) ->
             Error
     end.
 
-%% TODO: Due bug in erlang ssh_sftp we have to preventively cast gid/uid into integer
 -spec set_file_info(pid() | atom() | {atom(), node()}, file:filename(), #file_info{}) ->
                        ok | {error, file:filename(), nonempty_string()}.
 set_file_info(_ServerRef = {ConnectionRef, Pid}, File, Info) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    case ssh_sftp:write_file_info(Pid,
-                                  File,
-                                  Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid),
-                                                 uid = wm_utils:to_integer(Info#file_info.uid)})
-    of
+    %TODO https://github.com/erlang/otp/issues/7897
+    Info2 =
+        Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid), uid = wm_utils:to_integer(Info#file_info.uid)},
+    case ssh_sftp:write_file_info(Pid, File, Info2) of
         ok ->
             ok;
+        {error, failure} ->
+            ok; %TODO https://github.com/erlang/otp/issues/7895
         {error, Reason} ->
             {error, File, wm_posix_utils:errno(Reason)}
     end;
@@ -420,8 +423,8 @@ handle_call({md5sum, File}, From, MState) ->
 handle_call({get_file_info, File}, _, MState) ->
     Result = wm_file_utils:get_file_info(File),
     {reply, Result, MState};
-%% TODO: Due bug in erlang ssh_sftp we have to preventively cast gid/uid into integer
 handle_call({set_file_info, File, Info}, _, MState) ->
+    %TODO https://github.com/erlang/otp/issues/7897
     Info = Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid), uid = wm_utils:to_integer(Info#file_info.uid)},
     Result = wm_file_utils:set_file_info(File, Info),
     {reply, Result, MState};
@@ -796,9 +799,9 @@ do_delete_files(ServerRef, [File | Files]) ->
 -spec process_file(any(), any(), file:filename(), file:filename(), #file_info{}, #{}) ->
                       ok | {error, file:filename(), nonempty_string()}.
 process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
-    ?LOG_DEBUG("Process transferring of ~p | file info: ~p", [File, Info]),
     SrcFile = File,
     DstFile = filename:join(Destination, filename:basename(File)),
+    ?LOG_DEBUG("Process transferring of ~p --> ~p | file info: ~1000p", [File, DstFile, Info]),
     {St, Result} =
         wm_utils:do(#file{},
                     [fun(St) ->

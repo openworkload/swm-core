@@ -4,7 +4,7 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([cancel_relocation/1, remove_relocation_entities/1]).
+-export([cancel_relocation/1, remove_relocation_entities/1, cancel_relocation/1]).
 -export([get_base_partition/1]).
 -export([relocate_job/1]).
 

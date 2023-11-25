@@ -29,6 +29,11 @@ remove_relocation_entities(JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     ok = wm_relocator:remove_relocation_entities(Job).
 
+-spec cancel_relocation(job_id()) -> atom().
+cancel_relocation(JobId) ->
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    ok = wm_relocator:cancel_relocation(Job).
+
 -spec wait_for_partition_fetch() -> reference().
 wait_for_partition_fetch() ->
     wm_utils:wake_up_after(?PARTITION_FETCH_PERIOD, part_fetch).

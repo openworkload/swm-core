@@ -97,19 +97,16 @@ init(Args) ->
 handle_sync_event(get_current_state, _From, State, MState) ->
     {reply, State, State, MState}.
 
+handle_event(job_cancelled, _, #mstate{job_id = JobId, task_id = TaskId} = MState) ->
+    ?LOG_DEBUG("Job ~p was cancelled, it's resources will be destroyed (task_id: ~p)", [JobId, TaskId]),
+    ok = wm_virtres_handler:cancel_relocation(JobId),
+    gen_fsm:send_event(self(), start_destroying),
+    {next_state, destroying, MState};
 handle_event(job_finished, _, #mstate{job_id = JobId, part_mgr_id = PartMgrNodeId} = MState) ->
-    case PartMgrNodeId of
-        undefined ->  % happens when running locally for example
-            ?LOG_DEBUG("Partition manager node is undefined => skip downloading"),
-            ok = wm_virtres_handler:remove_relocation_entities(JobId),
-            gen_fsm:send_event(self(), start_destroying),
-            {stop, normal, MState};
-        _ ->
-            ?LOG_DEBUG("Job has finished => start data downloading: ~p", [JobId]),
-            {ok, Ref, Files} = wm_virtres_handler:start_downloading(PartMgrNodeId, JobId),
-            ?LOG_INFO("Downloading has been started [jobid=~p, ref=~p]: ~p", [JobId, Ref, Files]),
-            {next_state, downloading, MState#mstate{download_ref = Ref}}
-    end;
+    ?LOG_DEBUG("Job has finished => start data downloading: ~p", [JobId]),
+    {ok, Ref, Files} = wm_virtres_handler:start_downloading(PartMgrNodeId, JobId),
+    ?LOG_INFO("Downloading has been started [jobid=~p, ref=~p]: ~p", [JobId, Ref, Files]),
+    {next_state, downloading, MState#mstate{download_ref = Ref}};
 handle_event(destroy,
              _,
              #mstate{task_id = TaskId,

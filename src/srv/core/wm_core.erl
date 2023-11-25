@@ -16,7 +16,6 @@
         {sups,                     % map: service_id --> supervisor_pid
          mon_nodes,                % map: {host, port} --> milliseconds
          pstack = [],              % parents stack
-         boot_parent_sname :: string(),
          boot_parent_host :: string(),
          boot_parent_port = 0 :: integer(),
          spool,
@@ -122,8 +121,6 @@ parse_args([{spool, Spool} | T], MState) ->
     parse_args(T, MState#mstate{spool = Spool});
 parse_args([{root, Root} | T], MState) ->
     parse_args(T, MState#mstate{root = Root});
-parse_args([{parent_sname, Parent} | T], MState) ->
-    parse_args(T, MState#mstate{boot_parent_sname = Parent});
 parse_args([{parent_host, Host} | T], MState) ->
     parse_args(T, MState#mstate{boot_parent_host = Host});
 parse_args([{parent_port, Port} | T], MState) ->
@@ -405,7 +402,6 @@ start_parent(MState) ->
         [{spool, MState#mstate.spool},
          {boot_type, clean},
          {printer, file},
-         {parent_sname, atom_to_list(node())},
          {parent_port, MyPort},
          {root, MState#mstate.root},
          {api_port, Port},
@@ -569,15 +565,10 @@ monitor_parent(ParentHost, ParentPort, MState) ->
     ?LOG_DEBUG("New pstack: ~p", [NewPStack]),
     MState#mstate{pstack = NewPStack}.
 
-fill_pstack(#mstate{} = MState) ->
-    {ok, SName} = wm_self:get_sname(),
-    List =
-        wm_parent:find_my_parents(MState#mstate.boot_parent_sname,
-                                  MState#mstate.boot_parent_host,
-                                  MState#mstate.boot_parent_port,
-                                  SName),
-    F = fun(Addr, MStateAcc) -> add_parent(Addr, MStateAcc) end,
-    lists:foldl(F, MState, List).
+fill_pstack(#mstate{boot_parent_host = ParentHost, boot_parent_port = ParentPort} = MState) ->
+    {ok, MyShortName} = wm_self:get_sname(),
+    ParentList = wm_parent:find_my_parents(ParentHost, ParentPort, MyShortName),
+    lists:foldl(fun(Addr, MStateAcc) -> add_parent(Addr, MStateAcc) end, MState, ParentList).
 
 start_heavy_works(Args, MState) ->
     case wm_state:get_current() of

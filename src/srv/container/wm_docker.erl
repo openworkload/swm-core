@@ -202,9 +202,9 @@ get_volumes_from() ->
 
 -spec get_input_port_with_proto(string()) -> {ok, string()} | {error, not_found}.
 get_input_port_with_proto(Port) ->
-    case string:substr(Port, string:len(Port)-1) of
+    case string:substr(Port, string:len(Port) - 1) of
         "in" ->
-            {ok, string:substr(Port, 1, string:len(Port)-3)};
+            {ok, string:substr(Port, 1, string:len(Port) - 3)};
         _ ->
             {error, not_found}
     end.
@@ -218,12 +218,12 @@ get_container_port_binding([#resource{name = "ports", properties = Properties} |
             Ports = string:split(Value, ",", all),
             lists:foldl(fun(Port, Map) ->
                            case get_input_port_with_proto(Port) of
-                              {ok, PortAndProto} ->
-                                  PortBin = list_to_binary(hd(string:split(PortAndProto, "/"))),
-                                  maps:put(list_to_binary(PortAndProto), [#{<<"HostPort">> => PortBin}], Map);
-                              {error, not_found} ->
-                                  Map
-                          end
+                               {ok, PortAndProto} ->
+                                   PortBin = list_to_binary(hd(string:split(PortAndProto, "/"))),
+                                   maps:put(list_to_binary(PortAndProto), [#{<<"HostPort">> => PortBin}], Map);
+                               {error, not_found} ->
+                                   Map
+                           end
                         end,
                         #{},
                         Ports);
@@ -241,13 +241,13 @@ get_container_exposed_ports([#resource{name = "ports", properties = Properties} 
         Value when is_list(Value) ->
             Ports = string:split(Value, ",", all),
             lists:foldl(fun(Port, Map) ->
-                            case get_input_port_with_proto(Port) of
-                              {ok, PortAndProto} ->
-                                    PortNumberStr = hd(string:split(PortAndProto, "/")),
-                                    maps:put(list_to_binary(PortNumberStr), #{}, Map);
-                              {error, not_found} ->
-                                    Map
-                            end
+                           case get_input_port_with_proto(Port) of
+                               {ok, PortAndProto} ->
+                                   PortNumberStr = hd(string:split(PortAndProto, "/")),
+                                   maps:put(list_to_binary(PortNumberStr), #{}, Map);
+                               {error, not_found} ->
+                                   Map
+                           end
                         end,
                         #{},
                         Ports);

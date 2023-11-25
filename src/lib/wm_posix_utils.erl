@@ -90,4 +90,4 @@ get_current_user() ->
 %% @doc Convert posix error atom to human readable statement
 -spec errno(atom()) -> string().
 errno(Name) ->
-    maps:get(Name, ?ERRNO, io_lib:format("Unkown error (POSIX.1-2001) '~p'", [Name])).
+    maps:get(Name, ?ERRNO, io_lib:format("Unkown error (POSIX.1-2001): ~s", [Name])).
