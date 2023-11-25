@@ -109,3 +109,9 @@ tmux:	##@DEV Run tmux with Sky Port development layout
 update_rebar:
 	$(REBAR) local upgrade
 	$(REBAR) plugins upgrade --all
+
+update_deps:
+	$(REBAR) update-deps
+
+upgrade_deps:
+	$(REBAR) upgrade -a
