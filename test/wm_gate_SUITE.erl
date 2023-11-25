@@ -48,7 +48,8 @@ end_per_suite(Config) ->
     wm_ct_helpers:kill_gate_system_process(),
     erlang:exit(
         proplists:get_value(gate_runner_pid, Config), kill),
-    Config.
+    Config,
+    meck:unload().
 
 -spec init_per_testcase(atom(), [{atom(), term()}]) -> [{atom(), term()}] | {fail, term()} | {skip, term()}.
 init_per_testcase(_, Config) ->
@@ -67,21 +68,22 @@ end_per_testcase(_, Config) ->
 
 -spec get_remote() -> #remote{}.
 get_remote() ->
-    wm_entity:set_attr([{id, "0b1ee0b0-4db5-11eb-a18a-f7f7d5c0f982"},
-                        {name, "local-gate-test"},
-                        {kind, openstack},
-                        {server, "container"},
-                        {port, 8444},
-                        {account_id, "accid123"}],
-                       wm_entity:new(remote)).
+    {ok, Hostname} = inet:gethostname(),
+    wm_entity:set([{id, "0b1ee0b0-4db5-11eb-a18a-f7f7d5c0f982"},
+                   {name, "local-gate-test"},
+                   {kind, openstack},
+                   {server, Hostname},
+                   {port, 8444},
+                   {account_id, "accid123"}],
+                  wm_entity:new(remote)).
 
 -spec get_creds() -> #credential{}.
 get_creds() ->
-    wm_entity:set_attr([{id, "3ad32b68-4dba-11eb-b356-03875fd306d5"},
-                        {remote_id, "0b1ee0b0-4db5-11eb-a18a-f7f7d5c0f982"},
-                        {username, "demo1"},
-                        {password, "demo1"}],
-                       wm_entity:new(credential)).
+    wm_entity:set([{id, "3ad32b68-4dba-11eb-b356-03875fd306d5"},
+                   {remote_id, "0b1ee0b0-4db5-11eb-a18a-f7f7d5c0f982"},
+                   {username, "demo1"},
+                   {password, "demo1"}],
+                  wm_entity:new(credential)).
 
 %% ============================================================================
 %% Tests
@@ -89,35 +91,33 @@ get_creds() ->
 
 -spec list_images(list()) -> atom().
 list_images(_Config) ->
-    {ok, Ref} = wm_gate:list_images(self(), get_remote(), get_creds()),
+    Remote = get_remote(),
+    {ok, Ref} = wm_gate:list_images(self(), Remote, get_creds()),
     ExpectedImages =
-        [wm_entity:set_attr([{id, "i1"},
-                             {name, "image1"},
-                             {status, "creating"},
-                             {created, ""},
-                             {updated, ""},
-                             {kind, cloud}],
-                            wm_entity:new(image)),
-         wm_entity:set_attr([{id, "i2"},
-                             {name, "cirros"},
-                             {status, "created"},
-                             {created, ""},
-                             {updated, ""},
-                             {kind, cloud}],
-                            wm_entity:new(image))],
+        [wm_entity:set([{id, "i1"},
+                        {name, "image1"},
+                        {status, "creating"},
+                        {created, ""},
+                        {remote_id, wm_entity:get(id, Remote)},
+                        {updated, ""},
+                        {kind, cloud}],
+                       wm_entity:new(image)),
+         wm_entity:set([{id, "i2"},
+                        {name, "cirros"},
+                        {status, "created"},
+                        {remote_id, wm_entity:get(id, Remote)},
+                        {created, ""},
+                        {updated, ""},
+                        {kind, cloud}],
+                       wm_entity:new(image))],
     ?assertEqual({list_images, Ref, ExpectedImages}, wm_utils:await(list_images, Ref, 2000)).
 
 -spec get_image(list()) -> atom().
 get_image(_Config) ->
     {ok, Ref1} = wm_gate:get_image(self(), get_remote(), get_creds(), "i2"),
     ExpectedImage =
-        wm_entity:set_attr([{id, "i2"},
-                            {name, "cirros"},
-                            {status, "created"},
-                            {created, ""},
-                            {updated, ""},
-                            {kind, cloud}],
-                           wm_entity:new(image)),
+        wm_entity:set([{id, "i2"}, {name, "cirros"}, {status, "created"}, {created, ""}, {updated, ""}, {kind, cloud}],
+                      wm_entity:new(image)),
     ?assertEqual({get_image, Ref1, ExpectedImage}, wm_utils:await(get_image, Ref1, 2000)),
     {ok, Ref2} = wm_gate:get_image(self(), get_remote(), get_creds(), "foo"),
     ?assertMatch({error, Ref2, _}, wm_utils:await(get_image, Ref2, 2000)),
@@ -159,20 +159,29 @@ list_partitions(_Config) ->
 get_partition(_Config) ->
     {ok, Ref1} = wm_gate:get_partition(self(), get_remote(), get_creds(), "s2"),
     ExpectedPartition =
-        wm_entity:set_attr([{name, "stack2"},
-                            {state, up},
-                            {external_id, "s2"},
-                            {created, "2020-11-12T10:00:00"},
-                            {updated, "2021-01-02T11:18:39"},
-                            {addresses,
-                             #{compute_instances_ips => ["10.0.0.102"],
-                               master_private_ip => "10.0.0.101",
-                               master_public_ip => "172.28.128.154"}},
-                            {comment, "Test stack 2"}],
-                           wm_entity:new(partition)),
-    ?assertEqual({partition_fetched, Ref1, ExpectedPartition}, wm_utils:await(partition_fetched, Ref1, 2000)),
+        wm_entity:set([{name, "stack2"},
+                       {state, up},
+                       {external_id, "s2"},
+                       {created, "2020-11-12T10:00:00"},
+                       {updated, "2021-01-02T11:18:39"},
+                       {addresses,
+                        #{compute_instances_ips => ["10.0.0.102"],
+                          master_private_ip => "10.0.0.101",
+                          master_public_ip => "172.28.128.154"}},
+                       {comment, "Test stack 2"}],
+                      wm_entity:new(partition)),
+
+    % NOTE: partition ID is a new on each run
+    RetrievedData = wm_utils:await(partition_fetched, Ref1, 2000),
+    ?assertMatch({partition_fetched, Ref1, _}, RetrievedData),
+
+    {_, _, RetrievedPartition} = RetrievedData,
+    ExpectedPartitionWithId = ExpectedPartition#partition{id=RetrievedPartition#partition.id},
+    ?assertEqual(ExpectedPartitionWithId, RetrievedPartition),
+
     {ok, Ref2} = wm_gate:get_partition(self(), get_remote(), get_creds(), "foo"),
     ?assertMatch({error, Ref2, _}, wm_utils:await(partition_fetched, Ref2, 2000)),
+
     {ok, Ref3} = wm_gate:get_partition(self(), get_remote(), get_creds(), ""),
     ?assertMatch({error, Ref3, _}, wm_utils:await(partition_fetched, Ref3, 2000)).
 

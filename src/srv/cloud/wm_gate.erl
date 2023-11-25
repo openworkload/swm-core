@@ -226,6 +226,9 @@ wait_response_boby(ConnPid, StreamRef) ->
                     ?LOG_WARN("Gate response (200) error: ~p, headers: ~p", [ResponseError, Headers]),
                     {error, ResponseError}
             end;
+        {response, nofin, 307, Headers} ->
+            ?LOG_WARN("Gate response (307), headers: ~p", [Headers]),
+            {error, not_found};
         {response, nofin, 404, Headers} ->
             ?LOG_WARN("Gate response (404), headers: ~p", [Headers]),
             {error, not_found};

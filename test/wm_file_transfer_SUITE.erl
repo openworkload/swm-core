@@ -38,7 +38,7 @@ end_per_suite(Config) ->
         proplists:get_value(pid, Config), kill),
     Config.
 
-transfer_empty(Config) ->
+transfer_empty(_Config) ->
     %%----------------------------------
     %% UPLOAD
     %%----------------------------------

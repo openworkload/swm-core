@@ -10,7 +10,7 @@
 
 get_final_binary() ->
   User1 = wm_entity:new(user),
-  User2 = wm_entity:set_attr([
+  User2 = wm_entity:set([
                               {name, os:getenv("USER")},
                               {id, wm_utils:uuid(v4)}
                              ], User1),
@@ -19,18 +19,15 @@ get_final_binary() ->
   JobScriptContent = "#!/usr/bin/env bash\necho SWM_JOB_ID=${SWM_JOB_ID}\nsleep 20\n",
 
   Job1 = wm_entity:new(job),
-  Job2 = wm_entity:set_attr({id, "10000000-0000-0000-0000-000000000000"}, Job1),
-  Job3 = wm_entity:set_attr({name, "Test Job"}, Job2),
-  Job4 = wm_entity:set_attr({state, "Q"}, Job3),
-  Job5 = wm_entity:set_attr({job_stdout, "%j.out"}, Job4),
-  Job6 = wm_entity:set_attr({job_stderr, "%j.err"}, Job5),
-  Job7 = wm_entity:set_attr({workdir, "/tmp"}, Job6),
-  Job8 = wm_entity:set_attr({script_content, JobScriptContent}, Job7),
+  Job2 = wm_entity:set({id, "10000000-0000-0000-0000-000000000000"}, Job1),
+  Job3 = wm_entity:set({name, "Test Job"}, Job2),
+  Job4 = wm_entity:set({state, "Q"}, Job3),
+  Job5 = wm_entity:set({job_stdout, "%j.out"}, Job4),
+  Job6 = wm_entity:set({job_stderr, "%j.err"}, Job5),
+  Job7 = wm_entity:set({workdir, "/tmp"}, Job6),
+  Job8 = wm_entity:set({script_content, JobScriptContent}, Job7),
   JobBin = erlang:term_to_binary(Job8),
   JobBinSize = byte_size(JobBin),
-  ?LOG_DEBUG(">>>>>> Job: ~p", Job8),
-  ?LOG_DEBUG(">>>>>> JobBin: ~p", JobBin),
-  ?LOG_DEBUG(">>>>>> JobBinSize: ~p", JobBinSize),
 
   <<?PORTER_COMMAND_RUN/integer,
     ?PORTER_DATA_TYPES_COUNT/integer,

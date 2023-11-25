@@ -16,7 +16,7 @@ run_gate_system_process() ->
 run_command() ->
     Command = "./run-mocked.sh",
     Dir = get_gate_dir(),
-    ct:print("Gate runner command: ~p", [Command]),
+    ct:print("Gate runner command: ~p, dir: ~p", [Command, Dir]),
     Opt = [stream, exit_status, use_stdio, stderr_to_stdout, in, eof, {cd, Dir}],
     P = open_port({spawn, Command}, Opt),
     get_command_data(P, []).
