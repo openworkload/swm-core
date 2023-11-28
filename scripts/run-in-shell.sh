@@ -71,31 +71,41 @@ export SWM_PORTER_IN_CONTAINER=${ROOT_DIR}/c_src/porter/swm-porter
 
 VM_ARGS=$(grep -v -E '^#|^-name|^-sname|^-args_file' "${SWM_VM_ARGS}" | xargs | sed -e 's/ / /g')
 
+HOSTNAME=$(hostname -f)
+if [[ $HOSTNAME == *.* ]]; then
+  ERL_NAME_ARG=-name
+else
+  ERL_NAME_ARG=-sname
+fi
+
 if [ $ETOP ]; then
-  erl -name etop-`date +%s` ${VM_ARGS} -boot start_clean -remsh \'${SWM_SNAME}@$(hostname -f)\' \
+  erl $ERL_NAME_ARG etop-`date +%s` ${VM_ARGS} -boot start_clean -remsh \'${SWM_SNAME}@$HOSTNAME\' \
     -s etop -output text -tracing off -sort msg_q -interval 1 -lines $( expr `tput lines` - 11 )
 elif [ $OBSERVER ]; then
-  erl -name observer-`date +%s` ${VM_ARGS} -boot start_clean -remsh \'${SWM_SNAME}@$(hostname -f)\' \
+  erl $ERL_NAME_ARG observer-`date +%s` ${VM_ARGS} -boot start_clean -remsh \'${SWM_SNAME}@$HOSTNAME\' \
     -s observer
 elif [ $STOP ]; then
-  erl -name stop-`date +%s` ${VM_ARGS} -boot start_clean -noinput -noshell \
-      -eval "io:format(\"~p~n\", [rpc:call('${SWM_SNAME}@$(hostname -f)', init, stop, [], 10000)]), halt(0)"
+  echo erl $ERL_NAME_ARG stop-`date +%s` ${VM_ARGS} -boot start_clean -noinput -noshell \
+      -eval "io:format(\"~p~n\", [rpc:call('${SWM_SNAME}@$HOSTNAME', init, stop, [], 10000)]), halt(0)"
+  erl $ERL_NAME_ARG stop-`date +%s` ${VM_ARGS} -boot start_clean -noinput -noshell \
+      -eval "io:format(\"~p~n\", [rpc:call('${SWM_SNAME}@$HOSTNAME', init, stop, [], 10000)]), halt(0)"
 elif [ $PING ]; then
-  erl -name ping-`date +%s` ${VM_ARGS} -boot start_clean -noinput -noshell \
-      -eval "case {net_kernel:hidden_connect_node('${SWM_SNAME}@$(hostname -f)'), net_adm:ping('${SWM_SNAME}@$(hostname -f)')} of
+  # TODO: get rid of the erlang distribution requirement
+  erl $ERL_NAME_ARG ping-`date +%s` ${VM_ARGS} -boot start_clean -noinput -noshell \
+      -eval "case {net_kernel:hidden_connect_node('${SWM_SNAME}@$HOSTNAME'), net_adm:ping('${SWM_SNAME}@$HOSTNAME')} of
                {true, pong} ->
                  timer:sleep(9000), %FIXME swm services are not always ready when pinged with net_adm:ping (use wm_pinger instead)
                  io:format(\"pong\n\", []),
                  halt(0);
                {_, pang} ->
-                 io:format(\"Node ~p not responding to pings.\n\", ['${SWM_SNAME}@$(hostname -f)']),
+                 io:format(\"Node ~p not responding to pings.\n\", ['${SWM_SNAME}@$HOSTNAME']),
                  halt(1)
              end"
 elif [ $BACKGROUND ]; then
-  erl -pa ${ROOT_DIR}/_build/default/lib/*/ebin -config ${SWM_SYS_CONFIG} -args_file ${SWM_VM_ARGS} -boot start_sasl -detached \
+  erl $ERL_NAME_ARG $SWM_SNAME -pa ${ROOT_DIR}/_build/default/lib/*/ebin -config ${SWM_SYS_CONFIG} -args_file ${SWM_VM_ARGS} -boot start_sasl -detached \
     -s swm -s sync
 else
-  erl -pa ${ROOT_DIR}/_build/default/lib/*/ebin -config ${SWM_SYS_CONFIG} -args_file ${SWM_VM_ARGS} -boot start_clean \
+  erl $ERL_NAME_ARG $SWM_SNAME -pa ${ROOT_DIR}/_build/default/lib/*/ebin -config ${SWM_SYS_CONFIG} -args_file ${SWM_VM_ARGS} -boot start_clean \
     -s swm -s sync
 fi
 

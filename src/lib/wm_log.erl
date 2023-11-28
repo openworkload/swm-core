@@ -171,7 +171,7 @@ make_dirs(MState) ->
     YStr =
         lists:flatten(
             io_lib:format("~p", [Year])),
-    LogDir = filename:join([MState#mstate.spool, atom_to_list(node()), "log"]),
+    LogDir = wm_utils:get_env("SWM_LOG_DIR"),
     MainLogFile = filename:join([LogDir, YStr]),
     SaslLogFile = filename:join([LogDir, "sasl", "sasl.log"]),
     filelib:ensure_dir(MainLogFile),

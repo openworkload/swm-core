@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+
+  unit_tests:
+    runs-on: ubuntu-22.04
+    container:
+      image: erlang:24.2.2
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v4
+      -
+        name: Compile
+        run: make compile
+      -
+        name: Run unit tests
+        run: make test_unit
+        if: ${{ false }}  # disable for now
+
+  common_tests:
+    runs-on: ubuntu-22.04
+    container:
+      image: erlang:24.2.2
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v4
+      -
+        name: Compile
+        run: |
+          make compile
+          make release
+      -
+        name: Prepate cloud gate
+        run: |
+          apt-get update -y && apt-get install python3-pip sudo -y
+          git config --global url.https://github.com/.insteadOf git://github.com/
+          mkdir _build/ct-tests
+          git clone https://github.com/openworkload/swm-cloud-gate.git _build/ct-tests/swm-cloud-gate
+          ls -l _build/ct-tests
+          cd _build/ct-tests/swm-cloud-gate
+          make prepare-venv
+          . .venv/bin/activate
+      -
+        name: Generate keys
+        run: |
+          export USER=taras
+          ./scripts/setup-skyport-dev.linux
+      -
+        name: Run ct tests
+        run: |
+          export SWM_GATE_DIR=$(pwd)/_build/ct-tests/swm-cloud-gate
+          make test_ct

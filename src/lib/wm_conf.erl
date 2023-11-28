@@ -16,7 +16,7 @@
 -define(DEFAULT_SYCN_INTERVAL, 60000).
 -define(DEFAULT_PULL_TIMEOUT, 10000).
 
--record(mstate, {spool = "" :: string(), default_port = unknown :: integer() | atom(), sync = false :: atom()}).
+-record(mstate, {default_port = unknown :: integer() | atom(), sync = false :: atom()}).
 
 %% ============================================================================
 %% Module API
@@ -309,8 +309,7 @@ init(Args) ->
     MState = parse_args(Args, #mstate{}),
     ?LOG_INFO("Load configuration management module"),
     process_flag(trap_exit, true),
-    ?LOG_INFO("Using spool directory: ~p", [MState#mstate.spool]),
-    DBDir = filename:join([MState#mstate.spool, atom_to_list(node()), "confdb"]),
+    DBDir  = wm_utils:get_env("SWM_MNESIA_DIR"),
     filelib:ensure_dir([DBDir]),
     file:make_dir(DBDir),
     wm_db:ensure_running(),
@@ -490,8 +489,6 @@ code_change(_OldVsn, MState, _Extra) ->
 -spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
-parse_args([{spool, Dir} | T], MState) ->
-    parse_args(T, MState#mstate{spool = Dir});
 parse_args([{default_api_port, Port} | T], #mstate{} = MState) when is_list(Port) ->
     parse_args(T, MState#mstate{default_port = list_to_integer(Port)});
 parse_args([{default_api_port, Port} | T], #mstate{} = MState) ->
