@@ -43,7 +43,7 @@ jobs:
       -
         name: Prepate cloud gate
         run: |
-          apt-get update -y && apt-get install python3-pip sudo -y
+          apt-get update -y && apt-get install python3-pip -y
           git config --global url.https://github.com/.insteadOf git://github.com/
           mkdir _build/ct-tests
           git clone https://github.com/openworkload/swm-cloud-gate.git _build/ct-tests/swm-cloud-gate
@@ -54,7 +54,7 @@ jobs:
       -
         name: Generate keys
         run: |
-          export USER=taras
+          export USER=test
           ./scripts/setup-skyport-dev.linux
       -
         name: Run ct tests
