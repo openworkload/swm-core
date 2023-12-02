@@ -172,14 +172,14 @@ handle_request(requeue, Args, _) ->
 handle_request(cancel, Args, _) ->
     ?LOG_DEBUG("Jobs cancellation has been requested: ~p", [Args]),
     Results = cancel_jobs(Args, []),
-    CancelledFiltered =
-        lists:filter(fun ({cancelled, _}) ->
+    CanceledFiltered =
+        lists:filter(fun ({canceled, _}) ->
                              true;
                          (_) ->
                              false
                      end,
                      Results),
-    CancelledIds = lists:map(fun({_, ID}) -> ID end, CancelledFiltered),
+    CanceledIds = lists:map(fun({_, ID}) -> ID end, CanceledFiltered),
     NotFoundFiltered =
         lists:filter(fun ({not_found, _}) ->
                              true;
@@ -188,7 +188,7 @@ handle_request(cancel, Args, _) ->
                      end,
                      Results),
     NotFoundIds = lists:map(fun({_, ID}) -> ID end, NotFoundFiltered),
-    Msg = "Cancelled: " ++ lists:join(", ", CancelledIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
+    Msg = "Canceled: " ++ lists:join(", ", CanceledIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
     {string, Msg};
 handle_request(list, {[flavor], Limit}, _) ->
     Nodes = wm_conf:select(node, {all, Limit}),
@@ -264,20 +264,20 @@ cancel_jobs([JobId | T], Results) ->
     Result =
         case wm_conf:select(job, {id, JobId}) of
             {ok, Job} ->
-                UpdatedJob = wm_entity:set({state, ?JOB_STATE_CANCELLED}, Job),
+                UpdatedJob = wm_entity:set({state, ?JOB_STATE_CANCELED}, Job),
                 1 = wm_conf:update([UpdatedJob]),
-                Process = wm_entity:set([{state, ?JOB_STATE_CANCELLED}], wm_entity:new(process)),
+                Process = wm_entity:set([{state, ?JOB_STATE_CANCELED}], wm_entity:new(process)),
                 EndTime = wm_utils:now_iso8601(without_ms),
-                clear_cancelled_job_entities(UpdatedJob),
-                wm_event:announce(job_cancelled, {JobId, Process, EndTime, node()}),
-                {cancelled, JobId};
+                %clear_canceled_job_entities(UpdatedJob),
+                wm_event:announce(job_canceled, {JobId, Process, EndTime, node()}),
+                {canceled, JobId};
             _ ->
                 {not_found, JobId}
         end,
     cancel_jobs(T, [Result | Results]).
 
--spec clear_cancelled_job_entities(#job{}) -> ok.
-clear_cancelled_job_entities(Job) ->
+-spec clear_canceled_job_entities(#job{}) -> ok.
+clear_canceled_job_entities(Job) ->
     remove_job_relocation(Job),
     remove_job_partition(Job),
     % TODO: remove remote resources

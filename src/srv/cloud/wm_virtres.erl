@@ -97,8 +97,8 @@ init(Args) ->
 handle_sync_event(get_current_state, _From, State, MState) ->
     {reply, State, State, MState}.
 
-handle_event(job_cancelled, _, #mstate{job_id = JobId, task_id = TaskId} = MState) ->
-    ?LOG_DEBUG("Job ~p was cancelled, it's resources will be destroyed (task_id: ~p)", [JobId, TaskId]),
+handle_event(job_canceled, _, #mstate{job_id = JobId, task_id = TaskId} = MState) ->
+    ?LOG_DEBUG("Job ~p was canceled, it's resources will be destroyed (task_id: ~p)", [JobId, TaskId]),
     ok = wm_virtres_handler:cancel_relocation(JobId),
     gen_fsm:send_event(self(), start_destroying),
     {next_state, destroying, MState};

@@ -274,7 +274,7 @@ do_complete(Process, #mstate{job_id = JobId} = MState) ->
 do_announce_completed(Process, #mstate{job_id = JobId} = MState) ->
     EndTime = wm_utils:now_iso8601(without_ms),
     case wm_entity:get(state, Process) of
-        X when X == ?JOB_STATE_FINISHED orelse X == ?JOB_STATE_CANCELLED ->
+        X when X == ?JOB_STATE_FINISHED orelse X == ?JOB_STATE_CANCELED ->
             EventData = {MState#mstate.task_id, {JobId, Process, EndTime, node()}},
             wm_event:announce(wm_proc_done, EventData);
         _ ->

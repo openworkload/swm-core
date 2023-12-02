@@ -69,7 +69,7 @@ init(Args) ->
     ?LOG_INFO("Compute node management service has been started"),
     wm_event:subscribe(job_start_time, node(), ?MODULE),
     wm_event:subscribe(job_arrived, node(), ?MODULE),
-    wm_event:subscribe(job_cancelled, node(), ?MODULE),
+    wm_event:subscribe(job_canceled, node(), ?MODULE),
     wm_event:subscribe(wm_proc_done, node(), ?MODULE),
     wm_event:subscribe(wm_commit_done, node(), ?MODULE),
     wm_event:subscribe(wm_commit_failed, node(), ?MODULE),
@@ -116,8 +116,8 @@ handle_event(wm_proc_done, {ProcID, {JobID, Process, EndTime, Node}}, MState) ->
     wm_event:announce(job_finished, {JobID, Process, EndTime, Node}),
     PsMap = maps:remove(JobID, MState#mstate.processes),
     MState#mstate{processes = PsMap};
-handle_event(job_cancelled, {JobID, Process, EndTime, Node}, MState) ->
-    ?LOG_DEBUG("Job cancelled: ~p, process: ~p", [JobID, Process]),
+handle_event(job_canceled, {JobID, Process, EndTime, Node}, MState) ->
+    ?LOG_DEBUG("Job canceled: ~p, process: ~p", [JobID, Process]),
     update_job(JobID, process, Process),
     update_job(JobID, end_time, EndTime),
     set_nodes_alloc_state(onprem, idle, JobID),

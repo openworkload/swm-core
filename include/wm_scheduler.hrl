@@ -23,4 +23,4 @@
 -define(JOB_STATE_FINISHED, "F").
 -define(JOB_STATE_ERROR, "E").
 -define(JOB_STATE_TRANSFERRING, "T").
--define(JOB_STATE_CANCELLED, "C").
+-define(JOB_STATE_CANCELED, "C").

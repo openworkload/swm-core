@@ -29,7 +29,7 @@
     cog.outl('#define SWM_JOB_STATE_TRANSFERRING "T"')
     cog.outl('#define SWM_JOB_STATE_FINISHED     "F"')
     cog.outl('#define SWM_JOB_STATE_ERROR        "E"')
-    cog.outl('#define SWM_JOB_STATE_CANCELLED    "C"')
+    cog.outl('#define SWM_JOB_STATE_CANCELED     "C"')
     cog.outl()
     cog.outl()
 
