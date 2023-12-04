@@ -128,6 +128,8 @@ open_file(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) an
             {error, File, wm_posix_utils:errno(Reason)}
     end;
 open_file(ServerRef, File) ->
+    ?LOG_DEBUG("Open local file: ~p", [File]),
+    filelib:ensure_dir(File),
     case wm_utils:protected_call(ServerRef, {open_file, File}) of
         {ok, Fd} ->
             {ok, Fd};
@@ -718,7 +720,7 @@ parse_files(ServerRef, [File | Files], Acc) ->
 do_copy_files(_, _, [], _, _) ->
     ok;
 do_copy_files(SrcServerRef, DstServerRef, [File | Files], Destination, Opts) ->
-    ?LOG_DEBUG("Transfer ~p to ~p [~p -> ~p]", [File, Destination, SrcServerRef, DstServerRef]),
+    ?LOG_DEBUG("Transfer ~p to ~p [~1000p -> ~p]", [File, Destination, SrcServerRef, DstServerRef]),
     case ?MODULE:get_file_info(SrcServerRef, File) of
         {ok, Info = #file_info{type = symlink}} ->
             case filelib:is_regular(File) of
@@ -805,6 +807,7 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
     {St, Result} =
         wm_utils:do(#file{},
                     [fun(St) ->
+                        ?LOG_DEBUG("Process file: md5sum source ~p", [SrcFile]),
                         case ?MODULE:md5sum(SrcServerRef, SrcFile) of
                             {ok, Hash} ->
                                 St#file{src_md5_sum = Hash};
@@ -813,6 +816,7 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                         end
                      end,
                      fun(St) ->
+                        ?LOG_DEBUG("Process file: md5sum destination ~p", [DstFile]),
                         case ?MODULE:md5sum(DstServerRef, DstFile) of
                             {ok, Hash} ->
                                 St#file{dst_md5_sum = Hash};
@@ -828,6 +832,7 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                              St
                      end,
                      fun(St) ->
+                        ?LOG_DEBUG("Process file: open source ~p", [SrcFile]),
                         case ?MODULE:open_file(SrcServerRef, SrcFile) of
                             {ok, Fd} ->
                                 St#file{src_fd = Fd};
@@ -836,6 +841,7 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                         end
                      end,
                      fun(St) ->
+                        ?LOG_DEBUG("Process file: open destination ~p", [DstFile]),
                         case ?MODULE:open_file(DstServerRef, DstFile) of
                             {ok, Fd} ->
                                 St#file{dst_fd = Fd};
@@ -844,6 +850,7 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                         end
                      end,
                      fun(St) ->
+                        ?LOG_DEBUG("Process file: set info ~p", [DstFile]),
                         case ?MODULE:set_file_info(DstServerRef, DstFile, Info) of
                             ok ->
                                 St;
@@ -853,6 +860,7 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                      end,
                      fun(St = #file{src_fd = SrcFd, dst_fd = DstFd}) ->
                         Size = Info#file_info.size,
+                        ?LOG_DEBUG("Process file: copy ~p -> ~p", [SrcFile, DstFile]),
                         case copy_file(SrcServerRef, DstServerRef, SrcFd, DstFd, Size, Opts) of
                             ok ->
                                 St;
@@ -861,6 +869,7 @@ process_file(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                         end
                      end,
                      fun(St) ->
+                        ?LOG_DEBUG("Process file: final md5sum ~p", [DstFile]),
                         case ?MODULE:md5sum(DstServerRef, DstFile) of
                             {ok, Hash} ->
                                 St#file{dst_md5_sum = Hash};

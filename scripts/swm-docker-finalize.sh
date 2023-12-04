@@ -38,7 +38,7 @@ if [ $# -eq 4 ]; then
             usermod -l ${USER_NAME} ${OLD_USERNAME} 2>&1 >> $LOG
         fi
         echo "User ${USER_NAME} will be added to group with gid=$GID" >> $LOG
-        usermod -a -G ${GROUP_NAME} ${USER_NAME} 2>&1 >> $LOG
+        usermod -g ${GROUP_NAME} ${USER_NAME} 2>&1 >> $LOG
     else
         echo "New user with UID=$UID will be added: ${USER_NAME}" >> $LOG
         useradd -g ${USER_NAME} -u $UID ${USER_NAME} 2>&1 >> $LOG

@@ -105,7 +105,7 @@ handle_event(job_canceled, _, #mstate{job_id = JobId, task_id = TaskId} = MState
 handle_event(job_finished, _, #mstate{job_id = JobId, part_mgr_id = PartMgrNodeId} = MState) ->
     ?LOG_DEBUG("Job has finished => start data downloading: ~p", [JobId]),
     {ok, Ref, Files} = wm_virtres_handler:start_downloading(PartMgrNodeId, JobId),
-    ?LOG_INFO("Downloading has been started [jobid=~p, ref=~p]: ~p", [JobId, Ref, Files]),
+    ?LOG_INFO("Downloading has been started [jobid=~p, ref=~10000p]: ~p", [JobId, Ref, Files]),
     {next_state, downloading, MState#mstate{download_ref = Ref}};
 handle_event(destroy,
              _,
@@ -305,12 +305,11 @@ running({Ref, Status}, #mstate{} = MState) ->
 -spec downloading(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 downloading({Ref, ok}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Downloading has finished => delete entities [~p, ~p]", [Ref, JobId]),
-    ok = wm_virtres_handler:remove_relocation_entities(JobId),
     stop_port_forwarding(JobId),
     gen_fsm:send_event(self(), start_destroying),
     {next_state, destroying, MState#mstate{download_ref = finished}};
-downloading({Ref, {error, Node, Reason}}, #mstate{download_ref = Ref} = MState) ->
-    ?LOG_DEBUG("Downloading from ~p has failed: ~p", [Node, Reason]),
+downloading({Ref, {error, File, Reason}}, #mstate{download_ref = Ref} = MState) ->
+    ?LOG_DEBUG("Downloading of ~p has failed: ~p", [File, Reason]),
     handle_remote_failure(MState);
 downloading({Ref, 'EXIT', Reason}, #mstate{download_ref = Ref} = MState) ->
     ?LOG_DEBUG("Downloading has unexpectedly exited: ~p", [Reason]),
@@ -328,6 +327,7 @@ destroying(start_destroying,
                MState) ->
     ?LOG_DEBUG("Destroy remote partition for job ~p (task_id: ~p)", [JobId, TaskId]),
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
+    ok = wm_virtres_handler:remove_relocation_entities(JobId),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
 destroying({delete_in_progress, Ref, Reply}, #mstate{} = MState) ->
     ?LOG_DEBUG("Partition deletion is in progress [~p]: ~p", [Ref, Reply]),

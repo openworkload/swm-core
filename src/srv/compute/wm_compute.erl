@@ -117,11 +117,12 @@ handle_event(wm_proc_done, {ProcID, {JobID, Process, EndTime, Node}}, MState) ->
     PsMap = maps:remove(JobID, MState#mstate.processes),
     MState#mstate{processes = PsMap};
 handle_event(job_canceled, {JobID, Process, EndTime, Node}, MState) ->
-    ?LOG_DEBUG("Job canceled: ~p, process: ~p", [JobID, Process]),
+    ?LOG_DEBUG("Job canceled: ~p, process: ~1000p", [JobID, Process]),
     update_job(JobID, process, Process),
     update_job(JobID, end_time, EndTime),
     set_nodes_alloc_state(onprem, idle, JobID),
     event_to_parent({event, job_finished, {JobID, Process, EndTime, Node}}),
+    %clear_canceled_job_entities(JobID),
     wm_event:announce(job_finished, {JobID, Process, EndTime, Node}),
     JobProcesses = maps:get(JobID, MState#mstate.processes, maps:new()),
     maps:map(fun(ProcId, _) -> ok = wm_factory:send_event_locally({job_finished, Process}, proc, ProcId) end,
@@ -237,6 +238,7 @@ add_proc(JobID, ProcID, JobNodes, MState) ->
     PsMap = maps:put(JobID, JobPsMap2, MState#mstate.processes),
     MState#mstate{processes = PsMap}.
 
+-spec update_job(job_id(), atom(), #process{}) -> ok.
 update_job(JobID, process, Process) ->
     update_job(JobID, state, wm_entity:get(state, Process)),
     update_job(JobID, exitcode, wm_entity:get(exitcode, Process)),
@@ -253,6 +255,68 @@ update_job(JobID, Attr, NewValue) ->
             ok
     end.
 
+-spec event_to_parent(term()) -> ok.
 event_to_parent(Event) ->
     Parent = wm_core:get_parent(),
     wm_api:cast_self(Event, [Parent]).
+
+-spec clear_canceled_job_entities(job_id()) -> ok.
+clear_canceled_job_entities(JobId) ->
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    %remove_job_relocation(Job),
+    remove_job_partition(Job),
+    wm_topology:reload().
+
+-spec remove_job_relocation(#job{}) -> ok.
+remove_job_relocation(Job) ->
+    JobId = wm_entity:get(id, Job),
+    case wm_conf:select(relocation, {job_id, JobId}) of
+        {ok, Relocation} ->
+            wm_conf:delete(Relocation);
+        _ ->
+            ok
+    end.
+
+-spec remove_job_partition(#job{}) -> ok.
+remove_job_partition(Job) ->
+    Resources = wm_entity:get(resources, Job),
+    case wm_utils:find_property_in_resource("partition", id, Resources) of
+        {ok, PartitionId} ->
+            case wm_conf:select(partition, {id, PartitionId}) of
+                {ok, Partition} ->
+                    remove_partition_from_parent(Partition),
+                    remove_partition_nodes(Partition),
+                    wm_conf:delete(Partition);
+                _ ->
+                    ok
+            end;
+        {error, not_found} ->
+            ok
+    end.
+
+-spec remove_partition_from_parent(#partition{}) -> ok.
+remove_partition_from_parent(Partition) ->
+    case wm_entity:get(subdivision, Partition) of
+        partition ->
+            PartitionId = wm_entity:get(id, Partition),
+            ParentPartitionId = wm_entity:get(subdivision_id, Partition),
+            case wm_conf:select(partition, {id, ParentPartitionId}) of
+                {ok, ParentPartition} ->
+                    SubPartitions1 = wm_entity:get(partitions, ParentPartition),
+                    SubPartitions2 = lists:delete(PartitionId, SubPartitions1),
+                    1 =
+                        wm_conf:update(
+                            wm_entity:set({partitions, SubPartitions2}, ParentPartition)),
+                    ok;
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
+
+-spec remove_partition_nodes(#partition{}) -> ok.
+remove_partition_nodes(Partition) ->
+    NodeIds = wm_entity:get(nodes, Partition),
+    Nodes = wm_conf:select(node, NodeIds),
+    [wm_conf:delete(Node) || Node <- Nodes].

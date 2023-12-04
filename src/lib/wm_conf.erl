@@ -309,7 +309,7 @@ init(Args) ->
     MState = parse_args(Args, #mstate{}),
     ?LOG_INFO("Load configuration management module"),
     process_flag(trap_exit, true),
-    DBDir  = wm_utils:get_env("SWM_MNESIA_DIR"),
+    DBDir = wm_utils:get_env("SWM_MNESIA_DIR"),
     filelib:ensure_dir([DBDir]),
     file:make_dir(DBDir),
     wm_db:ensure_running(),

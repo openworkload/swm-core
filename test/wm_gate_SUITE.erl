@@ -176,7 +176,7 @@ get_partition(_Config) ->
     ?assertMatch({partition_fetched, Ref1, _}, RetrievedData),
 
     {_, _, RetrievedPartition} = RetrievedData,
-    ExpectedPartitionWithId = ExpectedPartition#partition{id=RetrievedPartition#partition.id},
+    ExpectedPartitionWithId = ExpectedPartition#partition{id = RetrievedPartition#partition.id},
     ?assertEqual(ExpectedPartitionWithId, RetrievedPartition),
 
     {ok, Ref2} = wm_gate:get_partition(self(), get_remote(), get_creds(), "foo"),

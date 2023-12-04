@@ -8,6 +8,8 @@
 -export([get_file_info/1, set_file_info/2]).
 -export([get_size/1]).
 
+-include("wm_log.hrl").
+
 -include_lib("kernel/include/file.hrl").
 
 -spec create_tar_gz(file:filename(), [file:filename()]) -> ok | {error, file:filename(), nonempty_string()}.

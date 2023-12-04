@@ -9,7 +9,7 @@
 #define SWM_JOB_STATE_TRANSFERRING "T"
 #define SWM_JOB_STATE_FINISHED     "F"
 #define SWM_JOB_STATE_ERROR        "E"
-#define SWM_JOB_STATE_CANCELLED    "C"
+#define SWM_JOB_STATE_CANCELED     "C"
 
 
 #include "wm_entity.h"

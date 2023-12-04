@@ -90,7 +90,7 @@ start_uploading(PartMgrNodeID, JobId) ->
     {ok, ToNode} = wm_conf:select(node, {id, PartMgrNodeID}),
     {ok, MyNode} = wm_self:get_node(),
     {ToAddr, _} = wm_conf:get_relative_address(ToNode, MyNode),
-    % TODO copy files to their own dirs, not in workdir, unless the full path is not set
+    % TODO upload files to their own dirs, not in workdir, unless the full path is unset
     wm_file_transfer:upload(self(), ToAddr, Priority, Files, WorkDir, #{via => ssh}).
 
 -spec start_downloading(node_id(), job_id()) -> {ok, reference(), [string()]}.
@@ -107,7 +107,6 @@ start_downloading(PartMgrNodeID, JobId) ->
     {ok, FromNode} = wm_conf:select(node, {id, PartMgrNodeID}),
     {ok, MyNode} = wm_self:get_node(),
     {FromAddr, _} = wm_conf:get_relative_address(FromNode, MyNode),
-    % TODO allow to copy files which paths are defined in a file that will be generated in cloud
     {ok, Ref} = wm_file_transfer:download(self(), FromAddr, Priority, Files, WorkDir, #{via => ssh}),
     {ok, Ref, Files}.
 
@@ -116,8 +115,9 @@ delete_partition(PartId, Remote) ->
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
             PartName = wm_entity:get(name, Partition),
+            ExternalId = wm_entity:get(external_id, Partition),
             {ok, Creds} = get_credentials(Remote),
-            wm_gate:delete_partition(self(), Remote, Creds, PartName);
+            wm_gate:delete_partition(self(), Remote, Creds, ExternalId);
         {error, Error} ->
             {error, Error}
     end.

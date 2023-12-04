@@ -76,11 +76,11 @@ handle_call({cancel_relocation, Job}, _, MState = #mstate{}) ->
     {reply, do_cancel_relocation(Job), MState}.
 
 handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
-    ?LOG_DEBUG("Job finished event received for job ~p", [JobId]),
+    ?LOG_DEBUG("Job finished: ~p", [JobId]),
     case wm_conf:select(relocation, {job_id, JobId}) of
         {ok, Relocation} ->
             RelocationId = wm_entity:get(id, Relocation),
-            ?LOG_DEBUG("Received job_finished => remove relocation info ~p", [RelocationId]),
+            ?LOG_DEBUG("Remove relocation information (id: ~p)", [RelocationId]),
             wm_conf:delete(Relocation),
             wm_compute:set_nodes_alloc_state(remote, offline, JobId),
             ok = wm_factory:send_event_locally(job_finished, virtres, RelocationId);

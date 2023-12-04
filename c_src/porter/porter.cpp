@@ -43,7 +43,7 @@ void set_uid_gid(const uid_t uid, const uid_t gid) {
     swm_loge("Can't set uid, status=", status);
     exit(status);
   }
-  swm_logi("Current process new UID: %d", getuid());
+  swm_logi("Current process new UID/GID: %d/%d", getuid(), getgid());
 }
 
 void set_workdir(passwd *pw, SwmJob &job) {
