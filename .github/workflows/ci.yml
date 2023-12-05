@@ -25,7 +25,6 @@ jobs:
       -
         name: Run unit tests
         run: make test_unit
-        if: ${{ false }}  # disable for now
 
   common_tests:
     runs-on: ubuntu-22.04

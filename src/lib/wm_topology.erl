@@ -739,12 +739,12 @@ find_rh_path(FromNodeId, ToNodeId, RH) ->
     ?LOG_DEBUG("Try to find the RH path: ~p --> ~p", [FromNodeId, ToNodeId]),
     case get_parent_id(FromNodeId) of
         {error, not_found} ->
-            % assume cluster without parent
+            [];
+        {ok, no_parent} ->  % cluster manager node without a parent
             Path1 = find_child_rh_path(ToNodeId, RH, []),
             Path2 = lists:filter(fun(X) -> X =/= FromNodeId end, Path1),
             Path3 = lists:reverse(Path2),
             Path3;
-        %[];
         {ok, ToNodeId} ->
             [ToNodeId];
         _ ->
@@ -869,21 +869,15 @@ is_subdiv_manager(NodeId, Entity) ->
 -spec get_parent_id(node_id()) -> {ok, node_id()} | {error, not_found}.
 get_parent_id(NodeId) ->
     case wm_conf:select(node, {id, NodeId}) of
-        {error, _} ->
-            {error, not_found};
-        {ok, Node} ->
-            ParentName = wm_entity:get(parent, Node),
+        {ok, #node{parent = ParentName}} ->
             case wm_conf:select_node(ParentName) of
-                {ok, Parent} ->
-                    case wm_entity:get(id, Parent) of
-                        [] ->
-                            {error, not_found};
-                        ParentId ->
-                            {ok, ParentId}
-                    end;
-                _ ->
-                    {error, not_found}
-            end
+                {ok, #node{id = ParentId}} ->
+                    {ok, ParentId};
+                {error, not_found} ->
+                    {ok, no_parent}
+            end;
+        _ ->
+            {error, not_found}
     end.
 
 -spec find_close_nodes(node_id(), map(), atom()) -> [#node{}].
