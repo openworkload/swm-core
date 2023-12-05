@@ -7,7 +7,6 @@
 
 -include("../../lib/wm_log.hrl").
 
--define(WS_KEEP_ALIVE, 30000).
 -define(HTTP_TIMEOUT, 20000).
 -define(HTTP_KEEP_ALIVE, 20000).
 -define(HTTP_RETRIES, 1).
@@ -25,10 +24,9 @@
          reqid = "" :: list(),
          steps = [] :: list(),
          command = undefined :: term(),
-         ws_ping_timer = undefined :: reference(),
          retries = ?COMMAND_RETRIES :: integer()}).
 
-%% @reference https://ninenines.eu/docs/en/gun/1.0/guide/
+%% @reference https://ninenines.eu/docs/en/gun/2.0/guide
 %% @reference https://medium.com/@tojeevansingh/tutorial-using-cowboy-gun-client-websocket-6f30ba225acd
 
 %% ============================================================================
@@ -138,9 +136,6 @@ handle_cast(_Msg, #mstate{conn_pid = ConnPid} = MState) ->
     ?LOG_ERROR("[HTTP] unknown cast message [~p]", [ConnPid]),
     {noreply, MState}.
 
-handle_info({do_ws_ping, ConnPid}, #mstate{stream = Stream, conn_pid = ConnPid} = MState) ->
-    ok = gun:ws_send(ConnPid, Stream, ping),
-    {noreply, MState};
 handle_info({gun_up, ConnPid, http}, #mstate{} = MState) ->
     ?LOG_DEBUG("[HTTP] UP [~p]", [ConnPid]),
     {noreply, MState};
@@ -175,10 +170,8 @@ handle_info({gun_data, ConnPid, _, fin, Data}, #mstate{} = MState) ->
     {noreply, MState#mstate{data = Bin}};
 handle_info({gun_upgrade, ConnPid, _, _, Headers}, #mstate{} = MState) ->
     ?LOG_DEBUG("[WS] UPGRADE OK [~p]", [ConnPid]),
-    Interval = wm_conf:g(ws_ping_interval, {?WS_KEEP_ALIVE, integer}),
-    Timer = wm_utils:wake_up_after(Interval, {do_ws_ping, ConnPid}),
     notify_requestor(Headers, [], ok, MState),
-    {noreply, MState#mstate{ws_ping_timer = Timer}};
+    {noreply, MState};
 handle_info({gun_upgrade, ConnPid, error, _, Status, _}, #mstate{} = MState) ->
     ?LOG_DEBUG("[WS] UPGRADE ERROR: ~p [~p]", [Status, ConnPid]),
     {noreply, retry_command(MState)};
@@ -237,46 +230,42 @@ code_change(_OldVsn, #mstate{} = MState, _Extra) ->
 
 open_conn(Addr, Port) ->
     Timeout = wm_conf:g(conn_timeout, {?HTTP_TIMEOUT, integer}),
-    KeepAlive = wm_conf:g(conn_keep_alive, {?HTTP_KEEP_ALIVE, integer}),
+    HttpKeepAlive = wm_conf:g(conn_keep_alive, {?HTTP_KEEP_ALIVE, integer}),
     Retries = wm_conf:g(conn_retries, {?HTTP_RETRIES, integer}),
     Opts =
         #{retry_timeout => Timeout,
           retry => Retries,
-          http_opts => #{keepalive => KeepAlive}},
+          http_opts => #{keepalive => HttpKeepAlive}},
     {ok, ConnPid} = gun:open(Addr, Port, Opts),
     ?LOG_DEBUG("Connection to ~p:~p has been opened (~p)", [Addr, Port, ConnPid]),
     MRef = monitor(process, ConnPid),
     {ConnPid, MRef}.
 
 -spec shutdown(#mstate{}) -> ok.
-shutdown(#mstate{conn_pid = ConnPid,
-                 mref = MRef,
-                 ws_ping_timer = Timer}) ->
+shutdown(#mstate{conn_pid = ConnPid, mref = MRef}) ->
     ?LOG_DEBUG("Shutdown and demonitor [~p, ~p]", [ConnPid, MRef]),
-    catch timer:cancel(Timer),
     demonitor(MRef),
-    ok = gun:flush(ConnPid),
+    rk = gun:flush(ConnPid),
     ok = gun:shutdown(ConnPid).
 
 do_get(Path, Hdr, #mstate{conn_pid = ConnPid} = MState) ->
-    ?LOG_DEBUG("GET: ~p", [Path]),
+    ?LOG_DEBUG("[HTTP] GET: ~p", [Path]),
     Stream = gun:get(ConnPid, Path, Hdr),
     MState#mstate{stream = Stream}.
 
 do_post(Path, Body, Hdr, #mstate{conn_pid = ConnPid} = MState) ->
-    ?LOG_DEBUG("POST: ~p: ~p ~p [~p]", [Path, Body, Hdr, ConnPid]),
+    ?LOG_DEBUG("[HTTP] POST: ~p: ~p ~p [~p]", [Path, Body, Hdr, ConnPid]),
     Stream = gun:post(ConnPid, Path, Hdr, Body),
     MState#mstate{stream = Stream}.
 
 do_delete(Path, Hdr, #mstate{conn_pid = ConnPid} = MState) ->
-    ?LOG_DEBUG("DELETE: ~p", [Path]),
+    ?LOG_DEBUG("[HTTP] DELETE: ~p", [Path]),
     Stream = gun:delete(ConnPid, Path, Hdr),
     MState#mstate{stream = Stream}.
 
 do_ws_upgrade(Path, Hdr, #mstate{conn_pid = ConnPid} = MState) ->
-    ?LOG_DEBUG("WS UPGRADE: ~p (HEADER: ~p)", [Path, Hdr]),
     Res = gun:ws_upgrade(ConnPid, Path, Hdr),
-    ?LOG_DEBUG("GUN UPGRADE: ~p~n", [Res]),
+    ?LOG_DEBUG("[WS] UPGRADE ~p, header: ~p, result: ~p", [Path, Hdr, Res]),
     MState.
 
 retry_command(MState = #mstate{command = undefined}) ->
