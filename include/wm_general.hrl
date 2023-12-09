@@ -1,3 +1,4 @@
 -define(NETWORK_LATENCY_MCS, 1000).
 -define(DEFAULT_PARENT_API_PORT, 10002).
 -define(DEFAULT_CERT_DIR, "/opt/swm/spool/secure/node/").
+-define(REMOTE_USER_DIR_NAME, "job").

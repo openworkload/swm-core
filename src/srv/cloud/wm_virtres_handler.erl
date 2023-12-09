@@ -85,7 +85,6 @@ start_uploading(PartMgrNodeID, JobId) ->
     WorkDir = wm_entity:get(workdir, Job),
     StdInFile = wm_entity:get(job_stdin, Job),
     InputFiles = wm_entity:get(input_files, Job),
-    %TODO: transfer also container image
     Files = lists:filter(fun(X) -> X =/= [] end, [StdInFile | InputFiles]),
     {ok, ToNode} = wm_conf:select(node, {id, PartMgrNodeID}),
     {ok, MyNode} = wm_self:get_node(),

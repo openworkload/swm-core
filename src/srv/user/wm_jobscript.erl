@@ -90,10 +90,10 @@ parse_line(Ws, Job) when hd(Ws) == "workdir", length(Ws) > 1 ->
                   Job);
 parse_line(Ws, Job) when hd(Ws) == "relocatable" ->
     wm_entity:set({relocatable, true}, Job);
-parse_line(Ws, Job) when hd(Ws) == "input" ->
+parse_line(Ws, Job) when hd(Ws) == "input-files" ->
     Old = wm_entity:get(input_files, Job),
     wm_entity:set({input_files, Old ++ tl(Ws)}, Job);
-parse_line(Ws, Job) when hd(Ws) == "output" ->
+parse_line(Ws, Job) when hd(Ws) == "output-files" ->
     Old = wm_entity:get(output_files, Job),
     wm_entity:set({output_files, Old ++ tl(Ws)}, Job);
 parse_line(Ws, Job) ->

@@ -7,6 +7,7 @@
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
+-include("../../../include/wm_general.hrl").
 
 -record(mstate, {spool = "" :: string(), fd :: atom(), logfile = "" :: string(), job_id = "" :: job_id()}).
 
@@ -87,7 +88,7 @@ parse_args([{_, _} | T], MState) ->
 
 -spec make_dirs(#mstate{}) -> #mstate{}.
 make_dirs(#mstate{job_id = JobID} = MState) ->
-    LogFile = filename:join([MState#mstate.spool, "output", JobID, "container.log"]),
+    LogFile = filename:join([MState#mstate.spool, ?REMOTE_USER_DIR_NAME, JobID, "container.log"]),
     filelib:ensure_dir(LogFile),
     MState#mstate{logfile = LogFile}.
 

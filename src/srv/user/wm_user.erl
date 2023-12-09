@@ -8,6 +8,7 @@
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
 -include("../../../include/wm_scheduler.hrl").
+-include("../../../include/wm_general.hrl").
 
 -record(mstate, {spool = "" :: string}).
 
@@ -113,7 +114,7 @@ handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
     case wm_conf:select(job, {id, JobId}) of
         {ok, Job} ->
             FileName = wm_entity:get(OutputType, Job),
-            FullPath = filename:join([Spool, "output", JobId, FileName]),
+            FullPath = filename:join([Spool, ?REMOTE_USER_DIR_NAME, JobId, FileName]),
             wm_utils:read_file(FullPath, [binary]);
         _ ->
             {error, "job not found"}
@@ -278,7 +279,7 @@ cancel_jobs([JobId | T], Results) ->
 
 -spec set_defaults(#job{}, string()) -> #job{}.
 set_defaults(#job{workdir = [], id = JobId} = Job, Spool) ->
-    set_defaults(wm_entity:set({workdir, Spool ++ "/output/" ++ JobId}, Job), Spool);
+    set_defaults(wm_entity:set({workdir, Spool ++ "/" ++ ?REMOTE_USER_DIR_NAME ++ "/" ++ JobId}, Job), Spool);
 set_defaults(#job{account_id = [], user_id = UserId} = Job, Spool) ->
     % If account is not specified by user during job submission then use the user's main account
     AccountId =

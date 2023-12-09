@@ -282,6 +282,7 @@ set_file_info(ServerRef, File, Info) ->
 -spec file_size(pid() | atom() | {atom(), node()}, file:filename() | file:io_device()) ->
                    {ok, binary()} | {error, file:filename(), nonempty_string()}.
 file_size(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    ?LOG_INFO("Get remote file size by path: ~p", [File]),
     case wm_ssh_sftp_ext:command(ConnectionRef, {file_size, File}) of
         {ok, Bytes} ->
             {ok, Bytes};
@@ -290,7 +291,7 @@ file_size(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) an
         {error, Code, _Msg} = Error when is_integer(Code) ->
             %% TODO: investigate why file size can produce {error, 47, "Operation not permitted (POSIX.1-2001)."}
             Error;
-        {error, File, _PosixReason} = Error ->
+        {error, _File, _PosixReason} = Error ->
             Error
     end;
 file_size(ServerRef, File) ->
@@ -444,8 +445,7 @@ handle_call({enqueue, CallbackModule, Node, Priority, Source, Destination, Opts}
                                {ok, Bytes} ->
                                    Bytes;
                                {error, File, Reason} ->
-                                   ?LOG_WARN("Can't obtain file size for ~p with reason ~p, continue with 1 byte size",
-                                             [File, Reason]),
+                                   ?LOG_INFO("Can't obtain file size for ~p: ~p", [File, Reason]),
                                    1
                            end
                         end),

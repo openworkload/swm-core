@@ -185,7 +185,7 @@ get_volumes() ->
       list_to_binary(wm_utils:get_env("SWM_ROOT")) => #{}}.
 
 -spec get_host_config([#resource{}]) -> map().
-get_host_config(Request) ->
+get_host_config(_Request) ->
     RootBin = list_to_binary(wm_utils:get_env("SWM_ROOT")),
     #{<<"Binds">> => [<<"/home:/home">>, <<"/tmp:/tmp">>, <<RootBin/binary, <<":">>/binary, RootBin/binary>>],
       %<<"PortBindings">> => get_container_port_binding(Request),
@@ -332,7 +332,8 @@ do_attach_ws_container(Job, Owner, Steps) ->
 do_send(HttpProcPid, Data, Steps) when is_binary(Data) ->
     wm_docker_client:send({binary, Data}, HttpProcPid, Steps).
 
-get_finalize_cmd(Job) ->
+-spec get_finalize_cmd(#job{}) -> [binary()].
+get_finalize_cmd(#job{workdir = WorkDir} = Job) ->
     case wm_utils:get_job_user(Job) of
         {error, not_found} ->
             not_found;
@@ -349,7 +350,7 @@ get_finalize_cmd(Job) ->
                         {"1000", "1000"}
                 end,
             ?LOG_DEBUG("Finalize ~p: ~p ~p ~p ~p", [ContID, FinScript, UID, GID, HostIP]),
-            Command = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID ++ " " ++ HostIP,
+            Command = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID ++ " " ++ HostIP ++ " " ++ WorkDir,
             [<<"/bin/bash">>, <<"-c">>, list_to_binary(Command)]
     end.
 

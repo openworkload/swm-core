@@ -5,12 +5,13 @@ set -x
 LOG=/tmp/swm-docker-finalize.log
 PROGRAM_NAME=$0
 
-if [ $# -eq 4 ]; then
+if [ $# -eq 5 ]; then
 
     USER_NAME=$1
     UID=$2
     GID=$3
     HOST_IP=$4
+    WORK_DIR=$5
 
     echo >> $LOG
     date -u +"%Y-%m-%dT%H:%M:%SZ" >> $LOG
@@ -56,8 +57,19 @@ if [ $# -eq 4 ]; then
     echo "New /etc/hosts:" >> $LOG
     cat /etc/hosts >> $LOG
 
+    echo "Validate job work directory existence: ${WORK_DIR}" >> $LOG
+    if [ -d ${WORK_DIR} ]; then
+        echo "The job work directory already exists" >> $LOG
+    else
+        echo "Create the job work directory" >> $LOG
+        mkdir -p ${WORK_DIR} 2>&1 > $LOG
+
+        echo "Change ownership of the job work directory to ${UID}:${GID}" >> $LOG
+        chown ${UID}:${GID} ${WORK_DIR} 2>&1 > $LOG
+    fi
+
 else
-    MSG="Usage: ${PROGRAM_NAME} USER_NAME UID GID"
+    MSG="Usage: ${PROGRAM_NAME} <USER_NAME> <UID> <GID> <HOST_IP> <WORK_DIR>"
     echo $MSG
     echo $MSG >> $LOG
     exit 3
