@@ -15,6 +15,11 @@ case $i in
     PRIV_SUBNET=$1
     shift
     ;;
+    -j)
+    shift
+    JOB_ID=$1
+    shift
+    ;;
     -i)
     shift
     PRIV_IP=$1
@@ -34,7 +39,7 @@ done
 GATEWAY_IP=$(ip -4 addr show $(ip -4 route list 0/0 | awk -F' ' '{ print $5 }') | grep -oP "(?<=inet\\s)\\d+(\\.\\d+){3}")
 
 echo "----------------------------------------------------"
-echo $(date) ": start openstack initialization (HOST: ${HOSTNAME}, IP=$GATEWAY_IP, master: ${MASTER})"
+echo $(date) ": start openstack initialization (HOST: ${HOST_NAME}, IP=$GATEWAY_IP, master: ${MASTER})"
 
 hostname ${HOST_NAME}.openworkload.org
 echo ${HOST_NAME}.openworkload.org > /etc/hostname
@@ -72,6 +77,9 @@ then
     #echo $(date) ": systemctl | grep nfs:"
     #systemctl | grep nfs
 
+    mkdir /var/swm
+    echo "host:/opt/swm /var/swm nfs rsize=32768,wsize=32768,hard,intr,async 0 0" >> /etc/fstab
+
 else
     echo "${PRIV_IP}:/home /home nfs rsize=32768,wsize=32768,hard,intr,async 0 0" >> /etc/fstab
     echo $(date) ": /etc/fstab:"
@@ -91,6 +99,10 @@ echo SWM_SNAME=${HOST_NAME} > /etc/swm.conf
 echo $(date) ": /etc/swm.conf:"
 cat /etc/swm.conf
 echo
+
+JOB_DIR=/opt/swm/spool/job/$JOB_ID
+echo $(date) ": create job directory: $JOB_DIR"
+mkdir -p $JOB_DIR
 
 systemctl enable swm
 systemctl start swm

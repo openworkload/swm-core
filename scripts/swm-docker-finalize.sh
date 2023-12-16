@@ -63,10 +63,10 @@ if [ $# -eq 5 ]; then
     else
         echo "Create the job work directory" >> $LOG
         mkdir -p ${WORK_DIR} 2>&1 > $LOG
-
-        echo "Change ownership of the job work directory to ${UID}:${GID}" >> $LOG
-        chown ${UID}:${GID} ${WORK_DIR} 2>&1 > $LOG
     fi
+
+    echo "Ensure ownership of the job work directory as ${UID}:${GID}" >> $LOG
+    chown ${UID}:${GID} ${WORK_DIR} 2>&1 > $LOG
 
 else
     MSG="Usage: ${PROGRAM_NAME} <USER_NAME> <UID> <GID> <HOST_IP> <WORK_DIR>"

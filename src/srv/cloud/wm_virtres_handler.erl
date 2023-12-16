@@ -29,11 +29,6 @@ remove_relocation_entities(JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     ok = wm_relocator:remove_relocation_entities(Job).
 
--spec cancel_relocation(job_id()) -> atom().
-cancel_relocation(JobId) ->
-    {ok, Job} = wm_conf:select(job, {id, JobId}),
-    ok = wm_relocator:cancel_relocation(Job).
-
 -spec wait_for_partition_fetch() -> reference().
 wait_for_partition_fetch() ->
     wm_utils:wake_up_after(?PARTITION_FETCH_PERIOD, part_fetch).
@@ -97,7 +92,7 @@ start_downloading(PartMgrNodeID, JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     Priority = wm_entity:get(priority, Job),
     WorkDir = wm_entity:get(workdir, Job),
-    OutputFiles = wm_entity:get(output_files, Job),
+    OutputFiles = [WorkDir ++ "/" ++ Filename || Filename <- wm_entity:get(output_files, Job)],
     StdErrFile = wm_entity:get(job_stderr, Job),
     StdOutFile = wm_entity:get(job_stdout, Job),
     StdErrPath = filename:join([WorkDir, StdErrFile]),
@@ -113,7 +108,6 @@ start_downloading(PartMgrNodeID, JobId) ->
 delete_partition(PartId, Remote) ->
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
-            PartName = wm_entity:get(name, Partition),
             ExternalId = wm_entity:get(external_id, Partition),
             {ok, Creds} = get_credentials(Remote),
             wm_gate:delete_partition(self(), Remote, Creds, ExternalId);
@@ -132,6 +126,7 @@ spawn_partition(Job, Remote) ->
           flavor_name => get_resource_value_property(node, "flavor", Job, Remote, fun get_default_flavor_name/1),
           tenant_name => wm_entity:get(tenant_name, Creds),
           partition_name => PartName,
+          job_id => JobId,
           node_count => wm_utils:get_requested_nodes_number(Job)},
     ?LOG_DEBUG("Start partition options: ~w", [Options]),
     wm_gate:create_partition(self(), Remote, Creds, Options).

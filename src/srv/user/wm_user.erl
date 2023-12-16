@@ -259,7 +259,7 @@ requeue_jobs([JobId | T], Results) ->
         end,
     requeue_jobs(T, [Result | Results]).
 
--spec cancel_jobs([job_id()], [{canceled|not_found, job_id()}]) -> [{canceled|not_found, job_id()}].
+-spec cancel_jobs([job_id()], [{canceled | not_found, job_id()}]) -> [{canceled | not_found, job_id()}].
 cancel_jobs([], Results) ->
     Results;
 cancel_jobs([JobId | T], Results) ->
