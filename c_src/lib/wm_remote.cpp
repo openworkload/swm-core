@@ -88,8 +88,15 @@ SwmRemote::SwmRemote(const char* buf, int &index) {
     return;
   }
 
+  if (ei_buffer_to_map(buf, index, this->runtime)) {
+    std::cerr << "Could not init remote::runtime at pos 10: ";
+    ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
+    return;
+  }
+
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
-    std::cerr << "Could not init remote::revision at pos 10: ";
+    std::cerr << "Could not init remote::revision at pos 11: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
@@ -130,6 +137,10 @@ void SwmRemote::set_port(const uint64_t &new_val) {
   port = new_val;
 }
 
+void SwmRemote::set_runtime(const std::map<std::string, std::string> &new_val) {
+  runtime = new_val;
+}
+
 void SwmRemote::set_revision(const uint64_t &new_val) {
   revision = new_val;
 }
@@ -164,6 +175,10 @@ std::string SwmRemote::get_server() const {
 
 uint64_t SwmRemote::get_port() const {
   return port;
+}
+
+std::map<std::string, std::string> SwmRemote::get_runtime() const {
+  return runtime;
 }
 
 uint64_t SwmRemote::get_revision() const {
@@ -229,6 +244,7 @@ void SwmRemote::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << kind << separator;
   std::cerr << prefix << server << separator;
   std::cerr << prefix << port << separator;
+  std::cerr << prefix << runtime << separator;
   std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }

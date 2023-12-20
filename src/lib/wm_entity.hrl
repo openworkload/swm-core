@@ -224,6 +224,7 @@
          kind = local :: atom(),
          server :: string(),
          port = 8444 :: pos_integer(),
+         runtime = #{} :: map(),
          revision = 0 :: pos_integer()}).
 -record(account,
         {id :: account_id(),

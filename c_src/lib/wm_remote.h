@@ -24,6 +24,7 @@ class SwmRemote:SwmEntity {
   void set_kind(const std::string&);
   void set_server(const std::string&);
   void set_port(const uint64_t&);
+  void set_runtime(const std::map<std::string, std::string>&);
   void set_revision(const uint64_t&);
 
   std::string get_id() const;
@@ -34,6 +35,7 @@ class SwmRemote:SwmEntity {
   std::string get_kind() const;
   std::string get_server() const;
   uint64_t get_port() const;
+  std::map<std::string, std::string> get_runtime() const;
   uint64_t get_revision() const;
 
  private:
@@ -45,6 +47,7 @@ class SwmRemote:SwmEntity {
   std::string kind;
   std::string server;
   uint64_t port;
+  std::map<std::string, std::string> runtime;
   uint64_t revision;
 
 };

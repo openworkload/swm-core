@@ -272,6 +272,7 @@ do_partition_create(Remote, Creds, Spool, Options) ->
                     {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
                     {<<"keyname">>, list_to_binary(KeyName)},
                     {<<"jobid">>, list_to_binary(maps:get(job_id, Options))},
+                    {<<"runtime">>, list_to_binary(get_runtime_parameters_string(Remote))},
                     {<<"count">>, integer_to_binary(ExtraNodesCount)}],
             ?LOG_DEBUG("Partition creation HTTP headers: ~p", [Headers]),
             StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers),
@@ -287,6 +288,17 @@ do_partition_create(Remote, Creds, Spool, Options) ->
         {error, Error} ->
             {error, Error}
     end.
+
+-spec get_runtime_parameters_string(#remote{}) -> str.
+get_runtime_parameters_string(#remote{runtime = RuntimeMap}) ->
+    lists:flatten(
+        maps:fold(fun (Key, Value, "") ->
+                          io_lib:format("~s=~s", [Key, Value]);
+                      (Key, Value, Acc) ->
+                          io_lib:format("~s,~s=~s", [Acc, Key, Value])
+                  end,
+                  "",
+                  RuntimeMap)).
 
 -spec do_partition_delete(#remote{}, #credential{}, string(), string()) -> {ok, string()} | {error, any()}.
 do_partition_delete(Remote, Creds, PartExtId, Spool) ->

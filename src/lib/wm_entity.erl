@@ -724,6 +724,8 @@ get_type(remote, Attr) when is_atom(Attr) ->
             string;
         port ->
             integer;
+        runtime ->
+            map;
         revision ->
             integer
     end;

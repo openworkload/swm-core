@@ -25,6 +25,11 @@ case $i in
     PRIV_IP=$1
     shift
     ;;
+    -l)
+    shift
+    SWM_SOURCE=$1
+    shift
+    ;;
     -m)
     MASTER=true
     shift
@@ -77,9 +82,6 @@ then
     #echo $(date) ": systemctl | grep nfs:"
     #systemctl | grep nfs
 
-    mkdir /var/swm
-    echo "host:/opt/swm /var/swm nfs rsize=32768,wsize=32768,hard,intr,async 0 0" >> /etc/fstab
-
 else
     echo "${PRIV_IP}:/home /home nfs rsize=32768,wsize=32768,hard,intr,async 0 0" >> /etc/fstab
     echo $(date) ": /etc/fstab:"
@@ -94,6 +96,25 @@ else
 
 fi
 echo
+
+echo $(date) ": ensure swm worker is installed, SWM_SOURCE=${SWM_SOURCE}"
+TMP_DIR=$(mktemp -d -t swm-worker)
+if [[ ! "$TMP_DIR" || ! -d "$TMP_DIR" ]]; then
+  echo "Could not create temporary directory"
+  exit 1
+fi
+function cleanup {
+  rm -rf "$TMP_DIR"
+  echo "Deleted temporary directory $TMP_DIR"
+}
+trap cleanup EXIT
+pushd $TMP_DIR
+if [[ $SWM_SOURCE == "http://*.tar.gz" ]]; then
+    wget $SWM_SOURCE --output-document=swm-worker.tar.gz
+    mkdir -p /opt/swm
+    tar zfx ./swm-worker.tar.gz --directory /opt/swm/
+fi
+popd
 
 echo SWM_SNAME=${HOST_NAME} > /etc/swm.conf
 echo $(date) ": /etc/swm.conf:"

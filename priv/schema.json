@@ -916,6 +916,10 @@
       "default": 8444,
       "type": "pos_integer()"
     },
+    "runtime": {
+      "default": "#{}",
+      "type": "map()"
+    },
     "revision": {
       "default": 0,
       "type": "pos_integer()"
