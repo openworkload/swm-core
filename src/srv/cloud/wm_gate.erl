@@ -273,6 +273,7 @@ do_partition_create(Remote, Creds, Spool, Options) ->
                     {<<"keyname">>, list_to_binary(KeyName)},
                     {<<"jobid">>, list_to_binary(maps:get(job_id, Options))},
                     {<<"runtime">>, list_to_binary(get_runtime_parameters_string(Remote))},
+                    {<<"ports">>, list_to_binary(maps:get(ingres_ports, Options))},
                     {<<"count">>, integer_to_binary(ExtraNodesCount)}],
             ?LOG_DEBUG("Partition creation HTTP headers: ~p", [Headers]),
             StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers),

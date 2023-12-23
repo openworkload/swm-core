@@ -6,8 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../lib/wm_log.hrl").
-
--define(SSH_DAEMON_DEFAULT_PORT, 10022).
+-include("../../include/wm_general.hrl").
 
 -record(mstate,
         {spool = "" :: string(),
@@ -55,7 +54,7 @@ init(Args) ->
     HostCertsDir = filename:join([Spool, "secure/host"]),
     SystemDir = HostCertsDir,
     UserDir = HostCertsDir,
-    ListenPort = wm_conf:g(ssh_daemon_listen_port, {?SSH_DAEMON_DEFAULT_PORT, integer}),
+    ListenPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
     case spawn_ssh_daemon(any,  % TODO: don't listen to all interfaces
                           ListenPort,
                           [{tcpip_tunnel_out, true},

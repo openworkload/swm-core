@@ -369,35 +369,6 @@ is_local_job(#job{nodes = [Node]}) ->
 is_local_job(_) ->
     false.
 
--spec get_job_ports([#resource{}]) -> {[{integer(), integer()}], []}.
-get_job_ports([]) ->
-    [];
-get_job_ports([#resource{name = "ports", properties = Properties} | _]) ->
-    Value = proplists:get_value(value, Properties), % example of the Value: "8888/tcp,6001/udp"
-    lists:foldl(fun(PortStr,
-                    List) ->  % Example: "8081/tcp/in" or "8888/tcp/out"
-                   Parts = string:split(PortStr, "/", all),
-                   case length(Parts) of
-                       3 ->
-                           PortDirection = lists:nth(3, Parts),
-                           case lists:nth(2, Parts) of
-                               "tcp" ->
-                                   PortNumber = list_to_integer(lists:nth(1, Parts)),
-                                   [{PortDirection, PortNumber, PortNumber} | List];
-                               OtherType ->
-                                   ?LOG_DEBUG("Requested port protocol is not supported: ~p", [OtherType]),
-                                   List
-                           end;
-                       WrongFormat ->
-                           ?LOG_DEBUG("Requested job port format is incorrect: ~p", [WrongFormat]),
-                           List
-                   end
-                end,
-                [],
-                string:split(Value, ",", all));
-get_job_ports([_ | T]) ->
-    get_job_ports(T).
-
 -spec get_wm_api_port() -> inet:port_number().
 get_wm_api_port() ->
     {ok, SelfNode} = wm_self:get_node(),
@@ -412,7 +383,7 @@ start_port_forwarding(TunnelClientPid, JobId) ->
     ListenHost = "localhost",
     RemoteHost = "localhost",
     ResourcesRequest = wm_entity:get(request, Job),
-    PortsToForward = get_job_ports(ResourcesRequest) ++ [get_wm_api_port()],
+    PortsToForward = wm_resource_utils:get_port_tuples(ResourcesRequest) ++ [get_wm_api_port()],
 
     lists:foldl(fun ({"out", ListenPort, PortToForward}, OpenedPorts) ->
                         case wm_ssh_client:make_tunnel(TunnelClientPid,

@@ -7,6 +7,7 @@
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
+-include("../../../include/wm_general.hrl").
 
 -define(DEFAULT_CLOUD_NODE_API_PORT, 10001).
 -define(REDINESS_CHECK_PERIOD, 30000).
@@ -120,6 +121,11 @@ spawn_partition(Job, Remote) ->
     JobId = wm_entity:get(id, Job),
     PartName = get_partition_name(JobId),
     {ok, Creds} = get_credentials(Remote),
+    {ok, SelfNode} = wm_self:get_node(),
+    JobIngresPorts = wm_resource_utils:get_ingres_ports_str(wm_entity:get(request, Job)),
+    ApiPort = integer_to_list(wm_entity:get(api_port, SelfNode)),
+    SshPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
+    IngresPorts = JobIngresPorts ++ "," ++ ApiPort ++ "," ++ SshPort,
     Options =
         #{name => PartName,
           image_name => get_resource_value_property(image, "cloud-image", Job, Remote, fun get_default_image_name/1),
@@ -127,6 +133,7 @@ spawn_partition(Job, Remote) ->
           tenant_name => wm_entity:get(tenant_name, Creds),
           partition_name => PartName,
           job_id => JobId,
+          ingres_ports => IngresPorts,
           node_count => wm_utils:get_requested_nodes_number(Job)},
     ?LOG_DEBUG("Start partition options: ~w", [Options]),
     wm_gate:create_partition(self(), Remote, Creds, Options).
@@ -142,7 +149,6 @@ ensure_entities_created(JobId, Partition, TplNode) ->
 
 -spec get_resource_value_property(atom(), string(), #job{}, #remote{}, fun((#remote{}) -> string())) -> string().
 get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
-    %case lists:search(fun (#resource{name = X}) when X == Name ->
     case lists:keyfind(Name, 2, wm_entity:get(request, Job)) of
         false ->
             FunGetDefault(Remote);

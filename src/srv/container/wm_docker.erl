@@ -172,7 +172,7 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term9 = jwalk:set({"HostConfig"}, Term8, get_host_config(Request)),
     Term10 = jwalk:set({"StdinOnce"}, Term9, false),
     Term11 = jwalk:set({"VolumesFrom"}, Term10, get_volumes_from()),
-    Term12 = jwalk:set({"ExposedPorts"}, Term11, get_container_exposed_ports(Request)),
+    Term12 = jwalk:set({"ExposedPorts"}, Term11, wm_resource_utils:get_ingres_ports_map(Request)),
     Term13 = jwalk:set({"WorkingDir"}, Term12, <<"/tmp">>),
     Term14 = jwalk:set({"AutoRemove"}, Term13, true),
     Term15 = jwalk:set({"User"}, Term14, <<"root">>),
@@ -188,7 +188,6 @@ get_volumes() ->
 get_host_config(_Request) ->
     RootBin = list_to_binary(wm_utils:get_env("SWM_ROOT")),
     #{<<"Binds">> => [<<"/home:/home">>, <<"/tmp:/tmp">>, <<RootBin/binary, <<":">>/binary, RootBin/binary>>],
-      %<<"PortBindings">> => get_container_port_binding(Request),
       <<"NetworkMode">> => <<"host">>,
       <<"PublishAllPorts">> => true}.
 
@@ -199,63 +198,6 @@ get_cmd(Porter) ->
 -spec get_volumes_from() -> binary().
 get_volumes_from() ->
     [list_to_binary(os:getenv("SWM_DOCKER_VOLUMES_FROM", "swm-core:ro"))].
-
--spec get_input_port_with_proto(string()) -> {ok, string()} | {error, not_found}.
-get_input_port_with_proto(Port) ->
-    case string:substr(Port, string:len(Port) - 1) of
-        "in" ->
-            {ok, string:substr(Port, 1, string:len(Port) - 3)};
-        _ ->
-            {error, not_found}
-    end.
-
--spec get_container_port_binding([#resource{}]) -> map().
-get_container_port_binding([]) ->
-    #{};
-get_container_port_binding([#resource{name = "ports", properties = Properties} | T]) ->
-    case proplists:get_value(value, Properties) of
-        Value when is_list(Value) ->
-            Ports = string:split(Value, ",", all),
-            lists:foldl(fun(Port, Map) ->
-                           case get_input_port_with_proto(Port) of
-                               {ok, PortAndProto} ->
-                                   PortBin = list_to_binary(hd(string:split(PortAndProto, "/"))),
-                                   maps:put(list_to_binary(PortAndProto), [#{<<"HostPort">> => PortBin}], Map);
-                               {error, not_found} ->
-                                   Map
-                           end
-                        end,
-                        #{},
-                        Ports);
-        _ ->
-            get_container_port_binding(T)
-    end;
-get_container_port_binding([_ | T]) ->
-    get_container_port_binding(T).
-
--spec get_container_exposed_ports([#resource{}]) -> map().
-get_container_exposed_ports([]) ->
-    #{};
-get_container_exposed_ports([#resource{name = "ports", properties = Properties} | T]) ->
-    case proplists:get_value(value, Properties) of
-        Value when is_list(Value) ->
-            Ports = string:split(Value, ",", all),
-            lists:foldl(fun(Port, Map) ->
-                           case get_input_port_with_proto(Port) of
-                               {ok, PortAndProto} ->
-                                   PortNumberStr = hd(string:split(PortAndProto, "/")),
-                                   maps:put(list_to_binary(PortNumberStr), #{}, Map);
-                               {error, not_found} ->
-                                   Map
-                           end
-                        end,
-                        #{},
-                        Ports);
-        _ ->
-            get_container_exposed_ports(T)
-    end;
-get_container_exposed_ports([_ | T]) ->
-    get_container_exposed_ports(T).
 
 -spec get_container_image([#resource{}]) -> binary().
 get_container_image([]) ->
