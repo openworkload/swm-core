@@ -1,6 +1,6 @@
 -module(wm_resource_utils).
 
--export([get_ingres_ports_map/1, get_ingres_ports_str/1, get_port_tuples/1]).
+-export([get_ingres_ports_map/2, get_ingres_ports_str/1, get_port_tuples/1]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -15,10 +15,10 @@ get_ingres_port_with_proto(Port) ->
             {error, not_found}
     end.
 
--spec get_ingres_ports_map([#resource{}]) -> map().
-get_ingres_ports_map([]) ->
+-spec get_ingres_ports_map([#resource{}], atom()) -> map().
+get_ingres_ports_map([], _) ->
     #{};
-get_ingres_ports_map([#resource{name = "ports", properties = Properties} | T]) ->
+get_ingres_ports_map([#resource{name = "ports", properties = Properties} | T], KeyType) ->
     case proplists:get_value(value, Properties) of
         Value when is_list(Value) ->
             Ports = string:split(Value, ",", all),
@@ -26,7 +26,12 @@ get_ingres_ports_map([#resource{name = "ports", properties = Properties} | T]) -
                            case get_ingres_port_with_proto(Port) of
                                {ok, PortAndProto} ->
                                    PortNumberStr = hd(string:split(PortAndProto, "/")),
-                                   maps:put(list_to_binary(PortNumberStr), #{}, Map);
+                                   case KeyType of
+                                       binaries ->
+                                           maps:put(list_to_binary(PortNumberStr), #{}, Map);
+                                       strings ->
+                                           maps:put(PortNumberStr, #{}, Map)
+                                    end;
                                {error, not_found} ->
                                    Map
                            end
@@ -34,16 +39,16 @@ get_ingres_ports_map([#resource{name = "ports", properties = Properties} | T]) -
                         #{},
                         Ports);
         _ ->
-            get_ingres_ports_map(T)
+            get_ingres_ports_map(T, KeyType)
     end;
-get_ingres_ports_map([_ | T]) ->
-    get_ingres_ports_map(T).
+get_ingres_ports_map([_ | T], KeyType) ->
+    get_ingres_ports_map(T, KeyType).
 
 
 -spec get_ingres_ports_str([#resource{}]) -> [string()].
 get_ingres_ports_str(Resources) ->
-  Ports = maps:keys(get_ingres_ports_map(Resources)),
-  string:join(Ports, ",").
+  Ports = maps:keys(get_ingres_ports_map(Resources, strings)),
+  lists:flatten(string:join(Ports, ",")).
 
 -spec get_port_tuples([#resource{}]) -> {[{string(), integer(), integer()}], []}.
 get_port_tuples([]) ->
