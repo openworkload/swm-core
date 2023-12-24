@@ -194,6 +194,8 @@ create_partition(_Config) ->
           tenant_name => "dude",
           key_name => "key1",
           job_id => "40565124-9c03-11ee-8ca4-633064256ed4",
+          runtime => "http://10.0.2.15/swm-worker.tar.gz",
+          ingres_ports => "8888,10022,12345",
           count => 1},
     {ok, Ref1} = wm_gate:create_partition(self(), get_remote(), get_creds(), Options),
     ?assertMatch({partition_spawned, Ref1, _}, wm_utils:await(partition_spawned, Ref1, 2000)).
