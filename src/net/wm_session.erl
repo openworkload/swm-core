@@ -110,7 +110,7 @@ handle_received_call({Module, Arg0, Args, Socket, ServerPid}) ->
 handle_received_cast({Module, Arg0, Args, Tag, Addr, Socket, ServerPid}) ->
     ServerPid
     ! replied, % release the waiting connection process
-    ?LOG_DEBUG("API cast: ~p ~p ~10000p ~p ~100p", [Module, Arg0, Args, Tag, Addr]),
+    ?LOG_DEBUG("API cast: ~p ~p ~10000p ~100p ~1000p", [Module, Arg0, Args, Tag, Addr]),
     case verify_rpc(Module, Arg0, Args, Socket) of
         {ok, NewArgs} ->
             case wm_conf:is_my_address(Addr) of

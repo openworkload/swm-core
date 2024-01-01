@@ -125,7 +125,8 @@ spawn_partition(Job, Remote) ->
     JobIngresPorts = wm_resource_utils:get_ingres_ports_str(wm_entity:get(request, Job)),
     ApiPort = integer_to_list(wm_entity:get(api_port, SelfNode)),
     SshPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
-    IngresPorts = JobIngresPorts ++ "," ++ ApiPort ++ "," ++ integer_to_list(SshPort),
+    DataTransferPort = integer_to_list(wm_file_transfer:get_port()),
+    IngresPorts = JobIngresPorts ++ "," ++ ApiPort ++ "," ++ integer_to_list(SshPort) ++ "," ++ DataTransferPort,
     Options =
         #{name => PartName,
           image_name => get_resource_value_property(image, "cloud-image", Job, Remote, fun get_default_image_name/1),

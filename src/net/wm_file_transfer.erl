@@ -14,8 +14,10 @@
 -export([get_file_info/2, set_file_info/3]).
 -export([file_size/2]).
 -export([md5sum/2]).
+-export([get_port/0]).
 
 -include("../lib/wm_log.hrl").
+-include("../../include/wm_general.hrl").
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -34,13 +36,16 @@
          dst_fd :: file:io_device()}).
 -record(directory, {src_dir_list = [] :: [file:filename()], dst_dir_list = [] :: [file:filename()]}).
 
--define(SSH_PORT, 31337).  % TODO: use ssh daemon started by wm_ssh_server
 -define(DATA_TRANSFER_PARALLEL, 2).
 -define(BUF_SIZE, 65536).
 
 %% ============================================================================
 %% Module API
 %% ============================================================================
+
+-spec get_port() -> integer.
+get_port() ->
+    wm_conf:g(data_transfer_ssh_port, {?DEFAULT_DATA_TRANSFER_PORT, integer}).
 
 -spec start_link([term()]) -> {ok, pid()} | ignore | {error, term()}.
 start_link(Args) ->
@@ -673,8 +678,8 @@ parse_args([{_, _} | T], MState) ->
 %% for system_dir
 -spec ssh_daemon() -> {ok, pid()} | {error, term()}.
 ssh_daemon() ->
-    Port = wm_conf:g(data_transfer_ssh_port, {?SSH_PORT, integer}),
-    ssh:daemon(Port,
+    % TODO: use ssh daemon started by wm_ssh_server
+    ssh:daemon(?MODULE:get_port(),
                [{id_string, "SWM/" ++ wm_utils:get_env("SWM_VERSION")},
                 {system_dir, filename:join([wm_utils:get_env("SWM_SPOOL"), "secure/host"])},
                 {subsystems, [wm_ssh_sftp_ext:subsystem_spec(), ssh_sftpd:subsystem_spec([{cwd, _CWD = "/"}])]},
@@ -1177,7 +1182,7 @@ with_connection(Node, Opts, Fun) ->
 
 -spec with_ssh_connection(string(), fun((...) -> term())) -> {error, any(), nonempty_string()} | term().
 with_ssh_connection(Node, Fun) ->
-    Port = wm_conf:g(data_transfer_ssh_port, {?SSH_PORT, integer}),
+    Port = wm_conf:g(data_transfer_ssh_port, {?DEFAULT_DATA_TRANSFER_PORT, integer}),
     Opts =
         [{user, "swm"},
          {password, "swm"},
@@ -1193,7 +1198,7 @@ with_ssh_connection(Node, Fun) ->
                     Result;
                 {error, Reason} ->
                     ok = ssh:close(ConnectionRef),
-                    {error, Node, io_lib:format("Connection via SSH to remote node ~p failed due ~p", [Node, Reason])}
+                    {error, Node, io_lib:format("Connection via SSH to ~p:~p failed: ~p", [Node, Port, Reason])}
             end;
         {error, Reason} ->
             {error, Node, io_lib:format("Connection via SSH to remote node ~p failed due ~p", [Node, Reason])}

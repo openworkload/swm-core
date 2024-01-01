@@ -147,7 +147,7 @@ init(Args) ->
     %      then remove spool of children nodes).
     MState2 = MState1#mstate{port = Port},
     wm_works:call_asap(?MODULE, start_listen),
-    ?LOG_DEBUG("Module state: ~p", [MState2]),
+    ?LOG_DEBUG("Module new state: ~10000p", [MState2]),
     {ok, MState2}.
 
 parse_args([], #mstate{} = MState) ->

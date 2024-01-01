@@ -259,7 +259,7 @@ get_job_list() ->
 
 -spec delete_job(map()) -> {string(), pos_integer()}.
 delete_job(Req) ->
-    ?LOG_DEBUG("Handle job cancellation HTTP request: ~p", [Req]),
+    ?LOG_DEBUG("Handle job cancellation HTTP request with url=~p", [maps:get(path, Req, undefined)]),
     case Req of
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
             {string, Msg} = gen_server:call(wm_user, {cancel, [binary_to_list(JobId)]}),

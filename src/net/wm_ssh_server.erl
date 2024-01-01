@@ -114,7 +114,7 @@ spawn_ssh_daemon(Host, Port, Options) ->
     case ssh:daemon(Host, Port, Options) of
         {ok, Pid} ->
             R = ssh:daemon_info(Pid),
-            ?LOG_DEBUG("~p:~p ssh:daemon_info(~p) ->~n ~10000p", [?MODULE, ?LINE, Pid, R]),
+            ?LOG_DEBUG("SSH daemon started: ~p", [R]),
             {ok, L} = R,
             ListenPort = proplists:get_value(port, L),
             ListenIP = proplists:get_value(ip, L),
