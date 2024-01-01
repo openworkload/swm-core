@@ -114,3 +114,8 @@ update_deps:
 
 upgrade_deps:
 	$(REBAR) upgrade -a
+
+worker: release
+	export SWM_VERSION=$(VERSION)
+	scripts/setup.linux -a -t
+	cp _build/packages/swm-$(VERSION)-worker.tar.gz ../openstack-box/swm-worker.tar.gz
