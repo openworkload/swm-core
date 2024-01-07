@@ -279,9 +279,9 @@ set_file_info(ServerRef, File, Info) ->
         ok ->
             ok;
         {error, Reason} -> %% gen_server exception -> {error, Reason}
-            ?LOG_INFO("Can't change permissions of ~p to ~1000p: ~p", [File, Info, wm_posix_utils:errno(Reason)]);
+            ?LOG_INFO("Can't change permissions of ~p to ~1000p: ~10000p", [File, Info, wm_posix_utils:errno(Reason)]);
         {error, File, Reason} ->
-            ?LOG_INFO("Can't change permissions of ~p to ~1000p: ~p", [File, Info, wm_posix_utils:errno(Reason)])
+            ?LOG_INFO("Can't change permissions of ~p to ~1000p: ~10000p", [File, Info, wm_posix_utils:errno(Reason)])
     end,
     % We tolerate errors if local file permissions can't be set to the same as the remote one has,
     % because of https://github.com/erlang/otp/issues/7895 which prevents us from assigning

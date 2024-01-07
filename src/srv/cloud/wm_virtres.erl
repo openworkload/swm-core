@@ -308,9 +308,11 @@ downloading({Ref, ok}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     stop_port_forwarding(JobId),
     gen_fsm:send_event(self(), start_destroying),
     {next_state, destroying, MState#mstate{download_ref = finished}};
-downloading({Ref, {error, File, Reason}}, #mstate{download_ref = Ref} = MState) ->
-    ?LOG_DEBUG("Downloading of ~p has failed: ~p", [File, Reason]),
-    handle_remote_failure(MState);
+downloading({Ref, {error, File, Reason}}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
+    ?LOG_WARN("Downloading of ~p has failed: ~p", [File, Reason]),
+    stop_port_forwarding(JobId),
+    gen_fsm:send_event(self(), start_destroying),
+    {next_state, destroying, MState#mstate{download_ref = finished}};
 downloading({Ref, 'EXIT', Reason}, #mstate{download_ref = Ref} = MState) ->
     ?LOG_DEBUG("Downloading has unexpectedly exited: ~p", [Reason]),
     handle_remote_failure(MState);
