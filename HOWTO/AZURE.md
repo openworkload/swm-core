@@ -19,7 +19,7 @@ az login
 az group create --name devRG --location eastus
 ```
 
-### Add a new service principal:
+### Add a new service principal (application will be created with the same name):
 ```bash
 az ad sp create-for-rbac --name devSP --role Contributor --scopes /subscriptions/$SUBSCRIPTION_ID/resourceGroups/devRG --cert @/opt/swm/spool/secure/cluster/cert.pem
 ```
@@ -39,4 +39,17 @@ az group delete --name devRG
 ### Delete a service principal:
 ```bash
 az ad sp delete --id $SERVICE_PRINCIPAL_ID
+```
+
+# Validate the setup
+
+## Get authentication information
+If you later need tenant and subscription IDs, then the following command can be used:
+```bash
+az account list
+```
+where id in the output will show the id.
+To get application ID the following command can be used
+```bash
+az ad app list
 ```
