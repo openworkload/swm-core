@@ -270,6 +270,7 @@ do_partition_create(Remote, Creds, Spool, Options) ->
                     {<<"tenantname">>, list_to_binary(maps:get(tenant_name, Options, ""))},
                     {<<"imagename">>, list_to_binary(maps:get(image_name, Options, ""))},
                     {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
+                    {<<"containerimage">>, list_to_binary(maps:get(container_image, Options))},
                     {<<"keyname">>, list_to_binary(KeyName)},
                     {<<"jobid">>, list_to_binary(maps:get(job_id, Options))},
                     {<<"runtime">>, list_to_binary(get_runtime_parameters_string(Remote))},

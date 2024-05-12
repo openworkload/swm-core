@@ -245,7 +245,7 @@ open_conn(Addr, Port) ->
 shutdown(#mstate{conn_pid = ConnPid, mref = MRef}) ->
     ?LOG_DEBUG("Shutdown and demonitor [~p, ~p]", [ConnPid, MRef]),
     demonitor(MRef),
-    rk = gun:flush(ConnPid),
+    ok = gun:flush(ConnPid),
     ok = gun:shutdown(ConnPid).
 
 do_get(Path, Hdr, #mstate{conn_pid = ConnPid} = MState) ->
