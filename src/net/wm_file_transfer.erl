@@ -679,12 +679,13 @@ parse_args([{_, _} | T], MState) ->
 -spec ssh_daemon() -> {ok, pid()} | {error, term()}.
 ssh_daemon() ->
     % TODO: use ssh daemon started by wm_ssh_server
-    ssh:daemon(?MODULE:get_port(),
-               [{id_string, "SWM/" ++ wm_utils:get_env("SWM_VERSION")},
-                {system_dir, filename:join([wm_utils:get_env("SWM_SPOOL"), "secure/host"])},
-                {subsystems, [wm_ssh_sftp_ext:subsystem_spec(), ssh_sftpd:subsystem_spec([{cwd, _CWD = "/"}])]},
-                {preferred_algorithms, ssh:default_algorithms()},
-                {user_passwords, [{"swm", "swm"}]}]).
+    ssh:daemon(
+        ?MODULE:get_port(),
+        [{id_string, "SWM/" ++ wm_utils:get_env("SWM_VERSION")},
+         {system_dir, filename:join([wm_utils:get_env("SWM_SPOOL"), "secure/host"])},
+         {subsystems, [wm_ssh_sftp_ext:subsystem_spec(), ssh_sftpd:subsystem_spec([{cwd, _CWD = "/"}])]},
+         {preferred_algorithms, ssh:default_algorithms()},
+         {user_passwords, [{"swm", "swm"}]}]).  %TODO: consider a real password here
 
 %% TODO: Fix spec
 -spec parse_files(any(), file:filename() | [file:filename()]) -> [file:filename()].

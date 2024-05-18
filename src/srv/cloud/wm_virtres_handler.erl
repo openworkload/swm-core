@@ -1,9 +1,9 @@
 -module(wm_virtres_handler).
 
 -export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/2,
-         start_uploading/2, start_downloading/2, delete_partition/2, spawn_partition/2, wait_for_partition_fetch/0,
-         wait_for_wm_resources_readiness/0, wait_for_ssh_connection/0, remove_relocation_entities/1,
-         ensure_entities_created/3]).
+         start_swm_worker_uploading/3, start_job_data_uploading/2, start_job_data_downloading/2, delete_partition/2,
+         spawn_partition/2, wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0, wait_for_ssh_connection/1,
+         remove_relocation_entities/1, ensure_entities_created/3]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
@@ -38,9 +38,9 @@ wait_for_partition_fetch() ->
 wait_for_wm_resources_readiness() ->
     wm_utils:wake_up_after(?REDINESS_CHECK_PERIOD, part_check).
 
--spec wait_for_ssh_connection() -> reference().
-wait_for_ssh_connection() ->
-    wm_utils:wake_up_after(?SSH_CHECK_PERIOD, ssh_check).
+-spec wait_for_ssh_connection(atom()) -> reference().
+wait_for_ssh_connection(SshPortType) ->
+    wm_utils:wake_up_after(?SSH_CHECK_PERIOD, SshPortType).
 
 -spec request_partition(job_id(), #remote{}) -> {atom(), string()}.
 request_partition(JobId, Remote) ->
@@ -74,8 +74,19 @@ update_job(NewParams, JobId) ->
     ?LOG_DEBUG("Update job ~p with new parameters: ~10000p", [JobId, NewParams]),
     1 = wm_conf:update(Job2).
 
--spec start_uploading(node_id(), job_id()) -> {ok, string()}.
-start_uploading(PartMgrNodeID, JobId) ->
+-spec start_swm_worker_uploading(job_id(), node_id(), pid()) -> {ok, string()}.
+start_swm_worker_uploading(JobId, RemoteNodeId, SshProvisionClientPid) ->
+    {ok, ToNode} = wm_conf:select(node, {id, RemoteNodeId}),
+    {ok, MyNode} = wm_self:get_node(),
+    {ToAddr, _} = wm_conf:get_relative_address(ToNode, MyNode),
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    Priority = wm_entity:get(priority, Job),
+    RemoteDir = "/opt/swm/",
+    Files = ["/home/taras/projects/swm-core/_build/packages/swm-0.2.0-worker.tar.gz"],  % FIXME
+    wm_file_transfer:upload(self(), ToAddr, Priority, Files, RemoteDir, #{via => ssh}).
+
+-spec start_job_data_uploading(node_id(), job_id()) -> {ok, string()}.
+start_job_data_uploading(PartMgrNodeID, JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     Priority = wm_entity:get(priority, Job),
     WorkDir = wm_entity:get(workdir, Job),
@@ -88,8 +99,8 @@ start_uploading(PartMgrNodeID, JobId) ->
     % TODO upload files to their own dirs, not in workdir, unless the full path is unset
     wm_file_transfer:upload(self(), ToAddr, Priority, Files, WorkDir, #{via => ssh}).
 
--spec start_downloading(node_id(), job_id()) -> {ok, reference(), [string()]}.
-start_downloading(PartMgrNodeID, JobId) ->
+-spec start_job_data_downloading(node_id(), job_id()) -> {ok, reference(), [string()]}.
+start_job_data_downloading(PartMgrNodeID, JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     Priority = wm_entity:get(priority, Job),
     WorkDir = wm_entity:get(workdir, Job),
@@ -122,7 +133,9 @@ spawn_partition(Job, Remote) ->
     PartName = get_partition_name(JobId),
     {ok, Creds} = get_credentials(Remote),
     {ok, SelfNode} = wm_self:get_node(),
-    JobIngresPorts = wm_resource_utils:get_ingres_ports_str(wm_entity:get(request, Job)),
+    JobIngresPorts =
+        wm_resource_utils:get_ingres_ports_str(
+            wm_entity:get(request, Job)),
     ApiPort = integer_to_list(wm_entity:get(api_port, SelfNode)),
     SshPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
     DataTransferPort = integer_to_list(wm_file_transfer:get_port()),

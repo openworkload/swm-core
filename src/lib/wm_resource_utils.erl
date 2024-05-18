@@ -5,7 +5,6 @@
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
 
-
 -spec get_ingres_port_with_proto(string()) -> {ok, string()} | {error, not_found}.
 get_ingres_port_with_proto(Port) ->
     case string:substr(Port, string:len(Port) - 1) of
@@ -31,7 +30,7 @@ get_ingres_ports_map([#resource{name = "ports", properties = Properties} | T], K
                                            maps:put(list_to_binary(PortNumberStr), #{}, Map);
                                        strings ->
                                            maps:put(PortNumberStr, #{}, Map)
-                                    end;
+                                   end;
                                {error, not_found} ->
                                    Map
                            end
@@ -44,11 +43,11 @@ get_ingres_ports_map([#resource{name = "ports", properties = Properties} | T], K
 get_ingres_ports_map([_ | T], KeyType) ->
     get_ingres_ports_map(T, KeyType).
 
-
 -spec get_ingres_ports_str([#resource{}]) -> [string()].
 get_ingres_ports_str(Resources) ->
-  Ports = maps:keys(get_ingres_ports_map(Resources, strings)),
-  lists:flatten(string:join(Ports, ",")).
+    Ports = maps:keys(get_ingres_ports_map(Resources, strings)),
+    lists:flatten(
+        string:join(Ports, ",")).
 
 -spec get_port_tuples([#resource{}]) -> {[{string(), integer(), integer()}], []}.
 get_port_tuples([]) ->
