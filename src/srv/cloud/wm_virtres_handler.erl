@@ -1,7 +1,7 @@
 -module(wm_virtres_handler).
 
 -export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/2,
-         start_swm_worker_uploading/3, start_job_data_uploading/2, start_job_data_downloading/2, delete_partition/2,
+         upload_swm_worker/2, start_job_data_uploading/3, start_job_data_downloading/3, delete_partition/2,
          spawn_partition/2, wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0, wait_for_ssh_connection/1,
          remove_relocation_entities/1, ensure_entities_created/3]).
 
@@ -74,19 +74,20 @@ update_job(NewParams, JobId) ->
     ?LOG_DEBUG("Update job ~p with new parameters: ~10000p", [JobId, NewParams]),
     1 = wm_conf:update(Job2).
 
--spec start_swm_worker_uploading(job_id(), node_id(), pid()) -> {ok, string()}.
-start_swm_worker_uploading(JobId, RemoteNodeId, SshProvisionClientPid) ->
+-spec upload_swm_worker(node_id(), string()) -> ok | {error, term()}.
+upload_swm_worker(RemoteNodeId, SshUserDir) ->
     {ok, ToNode} = wm_conf:select(node, {id, RemoteNodeId}),
     {ok, MyNode} = wm_self:get_node(),
     {ToAddr, _} = wm_conf:get_relative_address(ToNode, MyNode),
-    {ok, Job} = wm_conf:select(job, {id, JobId}),
-    Priority = wm_entity:get(priority, Job),
-    RemoteDir = "/opt/swm/",
-    Files = ["/home/taras/projects/swm-core/_build/packages/swm-0.2.0-worker.tar.gz"],  % FIXME
-    wm_file_transfer:upload(self(), ToAddr, Priority, Files, RemoteDir, #{via => ssh}).
+    RemoteFile = "/opt/swm/swm-worker.tar.gz",
+    Version = wm_utils:get_env("SWM_VERSION"),
+    DefaultWorkerPath = io_lib:format("/opt/swm/~p/packages/swm-~p-worker.tar.gz", [Version, Version]),
+    DefaultWorkerPathFromEnv = os:getenv("SWM_WORKER_LOCAL_PATH", DefaultWorkerPath),
+    Port = wm_conf:g(ssh_prov_listen_port, {?DEFAULT_SSH_PROVISION_PORT, integer}),
+    wm_file_transfer:upload_file_sftp_sync(ToAddr, Port, DefaultWorkerPathFromEnv, RemoteFile, SshUserDir).
 
--spec start_job_data_uploading(node_id(), job_id()) -> {ok, string()}.
-start_job_data_uploading(PartMgrNodeID, JobId) ->
+-spec start_job_data_uploading(node_id(), job_id(), string()) -> {ok, string()}.
+start_job_data_uploading(PartMgrNodeID, JobId, SshUserDir) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     Priority = wm_entity:get(priority, Job),
     WorkDir = wm_entity:get(workdir, Job),
@@ -97,10 +98,10 @@ start_job_data_uploading(PartMgrNodeID, JobId) ->
     {ok, MyNode} = wm_self:get_node(),
     {ToAddr, _} = wm_conf:get_relative_address(ToNode, MyNode),
     % TODO upload files to their own dirs, not in workdir, unless the full path is unset
-    wm_file_transfer:upload(self(), ToAddr, Priority, Files, WorkDir, #{via => ssh}).
+    wm_file_transfer:upload(self(), ToAddr, Priority, Files, WorkDir, #{via => ssh, user_dir => SshUserDir}).
 
--spec start_job_data_downloading(node_id(), job_id()) -> {ok, reference(), [string()]}.
-start_job_data_downloading(PartMgrNodeID, JobId) ->
+-spec start_job_data_downloading(node_id(), job_id(), string()) -> {ok, reference(), [string()]}.
+start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     Priority = wm_entity:get(priority, Job),
     WorkDir = wm_entity:get(workdir, Job),
@@ -113,7 +114,8 @@ start_job_data_downloading(PartMgrNodeID, JobId) ->
     {ok, FromNode} = wm_conf:select(node, {id, PartMgrNodeID}),
     {ok, MyNode} = wm_self:get_node(),
     {FromAddr, _} = wm_conf:get_relative_address(FromNode, MyNode),
-    {ok, Ref} = wm_file_transfer:download(self(), FromAddr, Priority, Files, WorkDir, #{via => ssh}),
+    {ok, Ref} =
+        wm_file_transfer:download(self(), FromAddr, Priority, Files, WorkDir, #{via => ssh, user_dir => SshUserDir}),
     {ok, Ref, Files}.
 
 -spec delete_partition(partition_id(), #remote{}) -> {ok, string()} | {error, atom()}.

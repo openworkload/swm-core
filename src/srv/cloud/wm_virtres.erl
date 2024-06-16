@@ -12,7 +12,8 @@
 -include("../../lib/wm_entity.hrl").
 
 -record(mstate,
-        {wait_ref = undefined :: string(),
+        {spool = "" :: string(),
+         wait_ref = undefined :: string(),
          part_id = undefined :: string(),
          template_node = undefined :: #node{},
          remote = undefined :: #remote{},
@@ -20,12 +21,12 @@
          task_id = undefined :: integer(),
          part_mgr_id = undefined :: string(),
          rediness_timer = undefined :: reference(),
-         provision_conn_timer = undefined :: reference(),
-         ssh_conn_timer = undefined :: reference(),
-         ssh_client_pid = undefined :: pid(),
+         ssh_prov_conn_timer = undefined :: reference(),
+         ssh_prov_client_pid = undefined :: pid(),
+         ssh_tunnel_conn_timer = undefined :: reference(),
+         ssh_tunnel_client_pid = undefined :: pid(),
          forwarded_ports = [] :: [inet:port_number()],
          part_check_timer = undefined :: reference(),
-         upload_worker_ref = undefined :: reference(),
          upload_ref = undefined :: reference(),
          download_ref = undefined :: reference(),
          action = create :: atom()}).
@@ -79,19 +80,11 @@ init(Args) ->
     JobId = MState#mstate.job_id,
     case wm_virtres_handler:get_remote(JobId) of
         {ok, Remote} ->
-            case wm_ssh_client:start_link(Args) of
-                {ok, SshClientPid} ->
-                    ?LOG_INFO("SSH client process has been started, remote: ~p, pid: ~p",
-                              [wm_entity:get(name, Remote), SshClientPid]),
-                    wm_factory:notify_initiated(virtres, MState#mstate.task_id),
-                    {ok, sleeping, MState#mstate{remote = Remote, ssh_client_pid = SshClientPid}};
-                {error, Error} ->
-                    ?LOG_ERROR("Can not start new SSH client: ~p", [Error]),
-                    {stop, {shutdown, "SSH client failed to start"}, MState}
-            end;
+            wm_factory:notify_initiated(virtres, MState#mstate.task_id),
+            {ok, sleeping, MState#mstate{remote = Remote}};
         _ ->
             ?LOG_ERROR("Remote not found for job: ~p", [JobId]),
-            {stop, {shutdown, "Remote not found"}, MState}
+            {stop, "Remote not found"}
     end.
 
 handle_sync_event(get_current_state, _From, State, MState) ->
@@ -102,9 +95,14 @@ handle_event(job_canceled, _, #mstate{job_id = JobId, task_id = TaskId} = MState
     ok = wm_virtres_handler:cancel_relocation(JobId),  %FIXME call does not exist and not used
     gen_fsm:send_event(self(), start_destroying),
     {next_state, destroying, MState};
-handle_event(job_finished, _, #mstate{job_id = JobId, part_mgr_id = PartMgrNodeId} = MState) ->
+handle_event(job_finished,
+             _,
+             #mstate{job_id = JobId,
+                     part_mgr_id = PartMgrNodeId,
+                     spool = Spool} =
+                 MState) ->
     ?LOG_DEBUG("Job has finished => start data downloading: ~p", [JobId]),
-    {ok, Ref, Files} = wm_virtres_handler:start_job_data_downloading(PartMgrNodeId, JobId),
+    {ok, Ref, Files} = wm_virtres_handler:start_job_data_downloading(PartMgrNodeId, JobId, get_ssh_swm_dir(Spool)),
     ?LOG_INFO("Downloading has been started [jobid=~p, ref=~10000p]: ~p", [JobId, Ref, Files]),
     {next_state, downloading, MState#mstate{download_ref = Ref}};
 handle_event(destroy,
@@ -121,43 +119,70 @@ handle_event(Event, StateName, MState) ->
     ?LOG_DEBUG("Unexpected event: ~p [virtres state: ~p, mstate: ~p]", [Event, StateName, MState]),
     {next_state, StateName, MState}.
 
-handle_info(ssh_check_provision_port,
+handle_info(ssh_check_prov_port,
             StateName,
             MState =
-                #mstate{provision_conn_timer = OldTRef,
-                        ssh_client_pid = SshClientPid,
+                #mstate{ssh_prov_conn_timer = OldTRef,
+                        ssh_prov_client_pid = SshProvClientPid,
                         job_id = JobId,
                         part_mgr_id = PartMgrNodeId}) ->
     catch timer:cancel(OldTRef),
-    ConnectToPort = wm_conf:g(ssh_provision_listen_port, {?DEFAULT_SSH_PROVISION_PORT, integer}),
-    case try_ssh_connection(ConnectToPort, SshClientPid, JobId, StateName, PartMgrNodeId) of
+    ConnectToPort = wm_conf:g(ssh_prov_listen_port, {?DEFAULT_SSH_PROVISION_PORT, integer}),
+    Username = "root",
+    Password = "",
+    case try_ssh_connection(ConnectToPort,
+                            SshProvClientPid,
+                            JobId,
+                            StateName,
+                            PartMgrNodeId,
+                            get_ssh_user_dir(),
+                            Username,
+                            Password)
+    of
         ok ->
-            gen_fsm:send_event(self(), ssh_provision_connected),
+            wm_ssh_client:disconnect(SshProvClientPid),  % we just ensure sshd is ready
+            gen_fsm:send_event(self(), ssh_prov_connected),
             {next_state, creating, MState};
         not_ready ->
             ?LOG_DEBUG("SSH server is not ready yet, connection will be repeated"),
-            Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_provision_port),
-            {next_state, creating, MState#mstate{provision_conn_timer = Timer}}
+            Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_prov_port),
+            {next_state, creating, MState#mstate{ssh_prov_conn_timer = Timer}}
     end;
 handle_info(ssh_check_swm_port,
             StateName,
             MState =
-                #mstate{ssh_conn_timer = OldTRef,
-                        ssh_client_pid = SshClientPid,
+                #mstate{ssh_tunnel_conn_timer = OldTRef,
+                        ssh_tunnel_client_pid = SshTunnelClientPid,
                         job_id = JobId,
+                        spool = Spool,
                         part_mgr_id = PartMgrNodeId}) ->
     catch timer:cancel(OldTRef),
     ConnectToPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
-    case try_ssh_connection(ConnectToPort, SshClientPid, JobId, StateName, PartMgrNodeId) of
+    Username = "swm",
+    Password = "swm",
+    case try_ssh_connection(ConnectToPort,
+                            SshTunnelClientPid,
+                            JobId,
+                            StateName,
+                            PartMgrNodeId,
+                            get_ssh_swm_dir(Spool),
+                            Username,
+                            Password)
+    of
         ok ->
             gen_fsm:send_event(self(), ssh_swm_connected),
             {next_state, creating, MState};
         not_ready ->
             ?LOG_DEBUG("SSH server is not ready yet, connection will be repeated"),
             Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_swm_port),
-            {next_state, creating, MState#mstate{ssh_conn_timer = Timer}}
+            {next_state, creating, MState#mstate{ssh_tunnel_conn_timer = Timer}}
     end;
-handle_info(part_check, StateName, MState = #mstate{rediness_timer = OldTRef, job_id = JobId}) ->
+handle_info(part_check,
+            StateName,
+            MState =
+                #mstate{rediness_timer = OldTRef,
+                        job_id = JobId,
+                        spool = Spool}) ->
     ?LOG_DEBUG("Readiness check (job=~p, virtres state: ~p)", [JobId, StateName]),
     catch timer:cancel(OldTRef),
     case wm_virtres_handler:is_job_partition_ready(JobId) of
@@ -168,7 +193,8 @@ handle_info(part_check, StateName, MState = #mstate{rediness_timer = OldTRef, jo
         true ->
             ?LOG_DEBUG("All nodes are UP (job ~p) => upload data", [JobId]),
             wm_virtres_handler:update_job([{state, ?JOB_STATE_TRANSFERRING}], MState#mstate.job_id),
-            {ok, Ref} = wm_virtres_handler:start_job_data_uploading(MState#mstate.part_mgr_id, JobId),
+            {ok, Ref} =
+                wm_virtres_handler:start_job_data_uploading(MState#mstate.part_mgr_id, JobId, get_ssh_swm_dir(Spool)),
             ?LOG_INFO("Uploading has started [~p]", [Ref]),
             {next_state, uploading, MState#mstate{upload_ref = Ref}}
     end;
@@ -271,37 +297,48 @@ creating({partition_fetched, Ref, Partition},
     ?LOG_DEBUG("Partition fetched for job ~p, partition id: ~p", [JobId, PartId]),
     case wm_entity:get(state, Partition) of
         up ->
-            {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
-            Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_provision_port),
-            {next_state,
-             creating,
-             MState#mstate{wait_ref = Ref,
-                           part_id = PartId,
-                           provision_conn_timer = Timer,
-                           part_mgr_id = PartMgrNodeId}};
+            case wm_ssh_client:start_link() of
+                {ok, SshProvClientPid} ->
+                    ?LOG_INFO("SSH provision client process started, pid: ~p, job: ~p", [SshProvClientPid, JobId]),
+                    {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
+                    Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_prov_port),
+                    {next_state,
+                     creating,
+                     MState#mstate{wait_ref = Ref,
+                                   part_id = PartId,
+                                   ssh_prov_conn_timer = Timer,
+                                   ssh_prov_client_pid = SshProvClientPid,
+                                   part_mgr_id = PartMgrNodeId}};
+                {error, Error} ->
+                    ?LOG_ERROR("Can't get SSH provision client: ~p, job: ~p", [Error, JobId]),
+                    {stop, {shutdown, Error}, MState}
+            end;
         Other ->
             ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p, job: ~p", [Other, JobId]),
             Timer = wm_virtres_handler:wait_for_partition_fetch(),
             {next_state, creating, MState#mstate{part_check_timer = Timer}}
     end;
-creating(ssh_provision_connected,
-         #mstate{job_id = JobId,
-                 part_mgr_id = PartMgrNodeId,
-                 ssh_client_pid = SshProvisionClientPid} =
-             MState) ->
-    ?LOG_INFO("SSH for provisioning is ready for job ", [JobId]),
-    {ok, Ref} = wm_virtres_handler:start_swm_worker_uploading(JobId, PartMgrNodeId, SshProvisionClientPid),
-    ?LOG_INFO("SWM worker uploading has started [~p]", [Ref]),
-    {next_state, creating, MState#mstate{upload_worker_ref = Ref, wait_ref = undefined}};
-creating({Ref, ok}, #mstate{upload_worker_ref = Ref, job_id = JobId} = MState) ->
-    ?LOG_INFO("Worker uploading has finished (ref=~p, job: ~p), wait for ssh tunnel", [Ref, JobId]),
-    Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_swm_port),
-    {next_state,
-     creating,
-     MState#mstate{wait_ref = Ref,
-                   ssh_conn_timer = Timer,
-                   upload_worker_ref = finished}};
-creating(ssh_swm_connected, #mstate{job_id = JobId, ssh_client_pid = SshClientPid} = MState) ->
+creating(ssh_prov_connected, #mstate{job_id = JobId, part_mgr_id = PartMgrNodeId} = MState) ->
+    ?LOG_INFO("SSH for provisioning is ready for job ~p", [JobId]),
+    case wm_virtres_handler:upload_swm_worker(PartMgrNodeId, get_ssh_user_dir()) of
+        ok ->
+            ?LOG_INFO("SWM worker uploaded, wait for ssh tunnel for job ~p", [JobId]),
+            case wm_ssh_client:start_link() of
+                {ok, SshTunnelClientPid} ->
+                    ?LOG_INFO("SSH tunnel client process started, pid: ~p, job: ~p", [SshTunnelClientPid, JobId]),
+                    Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_swm_port),
+                    {next_state,
+                     creating,
+                     MState#mstate{ssh_tunnel_conn_timer = Timer, ssh_tunnel_client_pid = SshTunnelClientPid}};
+                {error, Error} ->
+                    ?LOG_ERROR("Can't get SSH tunnel client: ~p, job: ~p", [Error, JobId]),
+                    {stop, {shutdown, Error}, MState}
+            end;
+        {error, Error} ->
+            ?LOG_ERROR("SWM worker uploading failed: ~p", [Error]),
+            {stop, {shutdown, Error}, MState}
+    end;
+creating(ssh_swm_connected, #mstate{job_id = JobId, ssh_tunnel_client_pid = SshClientPid} = MState) ->
     {next_state,
      creating,
      MState#mstate{wait_ref = undefined,
@@ -387,6 +424,8 @@ handle_remote_failure(#mstate{job_id = JobId, task_id = TaskId} = MState) ->
 -spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], MState) ->
     MState;
+parse_args([{spool, Spool} | T], #mstate{} = MState) ->
+    parse_args(T, MState#mstate{spool = Spool});
 parse_args([{extra, {Action, JobId, Node}} | T], MState) ->
     parse_args(T,
                MState#mstate{action = Action,
@@ -441,14 +480,24 @@ start_port_forwarding(SshClientPid, JobId) ->
 stop_port_forwarding(_JobId) ->
     ok.  %TODO: stop port forwarding?
 
--spec try_ssh_connection(pos_integer(), pid(), job_id(), atom(), node_id()) -> ok | not_ready.
-try_ssh_connection(ConnectToPort, SshClientPid, JobId, StateName, PartMgrNodeId) ->
+-spec try_ssh_connection(pos_integer(), pid(), job_id(), atom(), node_id(), string(), string(), string()) ->
+                            ok | not_ready.
+try_ssh_connection(ConnectToPort, SshClientPid, JobId, StateName, PartMgrNodeId, HostCertsDir, Username, Password) ->
     ?LOG_DEBUG("SSH readiness check (job ~p, virtres state: ~p, port=~p)", [JobId, StateName, ConnectToPort]),
     {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
     ConnectToHost = wm_entity:get(gateway, PartMgrNode),
-    case wm_ssh_client:connect(SshClientPid, ConnectToHost, ConnectToPort) of
+    case wm_ssh_client:connect(SshClientPid, ConnectToHost, ConnectToPort, Username, Password, HostCertsDir) of
         ok ->
             ok;
         {error, _} ->
             not_ready
     end.
+
+-spec get_ssh_user_dir() -> string().
+get_ssh_user_dir() ->
+    HomeDir = os:getenv("HOME"),
+    filename:join(HomeDir, ".ssh").
+
+-spec get_ssh_swm_dir(string()) -> string().
+get_ssh_swm_dir(Spool) ->
+    filename:join([Spool, "secure/host"]).

@@ -15,6 +15,7 @@
 -export([file_size/2]).
 -export([md5sum/2]).
 -export([get_port/0]).
+-export([upload_file_sftp_sync/5]).
 
 -include("../lib/wm_log.hrl").
 -include("../../include/wm_general.hrl").
@@ -38,10 +39,17 @@
 
 -define(DATA_TRANSFER_PARALLEL, 2).
 -define(BUF_SIZE, 65536).
+-define(SWM_WORKER_UPLOAD_TIMEOUT, 60000).
 
 %% ============================================================================
 %% Module API
 %% ============================================================================
+
+-spec upload_file_sftp_sync(string(), integer(), string(), string(), string()) -> ok | {error, term()}.
+upload_file_sftp_sync(RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir) ->
+    gen_server:call(?MODULE,
+                    {upload_file_sftp, RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir},
+                    ?SWM_WORKER_UPLOAD_TIMEOUT).
 
 -spec get_port() -> integer.
 get_port() ->
@@ -385,9 +393,12 @@ init(Args) ->
             end
     end.
 
-handle_call({create_symlink, Src, Dst}, _, MStats) ->
+handle_call({upload_file_sftp, RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir}, _, MState) ->
+    Result = do_upload_file_sftp(RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir),
+    {reply, Result, MState};
+handle_call({create_symlink, Src, Dst}, _, MState) ->
     Result = wm_file_utils:create_symlink(Src, Dst),
-    {reply, Result, MStats};
+    {reply, Result, MState};
 handle_call({open_file, File}, _, MState) ->
     Result = wm_file_utils:open_file(File),
     {reply, Result, MState};
@@ -403,9 +414,9 @@ handle_call({create_directory, File}, _, MState) ->
 handle_call({list_directory, File}, _, MState) ->
     Result = wm_file_utils:list_directory(File),
     {reply, Result, MState};
-handle_call({delete_directory, File}, _, MStats) ->
+handle_call({delete_directory, File}, _, MState) ->
     Result = wm_file_utils:delete_directory(File),
-    {reply, Result, MStats};
+    {reply, Result, MState};
 handle_call({file_size, File}, _, MState) ->
     Result = wm_file_utils:get_size(File),
     {reply, Result, MState};
@@ -674,8 +685,7 @@ parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
 %% TODO: Fix options
-%% After work is done, use spool from start_link arg
-%% for system_dir
+%% After work is done, use spool from start_link arg for system_dir
 -spec ssh_daemon() -> {ok, pid()} | {error, term()}.
 ssh_daemon() ->
     % TODO: use ssh daemon started by wm_ssh_server
@@ -1175,18 +1185,23 @@ with_connection(Node, Opts, Fun) ->
     DefaultTransport = list_to_atom(wm_conf:g(data_transfer_default_via, {"erl", string})),
     case maps:get(via, Opts, DefaultTransport) of
         ssh ->
-            with_ssh_connection(Node, Fun);
+            Username = maps:get(username, Opts, "swm"),
+            Password = maps:get(password, Opts, "swm"),
+            UserDir = maps:get(user_dir, Opts, ""),
+            Port = maps:get(port, Opts, get_port()),
+            with_ssh_connection(Port, Node, Username, Password, UserDir, Fun);
         erl ->
             NodeName = wm_utils:node_to_fullname(Node),
             preserve_connectivity_state(NodeName, Fun)
     end.
 
--spec with_ssh_connection(string(), fun((...) -> term())) -> {error, any(), nonempty_string()} | term().
-with_ssh_connection(Node, Fun) ->
-    Port = wm_conf:g(data_transfer_ssh_port, {?DEFAULT_DATA_TRANSFER_PORT, integer}),
+-spec with_ssh_connection(pos_integer(), string(), string(), string(), string(), fun((...) -> term())) ->
+                             {error, any(), nonempty_string()} | term().
+with_ssh_connection(Port, Node, Username, Password, UserDir, Fun) ->
     Opts =
-        [{user, "swm"},
-         {password, "swm"},
+        [{user, Username},
+         {password, Password},
+         {user_dir, UserDir},
          {silently_accept_hosts, true},
          {preferred_algorithms, ssh:default_algorithms()}],
     case ssh:connect(Node, Port, Opts, _Timeout = 5000) of
@@ -1238,3 +1253,25 @@ out({Len, Q}) ->
 delete(Fun, {_Len, Q}) ->
     WrapperFun = fun({_, _, X}) -> Fun(X) end,
     {length(Q), wm_priority_queue:filter(WrapperFun, Q)}.
+
+-spec do_upload_file_sftp(string(), integer(), string(), string(), string()) -> ok | {error, term()}.
+do_upload_file_sftp(RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir) ->
+    {ok, ConnRef} = ssh:connect(RemoteHost, Port, [{user, "root"}, {password, ""}, {user_dir, SshUserDir}]),
+    {ok, Channel} = ssh_sftp:start_channel(ConnRef),
+    Result =
+        case wm_utils:read_file(LocalFilePath, [binary]) of
+            {ok, Data} ->
+                case ssh_sftp:write_file(Channel, RemoteFilePath, Data) of
+                    ok ->
+                        ?LOG_DEBUG("File uploaded successfully to ~s:~s~n", [RemoteHost, RemoteFilePath]);
+                    {error, Reason} ->
+                        ?LOG_ERROR("Failed to upload file: ~p~n", [Reason]),
+                        {error, Reason}
+                end;
+            {error, noent} ->
+                ?LOG_ERROR("No such local file: ~p", [LocalFilePath]),
+                {error, not_found}
+        end,
+    ssh_sftp:stop_channel(Channel),
+    ssh:close(ConnRef),
+    Result.
