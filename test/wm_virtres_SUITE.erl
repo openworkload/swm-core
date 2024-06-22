@@ -89,7 +89,7 @@ init_test_group(Action, Config) ->
         end,
     meck:expect(wm_virtres_handler, get_remote, fun(X) when X == JobId -> {ok, Remote} end),
     meck:expect(wm_virtres_handler, wait_for_partition_fetch, fun() -> erlang:make_ref() end),
-    meck:expect(wm_virtres_handler, wait_for_ssh_connection, fun() -> erlang:make_ref() end),
+    meck:expect(wm_virtres_handler, wait_for_ssh_connection, fun(_) -> erlang:make_ref() end),
     meck:expect(wm_virtres_handler, delete_partition, fun(_, _) -> {ok, WaitRef} end),
     meck:expect(wm_conf, select, SelectById),
     meck:expect(wm_conf, g, fun(_, {X, _}) -> X end),
