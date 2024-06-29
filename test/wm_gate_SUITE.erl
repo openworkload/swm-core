@@ -192,6 +192,7 @@ create_partition(_Config) ->
           flavor_name => "flavor1",
           image_name => "ubuntu22.04",
           tenant_name => "dude",
+          container_image => "ubuntu22.04",
           key_name => "key1",
           job_id => "40565124-9c03-11ee-8ca4-633064256ed4",
           runtime => "http://10.0.2.15/swm-worker.tar.gz",

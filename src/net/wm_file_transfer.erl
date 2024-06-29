@@ -1187,7 +1187,7 @@ with_connection(Node, Opts, Fun) ->
         ssh ->
             Username = maps:get(username, Opts, "swm"),
             Password = maps:get(password, Opts, "swm"),
-            UserDir = maps:get(user_dir, Opts, ""),
+            UserDir = maps:get(user_dir, Opts, "/tmp"),
             Port = maps:get(port, Opts, get_port()),
             with_ssh_connection(Port, Node, Username, Password, UserDir, Fun);
         erl ->

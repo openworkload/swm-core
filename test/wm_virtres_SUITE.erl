@@ -91,6 +91,7 @@ init_test_group(Action, Config) ->
     meck:expect(wm_virtres_handler, wait_for_partition_fetch, fun() -> erlang:make_ref() end),
     meck:expect(wm_virtres_handler, wait_for_ssh_connection, fun(_) -> erlang:make_ref() end),
     meck:expect(wm_virtres_handler, delete_partition, fun(_, _) -> {ok, WaitRef} end),
+    meck:expect(wm_virtres_handler, start_job_data_uploading, fun(_, _, _) -> {ok, WaitRef} end),
     meck:expect(wm_conf, select, SelectById),
     meck:expect(wm_conf, g, fun(_, {X, _}) -> X end),
     meck:expect(wm_self, get_node_id, fun() -> "nodeid" end),
@@ -211,9 +212,6 @@ uploading_started(Config) ->
     PartMgrNodeId = proplists:get_value(part_mgr_node_id, Config),
 
     meck:expect(wm_virtres_handler, is_job_partition_ready, fun(X) when X == JobId -> true end),
-    meck:expect(wm_virtres_handler,
-                start_uploading,
-                fun(X, Y) when X == PartMgrNodeId andalso Y == JobId -> {ok, WaitRef} end),
     meck:expect(wm_virtres_handler, update_job, fun(_, X) when X == JobId -> 1 end),
 
     erlang:send(Pid, part_check),
@@ -246,8 +244,8 @@ downloading_started(Config) ->
     JobId = proplists:get_value(job_id, Config),
 
     meck:expect(wm_virtres_handler,
-                start_downloading,
-                fun(X, Y) when X == PartMgrNodeId andalso Y == JobId -> {ok, WaitRef, ["/tmp/f1", "/tmp/f2"]} end),
+                start_job_data_downloading,
+                fun(X, Y, _) when X == PartMgrNodeId andalso Y == JobId -> {ok, WaitRef, ["/tmp/f1", "/tmp/f2"]} end),
 
     ok = gen_fsm:send_all_state_event(Pid, job_finished),
     ?assertEqual(downloading, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
