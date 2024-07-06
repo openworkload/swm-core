@@ -58,6 +58,7 @@ connect(Args) ->
             {error, {E1, E2}}
     end.
 
+-spec disconnect(any) -> ok.
 disconnect(Socket) ->
     ok = ssl:close(Socket).
 
@@ -70,23 +71,26 @@ rpc(RPC, Socket) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec send(term(), any()) -> ok.
 send(Msg, Socket) ->
     Bin = wm_utils:encode_to_binary(Msg),
     ok = ssl:send(Socket, Bin).
 
+-spec recv(any(), term()) -> any().
 recv(Socket, Answers) ->
     case ssl:recv(Socket, 0) of
         {ok, Bin} ->
             Answer = wm_utils:decode_from_binary(Bin),
             recv(Socket, [Answer | Answers]);
         {error, closed} ->
-            ?LOG_DEBUG("Connection has been closed"),
+            ?LOG_DEBUG("Connection has been closed, previous answers: ~p", [Answers]),
             Answers;
         {error, Error} ->
             ?LOG_ERROR("Connection error: ~p", [Error]),
             halt(1)
     end.
 
+-spec mk_opts(string(), string()) -> list().
 mk_opts(CertFile, KeyFile) ->
     CaFile = wm_utils:get_env("SWM_CLUSTER_CA"),
     ?LOG_DEBUG("Use ssl certs: ~p ~p ~p", [CertFile, KeyFile, CaFile]),
@@ -104,6 +108,7 @@ mk_opts(CertFile, KeyFile) ->
      {certfile, CertFile},
      {keyfile, KeyFile}].
 
+-spec get_host(term()) -> string().
 get_host(Args) ->
     Server = maps:get(server, Args, ?DEFAULT_SERVER),
     case inet:parse_address(Server) of

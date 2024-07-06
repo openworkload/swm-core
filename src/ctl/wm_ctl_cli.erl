@@ -9,14 +9,17 @@
 %% API functions
 %% ============================================================================
 
+-spec show(atom(), list()) -> ok.
 show(What, Records) ->
     print_show(What, Records).
 
+-spec list(atom(), list(), string()) -> ok.
 list(What, Records, Format) when is_list(Records) ->
     F = split_format_tokens(string:tokens(Format, " "), [], 0),
     print_list({What, header}, F, F, []),
     print_list({What, Records}, F, F, []).
 
+-spec overview({atom(), {list, [string()]}}, string(), string()) -> ok.
 overview({Type, {list, Xs}}, Format, Name) ->
     overview({Type, Xs}, Format, Name);
 overview({Type, X}, Format, Name) ->
@@ -27,6 +30,7 @@ overview({Type, X}, Format, Name) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec print_show(atom(), map()) -> ok.
 print_show(_, []) ->
     ok;
 print_show(tree, Map) when is_map(Map) ->
@@ -100,6 +104,7 @@ print_show(What, [R | T]) ->
     print_show_fields(wm_entity:get_fields(What), Indent, R),
     print_show(What, T).
 
+-spec print_show_fields([string()], string(), term()) -> ok.
 print_show_fields([], _, _) ->
     ok;
 print_show_fields([X | T], Indent, R) ->
@@ -111,6 +116,7 @@ print_show_fields([X | T], Indent, R) ->
     io:format(Format, [Name, wm_entity:get(X, R)]),
     print_show_fields(T, Indent, R).
 
+-spec print_overview({atom(), atom()}, list(), list(), string(), string()) -> ok.
 print_overview({header, _}, [], RawFormats, Line, Name) ->
     Sizes = [Size || {Size, _} <- RawFormats],
     Len = lists:foldl(fun(X, Sum) -> list_to_integer(X) + Sum end, 0, Sizes),

@@ -7,6 +7,7 @@
 %% API functions
 %% ============================================================================
 
+-spec overview(atom(), list()) -> list().
 overview(grid, ConnArgs) ->
     Format = "%10A %10I %10D %10O %10B",
     wm_ctl_cli:overview({header, grid}, Format, ""),
@@ -42,6 +43,7 @@ overview(jobs, ConnArgs) ->
             fatal_error(Str ++ " (check SWM_API_PORT and SWM_API_HOST)")
     end.
 
+-spec remote({map(), string()}, list()) -> string().
 remote({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
@@ -68,6 +70,7 @@ remote({ArgsDict, Ent}, ConnArgs) ->
             Ent
     end.
 
+-spec global({map(), string()}, list()) -> string().
 global({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
@@ -94,6 +97,7 @@ global({ArgsDict, Ent}, ConnArgs) ->
             Ent
     end.
 
+-spec grid({map(), string()}, list()) -> string().
 grid({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["route" | T] ->
@@ -124,6 +128,7 @@ grid({ArgsDict, Ent}, ConnArgs) ->
             Ent
     end.
 
+-spec cluster({map(), string()}, list()) -> string().
 cluster({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
@@ -149,6 +154,7 @@ cluster({ArgsDict, Ent}, ConnArgs) ->
             Ent
     end.
 
+-spec partition({map(), string()}, list()) -> string().
 partition({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
@@ -167,11 +173,12 @@ partition({ArgsDict, Ent}, ConnArgs) ->
             partition(remove, T, Ent, ConnArgs);
         ["clone" | T] ->
             partition(clone, T, Ent, ConnArgs);
-        [Unknown | T] ->
+        [Unknown | _] ->
             unknown_arg(Unknown),
             Ent
     end.
 
+-spec node({map(), string()}, list()) -> string().
 node({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
@@ -201,6 +208,7 @@ node({ArgsDict, Ent}, ConnArgs) ->
             Ent
     end.
 
+-spec user({map(), string()}, list()) -> string().
 user({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
@@ -226,6 +234,7 @@ user({ArgsDict, Ent}, ConnArgs) ->
             Ent
     end.
 
+-spec queue({map(), string()}, list()) -> string().
 queue({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
@@ -249,6 +258,7 @@ queue({ArgsDict, Ent}, ConnArgs) ->
             Ent
     end.
 
+-spec scheduler({map(), string()}, list()) -> string().
 scheduler({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
@@ -272,6 +282,7 @@ scheduler({ArgsDict, Ent}, ConnArgs) ->
             Ent
     end.
 
+-spec image({map(), string()}, list()) -> string().
 image({ArgsDict, Ent}, ConnArgs) ->
     case wm_args:fetch(free_arg, unknown, ArgsDict) of
         ["use" | T] ->
@@ -301,12 +312,15 @@ image({ArgsDict, Ent}, ConnArgs) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec get_entity_submode(string()) -> string().
 get_entity_submode(Ent) ->
     Ent.
 
+-spec unknown_arg(string()) -> string().
 unknown_arg(Arg) ->
     io:format("Command not found: ~s~n", [Arg]).
 
+-spec global(atom(), list(), string(), list()) -> string().
 global(list, _, Ent, ConnArgs) ->
     rpc_list(global, "%26N %24V %0C", ConnArgs),
     get_entity_submode(Ent);
@@ -344,7 +358,7 @@ global(export, [], Ent, _ConnArgs) ->
     Answer = wm_rpc:call(wm_admin, global, {export}),
     io:format("~nAnswer:~n~p~n", [Answer]),
     get_entity_submode(Ent);
-global(update, ["schema" | Args], Ent, ConnArgs) ->
+global(update, ["schema" | Args], Ent, _ConnArgs) ->
     SchemaFile = hd(Args),
     case filelib:is_file(SchemaFile) of
         false ->
@@ -367,10 +381,11 @@ global(update, ["schema" | Args], Ent, ConnArgs) ->
     end,
     get_entity_submode(Ent).
 
+-spec grid(atom(), list(), string(), list()) -> string().
 grid(route, [From, To | _], Ent, ConnArgs) ->
     rpc_generic(grid, {route, From, To}, ConnArgs),
     get_entity_submode(Ent);
-grid(tree, _, Ent, ConnArgs) ->
+grid(tree, _, Ent, _ConnArgs) ->
     case wm_rpc:call(wm_admin, grid, {tree, static}) of
         [{map, Map}] ->
             wm_ctl_cli:show(tree, Map);
@@ -378,7 +393,7 @@ grid(tree, _, Ent, ConnArgs) ->
             io:format("~s~n", [String])
     end,
     get_entity_submode(Ent);
-grid(sim, [Action | T], Ent, ConnArgs) ->
+grid(sim, [Action | T], Ent, _ConnArgs) ->
     case Action of
         "start" ->
             case wm_rpc:call(wm_admin, grid, {sim, start, T}) of
@@ -396,7 +411,7 @@ grid(sim, [Action | T], Ent, ConnArgs) ->
             end
     end,
     get_entity_submode(Ent);
-grid(ca, [Action | Args], Ent, _) ->
+grid(ca, [Action | _Args], Ent, _) ->
     %TODO connect to SWM, add a grid and get ID (and name?)
     GridName = "grid",
     GridID = wm_utils:uuid(v4),
@@ -416,6 +431,7 @@ grid(_, [], Ent, _) ->
     fatal_error("Wrong number of arguments."),
     get_entity_submode(Ent).
 
+-spec cluster(atom(), list(), string(), list()) -> string().
 cluster(set, Args, Ent, ConnArgs) ->
     rpc_set(cluster, Args, Ent, ConnArgs),
     get_entity_submode(Ent);
@@ -428,7 +444,7 @@ cluster(show, Args, Ent, ConnArgs) ->
 cluster(list, _, Ent, ConnArgs) ->
     rpc_list(cluster, "%10N %8S %12P %0C", ConnArgs),
     get_entity_submode(Ent);
-cluster(ca, [Action | Args], Ent, _) ->
+cluster(ca, [Action | _Args], Ent, _) ->
     %TODO connect to SWM, add a cluser, get ID (and name?)
     ClusterID = wm_utils:uuid(v4),
     ClusterName = "cluster",
@@ -450,6 +466,7 @@ cluster(_, [], Ent, _) ->
     fatal_error("Wrong number of arguments."),
     get_entity_submode(Ent).
 
+-spec partition(atom(), list(), string(), list()) -> string().
 partition(set, Args, Ent, ConnArgs) ->
     rpc_set(partition, Args, Ent, ConnArgs),
     get_entity_submode(Ent);
@@ -475,6 +492,7 @@ partition(_, [], Ent, _) ->
     fatal_error("Wrong number of arguments."),
     get_entity_submode(Ent).
 
+-spec node(atom(), list(), string(), list()) -> string().
 node(set, Args, Ent, ConnArgs) ->
     rpc_set(node, Args, Ent, ConnArgs),
     get_entity_submode(Ent);
@@ -484,7 +502,7 @@ node(get, Args, Ent, ConnArgs) ->
 node(show, Args, Ent, ConnArgs) ->
     rpc_show(node, Args, Ent, ConnArgs),
     get_entity_submode(Ent);
-node(cert, [Action | Args], Ent, _) ->
+node(cert, [Action | _Args], Ent, _) ->
     %TODO connect to SWM, add a node, get ID and name
     NodeID = wm_utils:uuid(v4),
     NodeName = "node",
@@ -515,6 +533,7 @@ node(_, [], Ent, _) ->
     fatal_error("Wrong number of arguments."),
     get_entity_submode(Ent).
 
+-spec user(atom(), list(), string(), list()) -> string().
 user(set, Args, Ent, ConnArgs) ->
     rpc_set(user, Args, Ent, ConnArgs),
     get_entity_submode(Ent);
@@ -527,7 +546,7 @@ user(show, Args, Ent, ConnArgs) ->
 user(list, _, Ent, ConnArgs) ->
     rpc_list(user, "%16N %8G %12P %0C", ConnArgs),
     get_entity_submode(Ent);
-user(cert, [Action | Args], Ent, _) ->
+user(cert, [Action | _Args], Ent, _) ->
     %TODO get user ID and Name from DB first and put it to the new certificate
     UserID = "notimplemented",
     UserName = "notimplemented",
@@ -549,6 +568,7 @@ user(_, [], Ent, _) ->
     fatal_error("Wrong number of arguments."),
     get_entity_submode(Ent).
 
+-spec queue(atom(), list(), string(), list()) -> string().
 queue(set, Args, Ent, ConnArgs) ->
     rpc_set(queue, Args, Ent, ConnArgs),
     get_entity_submode(Ent);
@@ -574,6 +594,7 @@ queue(_, [], Ent, _) ->
     fatal_error("Wrong number of arguments."),
     get_entity_submode(Ent).
 
+-spec scheduler(atom(), list(), string(), list()) -> string().
 scheduler(set, Args, Ent, ConnArgs) ->
     rpc_set(scheduler, Args, Ent, ConnArgs),
     get_entity_submode(Ent);
@@ -598,6 +619,7 @@ scheduler(_, [], Ent, _) ->
     fatal_error("Wrong number of arguments."),
     get_entity_submode(Ent).
 
+-spec image(atom(), list(), string(), list()) -> string().
 image(set, Args, Ent, ConnArgs) ->
     rpc_set(image, Args, Ent, ConnArgs),
     get_entity_submode(Ent);
@@ -634,6 +656,7 @@ image(_, [], Ent, _) ->
     fatal_error("Wrong number of arguments."),
     get_entity_submode(Ent).
 
+-spec remote(atom(), list(), string(), list()) -> string().
 remote(set, Args, Ent, ConnArgs) ->
     rpc_set(remote, Args, Ent, ConnArgs),
     get_entity_submode(Ent);
@@ -660,25 +683,28 @@ remote(_, [], Ent, _) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+-spec rpc_set(atom(), list(), string(), list()) -> string().
 rpc_set(_, [], _, _) ->
     io:format("Parameter not specified~n");
 rpc_set(_, [_], _, _) ->
     io:format("Value not specified~n");
-rpc_set(Tab, [Param, Value], Ent, ConnArgs) ->
+rpc_set(Tab, [Param, Value], Ent, _ConnArgs) ->
     Answer = wm_rpc:call(wm_admin, Tab, {set, Ent, Param, Value}),
     io:format("~p~n", [Answer]).
 
+-spec rpc_get(atom(), list(), string(), list()) -> any().
 rpc_get(_, [], _, _) ->
     io:format("Parameter not specified~n");
 rpc_get(Tab, [Param | _], Ent, ConnArgs) ->
-    Host = maps:get(host, ConnArgs),
     Port = maps:get(port, ConnArgs),
     wm_rpc:call(wm_admin, Tab, {get, Ent, Param}, {localhost, Port}).
 
-rpc_get(Tab, ConnArgs) ->
+-spec rpc_get(atom(), list()) -> any().
+rpc_get(Tab, _ConnArgs) ->
     wm_rpc:call(wm_admin, Tab, {list}).
 
-rpc_show(Tab, Args, Ent, ConnArgs) ->
+-spec rpc_show(atom(), list(), string(), list()) -> any().
+rpc_show(Tab, Args, Ent, _ConnArgs) ->
     A = case Args of
             [] ->
                 case Ent of
@@ -704,11 +730,11 @@ rpc_list(Tab, Format, ConnArgs) ->
             fatal_error(Str ++ " (check SWM_API_PORT and SWM_API_HOST)")
     end.
 
-rpc_generic(Command, Args, ConnArgs) ->
+rpc_generic(Command, Args, _ConnArgs) ->
     Answer = wm_rpc:call(wm_admin, Command, Args),
     print_rpc_answer(Answer).
 
-generic_create(Entity, Name, Args, ConnArgs, NeedCert) ->
+generic_create(Entity, Name, Args, _ConnArgs, NeedCert) ->
     case wm_rpc:call(wm_admin, Entity, {create, Name, Args}) of
         List when is_list(List), List =/= [] ->
             IDs = [ID || {string, ID} <- List],
@@ -724,7 +750,7 @@ generic_create(Entity, Name, Args, ConnArgs, NeedCert) ->
             fatal_error(Error)
     end.
 
-generic_clone(Entity, {From, To}, Args, ConnArgs) ->
+generic_clone(Entity, {From, To}, Args, _ConnArgs) ->
     case wm_rpc:call(wm_admin, Entity, {clone, From, To, Args}) of
         List when is_list(List), List =/= [] ->
             IDs = [ID || {string, ID} <- List],
@@ -734,7 +760,7 @@ generic_clone(Entity, {From, To}, Args, ConnArgs) ->
             fatal_error(Error)
     end.
 
-generic_remove(Entity, Name, Args, ConnArgs) ->
+generic_remove(Entity, Name, Args, _ConnArgs) ->
     case wm_rpc:call(wm_admin, Entity, {remove, Name, Args}) of
         List when is_list(List), List =/= [] ->
             IDs = [ID || {string, ID} <- List],

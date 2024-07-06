@@ -52,6 +52,7 @@ allocate_port() ->
     wm_utils:protected_call(?MODULE, allocate_port, 0).
 
 %% @doc Try to get self node gateway property
+-spec get_my_gateway_address() -> [] | {string(), pos_integer()}.
 get_my_gateway_address() ->
     %%TODO: move to wm_self
     case wm_self:get_node() of
@@ -67,6 +68,24 @@ get_my_gateway_address() ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     ?LOG_INFO("Load core service"),
     wm_state:enter(loading),
@@ -83,6 +102,9 @@ init(Args) ->
 
 handle_call(allocate_port, _, #mstate{} = MState) ->
     {reply, do_allocate_port(), MState};
+handle_call({deallocate_port, Port}, _, #mstate{} = MState) ->
+    %TODO: use or delete this code
+    {reply, deallocate_port(Port), MState};
 handle_call({has_malfunction, FailureType}, _, #mstate{} = MState) ->
     {reply, do_has_malfunction(FailureType), MState};
 handle_call(get_parent, _From, MState) ->

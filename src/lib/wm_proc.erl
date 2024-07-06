@@ -1,10 +1,10 @@
 -module(wm_proc).
 
--behaviour(gen_fsm).
+-behaviour(gen_statem).
 
 -export([start_link/1]).
--export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, code_change/4, terminate/3]).
--export([sleeping/2, running/2, finished/2, error/2]).
+-export([callback_mode/0, init/1, terminate/3, code_change/4]).
+-export([sleeping/3, running/3, finished/3, error/3]).
 
 -include("../../include/wm_timeouts.hrl").
 -include("../../include/wm_scheduler.hrl").
@@ -22,63 +22,29 @@
 
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
-    gen_fsm:start_link(?MODULE, Args, []).
+    gen_statem:start_link(?MODULE, Args, []).
 
 %% ============================================================================
 %% Server callbacks
 %% ============================================================================
 
+-spec callback_mode() -> state_functions.
 -spec init(term()) ->
               {ok, atom(), term()} |
               {ok, atom(), term(), hibernate | infinity | non_neg_integer()} |
               {stop, term()} |
               ignore.
--spec handle_event(term(), atom(), term()) ->
-                      {next_state, atom(), term()} |
-                      {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
-                      {stop, term(), term()} |
-                      {stop, term(), term(), term()}.
--spec handle_sync_event(term(), atom(), atom(), term()) ->
-                           {next_state, atom(), term()} |
-                           {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
-                           {reply, term(), atom(), term()} |
-                           {reply, term(), atom(), term(), hibernate | infinity | non_neg_integer()} |
-                           {stop, term(), term()} |
-                           {stop, term(), term(), term()}.
--spec handle_info(term(), atom(), term()) ->
-                     {next_state, atom(), term()} |
-                     {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
-                     {stop, term(), term()}.
 -spec code_change(term(), atom(), term(), term()) -> {ok, term()}.
 -spec terminate(term(), atom(), term()) -> ok.
+callback_mode() ->
+    state_functions.
+
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     ?LOG_INFO("Process manager has been started (~p)", [MState#mstate.task_id]),
     wm_factory:notify_initiated(proc, MState#mstate.task_id),
     {ok, sleeping, MState}.
-
-handle_sync_event(_Event, _From, State, MState) ->
-    {reply, State, State, MState}.
-
-handle_event({job_finished, Process}, _, #mstate{job_id = JobId} = MState) ->
-    ?LOG_DEBUG("Received event that job ~p is finished, process=~p", [JobId, Process]),
-    do_complete(Process, MState),
-    ?LOG_DEBUG("Job finished => exit"),
-    {stop, normal, MState}.
-
-handle_info({exit_status, ExitCode, _}, State, #mstate{} = MState) ->
-    %TODO: get rid of this and use {completed, Exit, Signal}
-    ?LOG_INFO("Scheduler exit status: ~p", [ExitCode]),
-    {next_state, State, MState};
-handle_info({output, BinOut, From}, State, #mstate{} = MState) ->
-    Process = erlang:binary_to_term(BinOut),
-    ?LOG_DEBUG("Porter output: ~p (from ~p)", [Process, From]),
-    do_announce_completed(Process, MState),
-    {next_state, State, MState};
-handle_info({'EXIT', Proc, normal}, State, #mstate{task_id = TaskId} = MState) ->
-    ?LOG_DEBUG("Process ~p has finished normally (~p)", [Proc, TaskId]),
-    {next_state, State, MState}.
 
 code_change(_, State, MState, _) ->
     {ok, State, MState}.
@@ -88,17 +54,21 @@ terminate(Status, State, #mstate{task_id = TaskId}) ->
     wm_utils:terminate_msg(?MODULE, Msg).
 
 %% ============================================================================
-%% FSM state transitions
+%% State machine transitions
 %% ============================================================================
 
--spec sleeping(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-sleeping(activate, #mstate{task_id = TaskId} = MState) ->
+-spec sleeping({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+sleeping(cast, activate, #mstate{task_id = TaskId} = MState) ->
     ?LOG_DEBUG("Received 'activate' [sleeping] (~p)", [TaskId]),
     execute(MState),
-    {next_state, running, MState}.
+    {next_state, running, MState};
+sleeping(info, Msg, MState) ->
+    handle_info(Msg, ?FUNCTION_NAME, MState);
+sleeping(cast, Msg, MState) ->
+    handle_event(Msg, ?FUNCTION_NAME, MState).
 
--spec running(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-running({started, JobId}, #mstate{} = MState) ->
+-spec running({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+running(cast, {started, JobId}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job ~p has been started", [JobId]),
     wm_event:announce(proc_started, {JobId, node()}),
     {ok, Job} = wm_conf:select(job, {id, JobId}),
@@ -109,23 +79,35 @@ running({started, JobId}, #mstate{} = MState) ->
             ?LOG_ERROR("Didn't find user for job ~p: ~p", [Job, Error])
     end,
     {next_state, running, MState};
-running({sent, JobId}, #mstate{} = MState) ->
+running(cast, {sent, JobId}, #mstate{} = MState) ->
     ?LOG_DEBUG("Message to ~p has been sent", [JobId]),
     {next_state, running, MState};
-running({{process, Process}, _JobId}, #mstate{} = MState) ->
-    do_check(Process, MState).
-
--spec finished(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-finished({{process, Process}, _JobId}, #mstate{} = MState) ->
+running(cast, {{process, Process}, _JobId}, #mstate{} = MState) ->
     do_check(Process, MState);
-finished({completed, Process}, #mstate{} = MState) ->
+running(info, Msg, MState) ->
+    handle_info(Msg, ?FUNCTION_NAME, MState);
+running(cast, Msg, MState) ->
+    handle_event(Msg, ?FUNCTION_NAME, MState).
+
+-spec finished({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+finished(cast, {{process, Process}, _JobId}, #mstate{} = MState) ->
+    do_check(Process, MState);
+finished(cast, {completed, Process}, #mstate{} = MState) ->
     do_complete(Process, MState),
     ?LOG_DEBUG("Stopping wm_proc"),
-    {stop, normal, MState}.
+    {stop, normal, MState};
+finished(info, Msg, MState) ->
+    handle_info(Msg, ?FUNCTION_NAME, MState);
+finished(cast, Msg, MState) ->
+    handle_event(Msg, ?FUNCTION_NAME, MState).
 
--spec error(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-error({{process, Process}, _JobId}, #mstate{} = MState) ->
-    do_check(Process, MState).
+-spec error({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+error(cast, {{process, Process}, _JobId}, #mstate{} = MState) ->
+    do_check(Process, MState);
+error(info, Msg, MState) ->
+    handle_info(Msg, ?FUNCTION_NAME, MState);
+error(cast, Msg, MState) ->
+    handle_event(Msg, ?FUNCTION_NAME, MState).
 
 %% ============================================================================
 %% Implementation functions
@@ -237,10 +219,10 @@ do_check(Process, #mstate{task_id = TaskId} = MState) ->
         ?JOB_STATE_RUNNING ->
             {next_state, running, MState};
         ?JOB_STATE_FINISHED ->
-            gen_fsm:send_event(self(), {completed, Process}),
+            gen_statem:cast(self(), {completed, Process}),
             {next_state, finished, MState};
         ?JOB_STATE_ERROR ->
-            gen_fsm:send_event(self(), {completed, Process}),
+            gen_statem:cast(self(), {completed, Process}),
             {next_state, error, MState}
     end.
 
@@ -280,3 +262,24 @@ do_announce_completed(Process, #mstate{job_id = JobId} = MState) ->
         _ ->
             ok
     end.
+
+-spec handle_event(term(), term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+handle_event({job_finished, Process}, StateName, #mstate{job_id = JobId} = MState) ->
+    ?LOG_DEBUG("Received event that job ~p is finished, process=~p, state=~p", [JobId, Process, StateName]),
+    do_complete(Process, MState),
+    ?LOG_DEBUG("Job finished => exit"),
+    {stop, normal, MState}.
+
+-spec handle_info(atom(), term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+handle_info({exit_status, ExitCode, _}, State, #mstate{} = MState) ->
+    %TODO: get rid of this and use {completed, Exit, Signal}
+    ?LOG_INFO("Scheduler exit status: ~p", [ExitCode]),
+    {next_state, State, MState};
+handle_info({output, BinOut, From}, State, #mstate{} = MState) ->
+    Process = erlang:binary_to_term(BinOut),
+    ?LOG_DEBUG("Porter output: ~p (from ~p)", [Process, From]),
+    do_announce_completed(Process, MState),
+    {next_state, State, MState};
+handle_info({'EXIT', Proc, normal}, State, #mstate{task_id = TaskId} = MState) ->
+    ?LOG_DEBUG("Process ~p has finished normally (~p)", [Proc, TaskId]),
+    {next_state, State, MState}.

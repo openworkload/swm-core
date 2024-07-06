@@ -402,9 +402,7 @@ handle_cast({sync_config_reply, not_ready, Parent}, MState) ->
     ?LOG_DEBUG("Reply on sync config update request received (~p not ready)", [Parent]),
     {noreply, MState#mstate{sync = false}};
 handle_cast({sync_config_reply, DifferentTabs, Parent}, MState) when MState#mstate.sync =/= false ->
-    ?LOG_DEBUG("Reply on sync config request received "
-               "(N=~p, parent=~p)",
-               [length(DifferentTabs), Parent]),
+    ?LOG_DEBUG("Reply on sync config request received (diff=~p, parent=~p)", [length(DifferentTabs), Parent]),
     case DifferentTabs of
         [] ->
             ?LOG_DEBUG("No tabs to update (sync_config_request returned [])");

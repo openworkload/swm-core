@@ -203,10 +203,7 @@ cast_all_nodes_process(Mod, Msg, [Node | Nodes], no_wait) ->
             wm_rpc:cast(Mod, Arg0, Args, Addr)
     end,
     cast_all_nodes_process(Mod, Msg, Nodes, no_wait);
-cast_all_nodes_process(Mod,
-                       Msg,
-                       Nodes,
-                       wait) -> %TODO get rid of this version
+cast_all_nodes_process(Mod, Msg, Nodes, wait) ->
     F = fun(Node) ->
            {Arg0, Args} = split_rpc_msg(Msg),
            case wm_utils:get_address(Node) of

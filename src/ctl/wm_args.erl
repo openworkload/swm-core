@@ -6,12 +6,14 @@
 %% API functions
 %% ============================================================================
 
+-spec normalize(list()) -> map().
 normalize([]) ->
     dict:new();
 normalize([Command | ArgsRest]) ->
     ArgsDict = dict:new(),
     extract_args(ArgsRest, none, dict:store(command, Command, ArgsDict)).
 
+-spec fetch(string(), string(), {}) -> string().
 fetch(ArgName, DefaultVal, ArgsDict) ->
     try
         dict:fetch(ArgName, ArgsDict)
@@ -20,11 +22,10 @@ fetch(ArgName, DefaultVal, ArgsDict) ->
             DefaultVal
     end.
 
+-spec get_conn_args() -> map().
 get_conn_args() ->
-    Args1 = maps:new(),
-    Args2 = maps:put(port, os:getenv("SWM_API_PORT", 10001), Args1),
-    Args3 = maps:put(host, os:getenv("SWM_API_HOST", "localhost"), Args2),
-    Args3.
+    Args = maps:put(port, os:getenv("SWM_API_PORT", 10001), maps:new()),
+    maps:put(host, os:getenv("SWM_API_HOST", "localhost"), Args).
 
 %% ============================================================================
 %% Implementation functions

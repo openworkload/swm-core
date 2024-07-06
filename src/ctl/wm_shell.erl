@@ -16,6 +16,7 @@ start_link(Args) ->
 %% Implementation functions
 %% ============================================================================
 
+-spec init(list()) -> ok.
 init(Args) when is_list(Args) ->
     process_flag(trap_exit, true),
     MState1 = parse_args(Args, #mstate{}),

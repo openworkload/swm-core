@@ -4,7 +4,7 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([new/3, send_confirm/5, send_event_locally/3, notify_initiated/2, subscribe/3, is_running/2]).
+-export([new/3, send_confirm/4, send_event_locally/3, notify_initiated/2, subscribe/3, is_running/2]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -51,9 +51,9 @@ new(Type, ExtraData, Nodes) ->
     wm_utils:protected_call(get_factory_name(Type), Msg, timeout).
 
 %% @doc send locally waiting until the module receives it
--spec send_confirm(atom(), atom(), integer(), term(), [atom()]) -> term().
-send_confirm(Type, AllState, ModuleTaskId, Msg, Nodes) ->
-    Request = {send_confirm, AllState, ModuleTaskId, Msg, Nodes},
+-spec send_confirm(atom(), integer(), term(), [atom()]) -> term().
+send_confirm(Type, ModuleTaskId, Msg, Nodes) ->
+    Request = {send_confirm, ModuleTaskId, Msg, Nodes},
     wm_utils:cast(get_factory_name(Type), Request).
 
 -spec send_event_locally(term(), atom(), integer()) -> ok.
@@ -116,7 +116,7 @@ handle_call({is_running, ModuleTaskId}, _, MState) ->
 handle_call({new, ExtraData, Nodes}, _, MState) ->
     ?LOG_DEBUG("Recieved call to create new module"),
     {ModuleTaskId, MState2} = start_module(not_exists, ExtraData, Nodes, MState),
-    send_event_to_module(one_state, ModuleTaskId, activate, MState2),
+    send_event_to_module(ModuleTaskId, activate, MState2),
     {reply, {ok, ModuleTaskId}, MState2}.
 
 handle_cast({get_task_nodes, ModuleTaskId, RequestorAddr}, MState) ->
@@ -131,8 +131,8 @@ handle_cast({task_nodes, ModuleTaskId, Nodes}, MState) ->
     ?LOG_DEBUG("Nodes for the task ~p have been found: ~p", [ModuleTaskId, Nodes]),
     {ModuleTaskId, MState2} = start_module(ModuleTaskId, [], Nodes, MState),
     {noreply, MState2};
-handle_cast({send_confirm, AllState, ModuleTaskId, Msg, Nodes}, MState) ->
-    do_send_confirm(AllState, ModuleTaskId, Msg, Nodes),
+handle_cast({send_confirm, ModuleTaskId, Msg, Nodes}, MState) ->
+    ok = do_send_confirm(ModuleTaskId, Msg, Nodes),
     {noreply, MState};
 handle_cast({subscribe, ModuleTaskId, EventType}, MState) ->
     wm_event:subscribe_async(EventType, node(), MState#mstate.regname),
@@ -149,20 +149,22 @@ handle_cast({subscribe, ModuleTaskId, EventType}, MState) ->
 handle_cast({event, EventType, EventData}, MState) ->
     ?LOG_DEBUG("Event ~p received: ~p", [EventType, EventData]),
     {noreply, handle_event(EventType, EventData, MState)};
-handle_cast({send_event, AllState, From, ModuleTaskId, Msg}, MState) ->
+handle_cast({send_event, From, ModuleTaskId, Msg}, MState) ->
     ?LOG_DEBUG("Received send event cast, task=~p, msg=~P", [ModuleTaskId, Msg, 10]),
-    handle_send_event(AllState, From, ModuleTaskId, Msg, MState);
-handle_cast({check_event_handling, AllState, From, ModuleTaskId, Msg}, #mstate{reqs = ReqMap} = MState) ->
+    handle_send_event(From, ModuleTaskId, Msg, MState);
+handle_cast({check_event_handling, From, ModuleTaskId, Msg}, #mstate{reqs = ReqMap} = MState) ->
+    ?LOG_DEBUG("Received check_event_handling cast from ~p, task=~p, msg=~P", [From, ModuleTaskId, Msg, 5]),
     ReqList = maps:get(ModuleTaskId, ReqMap, []),
     case lists:any(fun(X) -> X =:= ModuleTaskId end, ReqList) of
         true ->
-            handle_send_event(AllState, From, ModuleTaskId, Msg, MState);
+            handle_send_event(From, ModuleTaskId, Msg, MState);
         _ ->
             ok
     end,
     {noreply, MState};
 handle_cast({send_event_locally, Msg, ModuleTaskId}, MState) ->
-    MState2 = send_event_to_module(all_state, ModuleTaskId, Msg, MState),
+    ?LOG_DEBUG("Received send_event_locally cast, task=~p, msg=~P", [ModuleTaskId, Msg, 5]),
+    MState2 = send_event_to_module(ModuleTaskId, Msg, MState),
     {noreply, MState2};
 handle_cast({initiated, ModuleTaskId}, MState) ->
     Pid = maps:get(ModuleTaskId, MState#mstate.mods),
@@ -175,12 +177,15 @@ handle_cast({initiated, ModuleTaskId}, MState) ->
     end,
     MState3 = release_requested(ModuleTaskId, MState2),
     {noreply, MState3};
-handle_cast(_Msg, MState) ->
+handle_cast(Msg, MState) ->
+    ?LOG_WARN("Unknown message received: ~p", [Msg]),
     {noreply, MState}.
 
-handle_info({send_event, AllState, From, ModuleTaskId, Msg}, MState) ->
-    handle_send_event(AllState, From, ModuleTaskId, Msg, MState);
-handle_info(_Info, MState) ->
+handle_info({send_event, From, ModuleTaskId, Msg}, MState) ->
+    ?LOG_DEBUG("Received send event info from ~p, task=~p, msg=~P", [From, ModuleTaskId, Msg, 10]),
+    handle_send_event(From, ModuleTaskId, Msg, MState);
+handle_info(Info, MState) ->
+    ?LOG_WARN("Unknown info message received: ~p", [Info]),
     {noreply, MState}.
 
 terminate(Reason, _) ->
@@ -235,7 +240,7 @@ handle_event(Event, {ModuleTaskId, EventData}, MState) ->
         SubscribedEvents ->
             case sets:is_element(ModuleTaskId, SubscribedEvents) of
                 true ->
-                    send_event_to_module(one_state, ModuleTaskId, {Event, EventData}, MState);
+                    send_event_to_module(ModuleTaskId, {Event, EventData}, MState);
                 fasle ->
                     MState
             end
@@ -279,11 +284,11 @@ start_module(ModuleTaskId, ExtraData, Nodes, MState) ->
             {ModuleTaskId, MState}
     end.
 
--spec do_send_confirm(atom(), integer(), term(), [node_address()]) -> ok.
-do_send_confirm(AllState, ModuleTaskId, Msg, Nodes) ->
+-spec do_send_confirm(integer(), term(), [node_address()]) -> ok.
+do_send_confirm(ModuleTaskId, Msg, Nodes) ->
     ?LOG_DEBUG("Send ~P to ~p (~p)", [Msg, 10, Nodes, ModuleTaskId]),
     MyAddr = wm_conf:get_my_relative_address(hd(Nodes)),
-    NewMsg = {send_event, AllState, MyAddr, ModuleTaskId, Msg},
+    NewMsg = {send_event, MyAddr, ModuleTaskId, Msg},
     wm_api:cast_self_confirm(NewMsg, Nodes).
 
 -spec get_status(integer(), #mstate{}) -> ready | not_ready.
@@ -299,34 +304,28 @@ set_ready(ModuleTaskId, MState) ->
     Status = maps:put(ModuleTaskId, ready, MState#mstate.status),
     MState#mstate{status = Status}.
 
--spec queue_request(atom(), integer(), term(), #mstate{}) -> #mstate{}.
-queue_request(AllState, ModuleTaskId, Msg, MState) ->
-    ?LOG_DEBUG("Queue request ~P (~p, ~p)", [Msg, 10, ModuleTaskId, AllState]),
-    ReqsList = [{AllState, Msg} | maps:get(ModuleTaskId, MState#mstate.reqs, [])],
+-spec queue_request(integer(), term(), #mstate{}) -> #mstate{}.
+queue_request(ModuleTaskId, Msg, MState) ->
+    ?LOG_DEBUG("Queue request ~P (~p)", [Msg, 10, ModuleTaskId]),
+    ReqsList = [Msg | maps:get(ModuleTaskId, MState#mstate.reqs, [])],
     ReqsMap = maps:put(ModuleTaskId, ReqsList, MState#mstate.reqs),
     MState#mstate{reqs = ReqsMap}.
 
 -spec release_requested(integer(), #mstate{}) -> #mstate{}.
 release_requested(ModuleTaskId, MState) ->
-    F = fun({AllState, Msg}) -> send_event_to_module(AllState, ModuleTaskId, Msg, MState) end,
+    F = fun(Msg) -> send_event_to_module(ModuleTaskId, Msg, MState) end,
     [F(X) || X <- maps:get(ModuleTaskId, MState#mstate.reqs, [])],
     Reqs = maps:put(ModuleTaskId, [], MState#mstate.reqs),
     MState#mstate{reqs = Reqs}.
 
--spec send_event_to_module(atom(), integer(), term(), #mstate{}) -> #mstate{}.
-send_event_to_module(AllState, ModuleTaskId, Msg, MState) ->
+-spec send_event_to_module(integer(), term(), #mstate{}) -> #mstate{}.
+send_event_to_module(ModuleTaskId, Msg, MState) ->
     case maps:get(ModuleTaskId, MState#mstate.mods, not_found) of
         not_found ->
             ?LOG_DEBUG("Cannot send event, no such task id: ~p", [ModuleTaskId]);
         Pid ->
-            ?LOG_DEBUG("Send event to ~p: ~10000p (~p, ~p) ~p",
-                       [MState#mstate.module, Msg, Pid, ModuleTaskId, AllState]),
-            case AllState of
-                one_state ->
-                    gen_fsm:send_event(Pid, Msg);
-                all_state ->
-                    gen_fsm:send_all_state_event(Pid, Msg)
-            end
+            ?LOG_DEBUG("Send event to ~p: ~10000p (~p, ~p)", [MState#mstate.module, Msg, Pid, ModuleTaskId]),
+            gen_statem:cast(Pid, Msg)
     end,
     MState.
 
@@ -369,15 +368,15 @@ get_factory_name(Type) ->
     NameStr = atom_to_list(?MODULE) ++ "_" ++ atom_to_list(Type),
     list_to_existing_atom(NameStr).
 
--spec handle_send_event(atom(), node_address(), integer(), term(), #mstate{}) -> {noreply, #mstate{}}.
-handle_send_event(AllState, From, ModuleTaskId, Msg, MState) ->
-    ?LOG_DEBUG("Handle send event: a=~p f=~p id=~p", [AllState, From, ModuleTaskId]),
+-spec handle_send_event(node_address(), integer(), term(), #mstate{}) -> {noreply, #mstate{}}.
+handle_send_event(From, ModuleTaskId, Msg, MState) ->
+    ?LOG_DEBUG("Handle send event: f=~p id=~p", [From, ModuleTaskId]),
     case get_status(ModuleTaskId, MState) of
         ready ->
-            {noreply, send_event_to_module(AllState, ModuleTaskId, Msg, MState)};
+            {noreply, send_event_to_module(ModuleTaskId, Msg, MState)};
         not_ready ->
-            Check = {check_event_handling, AllState, From, ModuleTaskId, Msg},
+            Check = {check_event_handling, From, ModuleTaskId, Msg},
             wm_utils:wake_up_after(?REPEAT_CALL_INTERVAL, Check),
             request_nodes_async(ModuleTaskId, From),
-            {noreply, queue_request(AllState, ModuleTaskId, Msg, MState)}
+            {noreply, queue_request(ModuleTaskId, Msg, MState)}
     end.

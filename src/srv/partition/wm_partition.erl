@@ -21,6 +21,31 @@ start_link(Args) ->
 %% Server callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    process_flag(trap_exit, true),
+    MState = parse_args(Args, #mstate{}),
+    ?LOG_INFO("Partition management service has been "
+              "started"),
+    {ok, MState}.
+
 handle_call(_Msg, _From, MState) ->
     {reply, {error, not_handled}, MState}.
 
@@ -39,14 +64,6 @@ code_change(_OldVsn, MState, _Extra) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
-
-%% @hidden
-init(Args) ->
-    process_flag(trap_exit, true),
-    MState = parse_args(Args, #mstate{}),
-    ?LOG_INFO("Partition management service has been "
-              "started"),
-    {ok, MState}.
 
 parse_args([], MState) ->
     MState;

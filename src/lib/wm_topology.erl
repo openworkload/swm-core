@@ -311,7 +311,7 @@ do_make_rh(grid, _, RH, Owner, #mstate{} = MState) ->
     Grids = wm_conf:select(grid, all),
     case Grids of
         [] ->
-            ?LOG_ERROR("Grid description not defined => assume cluster without grid"),
+            ?LOG_DEBUG("Grid description not defined => assume cluster without grid"),
             Cluster = do_get_my_subdiv(cluster, MState),
             do_make_rh(cluster, [Cluster], RH, Owner, MState);
         GridList when is_list(GridList) ->

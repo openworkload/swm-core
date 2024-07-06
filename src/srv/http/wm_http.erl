@@ -28,6 +28,47 @@ add_route(Type, Resource) ->
 %% Server callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    process_flag(trap_exit, true),
+    MState = parse_args(Args, #mstate{}),
+    MState2 = MState#mstate{routes = #{"/" => {api, wm_http_top}}},
+    Dispatch = dispatch_rules(MState2#mstate.routes, []),
+    Port = wm_conf:g(https_port, {?DEFAULT_HTTPS_PORT, integer}),
+    {CaFile, KeyFile, CertFile} = wm_utils:get_node_cert_paths(MState#mstate.spool),
+    {ok, Result} =
+        cowboy:start_tls(https,
+                         [{port, Port},
+                          {depth, 99},
+                          {verify, verify_peer},
+                          {versions, ['tlsv1.3', 'tlsv1.2']},
+                          {fail_if_no_peer_cert, true},
+                          {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
+                          {cacertfile, CaFile},
+                          {certfile, CertFile},
+                          {keyfile, KeyFile}],
+                         #{env => #{dispatch => Dispatch}, onresponse => fun error_hook/4}),
+    ?LOG_INFO("Web server has been started on port ~p: ~p", [Port, Result]),
+    wm_event:announce(http_started),
+    {ok, MState2}.
+
 handle_call(_Msg, _From, MState) ->
     {reply, ok, MState}.
 
@@ -52,29 +93,6 @@ code_change(_OldVsn, MState, _Extra) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
-
-init(Args) ->
-    process_flag(trap_exit, true),
-    MState = parse_args(Args, #mstate{}),
-    MState2 = MState#mstate{routes = #{"/" => {api, wm_http_top}}},
-    Dispatch = dispatch_rules(MState2#mstate.routes, []),
-    Port = wm_conf:g(https_port, {?DEFAULT_HTTPS_PORT, integer}),
-    {CaFile, KeyFile, CertFile} = wm_utils:get_node_cert_paths(MState#mstate.spool),
-    {ok, Result} =
-        cowboy:start_tls(https,
-                         [{port, Port},
-                          {depth, 99},
-                          {verify, verify_peer},
-                          {versions, ['tlsv1.3', 'tlsv1.2']},
-                          {fail_if_no_peer_cert, true},
-                          {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
-                          {cacertfile, CaFile},
-                          {certfile, CertFile},
-                          {keyfile, KeyFile}],
-                         #{env => #{dispatch => Dispatch}, onresponse => fun error_hook/4}),
-    ?LOG_INFO("Web server has been started on port ~p: ~p", [Port, Result]),
-    wm_event:announce(http_started),
-    {ok, MState2}.
 
 parse_args([], MState) ->
     MState;

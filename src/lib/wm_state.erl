@@ -59,11 +59,11 @@ terminate(Status, StateName, _) ->
     wm_utils:terminate_msg(?MODULE, Msg).
 
 %% ============================================================================
-%% Implementation functions
+%% State machine transitions
 %% ============================================================================
 
 %% @doc State meaning: services are unloaded, but maintanance is not needed
--spec stopped({call, pid()} | atom(), {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
+-spec stopped({call, pid()} | cast, {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
 stopped({call, From}, get_current, MState) ->
     {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 stopped(cast, {enter, stopped}, MState) ->
@@ -82,7 +82,7 @@ stopped(cast, {enter, offline}, MState) ->
     {next_state, offline, MState}.
 
 %% @doc State meaning: services are loading now according the node roles
--spec loading({call, pid()} | atom(), {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
+-spec loading({call, pid()} | cast, {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
 loading({call, From}, get_current, MState) ->
     {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 loading(cast, {enter, idle}, MState) ->
@@ -103,7 +103,7 @@ loading(cast, {enter, breakdown}, MState) ->
     {next_state, maint, MState}.
 
 %% @doc State meaning: the node requires some intervention from outside
--spec maint({call, pid()} | atom(), {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
+-spec maint({call, pid()} | cast, {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
 maint({call, From}, get_current, MState) ->
     {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 maint(cast, {enter, maint}, MState) ->
@@ -125,7 +125,7 @@ maint(cast, {enter, stopped}, MState) ->
     {next_state, stopped, MState}.
 
 %% @doc State meaning: services are loaded, but the node should not be used now
--spec offline({call, pid()} | atom(), {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
+-spec offline({call, pid()} | cast, {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
 offline({call, From}, get_current, MState) ->
     {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 offline(cast, {enter, offline}, MState) ->
@@ -147,7 +147,7 @@ offline(cast, {enter, breakdown}, MState) ->
     {next_state, maint, MState}.
 
 %% @doc State meaning: node is ready to run jobs
--spec idle({call, pid()} | atom(), {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
+-spec idle({call, pid()} | cast, {atom(), atom()}, #mstate{}) -> {atom(), atom(), #mstate{}}.
 idle({call, From}, get_current, MState) ->
     {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 idle(cast, {enter, idle}, MState) ->

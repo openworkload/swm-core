@@ -22,6 +22,37 @@ start_link(Args) ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    wm_event:subscribe(wm_commit_done, node(), ?MODULE),
+    case wm_db:ensure_running() of
+        ok ->
+            wm_db:ensure_table_exists(timetable, [], local_bag),
+            MState = parse_args(Args, #mstate{}),
+            ok = wm_works:call_asap(?MODULE, start_scheduling),
+            {ok, MState};
+        {error, Error} ->
+            ?LOG_ERROR("Could not start ~p: ~p", [?MODULE, Error]),
+            {error, Error}
+    end.
+
 handle_call(start_scheduling, _, #mstate{} = MState) ->
     case get_scheduler() of
         {error, Error} ->
@@ -86,20 +117,6 @@ code_change(_OldVsn, #mstate{} = MState, _Extra) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
-
-%% @hidden
-init(Args) ->
-    wm_event:subscribe(wm_commit_done, node(), ?MODULE),
-    case wm_db:ensure_running() of
-        ok ->
-            wm_db:ensure_table_exists(timetable, [], local_bag),
-            MState = parse_args(Args, #mstate{}),
-            ok = wm_works:call_asap(?MODULE, start_scheduling),
-            {ok, MState};
-        {error, Error} ->
-            ?LOG_ERROR("Could not start ~p: ~p", [?MODULE, Error]),
-            {error, Error}
-    end.
 
 parse_args([], MState) ->
     MState;

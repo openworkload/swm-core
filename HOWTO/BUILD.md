@@ -59,5 +59,5 @@ How to create worker archive using already created dev setup:
 ------------------------------------------------------------
 
 ```console
-scripts/setup.linux -a -t
+make worker
 ```

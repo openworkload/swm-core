@@ -1,10 +1,10 @@
 -module(wm_mst).
 
--behaviour(gen_fsm).
+-behaviour(gen_statem).
 
--export([start_link/1]).
--export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, code_change/4, terminate/3]).
--export([activate/1, find/2, found/2, sleeping/2]).
+-export([start_link/1, activate/1]).
+-export([callback_mode/0, init/1, terminate/3, code_change/4]).
+-export([sleeping/3, find/3, found/3]).
 
 -include("wm_log.hrl").
 
@@ -28,56 +28,35 @@
 
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
-    gen_fsm:start_link(?MODULE, Args, []).
+    gen_statem:start_link(?MODULE, Args, []).
 
 %% @doc Activate a new MST construction
 -spec activate(pid()) -> ok.
 activate(Pid) ->
     ?LOG_DEBUG("Activate ~p", [Pid]),
-    gen_fsm:send_event(Pid, wakeup).
+    gen_statem:cast(Pid, wakeup).
 
 %% ============================================================================
 %% Server callbacks
 %% ============================================================================
 
+-spec callback_mode() -> state_functions.
 -spec init(term()) ->
               {ok, atom(), term()} |
               {ok, atom(), term(), hibernate | infinity | non_neg_integer()} |
               {stop, term()} |
               ignore.
--spec handle_event(term(), atom(), term()) ->
-                      {next_state, atom(), term()} |
-                      {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
-                      {stop, term(), term()} |
-                      {stop, term(), term(), term()}.
--spec handle_sync_event(term(), atom(), atom(), term()) ->
-                           {next_state, atom(), term()} |
-                           {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
-                           {reply, term(), atom(), term()} |
-                           {reply, term(), atom(), term(), hibernate | infinity | non_neg_integer()} |
-                           {stop, term(), term()} |
-                           {stop, term(), term(), term()}.
--spec handle_info(term(), atom(), term()) ->
-                     {next_state, atom(), term()} |
-                     {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
-                     {stop, term(), term()}.
 -spec code_change(term(), atom(), term(), term()) -> {ok, term()}.
 -spec terminate(term(), atom(), term()) -> ok.
+callback_mode() ->
+    state_functions.
+
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     ?LOG_INFO("MST module has been started (~p)", [MState#mstate.mst_id]),
     wm_factory:notify_initiated(mst, MState#mstate.mst_id),
     {ok, sleeping, MState}.
-
-handle_sync_event(_Event, _From, State, MState) ->
-    {reply, State, State, MState}.
-
-handle_event(_Event, State, MState) ->
-    {next_state, State, MState}.
-
-handle_info(_Info, StateName, MState) ->
-    {next_state, StateName, MState}.
 
 code_change(_OldVsn, StateName, MState, _Extra) ->
     {ok, StateName, MState}.
@@ -87,99 +66,85 @@ terminate(Status, StateName, MState) ->
     wm_utils:terminate_msg(?MODULE, Msg).
 
 %% ============================================================================
-%% FSM state transitions
+%% State machine transitions
 %% ============================================================================
 
--spec sleeping(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-sleeping({connect, From, Level}, MState) ->
+-spec sleeping({call, pid()} | cast, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+sleeping(cast, {connect, From, Level}, MState) ->
     ?LOG_DEBUG("Received connect from ~p => wake up [sleeping]", [From]),
     MState2 = wakeup(set_state(found, MState)),
     MState3 = do_connect_resp(From, Level, get_state(MState2), MState2),
     {next_state, get_state(MState3), MState3};
-sleeping(Cmd, MState) ->
-    ?LOG_DEBUG("Received '~p' => wake up [sleeping]", [Cmd]),
+sleeping(Event, Msg, MState) ->
+    ?LOG_DEBUG("Received ~p, ~p => wake up [sleeping]", [Event, Msg]),
     MState2 = wakeup(set_state(found, MState)),
     {next_state, get_state(MState2), MState2}.
 
--spec find(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-find({connect, From, Level}, MState) ->
+-spec find({call, pid()} | cast, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+find(cast, {connect, From, Level}, MState) ->
     ?LOG_DEBUG("Received 'connect' (E=~p, L=~p) [find]", [From, Level]),
     MState2 = do_connect_resp(From, Level, find, set_state(find, MState)),
     {next_state, get_state(MState2), MState2};
-find({initiate, From, Level, FID, NodeState}, MState) ->
+find(cast, {initiate, From, Level, FID, NodeState}, MState) ->
     ?LOG_DEBUG("Received 'initiate' (E=~p, L=~p) [find]", [From, Level]),
     MState2 = set_state(find, MState),
     MState3 = do_initiate_resp(From, Level, FID, NodeState, MState2),
     {next_state, get_state(MState3), MState3};
-find({test, From, Level, FID}, MState) ->
+find(cast, {test, From, Level, FID}, MState) ->
     ?LOG_DEBUG("Received 'test' from ~p (L=~p, F=~p) [find]", [From, Level, FID]),
     MState2 = do_test_resp(From, Level, FID, set_state(find, MState)),
     {next_state, get_state(MState2), MState2};
-find({accept, From}, MState) ->
+find(cast, {accept, From}, MState) ->
     ?LOG_DEBUG("Received 'accept' from ~p [find]", [From]),
     MState2 = do_accept_resp(From, set_state(find, MState)),
     {next_state, get_state(MState2), MState2};
-find({reject, From}, MState) ->
+find(cast, {reject, From}, MState) ->
     ?LOG_DEBUG("Received 'accept' from ~p [find]", [From]),
     MState2 = do_reject_resp(From, set_state(find, MState)),
     {next_state, get_state(MState2), MState2};
-find({report, From, BestWeight}, MState) ->
+find(cast, {report, From, BestWeight}, MState) ->
     ?LOG_DEBUG("Received 'report' from ~p, W=~p [find]", [From, BestWeight]),
     MState2 = do_report_resp(From, BestWeight, set_state(find, MState)),
     {next_state, get_state(MState2), MState2};
-find({change_root, From}, MState) ->
+find(cast, {change_root, From}, MState) ->
     ?LOG_DEBUG("Received 'change_root' from ~p [find]", [From]),
     MState2 = do_change_root_resp(From, set_state(find, MState)),
     {next_state, get_state(MState2), MState2};
-find(wakeup, MState) ->
+find(cast, wakeup, MState) ->
     {next_state, get_state(MState), MState}.
 
--spec found(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-found({connect, From, Level}, MState) ->
+-spec found({call, pid()} | cast, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+found(cast, {connect, From, Level}, MState) ->
     ?LOG_DEBUG("Received 'connect' (E=~p, L=~p) [found]", [From, Level]),
     MState2 = do_connect_resp(From, Level, found, set_state(found, MState)),
     {next_state, get_state(MState2), MState2};
-found({initiate, From, Level, Weight, NodeState}, MState) ->
+found(cast, {initiate, From, Level, Weight, NodeState}, MState) ->
     ?LOG_DEBUG("Received 'initiate' (E=~p, L=~p) [found]", [From, Level]),
     MState2 = set_state(found, MState),
     MState3 = do_initiate_resp(From, Level, Weight, NodeState, MState2),
     {next_state, get_state(MState3), MState3};
-found({test, From, Level, FID}, MState) ->
+found(cast, {test, From, Level, FID}, MState) ->
     ?LOG_DEBUG("Received 'test' (E=~p, L=~p, F=~p) [found]", [From, Level, FID]),
     MState2 = do_test_resp(From, Level, FID, set_state(found, MState)),
     {next_state, get_state(MState2), MState2};
-found({accept, From}, MState) ->
+found(cast, {accept, From}, MState) ->
     ?LOG_DEBUG("Received 'accept' from ~p [found]", [From]),
     MState2 = do_accept_resp(From, set_state(found, MState)),
     {next_state, get_state(MState2), MState2};
-found({reject, From}, MState) ->
+found(cast, {reject, From}, MState) ->
     ?LOG_DEBUG("Received 'accept' from ~p [found]", [From]),
     MState2 = do_reject_resp(From, set_state(found, MState)),
     {next_state, get_state(MState2), MState2};
-found({report, From, BestWeight}, MState) ->
+found(cast, {report, From, BestWeight}, MState) ->
     ?LOG_DEBUG("Received 'report' from ~p, W=~p [found]", [From, BestWeight]),
     MState2 = do_report_resp(From, BestWeight, set_state(found, MState)),
     {next_state, get_state(MState2), MState2};
-found({change_root, From}, MState) ->
+found(cast, {change_root, From}, MState) ->
     ?LOG_DEBUG("Received 'change_root' from ~p [found]", [From]),
     MState2 = do_change_root_resp(From, set_state(found, MState)),
     {next_state, get_state(MState2), MState2};
-found(wakeup, MState) ->
+found(cast, wakeup, MState) ->
     {next_state, get_state(MState), MState}.
-
-%% ============================================================================
-%% FSM implementation functions
-%% ============================================================================
-
--spec parse_args(list(), #mstate{}) -> #mstate{}.
-parse_args([], MState) ->
-    MState;
-parse_args([{nodes, Nodes} | T], MState) ->
-    parse_args(T, MState#mstate{nodes = Nodes});
-parse_args([{task_id, ID} | T], MState) ->
-    parse_args(T, MState#mstate{mst_id = ID});
-parse_args([{_, _} | T], MState) ->
-    parse_args(T, MState).
 
 %% ============================================================================
 %% GHS implementation functions
@@ -469,7 +434,7 @@ handle_queued_requests(MState) ->
     ?LOG_DEBUG("Requests queue: ~p", [MState#mstate.requests_queue]),
     QueueSize = length(MState#mstate.requests_queue),
     ?LOG_DEBUG("Handle ~p queued requests", [QueueSize]),
-    F = fun(QueuedRequest) -> ok = gen_fsm:send_event(self(), QueuedRequest) end,
+    F = fun(QueuedRequest) -> ok = gen_statem:cast(self(), QueuedRequest) end,
     [F(X) || X <- lists:reverse(MState#mstate.requests_queue)],
     MState#mstate{requests_queue = []}.
 
@@ -557,3 +522,13 @@ format_mstate(MState) ->
                    MState#mstate.state,
                    length(MState#mstate.requests_queue),
                    MState#mstate.mst_id]).
+
+-spec parse_args(list(), #mstate{}) -> #mstate{}.
+parse_args([], MState) ->
+    MState;
+parse_args([{nodes, Nodes} | T], MState) ->
+    parse_args(T, MState#mstate{nodes = Nodes});
+parse_args([{task_id, ID} | T], MState) ->
+    parse_args(T, MState#mstate{mst_id = ID});
+parse_args([{_, _} | T], MState) ->
+    parse_args(T, MState).

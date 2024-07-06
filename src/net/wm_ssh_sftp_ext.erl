@@ -17,11 +17,11 @@
 
 -spec command(pid(), term()) -> term().
 command(Pid, Command) ->
-    case ssh_connection:session_channel(Pid, _Timeout = 60000) of
+    case ssh_connection:session_channel(Pid, _Timeout1 = 60000) of
         {ok, ChannelId} ->
-            try ssh_connection:subsystem(Pid, ChannelId, ?SSH_EXT_SUBSYSTEM, _Timeout = 60000) of
+            try ssh_connection:subsystem(Pid, ChannelId, ?SSH_EXT_SUBSYSTEM, _Timeout2 = 60000) of
                 success ->
-                    case ssh_connection:send(Pid, ChannelId, term_to_binary(Command), 60000) of
+                    case ssh_connection:send(Pid, ChannelId, term_to_binary(Command), _Timeout3 = 60000) of
                         ok ->
                             F = fun Receive() ->
                                         receive

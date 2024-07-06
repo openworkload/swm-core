@@ -246,4 +246,4 @@ clean_containers_map(ContID, #mstate{containers = OldMap} = MState) ->
 send_event_to_owner(Event, ContID, #mstate{} = MState) ->
     {Owner, Job, _, _} = maps:get(ContID, MState#mstate.containers),
     JobID = wm_entity:get(id, Job),
-    gen_fsm:send_event(Owner, {Event, JobID}).
+    gen_statem:cast(Owner, {Event, JobID}).

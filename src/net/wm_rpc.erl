@@ -61,7 +61,7 @@ cast(Module, Function, Args, FinalAddr = {_, _}) ->
         {ok, Socket} ->
             Tag = wm_utils:uuid(v4),
             RPC = {cast, Module, Function, Args, Tag, FinalAddr},
-            %send_metrics_to_mon(NextAddr),
+            send_metrics_to_mon(NextAddr),
             wm_tcp_client:rpc(RPC, Socket),
             wm_tcp_client:disconnect(Socket);
         Error ->

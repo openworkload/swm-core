@@ -6,6 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([job_cost/1, node_prices/1]).
 -export([update_node_prices/0]).
+-export([norming/1, node_weight/3]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
@@ -115,42 +116,6 @@ parse_args([], MState) ->
     MState;
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
-
--spec get_suited_template_nodes(#job{}) -> [#node{}].
-get_suited_template_nodes(Job) ->
-    GetTemplates = fun(X) -> wm_entity:get(is_template, X) == true end,
-    case wm_conf:select(node, GetTemplates) of
-        {error, not_found} ->
-            [];
-        {ok, Nodes} ->
-            get_suited_template_nodes(Job, Nodes)
-    end.
-
--spec get_suited_template_nodes(#job{}, [#node{}]) -> [#node{}].
-get_suited_template_nodes(Job, Nodes) ->
-    lists:filter(fun(Node) -> job_suited_node(Job, Node) end, Nodes).
-
--spec job_suited_node(#job{}, #node{}) -> boolean().
-job_suited_node(Job, Node) ->
-    JobResources = wm_entity:get(resources, Job),
-    NodeResources = wm_entity:get(resources, Node),
-    F = fun(JobResource) -> match_resource(JobResource, NodeResources) end,
-    lists:all(fun(X) -> X end, lists:map(F, JobResources)).
-
--spec match_resource(#resource{}, [#resource{}]) -> boolean().
-match_resource(_, []) ->
-    false;
-match_resource(#resource{name = Name} = JobResource, [#resource{name = Name} = NodeResource | NodeResources]) ->
-    DesiredCount = wm_entity:get(count, JobResource),
-    AvailableCount = wm_entity:get(count, NodeResource),
-    case DesiredCount =< AvailableCount of
-        true ->
-            true;
-        false ->
-            match_resource(JobResource, NodeResources)
-    end;
-match_resource(JobResource, [_NodeResource | NodeResources]) ->
-    match_resource(JobResource, NodeResources).
 
 -spec job_cost(#job{}, [#node{}]) -> {ok, {#node{}, number()}} | {error, not_found}.
 job_cost(_, []) ->
@@ -276,69 +241,6 @@ apply_price_map(Node, Partition, Account, PriceMap) ->
         end,
     UpdatedRss = [F(R) || R <- wm_entity:get(resources, Node)],
     wm_entity:set({resources, UpdatedRss}, Node).
-
--spec select_remote_site(#job{}, [#node{}]) -> {ok, #node{}} | {error, not_found}.
-select_remote_site(_, []) ->
-    {error, not_found};
-select_remote_site(Job, Nodes) ->
-    case wm_entity:get(nodes, Job) of
-        [SomeNode] ->
-            case wm_entity:get(is_template, SomeNode) of
-                true ->
-                    {ok, SomeNode};
-                false ->
-                    {error, "Job requests non-template node"}
-            end;
-        _ ->
-            AccountId = wm_entity:get(account_id, Job),
-            Files = wm_entity:get(input_files, Job),
-            Data = cumulative_files_size(Files),
-            PricesNorm =
-                norming(lists:map(fun(Node) ->
-                                     case wm_accounting:node_prices(Node) of
-                                         #{AccountId := Price} ->
-                                             Price;
-                                         #{} ->
-                                             0
-                                     end
-                                  end,
-                                  Nodes)),
-            NetworkLatenciesNorm = norming(lists:map(fun(Node) -> ?MODULE:network_latency(Node) end, Nodes)),
-            Xs = lists:zip3(Nodes, PricesNorm, NetworkLatenciesNorm),
-            {_, Node} =
-                lists:max(
-                    lists:map(fun({Node, Price, NetworkLatency}) -> {node_weight(Price, NetworkLatency, Data), Node}
-                              end,
-                              Xs)),
-            {ok, Node}
-    end.
-
--spec cumulative_files_size([nonempty_string()]) -> number().
-cumulative_files_size([]) ->
-    1;
-cumulative_files_size(Files) when is_list(Files) ->
-    lists:sum(
-        lists:map(fun(File) ->
-                     case wm_file_utils:get_size(File) of
-                         {ok, Bytes} ->
-                             Bytes;
-                         Reason ->
-                             ?LOG_ERROR("Can not obtain file ~p size due ~p", [File, Reason]),
-                             1
-                     end
-                  end,
-                  Files)).
-
--spec network_latency(#node{}) -> number().
-network_latency(Node) ->
-    Resources = wm_entity:get(resources, Node),
-    lists:foldl(fun (Resource = #resource{name = "network_latency"}, _Acc) ->
-                        wm_entity:get(count, Resource);
-                    (_Resource, Acc) ->
-                        Acc
-                end,
-                ?NETWORK_LATENCY_MCS,
-                Resources).
 
 -spec norming([number()]) -> [number()].
 norming(Xs) ->
@@ -554,83 +456,6 @@ node_prices_test() ->
                       wm_entity:new(node)),
     ?assertEqual(#{1 => 31.0, 2 => 71.0}, node_prices(Node0)),
     ?assertEqual(#{1 => 90.0}, node_prices(Node1)),
-    ok.
-
-job_suited_node_test() ->
-    Job = wm_entity:set([{resources,
-                          [wm_entity:set([{name, "a"}, {count, 5}], wm_entity:new(resource)),
-                           wm_entity:set([{name, "b"}, {count, 15}], wm_entity:new(resource)),
-                           wm_entity:set([{name, "c"}, {count, 20}], wm_entity:new(resource))]}],
-                        wm_entity:new(job)),
-    Node0 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 1}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "b"}, {count, 5}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "c"}, {count, 10}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    Node1 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 10}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "b"}, {count, 20}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "c"}, {count, 30}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    Node2 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "x"}, {count, 10}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "y"}, {count, 20}], wm_entity:new(resource)),
-                         wm_entity:set([{name, "z"}, {count, 30}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    ?assertEqual(false, job_suited_node(Job, Node2)),
-    ?assertEqual(false, job_suited_node(Job, Node0)),
-    ?assertEqual(true, job_suited_node(Job, Node1)),
-    ok.
-
-select_remote_site_test() ->
-    Job0 = wm_entity:set([{account_id, JobAccoundId = 1}, {input_files, []}], wm_entity:new(job)),
-    Job1 = wm_entity:set([{account_id, JobAccoundId = 1}, {input_files, ["1.tar.gz"]}], wm_entity:new(job)),
-    Job2 = wm_entity:set([{account_id, JobAccoundId = 1}, {input_files, ["2.tar.gz"]}], wm_entity:new(job)),
-    Node0 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 25.0, 2 => 2.5}}],
-                                       wm_entity:new(resource)),
-                         wm_entity:set([{name, "network_latency"}, {count, 1 * 1000}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    Node1 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 30.0, 2 => 2.5}}],
-                                       wm_entity:new(resource)),
-                         wm_entity:set([{name, "network_latency"}, {count, 10 * 1000}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    Node2 =
-        wm_entity:set([{resources,
-                        [wm_entity:set([{name, "a"}, {count, 1}, {prices, #{JobAccoundId => 15.0, 2 => 2.5}}],
-                                       wm_entity:new(resource)),
-                         wm_entity:set([{name, "network_latency"}, {count, 50 * 1000}], wm_entity:new(resource))]}],
-                      wm_entity:new(node)),
-    meck:new(wm_file_utils, [unstick, passthrough]),
-    meck:expect(wm_file_utils,
-                get_size,
-                fun ("1.tar.gz") ->
-                        {ok, 1024};
-                    ("2.tar.gz") ->
-                        {ok, 1024 * 1024 * 1024}
-                end),
-    ?assertEqual({error, not_found}, select_remote_site(Job0, [])),
-    ?assertEqual({ok, Node2}, select_remote_site(Job0, [Node0, Node1, Node2])),
-    ?assertEqual({ok, Node2}, select_remote_site(Job1, [Node0, Node1, Node2])),
-    ?assertEqual({ok, Node0}, select_remote_site(Job2, [Node0, Node1, Node2])),
-    meck:unload(wm_file_utils),
-    ok.
-
-match_resource_test() ->
-    Resource0 = wm_entity:set([{name, "a"}, {count, 100}], wm_entity:new(resource)),
-    Resource1 = wm_entity:set([{name, "b"}, {count, 10}], wm_entity:new(resource)),
-    Resource2 = wm_entity:set([{name, "a"}, {count, 150}], wm_entity:new(resource)),
-    Resource3 = wm_entity:set([{name, "c"}, {count, 100}], wm_entity:new(resource)),
-    Resource4 = wm_entity:set([{name, "d"}, {count, 100}], wm_entity:new(resource)),
-    ?assertEqual(false, match_resource(Resource0, [Resource1, Resource3, Resource4])),
-    ?assertEqual(true, match_resource(Resource0, [Resource1, Resource2, Resource3, Resource4])),
-    ?assertEqual(true, match_resource(Resource0, [Resource0, Resource1, Resource2, Resource3, Resource4])),
     ok.
 
 node_weight_common_test() ->

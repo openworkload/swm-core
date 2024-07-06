@@ -21,21 +21,23 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
+-spec reply(iodata(), any()) -> ok | {error, term()}.
 reply(Data, Socket) ->
     ?LOG_DEBUG("Reply ~P", [Data, 5]),
     Bin = wm_utils:encode_to_binary(Data),
     ssl:send(Socket, Bin).
 
+-spec recv(any()) ->
+              {call, atom(), atom(), term()} | {call, atom(), atom(), term(), string(), string()} | {error, term()}.
 recv(Socket) ->
-    %?LOG_DEBUG("Receiving data using socket: ~p", [Socket]),
     case ssl:recv(Socket, 0) of
         {ok, Bin} ->
             case wm_utils:decode_from_binary(Bin) of
                 {call, M, F, Args} ->
-                    ?LOG_DEBUG("Received CALL-RPC ~p:~p(~P)", [M, F, Args, 10]),
+                    ?LOG_DEBUG("Received CALL-RPC ~p:~p(~P)", [M, F, Args, 5]),
                     {call, M, F, Args};
                 {cast, M, F, Args, Tag, FinalNodeName} ->
-                    ?LOG_DEBUG("Received CAST-RPC ~p:~p(~10000p) tag=~p addr=~1000p", [M, F, Args, Tag, FinalNodeName]),
+                    ?LOG_DEBUG("Received CAST-RPC ~p:~p(~P) tag=~p addr=~1000p", [M, F, Args, 5, Tag, FinalNodeName]),
                     {cast, M, F, Args, Tag, FinalNodeName};
                 {error, closed} ->
                     ?LOG_ERROR("Socket closed"),
@@ -55,6 +57,55 @@ recv(Socket) ->
 %% ============================================================================
 %% Callbacks
 %% ============================================================================
+
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    ?LOG_INFO("Load tcpserver"),
+    MState1 = parse_args(Args, #mstate{}),
+    Port =
+        case wm_conf:select(node, {name, MState1#mstate.sname}) of
+            {error, _} ->
+                case MState1#mstate.default_port of
+                    none ->
+                        ?LOG_INFO("TCP server will not be started (no port)"),
+                        none;
+                    ConfPort ->
+                        ?LOG_DEBUG("Going to start TCP server on port ~p", [ConfPort]),
+                        ConfPort
+                end;
+            {ok, #node{name = Name} = SelfNode} ->
+                ?LOG_DEBUG("My node ~p was found in the local db", [Name]),
+                wm_entity:get(api_port, SelfNode)
+        end,
+    %FIXME If port of node001 was X and port of node002
+    %      is changed to X and port of node001 is changed
+    %      to Y, then node001 will still start to leasten
+    %      to the old port X and node002 will fail to start
+    %      leasten the port X. This will lead to the scenario
+    %      when parent cannot update configs of the both node001
+    %      and node002, so for now port cannot be moved (if moved
+    %      then remove spool of children nodes).
+    MState2 = MState1#mstate{port = Port},
+    wm_works:call_asap(?MODULE, start_listen),
+    ?LOG_DEBUG("Module new state: ~10000p", [MState2]),
+    {ok, MState2}.
 
 handle_call(start_listen, _, MState) ->
     Port = MState#mstate.port,
@@ -119,37 +170,6 @@ code_change(_OldVersion, Library, _Extra) ->
 %% Implementation functions
 %% ============================================================================
 
-init(Args) ->
-    ?LOG_INFO("Load tcpserver"),
-    MState1 = parse_args(Args, #mstate{}),
-    Port =
-        case wm_conf:select(node, {name, MState1#mstate.sname}) of
-            {error, _} ->
-                case MState1#mstate.default_port of
-                    none ->
-                        ?LOG_INFO("TCP server will not be started (no port)"),
-                        none;
-                    ConfPort ->
-                        ?LOG_DEBUG("Going to start TCP server on port ~p", [ConfPort]),
-                        ConfPort
-                end;
-            {ok, #node{name = Name} = SelfNode} ->
-                ?LOG_DEBUG("My node ~p was found in the local db", [Name]),
-                wm_entity:get(api_port, SelfNode)
-        end,
-    %FIXME If port of node001 was X and port of node002
-    %      is changed to X and port of node001 is changed
-    %      to Y, then node001 will still start to leasten
-    %      to the old port X and node002 will fail to start
-    %      leasten the port X. This will lead to the scenario
-    %      when parent cannot update configs of the both node001
-    %      and node002, so for now port cannot be moved (if moved
-    %      then remove spool of children nodes).
-    MState2 = MState1#mstate{port = Port},
-    wm_works:call_asap(?MODULE, start_listen),
-    ?LOG_DEBUG("Module new state: ~10000p", [MState2]),
-    {ok, MState2}.
-
 parse_args([], #mstate{} = MState) ->
     MState;
 parse_args([{spool, Spool} | T], #mstate{} = MState) ->
@@ -169,6 +189,7 @@ accept(MState = #mstate{lsocket = ListenSocket}) ->
     ?LOG_DEBUG("New connection process pid: ~p", [Pid]),
     MState#mstate{pids = [Pid | MState#mstate.pids]}. %TODO should the pids be used?
 
+-spec loop({pid(), any(), module()}) -> ok.
 loop({Server, ListenSocket, Module}) ->
     ?LOG_DEBUG("Ready to accept new SSL connection"),
     try

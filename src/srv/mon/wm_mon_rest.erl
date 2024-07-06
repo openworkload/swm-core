@@ -12,10 +12,12 @@
 %% Callbacks
 %% ============================================================================
 
+-spec init(any(), any()) -> {cowboy_rest, any(), #mstate{}}.
 init(Req, _Opts) ->
     ?LOG_INFO("Start monitoring REST API handler: ~p", [Req]),
     {cowboy_rest, Req, #mstate{}}.
 
+-spec content_types_provided(any(), #mstate{}) -> {list(), any(), #mstate{}}.
 content_types_provided(Req, MState) ->
     {[{<<"application/json">>, json_handler}], Req, MState}.
 
@@ -25,6 +27,7 @@ content_types_provided(Req, MState) ->
 
 % curl -i -H "Accept: application/json" "http://localhost:8008/mon?\
 %  metric=msg_route&begintime=1460300086618999&endtime=1470500000000000&limit=8"
+-spec json_handler(any(), #mstate{}) -> {any(), any(), #mstate{}}.
 json_handler(Req, MState) ->
     Method = cowboy_req:method(Req),
     Body = metrics_to_json(Method, Req),

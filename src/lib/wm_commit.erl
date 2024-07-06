@@ -1,10 +1,10 @@
 -module(wm_commit).
 
--behaviour(gen_fsm).
+-behaviour(gen_statem).
 
 -export([start_link/1]).
--export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, code_change/4, terminate/3]).
--export([phase1/2, phase2/2, phase3/2, recovering/2]).
+-export([callback_mode/0, init/1, terminate/3, code_change/4]).
+-export([phase1/3, phase2/3, phase3/3, recovering/3]).
 
 -include("wm_log.hrl").
 -include("wm_entity.hrl").
@@ -32,35 +32,23 @@
 
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
-    gen_fsm:start_link(?MODULE, Args, []).
+    gen_statem:start_link(?MODULE, Args, []).
 
 %% ============================================================================
 %% Server callbacks
 %% ============================================================================
 
+-spec callback_mode() -> state_functions.
 -spec init(term()) ->
               {ok, atom(), term()} |
               {ok, atom(), term(), hibernate | infinity | non_neg_integer()} |
               {stop, term()} |
               ignore.
--spec handle_event(term(), atom(), term()) ->
-                      {next_state, atom(), term()} |
-                      {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
-                      {stop, term(), term()} |
-                      {stop, term(), term(), term()}.
--spec handle_sync_event(term(), atom(), atom(), term()) ->
-                           {next_state, atom(), term()} |
-                           {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
-                           {reply, term(), atom(), term()} |
-                           {reply, term(), atom(), term(), hibernate | infinity | non_neg_integer()} |
-                           {stop, term(), term()} |
-                           {stop, term(), term(), term()}.
--spec handle_info(term(), atom(), term()) ->
-                     {next_state, atom(), term()} |
-                     {next_state, atom(), term(), hibernate | infinity | non_neg_integer()} |
-                     {stop, term(), term()}.
 -spec code_change(term(), atom(), term(), term()) -> {ok, term()}.
 -spec terminate(term(), atom(), term()) -> ok.
+callback_mode() ->
+    state_functions.
+
 init(Args) ->
     process_flag(trap_exit, true),
     MState1 = parse_args(Args, #mstate{}),
@@ -78,60 +66,10 @@ init(Args) ->
                 wm_conf:get_my_relative_address(TunnelParentAddr)
         end,
     MState2 = MState1#mstate{my_addr = MyAddr},
-    ?LOG_DEBUG("Commit module has been started (state: ~1000p)", [MState2]),
+    ?LOG_DEBUG("Commit module has been started (state: ~P)", [MState2, 10]),
     wm_factory:subscribe(mst, MState2#mstate.tid, wm_mst_done),
     wm_factory:notify_initiated(commit, MState2#mstate.tid),
     {ok, phase1, MState2}.
-
-handle_sync_event(_Event, _From, State, MState) ->
-    {reply, State, State, MState}.
-
-handle_event({event, wm_mst_done, {MST_ID, {node, Leader}}}, recovering, #mstate{my_addr = MyAddr} = MState)
-    when MST_ID == MState#mstate.election_id ->
-    ?LOG_DEBUG("Received 'wm_mst_done': ~p, ~p (~p)", [MST_ID, Leader, MState#mstate.tid]),
-    MState2 = MState#mstate{leader = Leader},
-    case MState#mstate.leader == MyAddr of
-        true ->
-            gen_fsm:send_event(self(), collect_lasts);
-        _ ->
-            ?LOG_DEBUG("I'm not a leader in dist transaction ~p", [MState#mstate.tid])
-    end,
-    {next_state, recovering, MState2};
-handle_event({request_lasts, Leader}, State, #mstate{my_addr = MyAddr} = MState) ->
-    ?LOG_DEBUG("Requested last values"),
-    Reply = {lasts, MState#mstate.last_elected, MState#mstate.last_attempt, MyAddr},
-    send_reply(Reply, Leader, MState),
-    {next_state, State, MState};
-handle_event({new_leader, MaxLE, Leader}, State, #mstate{my_addr = MyAddr} = MState) ->
-    ?LOG_DEBUG("Received 'new_leader' from ~p, max_elected=~p", [Leader, MaxLE]),
-    MState2 = MState#mstate{leader = Leader, last_elected = MaxLE + 1},
-    send_reply({state, State, MyAddr}, Leader, MState2),
-    {next_state, State, MState};
-handle_event({pre_abort, _, _, Leader}, _, #mstate{my_addr = MyAddr} = MState) ->
-    ?LOG_DEBUG("Received distributed transaction decision: pre_abort"),
-    send_reply({pre_aborted, MyAddr}, Leader, MState),
-    {next_state, phase3, MState};
-handle_event({abort, _, _, Leader}, State, #mstate{my_addr = MyAddr} = MState) ->
-    ?LOG_DEBUG("Received distributed transaction decision: abort"),
-    send_reply({aborted, MyAddr}, Leader, MState),
-    do_halt(aborted, MState),
-    {next_state, State, MState};
-handle_event(_, State, MState) ->
-    {next_state, State, MState}.
-
-handle_info(check_transaction, StateName, MState) ->
-    TID = MState#mstate.tid,
-    case MState#mstate.nodes of
-        [] ->
-            ?LOG_DEBUG("Transaction ~p has already finished (good)", [TID]),
-            {next_state, StateName, MState};
-        _ ->
-            ?LOG_DEBUG("Transaction ~p timeout has detected (not good)", [TID]),
-            recover(),
-            {next_state, recovering, MState}
-    end;
-handle_info(_Info, StateName, MState) ->
-    {next_state, StateName, MState}.
 
 code_change(_OldVsn, StateName, MState, _Extra) ->
     {ok, StateName, MState}.
@@ -141,21 +79,21 @@ terminate(Status, StateName, MState) ->
     wm_utils:terminate_msg(?MODULE, Msg).
 
 %% ============================================================================
-%% FSM state transitions
+%% State machine transitions
 %% ============================================================================
 
--spec phase1(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-phase1(activate, #mstate{my_addr = MyAddr} = MState) ->
+-spec phase1({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+phase1(cast, activate, #mstate{my_addr = MyAddr} = MState) ->
     ?LOG_DEBUG("Start E3PC"),
     Msg = {transaction,
            {MyAddr, MState#mstate.nodes, MState#mstate.records},
            MState#mstate.last_elected,
            MState#mstate.last_attempt},
-    send_all(Msg, one_state, MState),
+    send_all(Msg, MState),
     wm_utils:wake_up_after(?TRANSACTION_TIMEOUT, check_transaction),
     MState2 = MState#mstate{leader = MyAddr},
     {next_state, phase1, clean_replies(MState2)};
-phase1({transaction, Data, LastElected, LastAttempt}, #mstate{my_addr = MyAddr} = MState) ->
+phase1(cast, {transaction, Data, LastElected, LastAttempt}, #mstate{my_addr = MyAddr} = MState) ->
     {Leader, Nodes, Records} = Data,
     MState2 =
         MState#mstate{records = Records,
@@ -165,24 +103,25 @@ phase1({transaction, Data, LastElected, LastAttempt}, #mstate{my_addr = MyAddr} 
     Reply = {yes, MyAddr},
     send_reply(Reply, Leader, MState2),
     {next_state, phase2, MState2};
-phase1({yes, From}, #mstate{my_addr = MyAddr} = MState) ->
+phase1(cast, {yes, From}, #mstate{my_addr = MyAddr} = MState) ->
     log_phase(1, {yes, From}, MState),
     MState2 = add_reply(yes, From, MState),
     case all_replied(MState2) of
         true ->
             Msg = {pre_commit, MState2#mstate.last_elected, MState2#mstate.last_attempt, MyAddr},
-            send_all(Msg, one_state, MState2),
+            send_all(Msg, MState2),
             {next_state, phase2, clean_replies(MState2)};
         false ->
             {next_state, phase1, MState2}
     end;
-phase1(X, MState) ->
-    log_phase(1, X, MState),
-    recover(),
-    {next_state, recovering, MState}.
+phase1(info, Msg, MState) ->
+    handle_info(Msg, ?FUNCTION_NAME, MState);
+phase1(cast, Msg, MState) ->
+    log_phase(1, Msg, MState),
+    handle_event(Msg, ?FUNCTION_NAME, MState).
 
--spec phase2(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-phase2({pre_commit, LastElected, LastAttempt, From}, #mstate{my_addr = MyAddr} = MState) ->
+-spec phase2({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+phase2(cast, {pre_commit, LastElected, LastAttempt, From}, #mstate{my_addr = MyAddr} = MState) ->
     log_phase(2, {pre_commit, LastElected, LastAttempt, From}, MState),
     case MState#mstate.leader of
         From ->
@@ -199,13 +138,13 @@ phase2({pre_commit, LastElected, LastAttempt, From}, #mstate{my_addr = MyAddr} =
             recover(),
             {next_state, recovering, MState}
     end;
-phase2({pre_committed, From}, #mstate{my_addr = MyAddr} = MState) ->
+phase2(cast, {pre_committed, From}, #mstate{my_addr = MyAddr} = MState) ->
     log_phase(2, {pre_committed, From}, MState),
     MState2 = add_reply(pre_committed, From, MState),
     case quorum_of(pre_committed, MState2) of
         true ->
             Msg = {commit, MState2#mstate.last_elected, MState2#mstate.last_attempt, MyAddr},
-            send_all(Msg, one_state, MState2),
+            send_all(Msg, MState2),
             {next_state, phase3, clean_replies(MState2)};
         false ->
             Replies = MState2#mstate.replies,
@@ -213,31 +152,32 @@ phase2({pre_committed, From}, #mstate{my_addr = MyAddr} = MState) ->
             case all_replied(MState2) of
                 true ->
                     Msg = {abort, MState2#mstate.last_elected, MState2#mstate.last_attempt, MyAddr},
-                    send_all(Msg, all_state, MState2);
+                    send_all(Msg, MState2);
                 false ->
                     ?LOG_ERROR("E3PC[2]: not all nodes replied"),
                     ignore
             end,
             {next_state, phase3, MState2}
     end;
-phase2({pre_aborted, From}, #mstate{my_addr = MyAddr} = MState) ->
+phase2(cast, {pre_aborted, From}, #mstate{my_addr = MyAddr} = MState) ->
     log_phase(2, {pre_aborted, From}, MState),
     MState2 = add_reply(pre_aborted, From, MState),
     case quorum_of(pre_aborted, MState2) of
         true ->
             Msg = {abort, MState2#mstate.last_elected, MState2#mstate.last_attempt, MyAddr},
-            send_all(Msg, all_state, MState2),
+            send_all(Msg, MState2),
             {next_state, phase3, clean_replies(MState2)};
         false ->
             {next_state, phase3, MState2}
     end;
-phase2(X, MState) ->
-    log_phase(2, X, MState),
-    recover(),
-    {next_state, recovering, MState}.
+phase2(info, Msg, MState) ->
+    handle_info(Msg, ?FUNCTION_NAME, MState);
+phase2(cast, Msg, MState) ->
+    log_phase(2, Msg, MState),
+    handle_event(Msg, ?FUNCTION_NAME, MState).
 
--spec phase3(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-phase3({commit, LastElected, LastAttempt, From}, #mstate{my_addr = MyAddr} = MState) ->
+-spec phase3({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+phase3(cast, {commit, LastElected, LastAttempt, From}, #mstate{my_addr = MyAddr} = MState) ->
     log_phase(3, {commit, LastElected, LastAttempt, From}, MState),
     case MState#mstate.leader of
         From ->
@@ -249,7 +189,7 @@ phase3({commit, LastElected, LastAttempt, From}, #mstate{my_addr = MyAddr} = MSt
             recover(),
             {next_state, recovering, MState}
     end;
-phase3({commited, From}, MState) ->
+phase3(cast, {commited, From}, MState) ->
     log_phase(3, {commited, From}, MState),
     MState2 = add_reply(yes, From, MState),
     case all_replied(MState2) of
@@ -259,7 +199,7 @@ phase3({commited, From}, MState) ->
             ignore
     end,
     {next_state, phase3, MState2};
-phase3({aborted, From}, MState) ->
+phase3(cast, {aborted, From}, MState) ->
     log_phase(3, {aborted, From}, MState),
     MState2 = add_reply(aborted, From, MState),
     case all_replied(MState2) of
@@ -269,18 +209,19 @@ phase3({aborted, From}, MState) ->
             ignore
     end,
     {next_state, phase3, MState2};
-phase3(X, MState) ->
-    log_phase(3, X, MState),
-    recover(),
-    {next_state, recovering, MState}.
+phase3(info, Msg, MState) ->
+    handle_info(Msg, ?FUNCTION_NAME, MState);
+phase3(cast, Msg, MState) ->
+    log_phase(3, Msg, MState),
+    handle_event(Msg, ?FUNCTION_NAME, MState).
 
--spec recovering(term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
-recovering(recover_transaction, #mstate{my_addr = MyAddr} = MState) ->
+-spec recovering({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+recovering(cast, recover_transaction, #mstate{my_addr = MyAddr} = MState) ->
     ?LOG_INFO("Transaction ~p will be recovered", [MState#mstate.tid]),
     case MState#mstate.leader == MyAddr of
         true ->
             ?LOG_DEBUG("I'm coordinating the transaction => don't elect a leader"),
-            gen_fsm:send_event(self(), collect_lasts),
+            gen_statem:cast(self(), collect_lasts),
             {next_state, recovering, MState#mstate{election_id = none}};
         false ->
             ?LOG_DEBUG("Find out if leader ~p is alive", [MState#mstate.leader]),
@@ -294,11 +235,11 @@ recovering(recover_transaction, #mstate{my_addr = MyAddr} = MState) ->
                     {next_state, recovering, MState#mstate{election_id = MST_ID}}
             end
     end;
-recovering(collect_lasts, #mstate{my_addr = MyAddr} = MState) ->
+recovering(cast, collect_lasts, #mstate{my_addr = MyAddr} = MState) ->
     ?LOG_DEBUG("Collect lasts values"),
-    send_all({request_lasts, MyAddr}, all_state, MState),
+    send_all({request_lasts, MyAddr}, MState),
     {next_state, recovering, clean_replies(MState)};
-recovering({lasts, LE, LA, From}, #mstate{my_addr = MyAddr} = MState) ->
+recovering(cast, {lasts, LE, LA, From}, #mstate{my_addr = MyAddr} = MState) ->
     MState2 = add_reply(replied, From, MState),
     MaxLE = max(MState2#mstate.max_elected, LE),
     MaxLA = max(MState2#mstate.max_attempt, LA),
@@ -309,12 +250,12 @@ recovering({lasts, LE, LA, From}, #mstate{my_addr = MyAddr} = MState) ->
                        last_attempts = LAs},
     case all_replied(MState3) of
         true ->
-            send_all({new_leader, MaxLE, MyAddr}, all_state, MState3),
+            send_all({new_leader, MaxLE, MyAddr}, MState3),
             {next_state, recovering, clean_replies(MState3)};
         false ->
             {next_state, recovering, MState3}
     end;
-recovering({state, State, From}, #mstate{my_addr = MyAddr} = MState) ->
+recovering(cast, {state, State, From}, #mstate{my_addr = MyAddr} = MState) ->
     MState2 = add_reply(State, From, MState),
     case all_replied(MState2) of
         true ->
@@ -324,31 +265,32 @@ recovering({state, State, From}, #mstate{my_addr = MyAddr} = MState) ->
             case make_decision(MState3) of
                 pre_abort ->
                     ?LOG_DEBUG("Recovery decision is to pre abort [go to phase2]"),
-                    send_all({pre_abort, LE, LA, MyAddr}, all_state, MState3),
+                    send_all({pre_abort, LE, LA, MyAddr}, MState3),
                     {next_state, phase2, MState3};
                 abort ->
                     ?LOG_DEBUG("Recovery decision is to abort [go to phase3]"),
-                    send_all({abort, LE, LA, MyAddr}, all_state, MState3),
+                    send_all({abort, LE, LA, MyAddr}, MState3),
                     {next_state, phase3, MState3};
                 pre_commit ->
                     ?LOG_DEBUG("Recovery decision is to pre commit [go to phase2]"),
-                    send_all({pre_commit, LE, LA, MyAddr}, one_state, MState3),
+                    send_all({pre_commit, LE, LA, MyAddr}, MState3),
                     {next_state, phase2, MState3};
                 commit ->
                     ?LOG_DEBUG("Recovery decision is to commit [go to phase3]"),
-                    send_all({commit, LE, LA, MyAddr}, one_state, MState3),
+                    send_all({commit, LE, LA, MyAddr}, MState3),
                     {next_state, phase3, MState3};
                 block ->
                     ?LOG_DEBUG("Recovery decision is to block => just abort"),
-                    send_all({abort, LE, LA, MyAddr}, all_state, MState3),
+                    send_all({abort, LE, LA, MyAddr}, MState3),
                     {next_state, phase3, MState3}
             end;
         false ->
             {next_state, recovering, MState2}
     end;
-recovering(Msg, MState) ->
-    ?LOG_DEBUG("Unknown message received when recovering: ~p", [Msg]),
-    {next_state, recovering, MState}.
+recovering(info, Msg, MState) ->
+    handle_info(Msg, ?FUNCTION_NAME, MState);
+recovering(cast, Msg, MState) ->
+    handle_event(Msg, ?FUNCTION_NAME, MState).
 
 %% ============================================================================
 %% Implementation functions
@@ -366,13 +308,13 @@ parse_args([{extra, Records} | T], MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
--spec send_all(term(), atom(), #mstate{}) -> term().
-send_all(Msg, AllState, MState) ->
-    wm_factory:send_confirm(commit, AllState, MState#mstate.tid, Msg, MState#mstate.nodes).
+-spec send_all(term(), #mstate{}) -> term().
+send_all(Msg, MState) ->
+    wm_factory:send_confirm(commit, MState#mstate.tid, Msg, MState#mstate.nodes).
 
 -spec send_reply(term(), node_address(), #mstate{}) -> term().
 send_reply(Msg, Address, MState) ->
-    wm_factory:send_confirm(commit, one_state, MState#mstate.tid, Msg, [Address]).
+    wm_factory:send_confirm(commit, MState#mstate.tid, Msg, [Address]).
 
 -spec log_phase(integer(), term(), #mstate{}) -> ok.
 log_phase(Phase, Event, MState) ->
@@ -405,7 +347,7 @@ quorum_of(Element, #mstate{replies = Replies}) ->
 
 -spec recover() -> ok.
 recover() ->
-    gen_fsm:send_event(self(), recover_transaction).
+    gen_statem:cast(self(), recover_transaction).
 
 -spec do_final_local_commit(#mstate{}) -> ok.
 do_final_local_commit(MState) ->
@@ -465,3 +407,56 @@ make_decision(MState) ->
                     end
             end
     end.
+
+-spec handle_event(term(), term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+handle_event({event, wm_mst_done, {MST_ID, {node, Leader}}}, recovering, #mstate{my_addr = MyAddr} = MState)
+    when MST_ID == MState#mstate.election_id ->
+    ?LOG_DEBUG("Received 'wm_mst_done': ~p, ~p (~p)", [MST_ID, Leader, MState#mstate.tid]),
+    MState2 = MState#mstate{leader = Leader},
+    case MState#mstate.leader == MyAddr of
+        true ->
+            gen_statem:cast(self(), collect_lasts);
+        _ ->
+            ?LOG_DEBUG("I'm not a leader in dist transaction ~p", [MState#mstate.tid])
+    end,
+    {next_state, recovering, MState2};
+handle_event({request_lasts, Leader}, State, #mstate{my_addr = MyAddr} = MState) ->
+    ?LOG_DEBUG("Requested last values"),
+    Reply = {lasts, MState#mstate.last_elected, MState#mstate.last_attempt, MyAddr},
+    send_reply(Reply, Leader, MState),
+    {next_state, State, MState};
+handle_event({new_leader, MaxLE, Leader}, State, #mstate{my_addr = MyAddr} = MState) ->
+    ?LOG_DEBUG("Received 'new_leader' from ~p, max_elected=~p", [Leader, MaxLE]),
+    MState2 = MState#mstate{leader = Leader, last_elected = MaxLE + 1},
+    send_reply({state, State, MyAddr}, Leader, MState2),
+    {next_state, State, MState};
+handle_event({pre_abort, _, _, Leader}, _, #mstate{my_addr = MyAddr} = MState) ->
+    ?LOG_DEBUG("Received distributed transaction decision: pre_abort"),
+    send_reply({pre_aborted, MyAddr}, Leader, MState),
+    {next_state, phase3, MState};
+handle_event({abort, _, _, Leader}, State, #mstate{my_addr = MyAddr} = MState) ->
+    ?LOG_DEBUG("Received distributed transaction decision: abort"),
+    send_reply({aborted, MyAddr}, Leader, MState),
+    do_halt(aborted, MState),
+    {next_state, State, MState};
+handle_event(Event, State, MState) ->
+    ?LOG_DEBUG("Unknown event received at state ~p: ~p", [State, Event]),
+    recover(),
+    {next_state, recovering, MState}.
+
+-spec handle_info(atom(), term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+handle_info(check_transaction, State, MState) ->
+    TID = MState#mstate.tid,
+    case MState#mstate.nodes of
+        [] ->
+            ?LOG_DEBUG("Transaction ~p has already finished (good)", [TID]),
+            {next_state, State, MState};
+        _ ->
+            ?LOG_WARN("Transaction ~p timeout has detected (not good)", [TID]),
+            recover(),
+            {next_state, recovering, MState}
+    end;
+handle_info(Msg, State, MState) ->
+    ?LOG_DEBUG("Unknown event received at state ~p: ~p", [Msg, State]),
+    recover(),
+    {next_state, recovering, MState}.

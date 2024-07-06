@@ -21,7 +21,7 @@ windows:
         - core-logs:
           - tail -f /opt/swm/spool/node\@*/log/$(date +"%Y")
         - scheduler-logs:
-          - tail -f /opt/swm/spool/node\@*/log/scheduler.log
+          - tail -f /opt/swm/spool/node\@*/log/erlang.log
   - terminal:
       layout: 2b0d,137x56,0,0{26x56,0,0,2,110x56,27,0[110x27,27,0,7,110x28,27,28,8]}
       panes:

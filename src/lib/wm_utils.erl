@@ -96,6 +96,12 @@ uuid(v4) ->
 
 -spec wake_up_after(pos_integer(), any()) -> reference().
 wake_up_after(MilliSeconds, WakeUpMessage) ->
+    case wm_utils:get_calling_module_name() of
+        noproc ->
+            ?LOG_DEBUG("Wake me after ~p with message ~p", [MilliSeconds, WakeUpMessage]);
+        Mod ->
+            ?LOG_DEBUG("Wake ~p after ~p with message ~p", [Mod, MilliSeconds, WakeUpMessage])
+    end,
     S = case MilliSeconds of
             X when X < 0 ->
                 0;
@@ -357,7 +363,7 @@ terminate_msg(Mod, Reason) ->
                     false ->
                         Reason
                 end,
-            ?LOG_INFO("Terminating ~p with reason: ~p", [Mod, S]);
+            ?LOG_INFO("Terminating ~p with reason: ~P", [Mod, S, 5]);
         _ ->
             ok
     end.
@@ -617,8 +623,6 @@ cast(Process, Msg) ->
     case get_behaviour(Process) of
         gen_server ->
             gen_server:cast(Process, Msg);
-        gen_fsm ->
-            gen_fsm:send_event(Process, Msg);
         gen_statem ->
             gen_statem:cast(Process, Msg);
         Other -> % process probably has already exited

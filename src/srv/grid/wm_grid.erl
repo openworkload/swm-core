@@ -26,6 +26,31 @@ get_nodes(Limit) ->
 %% Server callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
+init(Args) ->
+    ?LOG_INFO("Load grid management service"),
+    process_flag(trap_exit, true),
+    MState = parse_args(Args, #mstate{}),
+    wm_event:subscribe(http_started, node(), ?MODULE),
+    {ok, MState}.
+
 handle_call({get_nodes, Limit}, _, MState) ->
     Nodes = wm_conf:select(node, {all, Limit}),
     {reply, Nodes, MState};
@@ -49,14 +74,6 @@ code_change(_OldVsn, MState, _Extra) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
-
-%% @hidden
-init(Args) ->
-    ?LOG_INFO("Load grid management service"),
-    process_flag(trap_exit, true),
-    MState = parse_args(Args, #mstate{}),
-    wm_event:subscribe(http_started, node(), ?MODULE),
-    {ok, MState}.
 
 parse_args([], MState) ->
     MState;

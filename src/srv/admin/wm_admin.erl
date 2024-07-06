@@ -5,8 +5,6 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
-%TODO Do not call wm_db directly if possible
-
 -record(mstate, {root = "" :: string(), spool = "" :: string()}).
 
 -include("../../lib/wm_entity.hrl").
@@ -223,6 +221,7 @@ parse_args([{spool, Spool} | T], MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
+-spec process_set_param(atom(), string(), string(), term()) -> {atom, {atomic, term()} | {aborted, term()}}.
 process_set_param(Tab, Ent, AttrStr, ValueRaw) ->
     Attr = list_to_existing_atom(AttrStr),
     Value =

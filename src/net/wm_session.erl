@@ -6,6 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([handle_received_call/1, handle_received_cast/1]).
 
+-include("../lib/wm_entity.hrl").
 -include("../lib/wm_log.hrl").
 
 -record(mstate, {}).
@@ -22,6 +23,24 @@ start_link(Args) ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
@@ -61,6 +80,7 @@ parse_args([], #mstate{} = MState) ->
 parse_args([{_, _} | T], #mstate{} = MState) ->
     parse_args(T, MState).
 
+-spec handle_received_call({atom(), atom(), term(), any(), pid()}) -> any().
 handle_received_call({wm_api, Fun, {Mod, Msg}, Socket, ServerPid}) ->
     ?LOG_DEBUG("Direct remote call: ~p:~p", [?MODULE, Fun]),
     Return =
@@ -107,10 +127,11 @@ handle_received_call({Module, Arg0, Args, Socket, ServerPid}) ->
     end,
     ServerPid ! replied.
 
+-spec handle_received_cast({atom(), term(), list(), string(), node_address(), any(), pid()}) -> ok | {error, term()}.
 handle_received_cast({Module, Arg0, Args, Tag, Addr, Socket, ServerPid}) ->
     ServerPid
     ! replied, % release the waiting connection process
-    ?LOG_DEBUG("API cast: ~p ~p ~10000p ~100p ~1000p", [Module, Arg0, Args, Tag, Addr]),
+    ?LOG_DEBUG("API cast: ~p ~p ~P ~100p ~1000p", [Module, Arg0, Args, 3, Tag, Addr]),
     case verify_rpc(Module, Arg0, Args, Socket) of
         {ok, NewArgs} ->
             case wm_conf:is_my_address(Addr) of

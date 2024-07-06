@@ -12,10 +12,12 @@
 %% Callbacks
 %% ============================================================================
 
+-spec init(term(), term()) -> {cowboy_rest, term(), #mstate{}}.
 init(Req, _Opts) ->
     ?LOG_INFO("Load grid manager REST API handler: ~p", [Req]),
     {cowboy_rest, Req, #mstate{}}.
 
+-spec content_types_provided(term(), #mstate{}) -> {list(), term(), #mstate{}}.
 content_types_provided(Req, MState) ->
     {[{<<"application/json">>, json_handler}], Req, MState}.
 
@@ -24,11 +26,13 @@ content_types_provided(Req, MState) ->
 %% ============================================================================
 
 % curl -i -H "Accept: application/json" "http://localhost:8008/grid?limit=8"
+-spec json_handler(term(), #mstate{}) -> {list(), term(), #mstate{}}.
 json_handler(Req, MState) ->
     Method = cowboy_req:method(Req),
     Body = grid_to_json(Method, Req),
     {Body, Req, MState}.
 
+-spec grid_to_json(binary(), term()) -> list().
 grid_to_json(<<"GET">>, Req) ->
     Map = #{limit := Limit} = cowboy_req:match_qs([{limit, int, 100}], Req),
     ?LOG_DEBUG("Received HTTP parameters: ~p", [Map]),
