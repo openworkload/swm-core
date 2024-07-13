@@ -2,7 +2,7 @@
 .PHONY: run-ghead run-chead
 .PHONY: test ftest
 .PHONY: cb cr
-.PHONY: dialyzer format lint
+.PHONY: dialyzer format static_checks
 
 COG = cog.py
 REBAR = ./rebar3
@@ -99,8 +99,9 @@ dialyzer:		##@DEV Run dialyzer
 format:		##@DEV Format erlang code
 			$(REBAR) format
 
-lint:		##@DEV Run erlang linter to validate the code
+static_checks:		##@DEV Run erlang static checks to validate the code
 			$(REBAR) lint
+			$(REBAR) hunk
 
 tmux:	##@DEV Run tmux with Sky Port development layout
 	SOURCES_PARENT_DIR=~/projects tmuxinator

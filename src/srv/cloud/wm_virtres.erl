@@ -87,6 +87,8 @@ terminate(State, StateName, #mstate{job_id = JobId}) ->
 %% ============================================================================
 
 -spec sleeping({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+sleeping({call, From}, get_current_state, MState) ->
+    {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 sleeping(cast,
          activate,
          #mstate{task_id = ID,
@@ -102,6 +104,8 @@ sleeping(cast, Msg, MState) ->
     handle_event(Msg, ?FUNCTION_NAME, MState).
 
 -spec validating({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+validating({call, From}, get_current_state, MState) ->
+    {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 validating(cast,
            {partition_exists, Ref, false},
            #mstate{action = create,
@@ -161,6 +165,8 @@ validating(cast, Msg, MState) ->
     handle_event(Msg, ?FUNCTION_NAME, MState).
 
 -spec creating({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+creating({call, From}, get_current_state, MState) ->
+    {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 creating(cast, {partition_spawned, Ref, NewPartExtId}, #mstate{job_id = JobId, wait_ref = Ref} = MState) ->
     ?LOG_INFO("Partition spawned => check status: ~p, job ~p", [NewPartExtId, JobId]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
@@ -236,6 +242,8 @@ creating(cast, Msg, MState) ->
     handle_event(Msg, ?FUNCTION_NAME, MState).
 
 -spec uploading({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+uploading({call, From}, get_current_state, MState) ->
+    {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 uploading(cast, {Ref, ok}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Uploading has finished (~p)", [Ref]),
     ?LOG_DEBUG("Let the job be scheduled again with preset nodes request (~p)", [JobId]),
@@ -253,6 +261,8 @@ uploading(cast, Msg, MState) ->
     handle_event(Msg, ?FUNCTION_NAME, MState).
 
 -spec running({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+running({call, From}, get_current_state, MState) ->
+    {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 running(cast, {Ref, Status}, #mstate{} = MState) ->
     ?LOG_INFO("Got orphaned message with reference ~p [running, ~p]", [Ref, Status]),
     {next_state, running, MState};
@@ -262,6 +272,8 @@ running(cast, Msg, MState) ->
     handle_event(Msg, ?FUNCTION_NAME, MState).
 
 -spec downloading({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+downloading({call, From}, get_current_state, MState) ->
+    {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 downloading(cast, {Ref, ok}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Downloading has finished => delete entities [~p, ~p]", [Ref, JobId]),
     stop_port_forwarding(JobId),
@@ -284,6 +296,8 @@ downloading(cast, Msg, MState) ->
     handle_event(Msg, ?FUNCTION_NAME, MState).
 
 -spec destroying({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+destroying({call, From}, get_current_state, MState) ->
+    {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 destroying(cast,
            start_destroying,
            #mstate{task_id = TaskId,

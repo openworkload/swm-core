@@ -118,9 +118,9 @@ activate(Config) ->
     RequestPartitionExistence = fun(_, _) -> {ok, WaitRef} end,
     meck:expect(wm_virtres_handler, request_partition_existence, RequestPartitionExistence),
 
-    ?assertEqual(sleeping, wm_ct_helpers:get_fsm_state_name(Pid)),
-    ok = gen_fsm:send_event(Pid, activate),
-    ?assertEqual(validating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ?assertEqual(sleeping, gen_statem:call(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, activate),
+    ?assertEqual(validating, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -133,8 +133,8 @@ part_absent_create(Config) ->
     SpawnPartition = fun(_, _) -> {ok, WaitRef} end,
     meck:expect(wm_virtres_handler, spawn_partition, SpawnPartition),
 
-    ok = gen_fsm:send_event(Pid, {partition_exists, WaitRef, false}),
-    ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, {partition_exists, WaitRef, false}),
+    ?assertEqual(creating, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -149,8 +149,8 @@ part_spawned(Config) ->
 
     meck:expect(wm_virtres_handler, request_partition, fun(X, _) when X == JobId -> {ok, WaitRef} end),
 
-    ok = gen_fsm:send_event(Pid, {partition_spawned, WaitRef, PartExtId}),
-    ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, {partition_spawned, WaitRef, PartExtId}),
+    ?assertEqual(creating, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -164,8 +164,8 @@ part_fetched_not_up(Config) ->
 
     meck:expect(wm_virtres_handler, wait_for_partition_fetch, fun() -> erlang:make_ref() end),
 
-    ok = gen_fsm:send_event(Pid, {partition_fetched, WaitRef, Part}),
-    ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, {partition_fetched, WaitRef, Part}),
+    ?assertEqual(creating, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -181,8 +181,8 @@ part_fetched_up(Config) ->
     meck:expect(wm_virtres_handler, ensure_entities_created, fun(_, X, _) when X == Part -> {ok, PartMgrNodeId} end),
     meck:expect(wm_virtres_handler, wait_for_wm_resources_readiness, fun() -> erlang:make_ref() end),
 
-    ok = gen_fsm:send_event(Pid, {partition_fetched, WaitRef, Part}),
-    ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, {partition_fetched, WaitRef, Part}),
+    ?assertEqual(creating, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -195,10 +195,10 @@ uploading_is_about_to_start(Config) ->
     meck:expect(wm_virtres_handler, is_job_partition_ready, fun(X) when X == JobId -> false end),
 
     erlang:send(Pid, readiness_check),
-    ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ?assertEqual(creating, gen_statem:call(Pid, get_current_state)),
 
     erlang:send(Pid, readiness_check),
-    ?assertEqual(creating, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ?assertEqual(creating, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -215,7 +215,7 @@ uploading_started(Config) ->
     meck:expect(wm_virtres_handler, update_job, fun(_, X) when X == JobId -> 1 end),
 
     erlang:send(Pid, part_check),
-    ?assertEqual(uploading, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ?assertEqual(uploading, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -229,8 +229,8 @@ uploading_done(Config) ->
 
     meck:expect(wm_virtres_handler, update_job, fun(_, X) when X == JobId -> 1 end),
 
-    ok = gen_fsm:send_event(Pid, {WaitRef, ok}),
-    ?assertEqual(running, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, {WaitRef, ok}),
+    ?assertEqual(running, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -247,8 +247,8 @@ downloading_started(Config) ->
                 start_job_data_downloading,
                 fun(X, Y, _) when X == PartMgrNodeId andalso Y == JobId -> {ok, WaitRef, ["/tmp/f1", "/tmp/f2"]} end),
 
-    ok = gen_fsm:send_all_state_event(Pid, job_finished),
-    ?assertEqual(downloading, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, job_finished),
+    ?assertEqual(downloading, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -262,8 +262,8 @@ downloading_done(Config) ->
 
     meck:expect(wm_virtres_handler, remove_relocation_entities, fun(X) when X == JobId -> ok end),
 
-    ok = gen_fsm:send_event(Pid, {WaitRef, ok}),
-    ?assertEqual(destroying, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, {WaitRef, ok}),
+    ?assertEqual(destroying, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -275,8 +275,8 @@ part_destraction_in_progress(Config) ->
     WaitRef = proplists:get_value(wait_ref, Config),
     PartExtId = proplists:get_value(part_ext_id, Config),
 
-    ok = gen_fsm:send_event(Pid, {delete_in_progress, WaitRef, PartExtId}),
-    ?assertEqual(destroying, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, {delete_in_progress, WaitRef, PartExtId}),
+    ?assertEqual(destroying, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).
 
@@ -288,7 +288,7 @@ deactivate(Config) ->
     WaitRef = proplists:get_value(wait_ref, Config),
     PartExtId = proplists:get_value(part_ext_id, Config),
 
-    ok = gen_fsm:send_event(Pid, {partition_deleted, WaitRef, PartExtId}),
+    ok = gen_statem:cast(Pid, {partition_deleted, WaitRef, PartExtId}),
     ?assert(lists:any(fun(_) ->
                          timer:sleep(500),
                          not is_process_alive(Pid)
@@ -302,7 +302,7 @@ part_exists_detete(Config) ->
 
     WaitRef = proplists:get_value(wait_ref, Config),
 
-    ok = gen_fsm:send_event(Pid, {partition_exists, WaitRef, true}),
-    ?assertEqual(destroying, gen_fsm:sync_send_all_state_event(Pid, get_current_state)),
+    ok = gen_statem:cast(Pid, {partition_exists, WaitRef, true}),
+    ?assertEqual(destroying, gen_statem:call(Pid, get_current_state)),
     timer:sleep(1000),
     ?assert(is_process_alive(Pid)).

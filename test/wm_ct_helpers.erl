@@ -53,9 +53,9 @@ kill_gate_system_process() ->
 
 -spec get_fsm_state_name(pid()) -> {ok, atom()}.
 get_fsm_state_name(Pid) ->
-    {status, _, {module, gen_fsm}, [_, running, _, _, InfoList]} = sys:get_status(Pid),
+    {status, _, {module, gen_statem}, [_, running, _, _, InfoList]} = sys:get_status(Pid),
     GetStatus =
-        fun ({"StateName", _}) ->
+        fun ({"Status", _}) ->
                 true;
             (_) ->
                 false
@@ -67,5 +67,5 @@ get_fsm_state_name(Pid) ->
                 false
         end,
     {value, {data, DataList}} = lists:search(GetResult, InfoList),
-    {value, {"StateName", StateName}} = lists:search(GetStatus, DataList),
+    {value, {"Status", StateName}} = lists:search(GetStatus, DataList),
     StateName.
