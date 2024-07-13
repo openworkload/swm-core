@@ -171,9 +171,9 @@ split_rpc_msg(Msg) ->
     ArgT = tl(List),
     {Arg0, list_to_tuple(ArgT)}.
 
--spec cast_all_nodes_process(atom(), string(), list(), atom()) -> atom().
+-spec cast_all_nodes_process(atom(), string(), list(), atom()) -> boolean().
 cast_all_nodes_process(_, _, [], _) ->
-    ok;
+    true;
 cast_all_nodes_process(Mod, Msg, [Addr = {"localhost", Port} | Nodes], Wait) when is_integer(Port) ->
     case wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer}) of
         Port ->

@@ -132,7 +132,8 @@ handle_cast({task_nodes, ModuleTaskId, Nodes}, MState) ->
     {ModuleTaskId, MState2} = start_module(ModuleTaskId, [], Nodes, MState),
     {noreply, MState2};
 handle_cast({send_confirm, ModuleTaskId, Msg, Nodes}, MState) ->
-    ok = do_send_confirm(ModuleTaskId, Msg, Nodes),
+    Result = do_send_confirm(ModuleTaskId, Msg, Nodes),
+    ?LOG_DEBUG("Send-confirm result: ~p (task: ~p, nodes = ~p)", [Result, ModuleTaskId, Nodes]),
     {noreply, MState};
 handle_cast({subscribe, ModuleTaskId, EventType}, MState) ->
     wm_event:subscribe_async(EventType, node(), MState#mstate.regname),
