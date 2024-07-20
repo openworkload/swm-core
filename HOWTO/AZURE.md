@@ -51,3 +51,28 @@ then the following actions can be performed (for each namespace).
 az provider list --query "[?namespace=='Microsoft.Network']" --output table
 az provider register --namespace Microsoft.Network
 ```
+
+## Upload container image to Azure
+
+### Create container registry
+```bash
+az group create --name contImagesRG --location eastus
+az acr create --resource-group contImagesRG --name swmregistry --sku Basic
+```
+
+### Upload container image to the Azure registry
+```bash
+az acr login --name swmregistry
+docker tag jupyter/datascience-notebook:hub-3.1.1 swmregistry.azurecr.io/jupyter/datascience-notebook:hub-3.1.1
+```
+
+### List uploaded container images in the Azure repository:
+```bash
+az acr repository list --name swmregistry
+az acr repository show-tags --name swmregistry --repository  jupyter/datascience-notebook
+```
+
+### Delete container image from the Azure repository:
+```bash
+az acr repository delete --name swmregistry --image  jupyter/datascience-notebook:hub-3.1.1
+```
