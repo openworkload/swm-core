@@ -268,7 +268,7 @@ do_partition_create(Remote, Creds, Spool, Options) ->
                 get_auth_headers(Creds)
                 ++ [{<<"partname">>, list_to_binary(maps:get(name, Options, ""))},
                     {<<"tenantname">>, list_to_binary(maps:get(tenant_name, Options, ""))},
-                    {<<"imagename">>, list_to_binary(maps:get(image_name, Options, ""))},
+                    {<<"vmimage">>, list_to_binary(maps:get(image_name, Options, ""))},
                     {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
                     {<<"containerimage">>, list_to_binary(maps:get(container_image, Options))},
                     {<<"keyname">>, list_to_binary(KeyName)},
