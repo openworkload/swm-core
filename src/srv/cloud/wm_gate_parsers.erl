@@ -4,6 +4,7 @@
          parse_partition_created/1, parse_partition_deleted/1]).
 
 -include("../../lib/wm_entity.hrl").
+-include("../../lib/wm_log.hrl").
 
 %%
 %% Parse images
@@ -124,7 +125,7 @@ fill_flavor_node_params([_ | T], Node, AccountId) ->
 parse_partition_created(Bin) ->
     JsonStr = binary_to_list(Bin),
     case wm_json:decode(JsonStr) of
-        {struct, [{<<"partition">>, {struct, [{<<"id">>, PartIdBin}, _]}}]} ->
+        {struct, [{<<"partition">>, {struct, [{<<"id">>, PartIdBin} | _]}}]} ->
             {ok, binary_to_list(PartIdBin)};
         Error ->
             {error, Error}
@@ -190,9 +191,11 @@ fill_partition_params([{<<"id">>, Value} | T], Part) ->
 fill_partition_params([{<<"status">>, Value} | T], Part) ->
     State =
         case Value of
-            <<"CREATE_IN_PROGRESS">> ->
+            <<"creating">> ->
                 creating;
-            <<"CREATE_COMPLETE">> ->
+            <<"updating">> ->
+                creating;
+            <<"succeeded">> ->
                 up;
             _ ->
                 down

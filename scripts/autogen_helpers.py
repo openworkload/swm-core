@@ -19,7 +19,6 @@ types_map = {
      "float()": "double",
 
      ## USER DEFINED TYPES
-     "credential_id()": "std::string",
      "remote_id()": "std::string",
      "account_id()": "std::string",
      "session_id()": "std::string",
@@ -45,7 +44,6 @@ type_suffix_map = {
      "float()": "double",
 
      ## USER DEFINED TYPES SUFFIX
-     "credential_id()": "str",
      "remote_id()": "str",
      "account_id()": "str",
      "session_id()": "str",
@@ -71,7 +69,6 @@ printer = {
      "float()": "%f",
 
      ## USER DEFINED PRINTERS
-     "credential_id()": "%s",
      "remote_id()": "%s",
      "account_id()": "%s",
      "session_id()": "%s",

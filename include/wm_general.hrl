@@ -4,3 +4,4 @@
 -define(DEFAULT_DATA_TRANSFER_PORT, 31337).
 -define(DEFAULT_CERT_DIR, "/opt/swm/spool/secure/node/").
 -define(REMOTE_USER_DIR_NAME, "job").
+-define(CREDENTIALS_FILE, ".swm/credentials.json").

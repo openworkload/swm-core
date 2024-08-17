@@ -77,13 +77,9 @@ get_remote() ->
                    {account_id, "accid123"}],
                   wm_entity:new(remote)).
 
--spec get_creds() -> #credential{}.
+-spec get_creds() -> {ok, map()}.
 get_creds() ->
-    wm_entity:set([{id, "3ad32b68-4dba-11eb-b356-03875fd306d5"},
-                   {remote_id, "0b1ee0b0-4db5-11eb-a18a-f7f7d5c0f982"},
-                   {username, "demo1"},
-                   {password, "demo1"}],
-                  wm_entity:new(credential)).
+    maps:from_list([{tenantname, "demo1"}, {keyname, "demo1"}, {username, "demo1"}, {password, "demo1"}]).
 
 %% ============================================================================
 %% Tests

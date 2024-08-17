@@ -46,14 +46,14 @@ wait_for_ssh_connection(SshPortType) ->
 request_partition(JobId, Remote) ->
     ?LOG_INFO("Fetch and wait for remote partition (job: ~p)", [JobId]),
     PartName = get_partition_name(JobId),
-    {ok, Creds} = get_credentials(Remote),
+    {ok, Creds} = wm_gate:get_credentials(Remote),
     wm_gate:get_partition(self(), Remote, Creds, PartName).
 
 -spec request_partition_existence(job_id(), #remote{}) -> {atom(), string()}.
 request_partition_existence(JobId, Remote) ->
     ?LOG_INFO("Request partition existence (job: ~p)", [JobId]),
     PartName = get_partition_name(JobId),
-    {ok, Creds} = get_credentials(Remote),
+    {ok, Creds} = wm_gate:get_credentials(Remote),
     wm_gate:partition_exists(self(), Remote, Creds, PartName).
 
 -spec is_job_partition_ready(job_id()) -> true | false.
@@ -100,7 +100,7 @@ start_job_data_uploading(PartMgrNodeID, JobId, SshUserDir) ->
     % TODO upload files to their own dirs, not in workdir, unless the full path is unset
     wm_file_transfer:upload(self(), ToAddr, Priority, Files, WorkDir, #{via => ssh, user_dir => SshUserDir}).
 
--spec start_job_data_downloading(node_id(), job_id(), string()) -> {ok, reference(), [string()]}.
+-spec start_job_data_downloading(node_id(), job_id(), string()) -> {ok, reference(), [string()]} | {error, string()}.
 start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     Priority = wm_entity:get(priority, Job),
@@ -111,19 +111,23 @@ start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
     StdErrPath = filename:join([WorkDir, StdErrFile]),
     StdOutPath = filename:join([WorkDir, StdOutFile]),
     Files = lists:filter(fun(X) -> X =/= [] end, [StdErrPath, StdOutPath | OutputFiles]),
-    {ok, FromNode} = wm_conf:select(node, {id, PartMgrNodeID}),
-    {ok, MyNode} = wm_self:get_node(),
-    {FromAddr, _} = wm_conf:get_relative_address(FromNode, MyNode),
-    {ok, Ref} =
-        wm_file_transfer:download(self(), FromAddr, Priority, Files, WorkDir, #{via => ssh, user_dir => SshUserDir}),
-    {ok, Ref, Files}.
+    case wm_conf:select(node, {id, PartMgrNodeID}) of
+        {ok, FromNode} ->
+            {ok, MyNode} = wm_self:get_node(),
+            {FromAddr, _} = wm_conf:get_relative_address(FromNode, MyNode),
+            {ok, Ref} =
+                wm_file_transfer:download(self(), FromAddr, Priority, Files, WorkDir, #{via => ssh, user_dir => SshUserDir}),
+            {ok, Ref, Files};
+        {error, Error} ->
+            {error, Error}
+    end.
 
 -spec delete_partition(partition_id(), #remote{}) -> {ok, string()} | {error, atom()}.
 delete_partition(PartId, Remote) ->
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
             ExternalId = wm_entity:get(external_id, Partition),
-            {ok, Creds} = get_credentials(Remote),
+            {ok, Creds} = wm_gate:get_credentials(Remote),
             wm_gate:delete_partition(self(), Remote, Creds, ExternalId);
         {error, Error} ->
             {error, Error}
@@ -133,7 +137,7 @@ delete_partition(PartId, Remote) ->
 spawn_partition(Job, Remote) ->
     JobId = wm_entity:get(id, Job),
     PartName = get_partition_name(JobId),
-    {ok, Creds} = get_credentials(Remote),
+    {ok, Creds} = wm_gate:get_credentials(Remote),
     {ok, SelfNode} = wm_self:get_node(),
     JobIngresPorts =
         wm_resource_utils:get_ingres_ports_str(
@@ -141,21 +145,21 @@ spawn_partition(Job, Remote) ->
     ApiPort = integer_to_list(wm_entity:get(api_port, SelfNode)),
     SshPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
     DataTransferPort = integer_to_list(wm_file_transfer:get_port()),
-    IngresPorts = JobIngresPorts ++ "," ++ ApiPort ++ "," ++ integer_to_list(SshPort) ++ "," ++ DataTransferPort,
+    Ports = JobIngresPorts ++ "," ++ ApiPort ++ "," ++ integer_to_list(SshPort) ++ "," ++ DataTransferPort,
     {ok, ContImage} = wm_utils:find_property_in_resource("container-image", value, wm_entity:get(request, Job)),
     CloudImage = get_resource_value_property(image, "cloud-image", Job, Remote, fun get_default_image_name/1),
     FlavorName = get_resource_value_property(node, "flavor", Job, Remote, fun get_default_flavor_name/1),
+    UserId = wm_entity:get(user_id, Job),
+    {ok, User} = wm_conf:select(user, {id, UserId}),
     Options =
-        #{name => PartName,
+        #{part_name => PartName,
           image_name => CloudImage,
           container_image => ContImage,
           flavor_name => FlavorName,
-          tenant_name => wm_entity:get(tenant_name, Creds),
-          partition_name => PartName,
           job_id => JobId,
-          ingres_ports => IngresPorts,
+          ports => Ports,
+          user_name => wm_entity:get(name, User),
           node_count => wm_utils:get_requested_nodes_number(Job)},
-    ?LOG_DEBUG("Start partition options: ~w", [Options]),
     wm_gate:create_partition(self(), Remote, Creds, Options).
 
 -spec ensure_entities_created(job_id(), #partition{}, #node{}) -> {atom(), string()}.
@@ -274,11 +278,6 @@ update_division_entities(JobId, NewPartition, PartMgrNode, ComputeNodeIds) ->
 -spec get_partition_name(job_id()) -> string().
 get_partition_name(JobId) ->
     "swm-" ++ string:slice(JobId, 0, 8).
-
--spec get_credentials(#remote{}) -> #credential{}.
-get_credentials(Remote) ->
-    RemoteID = wm_entity:get(id, Remote),
-    wm_conf:select(credential, {remote_id, RemoteID}).
 
 -spec get_allocated_resources(partition_id(), [node_id()]) -> [#resource{}].
 get_allocated_resources(PartID, NodeIds) ->

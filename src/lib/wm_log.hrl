@@ -7,18 +7,18 @@
 
 -ifndef(TEST).
 
--define(LOG_DEBUG(X), wm_log:debug("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_INFO(X), wm_log:info("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_NOTE(X), wm_log:note("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_WARN(X), wm_log:warn("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_ERROR(X), wm_log:err("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_FATAL(X), wm_log:fatal("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_DEBUG(X, Y), wm_log:debug("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_INFO(X, Y), wm_log:info("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_NOTE(X, Y), wm_log:note("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_WARN(X, Y), wm_log:warn("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_ERROR(X, Y), wm_log:err("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_FATAL(X, Y), wm_log:fatal("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_DEBUG(X), wm_log:debug("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_INFO(X), wm_log:info("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_NOTE(X), wm_log:note("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_WARN(X), wm_log:warn("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_ERROR(X), wm_log:err("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_FATAL(X), wm_log:fatal("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_DEBUG(X, Y), wm_log:debug("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_INFO(X, Y), wm_log:info("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_NOTE(X, Y), wm_log:note("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_WARN(X, Y), wm_log:warn("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_ERROR(X, Y), wm_log:err("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_FATAL(X, Y), wm_log:fatal("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 
 -else. %TEST
 
@@ -26,18 +26,18 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(LOG_DEBUG(X), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_INFO(X), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_NOTE(X), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_WARN(X), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_ERROR(X), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_FATAL(X), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, X])).
--define(LOG_DEBUG(X, Y), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_INFO(X, Y), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_NOTE(X, Y), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_WARN(X, Y), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_ERROR(X, Y), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
--define(LOG_FATAL(X, Y), ?debugFmt("~p:~p()| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_DEBUG(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_INFO(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_NOTE(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_WARN(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_ERROR(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_FATAL(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_DEBUG(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_INFO(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_NOTE(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_WARN(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_ERROR(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_FATAL(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 
 -else. %!DISABLE_LOGGING_IN_TESTS
 

@@ -12,8 +12,8 @@
 % https://www.python.org/about/success/cog
 -define(ENTITIES,
         [global, executable, malfunction, table, hook, grid, cluster, partition, node, resource, service, role, job,
-         process, project, group, user, queue, scheduler, timetable, relocation, subscriber, image, credential, remote,
-         account, metric, scheduler_result, boot_info, test]).
+         process, user, queue, scheduler, timetable, relocation, subscriber, image, remote, account, metric,
+         scheduler_result, boot_info, test]).
 
 -compile({parse_transform, exprecs}).
 
@@ -76,14 +76,6 @@ new(<<"process">>) ->
     '#new-process'();
 new(process) ->
     '#new-process'();
-new(<<"project">>) ->
-    '#new-project'();
-new(project) ->
-    '#new-project'();
-new(<<"group">>) ->
-    '#new-group'();
-new(group) ->
-    '#new-group'();
 new(<<"user">>) ->
     '#new-user'();
 new(user) ->
@@ -112,10 +104,6 @@ new(<<"image">>) ->
     '#new-image'();
 new(image) ->
     '#new-image'();
-new(<<"credential">>) ->
-    '#new-credential'();
-new(credential) ->
-    '#new-credential'();
 new(<<"remote">>) ->
     '#new-remote'();
 new(remote) ->
@@ -172,10 +160,6 @@ rec(#job{}) ->
     true;
 rec(#process{}) ->
     true;
-rec(#project{}) ->
-    true;
-rec(#group{}) ->
-    true;
 rec(#user{}) ->
     true;
 rec(#queue{}) ->
@@ -189,8 +173,6 @@ rec(#relocation{}) ->
 rec(#subscriber{}) ->
     true;
 rec(#image{}) ->
-    true;
-rec(#credential{}) ->
     true;
 rec(#remote{}) ->
     true;
@@ -488,8 +470,6 @@ get_type(job, Attr) when is_atom(Attr) ->
             {list, {string, string}};
         deps ->
             {list, {atom, string}};
-        projects ->
-            {list, integer};
         account_id ->
             string;
         gang_id ->
@@ -530,38 +510,6 @@ get_type(process, Attr) when is_atom(Attr) ->
         comment ->
             string
     end;
-get_type(project, Attr) when is_atom(Attr) ->
-    case Attr of
-        id ->
-            integer;
-        name ->
-            string;
-        acl ->
-            string;
-        hooks ->
-            {list, string};
-        priority ->
-            integer;
-        comment ->
-            string;
-        revision ->
-            integer
-    end;
-get_type(group, Attr) when is_atom(Attr) ->
-    case Attr of
-        id ->
-            integer;
-        name ->
-            string;
-        acl ->
-            string;
-        priority ->
-            integer;
-        comment ->
-            string;
-        revision ->
-            integer
-    end;
 get_type(user, Attr) when is_atom(Attr) ->
     case Attr of
         id ->
@@ -570,10 +518,6 @@ get_type(user, Attr) when is_atom(Attr) ->
             string;
         acl ->
             string;
-        groups ->
-            {list, integer};
-        projects ->
-            {list, integer};
         priority ->
             integer;
         comment ->
@@ -687,25 +631,6 @@ get_type(image, Attr) when is_atom(Attr) ->
         revision ->
             integer
     end;
-get_type(credential, Attr) when is_atom(Attr) ->
-    case Attr of
-        id ->
-            string;
-        remote_id ->
-            string;
-        tenant_name ->
-            string;
-        tenant_domain_name ->
-            string;
-        username ->
-            string;
-        password ->
-            string;
-        key_name ->
-            string;
-        revision ->
-            integer
-    end;
 get_type(remote, Attr) when is_atom(Attr) ->
     case Attr of
         id ->
@@ -720,6 +645,8 @@ get_type(remote, Attr) when is_atom(Attr) ->
             atom;
         kind ->
             atom;
+        location ->
+            string;
         server ->
             string;
         port ->
@@ -813,7 +740,7 @@ get_names(local) ->
 get_names(local_bag) ->
     [subscriber, timetable, relocation];
 get_names(non_replicable) ->
-    [schema, subscriber, timetable, job, credential];
+    [schema, subscriber, timetable, job];
 get_names(with_ids) ->
     [malfunction,
      hook,
@@ -824,14 +751,11 @@ get_names(with_ids) ->
      service,
      role,
      job,
-     project,
-     group,
      user,
      queue,
      scheduler,
      relocation,
      image,
-     credential,
      remote,
      account,
      test].

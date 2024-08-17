@@ -46,7 +46,6 @@ class SwmJob:SwmEntity {
   void set_hooks(const std::vector<std::string>&);
   void set_env(const std::vector<SwmTupleStrStr>&);
   void set_deps(const std::vector<SwmTupleAtomStr>&);
-  void set_projects(const std::vector<uint64_t>&);
   void set_account_id(const std::string&);
   void set_gang_id(const std::string&);
   void set_execution_path(const std::string&);
@@ -80,7 +79,6 @@ class SwmJob:SwmEntity {
   std::vector<std::string> get_hooks() const;
   std::vector<SwmTupleStrStr> get_env() const;
   std::vector<SwmTupleAtomStr> get_deps() const;
-  std::vector<uint64_t> get_projects() const;
   std::string get_account_id() const;
   std::string get_gang_id() const;
   std::string get_execution_path() const;
@@ -115,7 +113,6 @@ class SwmJob:SwmEntity {
   std::vector<std::string> hooks;
   std::vector<SwmTupleStrStr> env;
   std::vector<SwmTupleAtomStr> deps;
-  std::vector<uint64_t> projects;
   std::string account_id;
   std::string gang_id;
   std::string execution_path;

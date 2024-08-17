@@ -74,29 +74,36 @@ SwmRemote::SwmRemote(const char* buf, int &index) {
     return;
   }
 
+  if (ei_buffer_to_str(buf, index, this->location)) {
+    std::cerr << "Could not init remote::location at pos 8: ";
+    ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
+    return;
+  }
+
   if (ei_buffer_to_str(buf, index, this->server)) {
-    std::cerr << "Could not init remote::server at pos 8: ";
+    std::cerr << "Could not init remote::server at pos 9: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->port)) {
-    std::cerr << "Could not init remote::port at pos 9: ";
+    std::cerr << "Could not init remote::port at pos 10: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_map(buf, index, this->runtime)) {
-    std::cerr << "Could not init remote::runtime at pos 10: ";
+    std::cerr << "Could not init remote::runtime at pos 11: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
-    std::cerr << "Could not init remote::revision at pos 11: ";
+    std::cerr << "Could not init remote::revision at pos 12: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
@@ -127,6 +134,10 @@ void SwmRemote::set_name(const std::string &new_val) {
 
 void SwmRemote::set_kind(const std::string &new_val) {
   kind = new_val;
+}
+
+void SwmRemote::set_location(const std::string &new_val) {
+  location = new_val;
 }
 
 void SwmRemote::set_server(const std::string &new_val) {
@@ -167,6 +178,10 @@ std::string SwmRemote::get_name() const {
 
 std::string SwmRemote::get_kind() const {
   return kind;
+}
+
+std::string SwmRemote::get_location() const {
+  return location;
 }
 
 std::string SwmRemote::get_server() const {
@@ -242,6 +257,7 @@ void SwmRemote::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << default_flavor_id << separator;
   std::cerr << prefix << name << separator;
   std::cerr << prefix << kind << separator;
+  std::cerr << prefix << location << separator;
   std::cerr << prefix << server << separator;
   std::cerr << prefix << port << separator;
   std::cerr << prefix << runtime << separator;

@@ -263,10 +263,6 @@ print_list({user, header}, [{Sz, What} | T], RawFormats, Line) ->
         case What of
             "N" ->
                 io_lib:format("~." ++ Sz ++ "s", ["NAME"]);
-            "G" ->
-                io_lib:format("~." ++ Sz ++ "s", ["GROUPS"]);
-            "P" ->
-                io_lib:format("~." ++ Sz ++ "s", ["PROJECTS"]);
             "C" ->
                 io_lib:format("~." ++ Sz ++ "s", ["COMMENT"]);
             _ ->
@@ -403,12 +399,6 @@ print_list({user, R}, [{Sz, What} | T], RawFormats, Line) when is_tuple(R) ->
         case What of
             "N" ->
                 io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(name, R)]);
-            "G" ->
-                N = io_lib:format("~p", [length(wm_entity:get(groups, R))]),
-                io_lib:format("~." ++ Sz ++ "s", [N]);
-            "P" ->
-                N = io_lib:format("~p", [length(wm_entity:get(projects, R))]),
-                io_lib:format("~." ++ Sz ++ "s", [N]);
             "C" ->
                 io_lib:format("~." ++ Sz ++ "s", [wm_entity:get(comment, R)]);
             _ ->

@@ -166,99 +166,92 @@ SwmJob::SwmJob(const char* buf, int &index) {
     return;
   }
 
-  if (ei_buffer_to_uint64_t(buf, index, this->projects)) {
-    std::cerr << "Could not init job::projects at pos 21: ";
-    ei_print_term(stderr, buf, &index);
-    std::cerr << std::endl;
-    return;
-  }
-
   if (ei_buffer_to_str(buf, index, this->account_id)) {
-    std::cerr << "Could not init job::account_id at pos 22: ";
+    std::cerr << "Could not init job::account_id at pos 21: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->gang_id)) {
-    std::cerr << "Could not init job::gang_id at pos 23: ";
+    std::cerr << "Could not init job::gang_id at pos 22: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->execution_path)) {
-    std::cerr << "Could not init job::execution_path at pos 24: ";
+    std::cerr << "Could not init job::execution_path at pos 23: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->script_content)) {
-    std::cerr << "Could not init job::script_content at pos 25: ";
+    std::cerr << "Could not init job::script_content at pos 24: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_resource(buf, index, this->request)) {
-    std::cerr << "Could not init job::request at pos 26: ";
+    std::cerr << "Could not init job::request at pos 25: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_resource(buf, index, this->resources)) {
-    std::cerr << "Could not init job::resources at pos 27: ";
+    std::cerr << "Could not init job::resources at pos 26: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->container)) {
-    std::cerr << "Could not init job::container at pos 28: ";
+    std::cerr << "Could not init job::container at pos 27: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->relocatable)) {
-    std::cerr << "Could not init job::relocatable at pos 29: ";
+    std::cerr << "Could not init job::relocatable at pos 28: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->exitcode)) {
-    std::cerr << "Could not init job::exitcode at pos 30: ";
+    std::cerr << "Could not init job::exitcode at pos 29: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->signal)) {
-    std::cerr << "Could not init job::signal at pos 31: ";
+    std::cerr << "Could not init job::signal at pos 30: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->priority)) {
-    std::cerr << "Could not init job::priority at pos 32: ";
+    std::cerr << "Could not init job::priority at pos 31: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->comment)) {
-    std::cerr << "Could not init job::comment at pos 33: ";
+    std::cerr << "Could not init job::comment at pos 32: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
-    std::cerr << "Could not init job::revision at pos 34: ";
+    std::cerr << "Could not init job::revision at pos 33: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
@@ -341,10 +334,6 @@ void SwmJob::set_env(const std::vector<SwmTupleStrStr> &new_val) {
 
 void SwmJob::set_deps(const std::vector<SwmTupleAtomStr> &new_val) {
   deps = new_val;
-}
-
-void SwmJob::set_projects(const std::vector<uint64_t> &new_val) {
-  projects = new_val;
 }
 
 void SwmJob::set_account_id(const std::string &new_val) {
@@ -473,10 +462,6 @@ std::vector<SwmTupleStrStr> SwmJob::get_env() const {
 
 std::vector<SwmTupleAtomStr> SwmJob::get_deps() const {
   return deps;
-}
-
-std::vector<uint64_t> SwmJob::get_projects() const {
-  return projects;
 }
 
 std::string SwmJob::get_account_id() const {
@@ -645,15 +630,6 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
   } else {
     std::cerr << prefix << "deps" << ": [";
     for (const auto &q: deps) {
-      std::cerr << q << ",";
-    }
-    std::cerr << "]" << separator;
-  }
-  if (projects.empty()) {
-    std::cerr << prefix << "projects: []" << separator;
-  } else {
-    std::cerr << prefix << "projects" << ": [";
-    for (const auto &q: projects) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;

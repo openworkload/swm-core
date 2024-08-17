@@ -6,7 +6,6 @@
 -type cluster_id() :: string().
 -type partition_id() :: string().
 -type node_id() :: string().
--type credential_id() :: string().
 -type remote_id() :: string().
 -type account_id() :: string().
 -type user_id() :: string().
@@ -129,39 +128,21 @@
          duration = 0 :: pos_integer(), job_stdin = "" :: string(), job_stdout = "" :: string(),
          job_stderr = "" :: string(), input_files = [] :: [string()], output_files = [] :: [string()],
          workdir = "" :: string(), user_id = "" :: user_id(), hooks = [] :: [hook_id()],
-         env = [] :: [{string(), string()}], deps = [] :: [{atom(), string()}], projects = [] :: [pos_integer()],
-         account_id = "" :: account_id(), gang_id = "" :: string(), execution_path = "" :: string(),
-         script_content = "" :: string(), request = [] :: [#resource{}], resources = [] :: [#resource{}],
-         container = "" :: string(), relocatable = true :: atom(), exitcode = 0 :: pos_integer(),
-         signal = 0 :: pos_integer(), priority = 0 :: pos_integer(), comment = "" :: string(),
-         revision = 0 :: pos_integer()}).
+         env = [] :: [{string(), string()}], deps = [] :: [{atom(), string()}], account_id = "" :: account_id(),
+         gang_id = "" :: string(), execution_path = "" :: string(), script_content = "" :: string(),
+         request = [] :: [#resource{}], resources = [] :: [#resource{}], container = "" :: string(),
+         relocatable = true :: atom(), exitcode = 0 :: pos_integer(), signal = 0 :: pos_integer(),
+         priority = 0 :: pos_integer(), comment = "" :: string(), revision = 0 :: pos_integer()}).
 -record(process,
         {pid = -1 :: integer(),
          state = "unknown" :: string(),
          exitcode = -1 :: integer(),
          signal = -1 :: integer(),
          comment = "" :: string()}).
--record(project,
-        {id = 0 :: pos_integer(),
-         name :: string(),
-         acl = "all" :: string(),
-         hooks = [] :: [hook_id()],
-         priority = 0 :: integer(),
-         comment = "" :: string(),
-         revision = 0 :: pos_integer()}).
--record(group,
-        {id = 0 :: pos_integer(),
-         name :: string(),
-         acl = "all" :: string(),
-         priority = 0 :: integer(),
-         comment = "" :: string(),
-         revision = 0 :: pos_integer()}).
 -record(user,
         {id :: user_id(),
          name :: string(),
          acl = "" :: string(),
-         groups = [] :: [pos_integer()],
-         projects = [] :: [pos_integer()],
          priority = 0 :: integer(),
          comment = "" :: string(),
          revision = 0 :: pos_integer()}).
@@ -206,15 +187,6 @@
          updated = "" :: string(),
          comment = "" :: string(),
          revision = 0 :: pos_integer()}).
--record(credential,
-        {id :: credential_id(),
-         remote_id :: remote_id(),
-         tenant_name :: string(),
-         tenant_domain_name :: string(),
-         username :: string(),
-         password :: string(),
-         key_name = "" :: string(),
-         revision = 0 :: pos_integer()}).
 -record(remote,
         {id :: remote_id(),
          account_id :: account_id(),
@@ -222,6 +194,7 @@
          default_flavor_id = "" :: node_id(),
          name :: atom(),
          kind = local :: atom(),
+         location = "local" :: string(),
          server :: string(),
          port = 8444 :: pos_integer(),
          runtime = #{} :: map(),

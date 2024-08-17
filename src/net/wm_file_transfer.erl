@@ -1263,9 +1263,12 @@ do_upload_file_sftp(RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir)
             {ok, Data} ->
                 case ssh_sftp:write_file(Channel, RemoteFilePath, Data) of
                     ok ->
-                        ?LOG_DEBUG("File uploaded successfully to ~s:~s~n", [RemoteHost, RemoteFilePath]);
+                        ?LOG_DEBUG("File uploaded successfully to ~s:~s", [RemoteHost, RemoteFilePath]);
+                    {error, no_such_file} ->
+                        ?LOG_ERROR("Failed to upload file, remote path not found: ~p", [RemoteFilePath]),
+                        {error, Reason}
                     {error, Reason} ->
-                        ?LOG_ERROR("Failed to upload file: ~p~n", [Reason]),
+                        ?LOG_ERROR("Failed to upload file: ~p", [Reason]),
                         {error, Reason}
                 end;
             {error, noent} ->

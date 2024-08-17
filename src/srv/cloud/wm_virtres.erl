@@ -229,7 +229,7 @@ creating(cast, ssh_swm_connected, #mstate{job_id = JobId, ssh_tunnel_client_pid 
                    rediness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
                    forwarded_ports = start_port_forwarding(SshClientPid, JobId)}};
 creating(cast, {error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
-    ?LOG_INFO("Partition creation failed: ~p, job id: ~p => try later", [Error, JobId]),
+    ?LOG_WARN("Partition creation failed: ~p, job id: ~p => try later", [Error, JobId]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, creating, MState#mstate{part_check_timer = Timer}};
 creating(cast, {Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
@@ -428,9 +428,14 @@ handle_event(job_finished,
                      spool = Spool} =
                  MState) ->
     ?LOG_DEBUG("Job has finished => start data downloading: ~p", [JobId]),
-    {ok, Ref, Files} = wm_virtres_handler:start_job_data_downloading(PartMgrNodeId, JobId, get_ssh_swm_dir(Spool)),
-    ?LOG_INFO("Downloading has been started [jobid=~p, ref=~10000p]: ~p", [JobId, Ref, Files]),
-    {next_state, downloading, MState#mstate{download_ref = Ref}};
+    case wm_virtres_handler:start_job_data_downloading(PartMgrNodeId, JobId, get_ssh_swm_dir(Spool)) of
+        {ok, Ref, Files} ->
+            ?LOG_INFO("Downloading has been started [jobid=~p, ref=~10000p]: ~p", [JobId, Ref, Files]),
+            {next_state, downloading, MState#mstate{download_ref = Ref}};
+        {error, Error} ->
+            ?LOG_ERROR("Downloading cannot be started: ~p", [Error]),
+            {next_state, downloading, MState#mstate{download_ref = undefined}}
+    end;
 handle_event(destroy,
              _,
              #mstate{task_id = TaskId,

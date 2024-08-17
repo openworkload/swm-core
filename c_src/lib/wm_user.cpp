@@ -53,36 +53,22 @@ SwmUser::SwmUser(const char* buf, int &index) {
     return;
   }
 
-  if (ei_buffer_to_uint64_t(buf, index, this->groups)) {
-    std::cerr << "Could not init user::groups at pos 5: ";
-    ei_print_term(stderr, buf, &index);
-    std::cerr << std::endl;
-    return;
-  }
-
-  if (ei_buffer_to_uint64_t(buf, index, this->projects)) {
-    std::cerr << "Could not init user::projects at pos 6: ";
-    ei_print_term(stderr, buf, &index);
-    std::cerr << std::endl;
-    return;
-  }
-
   if (ei_buffer_to_int64_t(buf, index, this->priority)) {
-    std::cerr << "Could not init user::priority at pos 7: ";
+    std::cerr << "Could not init user::priority at pos 5: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->comment)) {
-    std::cerr << "Could not init user::comment at pos 8: ";
+    std::cerr << "Could not init user::comment at pos 6: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
-    std::cerr << "Could not init user::revision at pos 9: ";
+    std::cerr << "Could not init user::revision at pos 7: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
@@ -101,14 +87,6 @@ void SwmUser::set_name(const std::string &new_val) {
 
 void SwmUser::set_acl(const std::string &new_val) {
   acl = new_val;
-}
-
-void SwmUser::set_groups(const std::vector<uint64_t> &new_val) {
-  groups = new_val;
-}
-
-void SwmUser::set_projects(const std::vector<uint64_t> &new_val) {
-  projects = new_val;
 }
 
 void SwmUser::set_priority(const int64_t &new_val) {
@@ -133,14 +111,6 @@ std::string SwmUser::get_name() const {
 
 std::string SwmUser::get_acl() const {
   return acl;
-}
-
-std::vector<uint64_t> SwmUser::get_groups() const {
-  return groups;
-}
-
-std::vector<uint64_t> SwmUser::get_projects() const {
-  return projects;
 }
 
 int64_t SwmUser::get_priority() const {
@@ -209,24 +179,6 @@ void SwmUser::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << id << separator;
   std::cerr << prefix << name << separator;
   std::cerr << prefix << acl << separator;
-  if (groups.empty()) {
-    std::cerr << prefix << "groups: []" << separator;
-  } else {
-    std::cerr << prefix << "groups" << ": [";
-    for (const auto &q: groups) {
-      std::cerr << q << ",";
-    }
-    std::cerr << "]" << separator;
-  }
-  if (projects.empty()) {
-    std::cerr << prefix << "projects: []" << separator;
-  } else {
-    std::cerr << prefix << "projects" << ": [";
-    for (const auto &q: projects) {
-      std::cerr << q << ",";
-    }
-    std::cerr << "]" << separator;
-  }
   std::cerr << prefix << priority << separator;
   std::cerr << prefix << comment << separator;
   std::cerr << prefix << revision << separator;

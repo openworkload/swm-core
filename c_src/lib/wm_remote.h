@@ -22,6 +22,7 @@ class SwmRemote:SwmEntity {
   void set_default_flavor_id(const std::string&);
   void set_name(const std::string&);
   void set_kind(const std::string&);
+  void set_location(const std::string&);
   void set_server(const std::string&);
   void set_port(const uint64_t&);
   void set_runtime(const std::map<std::string, std::string>&);
@@ -33,6 +34,7 @@ class SwmRemote:SwmEntity {
   std::string get_default_flavor_id() const;
   std::string get_name() const;
   std::string get_kind() const;
+  std::string get_location() const;
   std::string get_server() const;
   uint64_t get_port() const;
   std::map<std::string, std::string> get_runtime() const;
@@ -45,6 +47,7 @@ class SwmRemote:SwmEntity {
   std::string default_flavor_id;
   std::string name;
   std::string kind;
+  std::string location;
   std::string server;
   uint64_t port;
   std::map<std::string, std::string> runtime;

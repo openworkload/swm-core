@@ -6,7 +6,6 @@
 -type cluster_id()      :: string().
 -type partition_id()    :: string().
 -type node_id()         :: string().
--type credential_id()   :: string().
 -type remote_id()       :: string().
 -type account_id()      :: string().
 -type user_id()         :: string().

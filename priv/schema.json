@@ -508,10 +508,6 @@
       "default": [],
       "type": "[{atom(), string()}]"
     },
-    "projects": {
-      "default": [],
-      "type": "[pos_integer()]"
-    },
     "account_id": {
       "default": "",
       "type": "account_id()"
@@ -589,62 +585,6 @@
     }
   },
 
-  "project": {
-    "id": {
-      "default": 0,
-      "type": "pos_integer()"
-    },
-    "name": {
-      "type": "string()"
-    },
-    "acl": {
-      "default": "all",
-      "type": "string()"
-    },
-    "hooks": {
-      "default": [],
-      "type": "[hook_id()]"
-    },
-    "priority": {
-      "default": 0,
-      "type": "integer()"
-    },
-    "comment": {
-      "default": "",
-      "type": "string()"
-    },
-    "revision": {
-      "default": 0,
-      "type": "pos_integer()"
-    }
-  },
-
-  "group": {
-    "id": {
-      "default": 0,
-      "type": "pos_integer()"
-    },
-    "name": {
-      "type": "string()"
-    },
-    "acl": {
-      "default": "all",
-      "type": "string()"
-    },
-    "priority": {
-      "default": 0,
-      "type": "integer()"
-    },
-    "comment": {
-      "default": "",
-      "type": "string()"
-    },
-    "revision": {
-      "default": 0,
-      "type": "pos_integer()"
-    }
-  },
-
   "user": {
     "id": {
       "type": "user_id()"
@@ -655,14 +595,6 @@
     "acl": {
       "default": "",
       "type": "string()"
-    },
-    "groups": {
-      "default": [],
-      "type": "[pos_integer()]"
-    },
-    "projects": {
-      "default": [],
-      "type": "[pos_integer()]"
     },
     "priority": {
       "default": 0,
@@ -858,35 +790,6 @@
     }
   },
 
-  "credential": {
-    "id": {
-      "type": "credential_id()"
-    },
-    "remote_id": {
-      "type": "remote_id()"
-    },
-    "tenant_name": {
-      "type": "string()"
-    },
-    "tenant_domain_name": {
-      "type": "string()"
-    },
-    "username": {
-      "type": "string()"
-    },
-    "password": {
-      "type": "string()"
-    },
-    "key_name": {
-      "default": "",
-      "type": "string()"
-    },
-    "revision": {
-      "default": 0,
-      "type": "pos_integer()"
-    }
-  },
-
   "remote": {
     "id": {
       "type": "remote_id()"
@@ -908,6 +811,10 @@
     "kind": {
       "default": "local",
       "type": "atom()"
+    },
+    "location": {
+      "default": "local",
+      "type": "string()"
     },
     "server": {
       "type": "string()"

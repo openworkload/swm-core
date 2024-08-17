@@ -19,8 +19,6 @@ class SwmUser:SwmEntity {
   void set_id(const std::string&);
   void set_name(const std::string&);
   void set_acl(const std::string&);
-  void set_groups(const std::vector<uint64_t>&);
-  void set_projects(const std::vector<uint64_t>&);
   void set_priority(const int64_t&);
   void set_comment(const std::string&);
   void set_revision(const uint64_t&);
@@ -28,8 +26,6 @@ class SwmUser:SwmEntity {
   std::string get_id() const;
   std::string get_name() const;
   std::string get_acl() const;
-  std::vector<uint64_t> get_groups() const;
-  std::vector<uint64_t> get_projects() const;
   int64_t get_priority() const;
   std::string get_comment() const;
   uint64_t get_revision() const;
@@ -38,8 +34,6 @@ class SwmUser:SwmEntity {
   std::string id;
   std::string name;
   std::string acl;
-  std::vector<uint64_t> groups;
-  std::vector<uint64_t> projects;
   int64_t priority;
   std::string comment;
   uint64_t revision;

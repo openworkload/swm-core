@@ -64,7 +64,6 @@
 %       "pos_integer()": "integer",
 %       "float()": "float",
 %
-%       "credential_id()": "string",
 %       "remote_id()": "string",
 %       "account_id()": "string",
 %       "user_id()": "string",
@@ -111,7 +110,7 @@
 %  cog.outl('get_names(all) -> ?ENTITIES;')
 %  cog.outl('get_names(local) -> [job];')
 %  cog.outl('get_names(local_bag) -> [subscriber, timetable, relocation];')
-%  cog.outl('get_names(non_replicable) -> [schema, subscriber, timetable, job, credential];')
+%  cog.outl('get_names(non_replicable) -> [schema, subscriber, timetable, job];')
 %  cog.outl('get_names(with_ids) ->')
 %  cog.outl('  [' + ', '.join(withids) + '].')
 %  cog.outl('')
