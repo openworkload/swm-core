@@ -23,6 +23,7 @@
          rediness_timer = undefined :: reference(),
          ssh_prov_conn_timer = undefined :: reference(),
          ssh_prov_client_pid = undefined :: pid(),
+         worker_reupload_timer = undefined :: reference(),
          ssh_tunnel_conn_timer = undefined :: reference(),
          ssh_tunnel_client_pid = undefined :: pid(),
          forwarded_ports = [] :: [inet:port_number()],
@@ -218,6 +219,10 @@ creating(cast, ssh_prov_connected, #mstate{job_id = JobId, part_mgr_id = PartMgr
                     ?LOG_ERROR("Can't get SSH tunnel client: ~p, job: ~p", [Error, JobId]),
                     {stop, {shutdown, Error}, MState}
             end;
+        {error, not_ready} ->
+            ?LOG_DEBUG("New node is not ready to accept the worker file fia sftp => try again later"),
+            Timer = wm_virtres_handler:try_upload_worker_later(),
+            {next_state, creating, MState#mstate{worker_reupload_timer = Timer}};
         {error, Error} ->
             ?LOG_ERROR("SWM worker uploading failed: ~p", [Error]),
             {stop, {shutdown, Error}, MState}
@@ -480,6 +485,11 @@ handle_info(ssh_check_prov_port,
             Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_prov_port),
             {next_state, creating, MState#mstate{ssh_prov_conn_timer = Timer}}
     end;
+handle_info(try_worker_upload, _, MState = #mstate{worker_reupload_timer = OldTRef}) ->
+    ?LOG_DEBUG("Try to upload swm worker"),
+    catch timer:cancel(OldTRef),
+    gen_statem:cast(self(), ssh_prov_connected),
+    {next_state, creating, MState#mstate{worker_reupload_timer = undefined}};
 handle_info(ssh_check_swm_port,
             StateName,
             MState =

@@ -7,7 +7,8 @@
 
 -include("../lib/wm_log.hrl").
 
--define(TCPIP_CONN_TIMEOUT, 2000).
+-define(TCPIP_CONN_TIMEOUT, 5000).
+-define(DEFAULT_SSH_CONN_TIMEOUT, 20000).
 
 -record(mstate, {connection = undefined :: reference()}).
 
@@ -21,7 +22,8 @@ start_link() ->
 
 -spec connect(pid(), inet:ip_address(), inet:port_number(), string(), string(), string()) -> ok | {error, term()}.
 connect(ProcessPid, Host, Port, Username, Password, HostCertsDir) ->
-    gen_server:call(ProcessPid, {connect, Host, Port, Username, Password, HostCertsDir}).
+    Timeout = wm_conf:g(conn_timeout, {?DEFAULT_SSH_CONN_TIMEOUT, integer}),
+    gen_server:call(ProcessPid, {connect, Host, Port, Username, Password, HostCertsDir}, Timeout).
 
 -spec disconnect(pid()) -> ok | {error, term()}.
 disconnect(ProcessPid) ->
@@ -104,7 +106,8 @@ do_connect(Host, Port, Username, Password, HostCertsDir, #mstate{} = MState) ->
          {user, Username},
          {password, Password},
          {user_interaction, false}],
-    case ssh:connect(Host, Port, Options) of
+    Timeout = wm_conf:g(conn_timeout, {?DEFAULT_SSH_CONN_TIMEOUT, integer}),
+    case ssh:connect(Host, Port, Options, Timeout) of
         {ok, Connection} ->
             ?LOG_DEBUG("SSH client connection to  ~p:~p returned connection reference: ~p", [Host, Port, Connection]),
             {ok, MState#mstate{connection = Connection}};

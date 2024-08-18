@@ -39,7 +39,7 @@
 
 -define(DATA_TRANSFER_PARALLEL, 2).
 -define(BUF_SIZE, 65536).
--define(SWM_WORKER_UPLOAD_TIMEOUT, 60000).
+-define(DEFAULT_WORKER_UPLOAD_TIMEOUT, 20 * 60000).
 
 %% ============================================================================
 %% Module API
@@ -47,9 +47,10 @@
 
 -spec upload_file_sftp_sync(string(), integer(), string(), string(), string()) -> ok | {error, term()}.
 upload_file_sftp_sync(RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir) ->
+    UploadTimeout = wm_conf:g(worker_upload_timeout, {?DEFAULT_WORKER_UPLOAD_TIMEOUT, integer}),
     gen_server:call(?MODULE,
                     {upload_file_sftp, RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir},
-                    ?SWM_WORKER_UPLOAD_TIMEOUT).
+                    UploadTimeout).
 
 -spec get_port() -> integer.
 get_port() ->
@@ -1266,7 +1267,7 @@ do_upload_file_sftp(RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir)
                         ?LOG_DEBUG("File uploaded successfully to ~s:~s", [RemoteHost, RemoteFilePath]);
                     {error, no_such_file} ->
                         ?LOG_ERROR("Failed to upload file, remote path not found: ~p", [RemoteFilePath]),
-                        {error, Reason}
+                        {error, not_ready};
                     {error, Reason} ->
                         ?LOG_ERROR("Failed to upload file: ~p", [Reason]),
                         {error, Reason}

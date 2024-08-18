@@ -324,16 +324,17 @@ do_partition_create(Remote, Creds, Options, #mstate{spool = Spool, pem_data = Pe
             {error, Error}
     end.
 
--spec hide_credentials_from_headers([{binary(), binary()}], [{binary(), binary()}]) ->  [{binary(), binary()}].
+-spec hide_credentials_from_headers([{binary(), binary()}], [{binary(), binary()}]) -> [{binary(), binary()}].
 hide_credentials_from_headers(Headers, Creds) ->
     lists:map(fun({Key, Value}) ->
-        case lists:keyfind(Key, 1, Creds) of
-            false ->
-                {Key, Value};
-            _ ->
-               {Key, <<"*****">>}
-        end
-    end, Headers).
+                 case lists:keyfind(Key, 1, Creds) of
+                     false ->
+                         {Key, Value};
+                     _ ->
+                         {Key, <<"*****">>}
+                 end
+              end,
+              Headers).
 
 -spec get_runtime_parameters_string(#remote{}) -> str.
 get_runtime_parameters_string(#remote{runtime = RuntimeMap}) ->
@@ -346,14 +347,16 @@ get_runtime_parameters_string(#remote{runtime = RuntimeMap}) ->
                   "",
                   RuntimeMap)).
 
--spec do_partition_delete(#remote{}, [{binary(), binary()}], string(), string()) -> {ok, string()} | {error, any()}.
-do_partition_delete(Remote, Creds, PartExtId, Spool) ->
+-spec do_partition_delete(#remote{}, [{binary(), binary()}], string(), #mstate{}) -> {ok, string()} | {error, any()}.
+do_partition_delete(Remote, Creds, PartExtId, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
+            Body = get_auth_body(PemData),
             Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS, []),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Partition deletion HTTP headers: ~p", [HeadersWithoutCredentials]),
-            StreamRef = gun:delete(ConnPid, get_address("partitions/" ++ PartExtId, Remote), Headers),
+            StreamRef =
+                gun:request(ConnPid, <<"DELETE">>, get_address("partitions/" ++ PartExtId, Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
                     {ok, BinBody} ->
@@ -469,7 +472,8 @@ fetch_partition(Remote, Creds, PartExtIdOrName, #mstate{spool = Spool, pem_data 
             Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS, []),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Fetch partition HTTP headers: ~p", [HeadersWithoutCredentials]),
-            StreamRef = gun:request(ConnPid, <<"GET">>, get_address("partitions/" ++ PartExtIdOrName, Remote), Headers, Body),
+            StreamRef =
+                gun:request(ConnPid, <<"GET">>, get_address("partitions/" ++ PartExtIdOrName, Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
                     {ok, BinBody} ->

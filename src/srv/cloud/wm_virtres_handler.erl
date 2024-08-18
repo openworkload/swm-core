@@ -3,7 +3,7 @@
 -export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/2,
          upload_swm_worker/2, start_job_data_uploading/3, start_job_data_downloading/3, delete_partition/2,
          spawn_partition/2, wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0, wait_for_ssh_connection/1,
-         remove_relocation_entities/1, ensure_entities_created/3]).
+         remove_relocation_entities/1, ensure_entities_created/3, try_upload_worker_later/0]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
@@ -13,6 +13,7 @@
 -define(REDINESS_CHECK_PERIOD, 30000).
 -define(SSH_CHECK_PERIOD, 30000).
 -define(PARTITION_FETCH_PERIOD, 30000).
+-define(SWM_DIR_CHEK_PERIOD, 15000).
 
 %% ============================================================================
 %% Module API
@@ -29,6 +30,10 @@ get_remote(JobId) ->
 remove_relocation_entities(JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     ok = wm_relocator:remove_relocation_entities(Job).
+
+-spec try_upload_worker_later() -> reference().
+try_upload_worker_later() ->
+    wm_utils:wake_up_after(?SWM_DIR_CHEK_PERIOD, try_worker_upload).
 
 -spec wait_for_partition_fetch() -> reference().
 wait_for_partition_fetch() ->
@@ -116,7 +121,12 @@ start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
             {ok, MyNode} = wm_self:get_node(),
             {FromAddr, _} = wm_conf:get_relative_address(FromNode, MyNode),
             {ok, Ref} =
-                wm_file_transfer:download(self(), FromAddr, Priority, Files, WorkDir, #{via => ssh, user_dir => SshUserDir}),
+                wm_file_transfer:download(self(),
+                                          FromAddr,
+                                          Priority,
+                                          Files,
+                                          WorkDir,
+                                          #{via => ssh, user_dir => SshUserDir}),
             {ok, Ref, Files};
         {error, Error} ->
             {error, Error}
