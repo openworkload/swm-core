@@ -15,13 +15,21 @@ windows:
       panes:
         - core:
           - scripts/run-in-shell.sh -x
-  - logs:
+  - core_logs:
       layout: main-horizontal
       panes:
         - core-logs:
           - tail -f /opt/swm/spool/node\@*/log/$(date +"%Y")
-        - scheduler-logs:
+  - erlang_logs:
+      layout: main-horizontal
+      panes:
+        - erlang-logs:
           - tail -f /opt/swm/spool/node\@*/log/erlang.log
+  - sched_logs:
+      layout: main-horizontal
+      panes:
+        - scheduler-logs:
+          - tail -f /opt/swm/spool/node\@*/log/scheduler.log
   - terminal:
       layout: 2b0d,137x56,0,0{26x56,0,0,2,110x56,27,0[110x27,27,0,7,110x28,27,28,8]}
       panes:
@@ -36,6 +44,12 @@ windows:
           - sleep 3
           - cd <%= ENV["SOURCES_PARENT_DIR"] %>/swm-console-term
           - watch ./swm-console --node-list
+  - gate:
+      panes:
+        - cloud-gate:
+          - clear
+          - cd <%= ENV["SOURCES_PARENT_DIR"] %>/swm-cloud-gate
+          - ./run.sh
   - jupyter:
       panes:
         - jupyterlab:
@@ -44,16 +58,8 @@ windows:
           - conda activate swm-jupyter
           - . .venv/bin/activate
           - jupyterhub
-  - gate:
+  - shell:
+      root: <%= ENV["SOURCES_PARENT_DIR"] %>
       panes:
-        - cloud-gate:
+        - shell:
           - clear
-          - cd <%= ENV["SOURCES_PARENT_DIR"] %>/swm-cloud-gate
-          - ./run.sh
-  - openstack:
-      pre_window: make cr
-      root: <%= ENV["SOURCES_PARENT_DIR"] %>/openstack-box
-      panes:
-        - vagrant:
-          - clear
-          - vagrant status 2>/dev/null | grep "Current machine states" -A 2
