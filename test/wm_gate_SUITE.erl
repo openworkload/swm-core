@@ -77,9 +77,9 @@ get_remote() ->
                    {account_id, "accid123"}],
                   wm_entity:new(remote)).
 
--spec get_creds() -> {ok, map()}.
+-spec get_creds() -> [{binary(), binary()}].
 get_creds() ->
-    maps:from_list([{tenantname, "demo1"}, {keyname, "demo1"}, {username, "demo1"}, {password, "demo1"}]).
+    [{<<"username">>, <<"demo1">>}, {<<"tenantname">>, <<"demo1">>}, {<<"password">>, <<"demo1">>}].
 
 %% ============================================================================
 %% Tests
@@ -95,7 +95,6 @@ list_images(_Config) ->
                         {status, "creating"},
                         {created, ""},
                         {remote_id, wm_entity:get(id, Remote)},
-                        {updated, ""},
                         {kind, cloud}],
                        wm_entity:new(image)),
          wm_entity:set([{id, "i2"},
@@ -103,7 +102,6 @@ list_images(_Config) ->
                         {status, "created"},
                         {remote_id, wm_entity:get(id, Remote)},
                         {created, ""},
-                        {updated, ""},
                         {kind, cloud}],
                        wm_entity:new(image))],
     ?assertEqual({list_images, Ref, ExpectedImages}, wm_utils:await(list_images, Ref, 2000)).
@@ -112,8 +110,7 @@ list_images(_Config) ->
 get_image(_Config) ->
     {ok, Ref1} = wm_gate:get_image(self(), get_remote(), get_creds(), "i2"),
     ExpectedImage =
-        wm_entity:set([{id, "i2"}, {name, "cirros"}, {status, "created"}, {created, ""}, {updated, ""}, {kind, cloud}],
-                      wm_entity:new(image)),
+        wm_entity:set([{id, "i2"}, {name, "cirros"}, {status, "created"}, {kind, cloud}], wm_entity:new(image)),
     ?assertEqual({get_image, Ref1, ExpectedImage}, wm_utils:await(get_image, Ref1, 2000)),
     {ok, Ref2} = wm_gate:get_image(self(), get_remote(), get_creds(), "foo"),
     ?assertMatch({error, Ref2, _}, wm_utils:await(get_image, Ref2, 2000)),
