@@ -67,7 +67,7 @@ get_api_version() ->
 
 -spec get_remotes_info(map()) -> {[string()], pos_integer()}.
 get_remotes_info(Req) ->
-    #{limit := Limit} = cowboy_req:match_qs([{limit, int, 100}], Req),
+    #{limit := Limit} = cowboy_req:match_qs([{limit, int, 10}], Req),
     ?LOG_DEBUG("Handle remote sites info HTTP request (limit=~p)", [Limit]),
     Remotes = gen_server:call(wm_user, {list, [remote], Limit}),
     F = fun(Remote, FullJson) ->
@@ -87,7 +87,7 @@ get_remotes_info(Req) ->
 
 -spec get_nodes_info(map()) -> {[string()], pos_integer()}.
 get_nodes_info(Req) ->
-    #{limit := Limit} = cowboy_req:match_qs([{limit, int, 100}], Req),
+    #{limit := Limit} = cowboy_req:match_qs([{limit, int, 1000}], Req),
     ?LOG_DEBUG("Handle nodes info HTTP request"),
     Xs = gen_server:call(wm_user, {list, [node], Limit}),
     F = fun(Node, FullJson) ->
@@ -109,7 +109,7 @@ get_nodes_info(Req) ->
 
 -spec get_flavors_info(map()) -> {[string()], pos_integer()}.
 get_flavors_info(Req) ->
-    #{limit := Limit} = cowboy_req:match_qs([{limit, int, 100}], Req),
+    #{limit := Limit} = cowboy_req:match_qs([{limit, int, 1000}], Req),
     ?LOG_DEBUG("Handle flavors info HTTP request (limit=~p)", [Limit]),
     FlavorNodes = gen_server:call(wm_user, {list, [flavor], Limit}),
     F = fun(FlavorNode, FullJson) ->
@@ -200,6 +200,7 @@ job_to_json(Job, FullJson) ->
         jsx:encode(#{id => list_to_binary(wm_entity:get(id, Job)),
                      name => list_to_binary(wm_entity:get(name, Job)),
                      state => list_to_binary(wm_entity:get(state, Job)),
+                     state_details => list_to_binary(wm_entity:get(state_details, Job)),
                      submit_time => list_to_binary(wm_entity:get(submit_time, Job)),
                      start_time => list_to_binary(wm_entity:get(start_time, Job)),
                      end_time => list_to_binary(wm_entity:get(end_time, Job)),

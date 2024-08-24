@@ -15,7 +15,7 @@
 
 -record(mstate, {spool = "" :: string(), children = #{} :: #{}, pem_data = <<>> :: binary()}).
 
--define(CONNECTION_AWAIT_TIMEOUT, timer:seconds(3)).
+-define(CONNECTION_AWAIT_TIMEOUT, timer:seconds(5)).
 -define(GATE_RESPONSE_TIMEOUT, 5 * 60 * 1000).
 -define(AZURE_CONT_HEADERS, [<<"containerregistryuser">>, <<"containerregistrypass">>]).
 
@@ -300,13 +300,13 @@ do_partition_create(Remote, Creds, Options, #mstate{spool = Spool, pem_data = Pe
                 [{<<"osversion">>, list_to_binary(maps:get(image_name, Options, ""))},
                  {<<"containerimage">>, list_to_binary(maps:get(container_image, Options))},
                  {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
-                 {<<"username">>, list_to_binary(maps:get(user_name, Options))},
+                 {<<"username">>, list_to_binary(maps:get(user_name, Options, ""))},
                  {<<"count">>, integer_to_binary(ExtraNodesCount)},
                  {<<"jobid">>, list_to_binary(maps:get(job_id, Options))},
                  {<<"partname">>, list_to_binary(maps:get(part_name, Options, ""))},
                  {<<"runtime">>, list_to_binary(get_runtime_parameters_string(Remote))},
                  {<<"location">>, list_to_binary(wm_entity:get(location, Remote))},
-                 {<<"ports">>, list_to_binary(maps:get(ports, Options))}],
+                 {<<"ports">>, list_to_binary(maps:get(ports, Options, ""))}],
             Headers = generate_headers(Creds, [], ExtraHeaders), %TODO make remote-dependent exclude list
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Partition creation POST HTTP headers: ~p", [HeadersWithoutCredentials]),

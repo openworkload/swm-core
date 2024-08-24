@@ -135,6 +135,7 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
             Job2 =
                 wm_entity:set([{cluster_id, wm_entity:get(id, Cluster)},
                                {state, ?JOB_STATE_QUEUED},
+                               {state_details, "Submitted"},
                                {execution_path, Filename},
                                {script_content, JobScriptContent},
                                {user_id, wm_entity:get(id, User)},

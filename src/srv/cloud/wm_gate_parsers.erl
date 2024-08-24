@@ -49,18 +49,26 @@ fill_image_params([{B, _} | T], Image) when not is_binary(B) ->
     fill_image_params(T, Image);
 fill_image_params([{<<"id">>, Value} | T], Image) ->
     fill_image_params(T, wm_entity:set({id, binary_to_list(Value)}, Image));
-fill_image_params([{<<"status">>, Value} | T], Image) ->
-    fill_image_params(T, wm_entity:set({status, binary_to_list(Value)}, Image));
 fill_image_params([{<<"name">>, Value} | T], Image) ->
     fill_image_params(T, wm_entity:set({name, binary_to_list(Value)}, Image));
+fill_image_params([{<<"extra">>, {struct, List}} | T], Image) ->
+    fill_image_params(T, fill_image_extra(List, Image));
 fill_image_params([{_, null} | T], Image) ->
     fill_image_params(T, Image);
-fill_image_params([{<<"created">>, Value} | T], Image) ->
-    fill_image_params(T, wm_entity:set({created, binary_to_list(Value)}, Image));
-fill_image_params([{<<"updated">>, Value} | T], Image) ->
-    fill_image_params(T, wm_entity:set({updated, binary_to_list(Value)}, Image));
 fill_image_params([_ | T], Image) ->
     fill_image_params(T, Image).
+
+-spec fill_image_extra([{binary(), binary()}], #image{}) -> #image{}.
+fill_image_extra([], Image) ->
+    Image;
+fill_image_extra([{<<"status">>, Value} | T], Image) ->
+    fill_image_extra(T, wm_entity:set({status, binary_to_list(Value)}, Image));
+fill_image_extra([{<<"created">>, Value} | T], Image) ->
+    fill_image_extra(T, wm_entity:set({created, binary_to_list(Value)}, Image));
+fill_image_extra([{<<"updated">>, Value} | T], Image) ->
+    fill_image_extra(T, wm_entity:set({updated, binary_to_list(Value)}, Image));
+fill_image_extra([{_, _} | T], Image) ->
+    fill_image_extra(T, Image).
 
 %%
 %% Parse flavors
@@ -250,22 +258,11 @@ fill_partition_params([_ | T], Part) ->
 parse_images_test() ->
     Input =
         <<"{\"images\":[",
-          "{\"id\":\"i1\",\"name\":\"image1\",\"status\""
-          ":\"creating\",\"created\":null,\"updated\":nu"
-          "ll},",
-          "{\"id\":\"i2\",\"name\":\"cirros\",\"status\""
-          ":\"created\",\"created\":null,\"updated\":nul"
-          "l}]}">>,
+          "{\"id\":\"i1\",\"name\":\"image1\",\"extra\":{\"status\":\"creating\"}},",
+          "{\"id\":\"i2\",\"name\":\"cirros\",\"extra\":{\"status\":\"created\"}}]}">>,
     ExpectedImages =
-        [wm_entity:set([{id, "i1"},
-                        {name, "image1"},
-                        {status, "creating"},
-                        {created, ""},
-                        {updated, ""},
-                        {kind, cloud}],
-                       wm_entity:new(image)),
-         wm_entity:set([{id, "i2"}, {name, "cirros"}, {status, "created"}, {created, ""}, {updated, ""}, {kind, cloud}],
-                       wm_entity:new(image))],
+        [wm_entity:set([{id, "i1"}, {name, "image1"}, {status, "creating"}, {kind, cloud}], wm_entity:new(image)),
+         wm_entity:set([{id, "i2"}, {name, "cirros"}, {status, "created"}, {kind, cloud}], wm_entity:new(image))],
     ?assertEqual({ok, ExpectedImages}, parse_images(Input)),
     ?assertMatch({ok, []}, parse_images(<<"{\"images\":[]}">>)),
     ?assertMatch({error, _}, parse_images(<<"foo">>)),
@@ -316,12 +313,12 @@ parse_partitions_test() ->
     Input =
         <<"{\"partitions\":[",
           "{\"id\":\"p1\",\"name\":\"stack1\",\"status\""
-          ":\"CREATE_IN_PROGRESS\",",
+          ":\"creating\",",
           "\"created\":\"2021-01-02T15:18:39\", "
           "\"updated\":\"2021-01-02T16:18:40\",",
           "\"description\":\"test stack 1\"},",
           "{\"id\":\"p2\",\"name\":\"stack2\",\"status\""
-          ":\"CREATE_COMPLETE\",",
+          ":\"succeeded\",",
           "\"created\":\"2020-11-12T10:00:00\", "
           "\"updated\":\"2021-01-02T11:18:38\",",
           "\"description\":\"test stack 2\"}]}">>,

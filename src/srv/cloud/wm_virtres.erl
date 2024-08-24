@@ -20,7 +20,7 @@
          job_id = undefined :: string(),
          task_id = undefined :: integer(),
          part_mgr_id = undefined :: string(),
-         rediness_timer = undefined :: reference(),
+         readiness_timer = undefined :: reference(),
          ssh_prov_conn_timer = undefined :: reference(),
          ssh_prov_client_pid = undefined :: pid(),
          worker_reupload_timer = undefined :: reference(),
@@ -97,6 +97,7 @@ sleeping(cast,
                  remote = Remote} =
              MState) ->
     ?LOG_DEBUG("Received 'activate' [sleeping] (~p)", [ID]),
+    wm_virtres_handler:update_job([{state_details, "Preparing to start"}], JobId),
     {ok, WaitRef} = wm_virtres_handler:request_partition_existence(JobId, Remote),
     {next_state, validating, MState#mstate{wait_ref = WaitRef}};
 sleeping(info, Msg, MState) ->
@@ -121,6 +122,7 @@ validating(cast,
             {next_state, running, MState#mstate{upload_ref = finished}};
         false ->
             ?LOG_INFO("Spawn a new partition for job ~p", [JobId]),
+            wm_virtres_handler:update_job([{state_details, "Initiate a new partition resources creation"}], JobId),
             {ok, WaitRef} = wm_virtres_handler:spawn_partition(Job, Remote),
             {next_state, creating, MState#mstate{wait_ref = WaitRef}}
     end;
@@ -131,6 +133,7 @@ validating(cast,
                    job_id = JobId} =
                MState) ->
     ?LOG_INFO("Remote partition exits => reuse for job ~p", [JobId]),
+    wm_virtres_handler:update_job([{state_details, "Fetch the partition details"}], JobId),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, creating, MState#mstate{part_check_timer = Timer}};
 validating(cast,
@@ -140,6 +143,7 @@ validating(cast,
                    job_id = JobId} =
                MState) ->
     ?LOG_DEBUG("No resources found for job ~s", [JobId]),
+    wm_virtres_handler:update_job([{state_details, "Remote resources destroyed"}], JobId),
     {stop, {shutdown, {normal, Ref}}, MState};
 validating(cast,
            {partition_exists, Ref, true},
@@ -150,14 +154,17 @@ validating(cast,
                    remote = Remote} =
                MState) ->
     ?LOG_DEBUG("Destroy remote partition while validating for job ~p", [JobId]),
+    wm_virtres_handler:update_job([{state_details, "Destroying remote resources"}], JobId),
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
 validating(cast, {error, Ref, Msg}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Could not validate partition for job ~p: ~p", [JobId, Msg]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
+    wm_virtres_handler:update_job([{state_details, "Could not validate the partition"}], JobId),
     {next_state, validating, MState#mstate{part_check_timer = Timer}};
 validating(cast, {Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Timeout when validating partition for job ~p => try to fetch the partition later", [JobId]),
+    wm_virtres_handler:update_job([{state_details, "Timeout when validating partition"}], JobId),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, validating, MState#mstate{part_check_timer = Timer}};
 validating(info, Msg, MState) ->
@@ -170,6 +177,7 @@ creating({call, From}, get_current_state, MState) ->
     {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 creating(cast, {partition_spawned, Ref, NewPartExtId}, #mstate{job_id = JobId, wait_ref = Ref} = MState) ->
     ?LOG_INFO("Partition spawned => check status: ~p, job ~p", [NewPartExtId, JobId]),
+    wm_virtres_handler:update_job([{state_details, "Partition spawned"}], JobId),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, creating, MState#mstate{part_check_timer = Timer}};
 creating(cast,
@@ -182,6 +190,7 @@ creating(cast,
     ?LOG_DEBUG("Partition fetched for job ~p, partition id: ~p", [JobId, PartId]),
     case wm_entity:get(state, Partition) of
         up ->
+            wm_virtres_handler:update_job([{state_details, "Waiting for ssh provisioning port readiness"}], JobId),
             case wm_ssh_client:start_link() of
                 {ok, SshProvClientPid} ->
                     ?LOG_INFO("SSH provision client process started, pid: ~p, job: ~p", [SshProvClientPid, JobId]),
@@ -200,14 +209,17 @@ creating(cast,
             end;
         Other ->
             ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p, job: ~p", [Other, JobId]),
+            wm_virtres_handler:update_job([{state_details, "Waiting for partition readiness"}], JobId),
             Timer = wm_virtres_handler:wait_for_partition_fetch(),
             {next_state, creating, MState#mstate{part_check_timer = Timer}}
     end;
 creating(cast, ssh_prov_connected, #mstate{job_id = JobId, part_mgr_id = PartMgrNodeId} = MState) ->
     ?LOG_INFO("SSH for provisioning is ready for job ~p", [JobId]),
+    wm_virtres_handler:update_job([{state_details, "Uploading the worker"}], JobId),
     case wm_virtres_handler:upload_swm_worker(PartMgrNodeId, get_ssh_user_dir()) of
         ok ->
             ?LOG_INFO("SWM worker uploaded, wait for ssh tunnel for job ~p", [JobId]),
+            wm_virtres_handler:update_job([{state_details, "Start secured tunnel"}], JobId),
             case wm_ssh_client:start_link() of
                 {ok, SshTunnelClientPid} ->
                     ?LOG_INFO("SSH tunnel client process started, pid: ~p, job: ~p", [SshTunnelClientPid, JobId]),
@@ -228,16 +240,19 @@ creating(cast, ssh_prov_connected, #mstate{job_id = JobId, part_mgr_id = PartMgr
             {stop, {shutdown, Error}, MState}
     end;
 creating(cast, ssh_swm_connected, #mstate{job_id = JobId, ssh_tunnel_client_pid = SshClientPid} = MState) ->
+    wm_virtres_handler:update_job([{state_details, "Sky Port connected"}], JobId),
     {next_state,
      creating,
      MState#mstate{wait_ref = undefined,
-                   rediness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
+                   readiness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
                    forwarded_ports = start_port_forwarding(SshClientPid, JobId)}};
 creating(cast, {error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
-    ?LOG_WARN("Partition creation failed: ~p, job id: ~p => try later", [Error, JobId]),
+    wm_virtres_handler:update_job([{state_details, "Partition has not been created yet"}], JobId),
+    ?LOG_DEBUG("Partition has not been created yet for job ~p", [JobId]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, creating, MState#mstate{part_check_timer = Timer}};
 creating(cast, {Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
+    wm_virtres_handler:update_job([{state_details, "Timeout when creating partition"}], JobId),
     ?LOG_INFO("Timeout when creating partition for job ~p => check it later", [JobId]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, creating, MState#mstate{part_check_timer = Timer}};
@@ -252,13 +267,15 @@ uploading({call, From}, get_current_state, MState) ->
 uploading(cast, {Ref, ok}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Uploading has finished (~p)", [Ref]),
     ?LOG_DEBUG("Let the job be scheduled again with preset nodes request (~p)", [JobId]),
-    wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}], JobId),
+    wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}, {state_details, "Data uploaded, starting"}], JobId),
     {next_state, running, MState#mstate{upload_ref = finished}};
-uploading(cast, {Ref, {error, Node, Reason}}, #mstate{upload_ref = Ref} = MState) ->
+uploading(cast, {Ref, {error, Node, Reason}}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Uploading to ~p has failed: ~s", [Node, Reason]),
+    wm_virtres_handler:update_job([{state_details, "Data uploading failed"}], JobId),
     handle_remote_failure(MState);
-uploading(cast, {Ref, 'EXIT', Reason}, #mstate{upload_ref = Ref} = MState) ->
+uploading(cast, {Ref, 'EXIT', Reason}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Uploading has unexpectedly exited: ~p", [Reason]),
+    wm_virtres_handler:update_job([{state_details, "Uploading has unexpectedly exited"}], JobId),
     handle_remote_failure(MState);
 uploading(info, Msg, MState) ->
     handle_info(Msg, ?FUNCTION_NAME, MState);
@@ -281,16 +298,19 @@ downloading({call, From}, get_current_state, MState) ->
     {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 downloading(cast, {Ref, ok}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Downloading has finished => delete entities [~p, ~p]", [Ref, JobId]),
+    wm_virtres_handler:update_job([{state_details, "Destroying remote resources"}], JobId),
     stop_port_forwarding(JobId),
     gen_statem:cast(self(), start_destroying),
     {next_state, destroying, MState#mstate{download_ref = finished}};
 downloading(cast, {Ref, {error, File, Reason}}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_WARN("Downloading of ~p has failed: ~p", [File, Reason]),
+    wm_virtres_handler:update_job([{state_details, "Data downloading failed"}], JobId),
     stop_port_forwarding(JobId),
     gen_statem:cast(self(), start_destroying),
     {next_state, destroying, MState#mstate{download_ref = finished}};
-downloading(cast, {Ref, 'EXIT', Reason}, #mstate{download_ref = Ref} = MState) ->
+downloading(cast, {Ref, 'EXIT', Reason}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Downloading has unexpectedly exited: ~p", [Reason]),
+    wm_virtres_handler:update_job([{state_details, "Data downloading has unexpectedly exited"}], JobId),
     handle_remote_failure(MState);
 downloading(info, Msg, MState) ->
     handle_info(Msg, ?FUNCTION_NAME, MState);
@@ -311,14 +331,17 @@ destroying(cast,
                    remote = Remote} =
                MState) ->
     ?LOG_DEBUG("Destroy remote partition for job ~p (task_id: ~p)", [JobId, TaskId]),
+    wm_virtres_handler:update_job([{state_details, "Start the partition resources destroying"}], JobId),
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
     ok = wm_virtres_handler:remove_relocation_entities(JobId),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
-destroying(cast, {delete_in_progress, Ref, Reply}, #mstate{} = MState) ->
+destroying(cast, {delete_in_progress, Ref, Reply}, #mstate{job_id = JobId} = MState) ->
     ?LOG_DEBUG("Partition deletion is in progress [~p]: ~p", [Ref, Reply]),
+    wm_virtres_handler:update_job([{state_details, "Partition resources deletion is in progress"}], JobId),
     {next_state, destroying, MState};
-destroying(cast, {partition_deleted, Ref, ReturnValue}, #mstate{wait_ref = Ref} = MState) ->
+destroying(cast, {partition_deleted, Ref, ReturnValue}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Partition deleted: ~p", [ReturnValue]),
+    wm_virtres_handler:update_job([{state_details, "Remote resources were destroyed"}], JobId),
     {stop, normal, MState};
 destroying(info, Msg, MState) ->
     handle_info(Msg, ?FUNCTION_NAME, MState);
@@ -335,7 +358,7 @@ destroying(cast, Msg, MState) ->
 -spec handle_remote_failure(#mstate{}) -> {atom(), atom(), #mstate{}}.
 handle_remote_failure(#mstate{job_id = JobId, task_id = TaskId} = MState) ->
     ?LOG_INFO("Force state ~p for job ~p [~p]", [?JOB_STATE_QUEUED, JobId, TaskId]),
-    wm_virtres_handler:update_job({state, ?JOB_STATE_QUEUED}, MState#mstate.job_id),
+    wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}, {state_details, "Job failed and requeued"}], JobId),
     %TODO Try to delete resource several, but limited number of times
     {stop, normal, MState}.
 
@@ -436,9 +459,11 @@ handle_event(job_finished,
     case wm_virtres_handler:start_job_data_downloading(PartMgrNodeId, JobId, get_ssh_swm_dir(Spool)) of
         {ok, Ref, Files} ->
             ?LOG_INFO("Downloading has been started [jobid=~p, ref=~10000p]: ~p", [JobId, Ref, Files]),
+            wm_virtres_handler:update_job([{state_details, "Job finished, results downloading started"}], JobId),
             {next_state, downloading, MState#mstate{download_ref = Ref}};
         {error, Error} ->
             ?LOG_ERROR("Downloading cannot be started: ~p", [Error]),
+            wm_virtres_handler:update_job([{state_details, "Job finished, results downloading failed"}], JobId),
             {next_state, downloading, MState#mstate{download_ref = undefined}}
     end;
 handle_event(destroy,
@@ -449,6 +474,7 @@ handle_event(destroy,
                      remote = Remote} =
                  MState) ->
     ?LOG_DEBUG("Destroy remote partition for job ~p (task_id: ~p)", [JobId, TaskId]),
+    wm_virtres_handler:update_job([{state_details, "Destroying partition resources"}], JobId),
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
 handle_event(Event, StateName, MState) ->
@@ -482,6 +508,7 @@ handle_info(ssh_check_prov_port,
             {next_state, creating, MState};
         not_ready ->
             ?LOG_DEBUG("SSH server is not ready yet, connection will be repeated"),
+            wm_virtres_handler:update_job([{state_details, "Waiting for provisioning port readiness"}], JobId),
             Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_prov_port),
             {next_state, creating, MState#mstate{ssh_prov_conn_timer = Timer}}
     end;
@@ -516,13 +543,14 @@ handle_info(ssh_check_swm_port,
             {next_state, creating, MState};
         not_ready ->
             ?LOG_DEBUG("SSH server is not ready yet, connection will be repeated"),
+            wm_virtres_handler:update_job([{state_details, "Waiting for Sky Port port readiness"}], JobId),
             Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_swm_port),
             {next_state, creating, MState#mstate{ssh_tunnel_conn_timer = Timer}}
     end;
 handle_info(part_check,
             StateName,
             MState =
-                #mstate{rediness_timer = OldTRef,
+                #mstate{readiness_timer = OldTRef,
                         job_id = JobId,
                         spool = Spool}) ->
     ?LOG_DEBUG("Readiness check (job=~p, virtres state: ~p)", [JobId, StateName]),
@@ -531,10 +559,11 @@ handle_info(part_check,
         false ->
             ?LOG_DEBUG("Not all nodes are UP (job ~p)", [JobId]),
             Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
-            {next_state, StateName, MState#mstate{rediness_timer = Timer}};
+            wm_virtres_handler:update_job([{state_details, "Waiting  for Sky Port port readiness"}], JobId),
+            {next_state, StateName, MState#mstate{readiness_timer = Timer}};
         true ->
             ?LOG_DEBUG("All nodes are UP (job ~p) => upload data", [JobId]),
-            wm_virtres_handler:update_job([{state, ?JOB_STATE_TRANSFERRING}], MState#mstate.job_id),
+            wm_virtres_handler:update_job([{state, ?JOB_STATE_TRANSFERRING}, {state_details, "Uploading data"}], JobId),
             {ok, Ref} =
                 wm_virtres_handler:start_job_data_uploading(MState#mstate.part_mgr_id, JobId, get_ssh_swm_dir(Spool)),
             ?LOG_INFO("Uploading has started [~p]", [Ref]),
