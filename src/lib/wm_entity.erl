@@ -442,6 +442,8 @@ get_type(job, Attr) when is_atom(Attr) ->
             {list, string};
         state ->
             string;
+        state_details ->
+            string;
         start_time ->
             string;
         submit_time ->

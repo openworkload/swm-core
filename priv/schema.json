@@ -452,6 +452,10 @@
       "default": "Q",
       "type": "string()"
     },
+    "state_details": {
+      "default": "",
+      "type": "string()"
+    },
     "start_time": {
       "default": "",
       "type": "string()"

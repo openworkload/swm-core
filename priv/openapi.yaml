@@ -244,6 +244,9 @@ components:
             - E
             - T
             - C
+        state_details:
+          type: string
+          description: Job state details
         submit_time:
           type: string
           description: Job submit time

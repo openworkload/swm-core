@@ -32,6 +32,7 @@ class SwmJob:SwmEntity {
   void set_cluster_id(const std::string&);
   void set_nodes(const std::vector<std::string>&);
   void set_state(const std::string&);
+  void set_state_details(const std::string&);
   void set_start_time(const std::string&);
   void set_submit_time(const std::string&);
   void set_end_time(const std::string&);
@@ -65,6 +66,7 @@ class SwmJob:SwmEntity {
   std::string get_cluster_id() const;
   std::vector<std::string> get_nodes() const;
   std::string get_state() const;
+  std::string get_state_details() const;
   std::string get_start_time() const;
   std::string get_submit_time() const;
   std::string get_end_time() const;
@@ -99,6 +101,7 @@ class SwmJob:SwmEntity {
   std::string cluster_id;
   std::vector<std::string> nodes;
   std::string state;
+  std::string state_details;
   std::string start_time;
   std::string submit_time;
   std::string end_time;

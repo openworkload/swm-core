@@ -68,190 +68,197 @@ SwmJob::SwmJob(const char* buf, int &index) {
     return;
   }
 
+  if (ei_buffer_to_str(buf, index, this->state_details)) {
+    std::cerr << "Could not init job::state_details at pos 7: ";
+    ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
+    return;
+  }
+
   if (ei_buffer_to_str(buf, index, this->start_time)) {
-    std::cerr << "Could not init job::start_time at pos 7: ";
+    std::cerr << "Could not init job::start_time at pos 8: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->submit_time)) {
-    std::cerr << "Could not init job::submit_time at pos 8: ";
+    std::cerr << "Could not init job::submit_time at pos 9: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->end_time)) {
-    std::cerr << "Could not init job::end_time at pos 9: ";
+    std::cerr << "Could not init job::end_time at pos 10: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->duration)) {
-    std::cerr << "Could not init job::duration at pos 10: ";
+    std::cerr << "Could not init job::duration at pos 11: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->job_stdin)) {
-    std::cerr << "Could not init job::job_stdin at pos 11: ";
+    std::cerr << "Could not init job::job_stdin at pos 12: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->job_stdout)) {
-    std::cerr << "Could not init job::job_stdout at pos 12: ";
+    std::cerr << "Could not init job::job_stdout at pos 13: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->job_stderr)) {
-    std::cerr << "Could not init job::job_stderr at pos 13: ";
+    std::cerr << "Could not init job::job_stderr at pos 14: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->input_files)) {
-    std::cerr << "Could not init job::input_files at pos 14: ";
+    std::cerr << "Could not init job::input_files at pos 15: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->output_files)) {
-    std::cerr << "Could not init job::output_files at pos 15: ";
+    std::cerr << "Could not init job::output_files at pos 16: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->workdir)) {
-    std::cerr << "Could not init job::workdir at pos 16: ";
+    std::cerr << "Could not init job::workdir at pos 17: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->user_id)) {
-    std::cerr << "Could not init job::user_id at pos 17: ";
+    std::cerr << "Could not init job::user_id at pos 18: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->hooks)) {
-    std::cerr << "Could not init job::hooks at pos 18: ";
+    std::cerr << "Could not init job::hooks at pos 19: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_tuple_str_str(buf, index, this->env)) {
-    std::cerr << "Could not init job::env at pos 19: ";
+    std::cerr << "Could not init job::env at pos 20: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_tuple_atom_str(buf, index, this->deps)) {
-    std::cerr << "Could not init job::deps at pos 20: ";
+    std::cerr << "Could not init job::deps at pos 21: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->account_id)) {
-    std::cerr << "Could not init job::account_id at pos 21: ";
+    std::cerr << "Could not init job::account_id at pos 22: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->gang_id)) {
-    std::cerr << "Could not init job::gang_id at pos 22: ";
+    std::cerr << "Could not init job::gang_id at pos 23: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->execution_path)) {
-    std::cerr << "Could not init job::execution_path at pos 23: ";
+    std::cerr << "Could not init job::execution_path at pos 24: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->script_content)) {
-    std::cerr << "Could not init job::script_content at pos 24: ";
+    std::cerr << "Could not init job::script_content at pos 25: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_resource(buf, index, this->request)) {
-    std::cerr << "Could not init job::request at pos 25: ";
+    std::cerr << "Could not init job::request at pos 26: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_resource(buf, index, this->resources)) {
-    std::cerr << "Could not init job::resources at pos 26: ";
+    std::cerr << "Could not init job::resources at pos 27: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->container)) {
-    std::cerr << "Could not init job::container at pos 27: ";
+    std::cerr << "Could not init job::container at pos 28: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->relocatable)) {
-    std::cerr << "Could not init job::relocatable at pos 28: ";
+    std::cerr << "Could not init job::relocatable at pos 29: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->exitcode)) {
-    std::cerr << "Could not init job::exitcode at pos 29: ";
+    std::cerr << "Could not init job::exitcode at pos 30: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->signal)) {
-    std::cerr << "Could not init job::signal at pos 30: ";
+    std::cerr << "Could not init job::signal at pos 31: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->priority)) {
-    std::cerr << "Could not init job::priority at pos 31: ";
+    std::cerr << "Could not init job::priority at pos 32: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->comment)) {
-    std::cerr << "Could not init job::comment at pos 32: ";
+    std::cerr << "Could not init job::comment at pos 33: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
-    std::cerr << "Could not init job::revision at pos 33: ";
+    std::cerr << "Could not init job::revision at pos 34: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
@@ -278,6 +285,10 @@ void SwmJob::set_nodes(const std::vector<std::string> &new_val) {
 
 void SwmJob::set_state(const std::string &new_val) {
   state = new_val;
+}
+
+void SwmJob::set_state_details(const std::string &new_val) {
+  state_details = new_val;
 }
 
 void SwmJob::set_start_time(const std::string &new_val) {
@@ -406,6 +417,10 @@ std::vector<std::string> SwmJob::get_nodes() const {
 
 std::string SwmJob::get_state() const {
   return state;
+}
+
+std::string SwmJob::get_state_details() const {
+  return state_details;
 }
 
 std::string SwmJob::get_start_time() const {
@@ -580,6 +595,7 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
     std::cerr << "]" << separator;
   }
   std::cerr << prefix << state << separator;
+  std::cerr << prefix << state_details << separator;
   std::cerr << prefix << start_time << separator;
   std::cerr << prefix << submit_time << separator;
   std::cerr << prefix << end_time << separator;
