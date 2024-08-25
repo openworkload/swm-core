@@ -11,7 +11,7 @@ permissions:
 
 env:
   PYTHON_VERSION: 3.10
-  PYTHON_VERSION_FULL: 3.10.0
+  PYTHON_VERSION_FULL: 3.10.14
 
 jobs:
 
@@ -47,6 +47,7 @@ jobs:
       -
         name: Download Python sources
         run: |
+          # We cannot use actions/setup-python, because it cannot install new python in erlang:24.2.2 image
           wget https://www.python.org/ftp/python/${{env.PYTHON_VERSION_FULL}}/Python-${{env.PYTHON_VERSION_FULL}}.tgz
           tar -xf Python-${{env.PYTHON_VERSION_FULL}}.tgz
       -
