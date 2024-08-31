@@ -30,7 +30,7 @@ DOCKER_SOCKET=/var/run/docker.sock
 X11_SOCKET=/tmp/.X11-unix
 HOST_SPOOL=${HOME}/.swm/spool
 
-RUNNING=$(${DOCKER} inspect -f '{{.State.Running}}' ${CONTAINER_NAME})
+RUNNING=$(${DOCKER} inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null)
 INSPECTATION_CODE=$?
 
 if [ $MOUNT_SCRIPTS ]; then
@@ -60,12 +60,10 @@ if [ $INTERACTIVE ]; then
             --net bridge\
             -p $SWM_HTTP_PORT:$SWM_HTTP_PORT\
             -p $SWM_API_PORT:$SWM_API_PORT\
-            ${IMAGE_NAME}\
-            /bin/bash
+            ${IMAGE_NAME}
     elif [[ ${RUNNING} = "false" ]]; then
         ${DOCKER} start ${CONTAINER_NAME}
     fi
-    ${DOCKER} exec -ti ${CONTAINER_NAME} /bin/bash
 fi
 
 exit 0

@@ -87,7 +87,9 @@ def main() -> None:
                     time.sleep(5)
 
                 if process.returncode == 0:
-                    print("\nSetup has completed successfully. Please ensure Azure is configured, see HOWTO/AZURE.md. After then please restart the container to start Sky Port with newly initialized settings.")
+                    print("Setup has completed successfully. Please ensure Azure is configured, "
+                          "see HOWTO/AZURE.md. After then please restart the container to start "
+                          "Sky Port with newly initialized settings.")
                 else:
                     print("\nSetup has failed, see setup.log for details.")
                     sys.exit(1)

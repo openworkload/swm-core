@@ -54,4 +54,4 @@ EXPOSE 8443
 
 VOLUME /opt/swm
 
-CMD ["python /opt/swm/current/scripts/skyport-container-prompt.py"]
+CMD ["/opt/swm/current/scripts/skyport-container-prompt.py"]
