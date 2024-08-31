@@ -2,8 +2,8 @@
 %%! -smp enable
 
 %% To run:
-%%  export PATH=/opt/swm/0.2.0/erts-12.2/bin:$PATH
-%%  export SWM_LIB=/opt/swm/current/lib/swm-0.2.0+build.191.ref0586b0d/ebin
+%%  export PATH=/opt/swm/current/erts-12.2/bin:$PATH
+%%  export SWM_LIB=/opt/swm/current/lib/swm-0.3.0+build.191.ref0586b0d/ebin
 %%  ./ping.erl localhost 1001
 
 main([Hostname, Port]) ->

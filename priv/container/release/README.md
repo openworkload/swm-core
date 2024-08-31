@@ -5,7 +5,7 @@ Build container image with docker
 ---------------------------------
 
 ```console
-scripts/build-prod-container.sh -v 0.2.0
+scripts/build-prod-container.sh -v 0.3.0
 ```
 
 Pull container image with dockerhub

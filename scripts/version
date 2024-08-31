@@ -4,7 +4,5 @@ git status 1>/dev/null 2>/dev/null
 if [ $? == "0" ]; then
   VERSION=$(git describe --tags --abbrev=0 --always)
   VERSION=${VERSION:1:${#VERSION}}
-else
-  VERSION=0.2.0 #TODO: update automatically
 fi
 echo -n ${VERSION}

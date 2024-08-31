@@ -4,11 +4,13 @@
 # if the container already exists, can start a new interactive bash session
 # in the container.
 
+set -x
+
 function print_help() {
   echo "Usage: $0 [-i] [-s]"
-  echo "  1) To run production swm-core container in background:"
+  echo "  1) To run production skyport container in background:"
   echo "    $0"
-  echo "  2) To start swm-core container and run bash in it interactively and mount scrips directory:"
+  echo "  2) To start skyport container and run bash in it interactively and mount scrips directory:"
   echo "    $0 -i -s"
   echo
 }
@@ -24,14 +26,13 @@ done
 
 SWM_API_PORT=10001
 SWM_HTTP_PORT=8443
-CONTAINER_NAME=swm-core
-IMAGE_NAME=swm-core:latest
+CONTAINER_NAME=skyport
+IMAGE_NAME=skyport:latest
 DOCKER=docker
 DOCKER_SOCKET=/var/run/docker.sock
 X11_SOCKET=/tmp/.X11-unix
-HOST_SPOOL=${HOME}/.swm-spool
+HOST_SPOOL=${HOME}/.swm/spool
 
-HOST_IP=$(ip addr list ${BRIDGE} |grep "inet " |cut -d' ' -f6|cut -d/ -f1)
 RUNNING=$(${DOCKER} inspect -f '{{.State.Running}}' ${CONTAINER_NAME})
 INSPECTATION_CODE=$?
 
@@ -44,7 +45,7 @@ if [ ! -e ${HOST_SPOOL} ]; then
 fi
 
 if [ $INTERACTIVE ]; then
-    if [ "$INSPECTATION_CODE" = "1" ]; then
+    if [ "$INSPECTATION_CODE" != "0" ]; then
         ${DOCKER} run\
             ${EXTRA_MOUNTS}\
             -v /opt/swm/current\
@@ -56,7 +57,6 @@ if [ $INTERACTIVE ]; then
             --name ${CONTAINER_NAME}\
             --hostname $(hostname)\
             --domainname=openworkload.org\
-            --add-host host:${HOST_IP}\
             --workdir ${PWD}\
             --tty\
             --interactive\

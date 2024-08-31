@@ -6,8 +6,10 @@
 
 COG = cog.py
 REBAR = ./rebar3
-BUILD_CONTAINER = scripts/build-dev-container.sh
-START_CONTAINER = scripts/start-dev-container.sh
+BUILD_DEBUG_CONTAINER = scripts/build-debug-container.sh
+START_DEBUG_CONTAINER = scripts/start-debug-container.sh -i
+BUILD_RELEASE_CONTAINER = scripts/build-release-container.sh
+START_RELEASE_CONTAINER = scripts/start-release-container.sh -i
 
 VERSION = $(shell scripts/version)
 
@@ -31,11 +33,17 @@ all: gen compile porter format
 help:		## Show this help
 			@perl -e '$(HELP_FUN)' $(MAKEFILE_LIST)
 
-cb:			##@CONTAINERS build container image
-			$(BUILD_CONTAINER)
+build-debug-container:			##@CONTAINERS build development container image
+			$(BUILD_DEBUG_CONTAINER)
+
+build-release-container:			##@CONTAINERS build release container image
+			$(BUILD_RELEASE_CONTAINER)
+
+start-release-container:			##@CONTAINERS start release container
+			$(START_RELEASE_CONTAINER)
 
 cr: 		##@CONTAINERS run or attach to running container
-			$(START_CONTAINER)
+			$(START_DEBUG_CONTAINER)
 
 gen:		##@SKYPORT Generate entity files
 			$(COG) -U -z -d -e -c -o ./src/lib/wm_entity.hrl ./src/lib/wm_entity.hrl.cog
@@ -61,7 +69,7 @@ release:	##@SKYPORT Build release tar.gz package
 			sed -i'' 's/SWM_VERSION=.*/SWM_VERSION=$(VERSION)/' _build/default/rel/swm/scripts/swm.env
 			mkdir -p _build/packages
 			rm -f _build/packages/swm-$(VERSION).tar.gz
-			tar --transform 's,^\.,$(VERSION),' -czf _build/packages/swm-$(VERSION).tar.gz _build/default/rel/swm/*
+			tar --transform 's,^\.,$(VERSION),' -czf _build/packages/swm-$(VERSION).tar.gz -C _build/default/rel/swm .
 
 run-ghead: gen compile porter	##@RUN Run grid head node (1st hier level)
 			scripts/run-in-shell.sh -g
