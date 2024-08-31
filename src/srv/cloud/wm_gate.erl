@@ -339,12 +339,16 @@ hide_credentials_from_headers(Headers, Creds) ->
 
 -spec search_in_credentials(binary(), #remote{}) -> {ok, binary()} | {error, not_found}.
 search_in_credentials(BinToFind, Remote) ->
-    {ok, Creds} = get_credentials(Remote),
-    case lists:keyfind(BinToFind, 1, Creds) of
-        {BinToFind, Value} ->
-            {ok, Value};
-        false ->
-            {error, not_found}
+    case get_credentials(Remote) of
+        {ok, Creds} ->
+            case lists:keyfind(BinToFind, 1, Creds) of
+                {BinToFind, Value} ->
+                    {ok, Value};
+                false ->
+                    {error, not_found}
+            end;
+        Other ->
+            Other
     end.
 
 -spec get_runtime_parameters_string(#remote{}) -> str.
