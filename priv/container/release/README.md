@@ -18,13 +18,13 @@ TODO
 Setup spool
 -----------
 
-When a fresh container image is pulled or built then it can be started with spool directory attached from the host. If spool is not initialized then setup-skyport.linux script must be executed inside
+When a fresh container image is pulled or built then it can be started with spool directory attached from the host. If spool is not initialized then setup-skyport.sh script must be executed inside
 the container while spool directory is mounted there. This script initializes swm configuration and creates certificates. This script can be executed with the following commands (run on host).
 
 ```console
 SWM_SPOOL_ON_HOST=$HOME/.swm/spool
 mkdir -p ${SWM_SPOOL_ON_HOST}
-COMMAND="/opt/swm/current/scripts/setup-skyport.linux -u $(id -u) -g $(id -g) -n $(id -u -n)"
+COMMAND="/opt/swm/current/scripts/setup-skyport.sh -u $(id -u) -g $(id -g) -n $(id -u -n)"
 docker run --rm -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=openworkload.org -ti swm-core:latest ${COMMAND}
 ```
 

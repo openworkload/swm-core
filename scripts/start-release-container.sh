@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 #
-# This script is used ti start a new docker container with swm inside or,
-# if the container already exists, can start a new interactive bash session
-# in the container.
+# This script is used for running a new container with swm-core inside.
 
-set -x
 
 function print_help() {
   echo "Usage: $0 [-i] [-s]"

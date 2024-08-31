@@ -126,5 +126,5 @@ upgrade_deps:
 
 worker: release
 	export SWM_VERSION=$(VERSION)
-	scripts/setup.linux -a -t
+	scripts/setup-swm-core.py -a -t
 	cp _build/packages/swm-$(VERSION)-worker.tar.gz ../openstack-box/swm-worker.tar.gz

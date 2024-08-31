@@ -8,7 +8,7 @@ SPOOL=/opt/swm/spool
 
 if [ -z "$(ls -A "$SPOOL")" ]; then
     echo "The directory '$SPOOL' is empty => initiate setup and exit"
-    /opt/swm/current/scripts/setup-skyport.linux
+    /opt/swm/current/scripts/setup-skyport.sh
     exit 0
 fi
 

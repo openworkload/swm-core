@@ -41,7 +41,7 @@ az acr create --resource-group contImagesRG --name swmregistry --sku Basic
 ```bash
 az acr token create --name swmpull --registry swmregistry --scope-map _repositories_pull
 ```
-Save the token name and returned password in ACR_TONE_NAME and ACR_TOKEN_PASSWORD parameters of your ~/.swm/azure.env
+Save the token name and returned password in ACR_TONE_NAME and ACR_TOKEN_PASSWORD parameters of your ~/.swm/credentials.json
 
 ### Upload container image to the Azure registry
 ```bash

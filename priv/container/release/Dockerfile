@@ -1,6 +1,6 @@
 ############################################################################
 # This Dockerfile can be used to prepare a Docker image that runs swm-core #
-# with cloud gate in a release mode a production machine.                  #
+# with cloud gate in a release mode on a production machine.               #
 ############################################################################
 
 FROM ubuntu:22.04
@@ -54,4 +54,4 @@ EXPOSE 8443
 
 VOLUME /opt/swm
 
-CMD ["/usr/bin/supervisord"]
+CMD ["python /opt/swm/current/scripts/skyport-container-prompt.py"]

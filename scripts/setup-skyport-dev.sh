@@ -3,7 +3,7 @@
 ME=$( readlink -f "$0" )
 ROOT_DIR=$( dirname "$( dirname "$ME" )" )
 
-CONFIG_BASE=${ROOT_DIR}/priv/setup/setup-config.linux
+CONFIG_BASE=${ROOT_DIR}/priv/setup/setup.config
 
 mkdir -p /opt/swm/spool
 
@@ -13,9 +13,9 @@ export SWM_ROOT=$(pwd)
 export SWM_VERSION_DIR=${SWM_ROOT}
 
 echo
-echo "=============== SETUP CLUSTER HEAD ================"
+echo "=============== SETUP CLUSTER HEAD NODE ================"
 export SWM_API_PORT=10011
-${ROOT_DIR}/scripts/setup.linux -x -t -v $SWM_VERSION -p $SWM_ROOT -s $SWM_SPOOL -c $CONFIG_BASE -d cluster -u $USER
+${ROOT_DIR}/scripts/setup-swm-core.py -x -t -v $SWM_VERSION -p $SWM_ROOT -s $SWM_SPOOL -c $CONFIG_BASE -d cluster -u $USER
 EXIT_CODE=$?
 if [ "$EXIT_CODE" != "0" ]; then
   echo "Cluster setup command failed with code $EXIT_CODE"

@@ -29,7 +29,7 @@ $ tar -xvzf /opt/swm/swm-$SWM_VERSION.tar.gz -C /opt/swm
 ```
 2. Run setup procedure:
 ```bash   
-$ /opt/swm/$SWM_VERSION/scripts/setup.linux -v $SWM_VERSION -p /opt/swm -s /opt/swm/spool -c  /opt/swm/$SWM_VERSION/priv/setup/setup-config.linux -d grid
+$ /opt/swm/$SWM_VERSION/scripts/setup-swm-core.py -v $SWM_VERSION -p /opt/swm -s /opt/swm/spool -c  /opt/swm/$SWM_VERSION/priv/setup/setup.config -d grid
 ```
 
 To install development environment in Linux

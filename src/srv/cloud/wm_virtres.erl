@@ -248,7 +248,7 @@ creating(cast, ssh_swm_connected, #mstate{job_id = JobId, ssh_tunnel_client_pid 
                    forwarded_ports = start_port_forwarding(SshClientPid, JobId)}};
 creating(cast, {error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     wm_virtres_handler:update_job([{state_details, "Partition has not been created yet"}], JobId),
-    ?LOG_DEBUG("Partition has not been created yet for job ~p", [JobId]),
+    ?LOG_DEBUG("Partition has not been created yet for job ~p (~p)", [JobId, Error]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     {next_state, creating, MState#mstate{part_check_timer = Timer}};
 creating(cast, {Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->

@@ -78,7 +78,7 @@ jobs:
         name: Generate keys
         run: |
           export USER=test
-          ./scripts/setup-skyport-dev.linux
+          ./scripts/setup-skyport-dev.sh
       -
         name: Run ct tests
         run: |

@@ -18,6 +18,7 @@
 -define(CONNECTION_AWAIT_TIMEOUT, timer:seconds(5)).
 -define(GATE_RESPONSE_TIMEOUT, 5 * 60 * 1000).
 -define(AZURE_CONT_HEADERS, [<<"containerregistryuser">>, <<"containerregistrypass">>]).
+-define(USER_SSH_CERT_HEADER, <<"usersshcert">>).
 
 %% ============================================================================
 %% Module API
@@ -336,23 +337,41 @@ hide_credentials_from_headers(Headers, Creds) ->
               end,
               Headers).
 
+-spec search_in_credentials(binary(), #remote{}) -> {ok, binary()} | {error, not_found}.
+search_in_credentials(BinToFind, Remote) ->
+    {ok, Creds} = get_credentials(Remote),
+    case lists:keyfind(BinToFind, 1, Creds) of
+        {BinToFind, Value} ->
+            {ok, Value};
+        false ->
+            {error, not_found}
+    end.
+
 -spec get_runtime_parameters_string(#remote{}) -> str.
-get_runtime_parameters_string(#remote{runtime = RuntimeMap}) ->
-    lists:flatten(
-        maps:fold(fun (Key, Value, "") ->
-                          io_lib:format("~s=~s", [Key, Value]);
-                      (Key, Value, Acc) ->
-                          io_lib:format("~s,~s=~s", [Acc, Key, Value])
-                  end,
-                  "",
-                  RuntimeMap)).
+get_runtime_parameters_string(#remote{runtime = RuntimeMap} = Remote) ->
+    StrFromRuntime =
+        lists:flatten(
+            maps:fold(fun (Key, Value, "") ->
+                              io_lib:format("~s=~s", [Key, Value]);
+                          (Key, Value, Acc) ->
+                              io_lib:format("~s,~s=~s", [Acc, Key, Value])
+                      end,
+                      "",
+                      RuntimeMap)),
+    case search_in_credentials(<<"usersshcert">>, Remote) of
+        {ok, Value} ->
+            io_lib:format("~s,ssh_pub_key=~s", [StrFromRuntime, Value]);
+        {error, not_found} ->
+            ?LOG_ERROR("User ssh certificate not found in credentials"),
+            StrFromRuntime
+    end.
 
 -spec do_partition_delete(#remote{}, [{binary(), binary()}], string(), #mstate{}) -> {ok, string()} | {error, any()}.
 do_partition_delete(Remote, Creds, PartExtId, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS, []),
+            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS ++ [?USER_SSH_CERT_HEADER], []),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Partition deletion HTTP headers: ~p", [HeadersWithoutCredentials]),
             StreamRef =
@@ -376,7 +395,7 @@ fetch_images(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
             Extra = [{<<"extra">>, <<"location=eastus;publisher=Canonical;offer=0001-com-ubuntu-server-jammy">>}],
-            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS, Extra),
+            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS ++ [?USER_SSH_CERT_HEADER], Extra),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Fetch images HTTP headers: ~p", [HeadersWithoutCredentials]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("images", Remote), Headers, Body),
@@ -400,7 +419,7 @@ fetch_image(Remote, Creds, ImageID, #mstate{spool = Spool, pem_data = PemData}) 
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS, []),
+            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS ++ [?USER_SSH_CERT_HEADER], []),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Fetch image HTTP headers: ~p", [HeadersWithoutCredentials]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("images/" ++ ImageID, Remote), Headers, Body),
@@ -424,7 +443,7 @@ fetch_flavors(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
             Extra = [{<<"extra">>, <<"location=eastus">>}],
-            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS, Extra),
+            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS ++ [?USER_SSH_CERT_HEADER], Extra),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Fetch flavors HTTP headers: ~p", [HeadersWithoutCredentials]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("flavors", Remote), Headers, Body),
@@ -446,7 +465,7 @@ fetch_partitions(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS, []),
+            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS ++ [?USER_SSH_CERT_HEADER], []),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Fetch partitions HTTP headers: ~p", [HeadersWithoutCredentials]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("partitions", Remote), Headers, Body),
@@ -469,7 +488,7 @@ fetch_partition(Remote, Creds, PartExtIdOrName, #mstate{spool = Spool, pem_data 
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS, []),
+            Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS ++ [?USER_SSH_CERT_HEADER], []),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Fetch partition HTTP headers: ~p", [HeadersWithoutCredentials]),
             StreamRef =

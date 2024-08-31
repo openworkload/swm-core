@@ -40,16 +40,16 @@ source ${ROOT_DIR}/scripts/swm.env
 
 tar zfx _build/default/rel/swm/swm-${SWM_VERSION}.tar.gz -C $SWM_ROOT
 
-SETUP_CONFIG=${SWM_ROOT}/${SWM_VERSION}/priv/setup/setup-config.linux
+SETUP_CONFIG=${SWM_ROOT}/${SWM_VERSION}/priv/setup/setup.config
 echo "Setup config: $SETUP_CONFIG"
 
 
 
 echo "=============== INSTALL GRID MANAGEMENT NODE =============="
-${SWM_ROOT}/${SWM_VERSION}/scripts/setup.linux -v $SWM_VERSION -s $SWM_SPOOL -c ${SETUP_CONFIG} -d grid
+${SWM_ROOT}/${SWM_VERSION}/scripts/setup-swm-core.py -v $SWM_VERSION -s $SWM_SPOOL -c ${SETUP_CONFIG} -d grid
 echo
 echo "=============== INSTALL CLUSTER MANAGEMENT NODE =============="
-${SWM_ROOT}/${SWM_VERSION}/scripts/setup.linux -v $SWM_VERSION -s $SWM_SPOOL -c ${SETUP_CONFIG} -d cluster
+${SWM_ROOT}/${SWM_VERSION}/scripts/setup-swm-core.py -v $SWM_VERSION -s $SWM_SPOOL -c ${SETUP_CONFIG} -d cluster
 
 
 function wait_swm() {
