@@ -36,13 +36,13 @@ if [ "$?" = "1" ]; then
     --tty\
     --interactive\
     --net host\
+    ${IMAGE_NAME}\
+    runuser -u ${USER} /bin/bash
     #-p 10000:10000\
     #-p 10011:10011\
     #-p 8443:8443\
     #-p $JUPUTER_HUB_PORT:$JUPUTER_HUB_PORT\
     #-p $JUPUTER_HUB_API_PORT:$JUPUTER_HUB_API_PORT\
-    ${IMAGE_NAME}\
-    runuser -u ${USER} /bin/bash
 else
   if [ ${RUNNING} = "false" ]; then
     ${DOCKER} start ${CONTAINER_NAME}

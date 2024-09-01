@@ -1,6 +1,6 @@
 #/bin/bash
 
-set -x
+CLOUD_GATE_VERSION=0.1.4
 
 ME=$( readlink -f "$0" )
 ROOT_DIR=$( dirname "$( dirname "$ME" )" )
@@ -18,7 +18,7 @@ DOCKER=docker
 IMAGE_NAME=skyport
 TAG=latest
 
-GATE_PACKAGE_NAME=swmcloudgate-0.1.2-py3-none-any.whl
+GATE_PACKAGE_NAME=swmcloudgate-${CLOUD_GATE_VERSION}-py3-none-any.whl
 GATE_PACKAGE_PATH_OLD=$ROOT_DIR/../swm-cloud-gate/dist/$GATE_PACKAGE_NAME
 GATE_PACKAGE_PATH_NEW=_build/packages/$GATE_PACKAGE_NAME
 cp -f $GATE_PACKAGE_PATH_OLD $GATE_PACKAGE_PATH_NEW
@@ -26,9 +26,10 @@ cp -f $GATE_PACKAGE_PATH_OLD $GATE_PACKAGE_PATH_NEW
 ${DOCKER} build --tag ${IMAGE_NAME}:${SWM_VERSION} \
                 --build-arg SWM_VERSION=${SWM_VERSION} \
                 --build-arg SWM_GATE_PACKAGE=$GATE_PACKAGE_PATH_NEW \
+                --build-arg CACHEBUST=$(date +%s) \
                 --file ${DOCKERFILE} .
 ${DOCKER} tag ${IMAGE_NAME}:${SWM_VERSION} ${IMAGE_NAME}:${TAG}
 
 echo "------------------------------------"
-echo "Created image:"
+echo "Sky Port image in docker:"
 ${DOCKER} images ${IMAGE_NAME}

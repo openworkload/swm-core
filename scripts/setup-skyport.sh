@@ -28,55 +28,34 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-# This script iitializes swm-core configuration.
+# This script initializes swm-core configuration.
 
 
-function print_help() {
-  echo "Usage: $0 [-u UID -g GID -n USERNAME]"
+usage() {
+    echo "Usage: $0 [-u] <username>"
+    echo "  -u: specify the username (mandatory)"
+    exit 1
 }
 
-while getopts u:g:n:h flag
-do
-    case "${flag}" in
-        h) print_help;;
-        u) ARG_UID=${OPTARG};;
-        g) ARG_GID=${OPTARG};;
-        n) ARG_USER=${OPTARG};;
+while getopts ":u:" opt; do
+    case $opt in
+      u)
+          USERNAME=$OPTARG
+          ;;
+      \?)
+          echo "Error: Invalid option -$OPTARG"
+          usage
+          ;;
+      :)
+          echo "Error: Option -$OPTARG requires an argument"
+          usage
+          ;;
     esac
 done
 
-if [ $ARG_UID ]; then
-    if [ -z $ARG_GID ]; then
-        echo "Either all -u, -g and -n must be specified or neither of them."
-        exit 1
-    elif [ -z $ARG_USER ]; then
-        echo "Either all -u, -g and -n must be specified or neither of them."
-        exit 1
-    fi
-else
-    ARG_UID=0
-fi
-if [ $ARG_GID ]; then
-    if [ -z $ARG_UID ]; then
-        echo "Either all -u, -g and -n must be specified or neither of them."
-        exit 1
-    elif [ -z $ARG_USER ]; then
-        echo "Either all -u, -g and -n must be specified or neither of them."
-        exit 1
-    fi
-else
-    ARG_GID=0
-fi
-if [ $ARG_USER ]; then
-    if [ -z $ARG_UID ]; then
-        echo "Either all -u, -g and -n must be specified or neither of them."
-        exit 1
-    elif [ -z $ARG_GID ]; then
-        echo "Either all -u, -g and -n must be specified or neither of them."
-        exit 1
-    fi
-else
-    ARG_USER=root
+if [[ -z $USERNAME ]]; then
+    echo "Error: Username is required"
+    usage
 fi
 
 export SWM_ROOT=/opt/swm
@@ -85,28 +64,29 @@ export SWM_VERSION_DIR=/opt/swm/current
 source ${SWM_VERSION_DIR}/scripts/swm.env
 export SWM_API_PORT=10001
 
-mkdir -p /opt/swm/spool
-cd /opt/swm/current
-
-echo "Add group docker/${ARG_GID} and user ${ARG_USER}/${ARG_UID}:${ARG_GID}"
-addgroup --gid ${ARG_GID} docker
-if ! `id ${ARG_USER} 2>&1 > /dev/null`; then
-    adduser --disabled-password --shell /bin/bash --uid ${ARG_UID} --gid ${ARG_GID} --quiet --gecos "" ${ARG_USER}
-fi
-chown -R ${ARG_UID}:${ARG_GID} /opt/swm/spool
-chown -R ${ARG_UID}:${ARG_GID} ${SWM_VERSION_DIR}/log
-chown -R ${ARG_UID}:${ARG_GID} ${SWM_VERSION_DIR}/releases
+cd $SWM_VERSION_DIR
 
 CONFIG_BASE=${SWM_VERSION_DIR}/priv/setup/setup.config
-${SWM_VERSION_DIR}/scripts/setup-swm-core.py -n -x -v $SWM_VERSION -p $SWM_ROOT -s $SWM_SPOOL -c $CONFIG_BASE -d cluster -u $ARG_USER
+${SWM_VERSION_DIR}/scripts/setup-swm-core.py -n\
+                                             -x\
+                                             -v $SWM_VERSION\
+                                             -p $SWM_ROOT\
+                                             -s $SWM_SPOOL\
+                                             -c $CONFIG_BASE\
+                                             -u $USERNAME\
+                                             -d cluster
 EXIT_CODE=$?
 if [ "$EXIT_CODE" != "0" ]; then
-  echo "Cluster setup command failed with code $EXIT_CODE"
-  exit $EXIT_CODE
+    echo "Sky Port setup failed with code $EXIT_CODE"
+    exit $EXIT_CODE
 fi
 
+chown -R ${USERNAME}:${USERNAME} /opt/swm/spool
+chown -R ${USERNAME}:${USERNAME} ${SWM_VERSION_DIR}/log
+chown -R ${USERNAME}:${USERNAME} ${SWM_VERSION_DIR}/releases
+
 echo
-echo "Sky Port setup has finished"
+echo "Sky Port setup finished"
 echo
 
 exit 0

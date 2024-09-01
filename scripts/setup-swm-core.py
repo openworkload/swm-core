@@ -145,13 +145,6 @@ def make_dirs(dir):
             sys.exit(1)
 
 
-def backup(opts):
-    dir = opts["SWM_SPOOL"]
-    if os.path.isdir(dir):
-        LOG.info("Backuping " + dir)
-        shutil.move(dir, dir + datetime.datetime.now().isoformat())
-
-
 def ensure_dirs(opts):
     make_dirs(opts["SWM_SPOOL"])
 
@@ -655,7 +648,6 @@ def main():
     else:
         get_from_user(opts)
         stop_vnode(opts, exit_on_fail=False)
-        #backup(opts)
         ensure_dirs(opts)
         generate_configs(opts)
         generate_certificates(opts)

@@ -35,7 +35,10 @@ RUN cd /tmp && \
     ln -s /usr/local/bin/python$PYTHON_VERSION /usr/local/bin/python && \
     ln -s /usr/local/bin/pip$PYTHON_VERSION /usr/local/bin/pip
 
-RUN mkdir -p /opt/swm/spool
+# Cache invalidation threshold
+ARG CACHEBUST=1
+
+RUN mkdir -p /opt/swm
 
 COPY $SWM_GATE_PACKAGE /opt/swm/
 RUN pip install /opt/swm/$(basename "$SWM_GATE_PACKAGE")
