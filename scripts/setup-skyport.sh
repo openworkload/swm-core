@@ -60,10 +60,10 @@ fi
 
 export SWM_ROOT=/opt/swm
 export SWM_VERSION_DIR=/opt/swm/current
-
-source ${SWM_VERSION_DIR}/scripts/swm.env
+export SWM_SPOOL=/home/$USERNAME/.swm/spool
 export SWM_API_PORT=10001
 
+source ${SWM_VERSION_DIR}/scripts/swm.env
 cd $SWM_VERSION_DIR
 
 CONFIG_BASE=${SWM_VERSION_DIR}/priv/setup/setup.config
@@ -81,9 +81,10 @@ if [ "$EXIT_CODE" != "0" ]; then
     exit $EXIT_CODE
 fi
 
-chown -R ${USERNAME}:${USERNAME} /opt/swm/spool
-chown -R ${USERNAME}:${USERNAME} ${SWM_VERSION_DIR}/log
-chown -R ${USERNAME}:${USERNAME} ${SWM_VERSION_DIR}/releases
+echo "Tune permissions"
+chown -v -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.swm/spool
+chown -v -R ${USERNAME}:${USERNAME} ${SWM_VERSION_DIR}/log
+chown -v -R ${USERNAME}:${USERNAME} ${SWM_VERSION_DIR}/releases
 
 echo
 echo "Sky Port setup finished"

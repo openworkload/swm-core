@@ -85,8 +85,7 @@ upload_swm_worker(RemoteNodeId, SshUserDir) ->
     {ok, MyNode} = wm_self:get_node(),
     {ToAddr, _} = wm_conf:get_relative_address(ToNode, MyNode),
     RemoteFile = "/opt/swm/swm-worker.tar.gz",
-    Version = wm_utils:get_env("SWM_VERSION"),
-    DefaultWorkerPath = io_lib:format("/opt/swm/~p/packages/swm-~p-worker.tar.gz", [Version, Version]),
+    DefaultWorkerPath = "/opt/swm/swm-worker.tar.gz",
     DefaultWorkerPathFromEnv = os:getenv("SWM_WORKER_LOCAL_PATH", DefaultWorkerPath),
     Port = wm_conf:g(ssh_prov_listen_port, {?DEFAULT_SSH_PROVISION_PORT, integer}),
     wm_file_transfer:upload_file_sftp_sync(ToAddr, Port, DefaultWorkerPathFromEnv, RemoteFile, SshUserDir).
@@ -197,7 +196,8 @@ get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
                             EntityName;
                         {error, not_found} ->
                             JobId = wm_entity:get(id, Job),
-                            throw(io_lib:format("Entity ~p ~p (job ~p) is unknown", [Tab, EntityName, JobId]))
+                            throw(lists:flatten(
+                                      io_lib:format("Entity ~p ~p (job ~p) is unknown", [Tab, EntityName, JobId])))
                     end
             end
     end.

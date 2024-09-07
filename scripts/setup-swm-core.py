@@ -42,6 +42,7 @@ import shutil
 import socket
 import time
 import uuid
+import pwd
 
 from subprocess import Popen
 from subprocess import PIPE
@@ -202,6 +203,7 @@ def get_div_arg(opts):
         div_arg = "-c"
     return div_arg
 
+
 def spawn_vnode(opts):
     if opts["DIVISION"] not in ("grid", "cluster"):
         return
@@ -336,10 +338,18 @@ def create_chain_cert(opts):
                 outfile.write(infile.read())
 
 
+def get_user_home(username: str) -> str:
+    try:
+        return pwd.getpwnam(username).pw_dir
+    except KeyError:
+        LOG.error(f"User '{username}' not found")
+        sys.exit(1)
+
+
 def install_admin_cert(opts):
-    home = os.environ["HOME"]
+    home = get_user_home(opts["SWM_USER"])
     if not home:
-        LOG.error("$HOME is not defined")
+        LOG.error("User home is unknown is not defined")
         sys.exit(1)
     src_dir = os.path.join(opts["SWM_SPOOL"], "secure", "users", opts["SWM_ADMIN_USER"])
     dst_dir = os.path.join(home, ".swm")
@@ -601,8 +611,12 @@ def create_archive(opts):
         files.append(os.path.join(root_dir, opts["SWM_VERSION"]))
         files.extend(key_dirs)
 
-    archive = f"{root_dir}/{PRODUCT}-{swm_version}-worker.tar.gz"
-    args = ["--transform", "'s,^.*\/swm/,,'", "-czf", archive, " ".join(files)]
+    archive = f"{root_dir}/{PRODUCT}-worker.tar.gz"
+    transform_args = [
+       "--transform", "'s,^.*\/swm/,,'",
+       "--transform", "'s,^home/" + opts["SWM_ADMIN_USER"] + "/.swm,,'",
+    ]
+    args = transform_args + ["-czf", archive, " ".join(files)]
 
     run("tar", args, os.environ)
     LOG.info(f"Final worker SWM archive: {archive}")

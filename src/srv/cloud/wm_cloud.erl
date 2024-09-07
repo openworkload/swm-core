@@ -236,10 +236,17 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
                                     wm_entity:set({default_flavor_id, DefaultId}, Remote));
                         _ ->
                             ok
-                    end
+                    end,
+                    wm_topology:reload()
             end;
         {error, not_found} ->
-            [ok = wm_conf:delete(Node) || Node <- TemplateNodes]
+            case length(TemplateNodes) of
+                0 ->
+                    ok;
+                _ ->
+                    [ok = wm_conf:delete(Node) || Node <- TemplateNodes],
+                    wm_topology:reload()
+            end
     end.
 
 -spec merge_partition_node_ids([node_id()], [#node{}]) -> [node_id()].

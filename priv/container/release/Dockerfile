@@ -15,12 +15,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get clean
 RUN apt-get update
 RUN apt-get update --fix-missing
-RUN apt-get install openssl -y
-RUN apt-get install openssh-client -y  # for host certificates
-RUN apt-get install python3 -y  # for setup
-RUN apt-get install rlwrap -y  # for swmctl during setup
-RUN apt-get install vim less mc -y  # for debug
-RUN apt-get install -y supervisor
+RUN apt-get install -y openssl openssh-client   # for certificate generation
+RUN apt-get install -y rlwrap                   # for swmctl during setup
+RUN apt-get install -y less mc                  # for debug
+RUN apt-get install -y supervisor               # run swm-core and swm-cloud-gate
 
 # Install python version we currently require:
 RUN apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev
@@ -38,6 +36,9 @@ RUN cd /tmp && \
 # Cache invalidation threshold
 ARG CACHEBUST=1
 
+ENV SKYPORT_USER="taras"
+ENV SKYPORT_USER_ID=1000
+
 RUN mkdir -p /opt/swm
 
 COPY $SWM_GATE_PACKAGE /opt/swm/
@@ -47,14 +48,18 @@ COPY _build/packages/swm-$SWM_VERSION.tar.gz /opt/swm/swm.tar.gz
 RUN tar zfx /opt/swm/swm.tar.gz -C /opt/swm/ && ln -s /opt/swm/$SWM_VERSION /opt/swm/current
 
 # To run multiple processes in one container:
-COPY priv/container/release/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY priv/container/release/supervisord.conf /etc/supervisor/supervisord.conf.template
 
-# swm-core to swm-core connection port:
+# parent swm-core -> chald swm-core connection port:
 EXPOSE 10001
 
-# HTTP client to swm-core port:
+# child swm-core -> parent swm-core connection port:
+EXPOSE 10002
+
+# HTTP client -> swm-core port:
 EXPOSE 8443
 
-VOLUME /opt/swm
+# HTTP client -> swm-gate port (for debug):
+EXPOSE 8444
 
 CMD ["/opt/swm/current/scripts/skyport-container-prompt.py"]

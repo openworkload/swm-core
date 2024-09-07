@@ -510,13 +510,28 @@ fetch_partition(Remote, Creds, PartExtIdOrName, #mstate{spool = Spool, pem_data 
             {error, Error}
     end.
 
+-spec get_credentials_file_path() -> {ok, string()} | {error, string()}.
+get_credentials_file_path() ->
+    case os:getenv("SWM_CLOUD_CREDENTIALS_FILE") of
+        false ->
+            case os:getenv("HOME") of
+                false ->
+                    {error, "User home is not set"};
+                HomeDir ->
+                    {ok, HomeDir ++ "/" ++ ?CREDENTIALS_FILE}
+            end;
+        CredentialsFile ->
+            {ok, CredentialsFile}
+    end.
+
 -spec read_credentials_from_file(#remote{}) -> {ok, [{binary(), binary()}]} | {error, string()}.
 read_credentials_from_file(Remote) ->
     case wm_entity:get(kind, Remote) of
         localhost ->
             {ok, []};
         RemoteKind ->
-            FilePath = os:getenv("HOME") ++ "/" ++ ?CREDENTIALS_FILE,
+            {ok, FilePath} = get_credentials_file_path(),
+            ?LOG_DEBUG("Use credentials file path: ~p", [FilePath]),
             AbsPath = filename:absname(FilePath),
             case wm_utils:read_file(AbsPath, [binary]) of
                 {ok, CredsBin} ->

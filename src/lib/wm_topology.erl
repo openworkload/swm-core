@@ -776,6 +776,8 @@ find_rh_path(FromNodeId, ToNodeId, RH) ->
 
 %% @doc Returns sub-tree of RH of a node (with children and neightbour nodes included if needed)
 -spec get_node_rh(node_id(), map(), boolean()) -> map().
+get_node_rh(_, undefined, _) ->
+    #{};
 get_node_rh(NodeId, RH, Scope) ->
     [RootKey] = maps:keys(RH), % RH should have only one root
     RootRH = maps:get(RootKey, RH),

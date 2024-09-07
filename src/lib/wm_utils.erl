@@ -98,9 +98,9 @@ uuid(v4) ->
 wake_up_after(MilliSeconds, WakeUpMessage) ->
     case wm_utils:get_calling_module_name() of
         noproc ->
-            ?LOG_DEBUG("Wake me after ~p with message ~p", [MilliSeconds, WakeUpMessage]);
+            ?LOG_DEBUG("Wake me after ~p with message: ~p", [MilliSeconds, WakeUpMessage]);
         Mod ->
-            ?LOG_DEBUG("Wake ~p after ~p with message ~p", [Mod, MilliSeconds, WakeUpMessage])
+            ?LOG_DEBUG("Wake ~p after ~p with message: ~p", [Mod, MilliSeconds, WakeUpMessage])
     end,
     S = case MilliSeconds of
             X when X < 0 ->
@@ -148,7 +148,6 @@ protected_call(Mod, Msg, Default) ->
 -spec protected_call(atom() | pid(), term()) -> term() | {error, any()}.
 protected_call(Mod, Msg) ->
     Ms = wm_conf:g(srv_local_call_timeout, {?CALL_TIMEOUT, integer}),
-    %?LOG_DEBUG("gen_server:call(~p, [...], ~p)", [Mod, Ms]),
     try
         gen_server:call(Mod, Msg, Ms)
     catch

@@ -32,12 +32,45 @@
 
 import os
 import sys
-import subprocess
 import time
+import pwd
+import shutil
+import subprocess
 
 
-def run_supervisord() -> None:
+def get_username() -> str:
+    if username := os.environ.get("SKYPORT_USER"):
+        print(f"Username from environment: {username}")
+        return username
+    while True:
+        if username := input("Enter container user name: ").strip().lower():
+            return username
+
+
+def render_supervisor_config(username: str) -> None:
+    template_path = "/etc/supervisor/supervisord.conf.template"
+    output_path = "/etc/supervisor/conf.d/supervisord.conf"
+
+    if os.path.exists(output_path):
+        print(f"Supervisord configuration file exists: {output_path}")
+        return
+
+    with open(template_path, "r") as template_file:
+        template_content = template_file.read()
+
+    rendered_content = template_content.replace("{{ USERNAME }}", username)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as output_file:
+        output_file.write(rendered_content)
+
+    print(f"Supervisord configuration file rendered: {output_path}")
+
+
+def run_supervisord(username: str = "") -> None:
+    if username:
+        render_supervisor_config(username)
     command = ["supervisord", "-c", "/etc/supervisor/supervisord.conf", "-l", "/tmp/supervisord.log"]
+    print(f"Start supervisord for Sky Port daemons:\n  {' '.join(command)}")
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -60,9 +93,12 @@ def run_supervisord() -> None:
         process.wait()
 
 
-def add_user() -> None:
-    username = input("Enter admin user name (will be VM admin): ").strip().lower()
-    uid = input("Enter admin user system UID: ").strip().lower()
+def add_system_user(username: str) -> None:
+    uid = os.environ.get("SKYPORT_USER_ID")
+    if uid:
+        print(f"UID from environment: {uid}")
+    else:
+        uid = input("Enter container user system id: ").strip().lower()
     try:
         subprocess.run([
                         "useradd",
@@ -75,11 +111,10 @@ def add_user() -> None:
     except subprocess.CalledProcessError as e:
         print(f"Error creating user '{username}': {e}")
         sys.exit(1)
-    return username
 
 
-def ensure_symlinks(username: str) -> None:
-    src_path = f"/home/{username}/.swm/spool"
+def ensure_symlinks(home: str) -> None:
+    src_path = f"{home}/.swm/spool"
     dst_path = "/opt/swm/spool"
     os.makedirs(src_path, exist_ok=True)
     os.makedirs(os.path.dirname(dst_path), exist_ok=True)
@@ -93,18 +128,16 @@ def ensure_symlinks(username: str) -> None:
 
 
 def setup_skyport(username: str) -> None:
-    #command = ["/opt/swm/current/scripts/setup-skyport.sh", "-u", username]
-    command = "/opt/swm/current/scripts/setup-skyport.sh -u" + username
+    command = f"/opt/swm/current/scripts/setup-skyport.sh -u {username}"
     log_file = "/var/log/setup-skyport.log"
 
-    #print(f"Running command: {' '.join(command)}")
     print(f"Running command: {command}")
-    with open(log_file, "w") as log:
+    with open(log_file, "w") as log_file:
         process = subprocess.Popen(
             command,
             shell=True,
-            stdout=log,
-            stderr=subprocess.STDOUT
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
         )
 
         while process.poll() is None:
@@ -113,40 +146,75 @@ def setup_skyport(username: str) -> None:
 
         if process.returncode == 0:
             print("\n\n"
-                  "Setup has completed successfully.\n"
-                  "Ensure Azure is configured, see HOWTO/AZURE.md.\n"
-                  "Then restart the container to start Sky Port.\n")
+                  "Sky Port has been initialized.\n"
+                  "Please ensure now that Azure is configured, see HOWTO/AZURE.md.\n"
+                  "The container will be stopped now. Start again when Azure is ready.\n"
+                  )
         else:
-            print(f"Setup has failed with exit code {process.returncode},\n"
-                  "see /var/log/setup-skyport.log for details.")
+            print(f"Setup has failed with exit code {process.returncode}.\n"
+                  "See /var/log/setup-skyport.log for details.")
             sys.exit(1)
 
 
+def ask_clean_spool(spool_directory: str) -> None:
+    while True:
+        if not os.path.exists(spool_directory):
+            break
+        if os.listdir(spool_directory):
+            answer = input(f"Recreate configuration located in {spool_directory}? [N] ").strip().lower()
+            if answer in ["yes", "y"]:
+                shutil.rmtree(spool_directory)
+                break
+            elif answer in ["no", "n"] or not answer:
+                break
+        else:
+            break
+
+
+def get_user_home(username: str) -> str:
+    try:
+        user_info = pwd.getpwnam(username)
+        return user_info.pw_dir
+    except KeyError:
+        pass
+    return f"/home/{username}"
+
+
+def touch(file_path: str) -> None:
+    with open(file_path, 'w') as file:
+        pass
+
+
 def main() -> None:
-    spool_directory = "/opt/swm/spool"
+    username = get_username()
+    if not username:
+        print("User name is unknown")
+        sys.exit(1)
+
+    skyport_initialized_file = "/skyport-initialized"
+    if os.path.exists(skyport_initialized_file):
+        run_supervisord(username)
+
+    home = get_user_home(username)
+    if not home:
+        print("User home is unknown")
+        sys.exit(1)
+
+    spool_directory = f"{home}/.swm/spool"
+    ask_clean_spool(spool_directory)
+
+    if not os.path.exists(spool_directory):
+        os.makedirs(spool_directory)
 
     if not os.path.exists(spool_directory) or not os.listdir(spool_directory):
-        response = None
-        while (not response):
-            response = input("Sky Port needs initialization, start it? (y/n): ").strip().lower()
-            if response in ['n', 'no']:
-                print("Initialization interrupted.")
-                return
-            if response in ['y', 'yes']:
-                if username := add_user():
-                    ensure_symlinks(username)
-                    setup_skyport(username)
-                else:
-                    print("Username is unknown")
-                    sys.exit(1)
-            else:
-                print("Type Y or N")
-                response = None
+        print(f"Spool directory is not initialized: {spool_directory}")
+        add_system_user(username)
+        ensure_symlinks(home)
+        setup_skyport(username)
     else:
-        print("No initialization needed. Sky Port is starting.")
-        import time
-        time.sleep(100000)
-        run_supervisord()
+        run_supervisord(username)
+
+    touch(skyport_initialized_file)
 
 
 if __name__ == "__main__":

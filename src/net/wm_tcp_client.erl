@@ -17,18 +17,7 @@ connect(Args) ->
     Host = get_host(Args),
     Port = maps:get(port, Args, ?DEFAULT_PORT),
     Timeout = maps:get(timeout, Args, ?DEFAULT_CONNECT_TIMEOUT),
-    Home = wm_utils:get_env("HOME"),
-    UserCert = filename:join([Home, ".swm", "cert.pem"]),
-    UserKey = filename:join([Home, ".swm", "key.pem"]),
-    {Cert, Key} =
-        case {filelib:is_file(UserCert), filelib:is_file(UserKey)} of
-            {true, true} ->
-                {UserCert, UserKey};
-            _ ->
-                {maps:get(cert, Args, filename:absname(UserCert)), maps:get(key, Args, filename:absname(UserKey))}
-        end,
-    NativeCert = filename:nativename(Cert),
-    NativeKey = filename:nativename(Key),
+    {CertPath, KeyPath} = get_cert_key_paths(Args),
     Port2 =
         case is_list(Port) of
             true ->
@@ -38,7 +27,7 @@ connect(Args) ->
                 Port
         end,
     To = io_lib:format("~p:~p", [Host, Port2]),
-    Opts = mk_opts(NativeCert, NativeKey),
+    Opts = mk_opts(CertPath, KeyPath),
     ?LOG_DEBUG("Connect to ~s", [To]),
     try
         case ssl:connect(Host, Port2, Opts, Timeout) of
@@ -117,3 +106,24 @@ get_host(Args) ->
         {error, einval} ->
             Server
     end.
+
+-spec get_cert_key_paths(map()) -> {string(), string()}.
+get_cert_key_paths(Args) ->
+    Home = wm_utils:get_env("HOME"),
+    UserCert = filename:join([Home, ".swm", "cert.pem"]),
+    UserKey = filename:join([Home, ".swm", "key.pem"]),
+    {Cert, Key} =
+        case {filelib:is_file(UserCert), filelib:is_file(UserKey)} of
+            {true, true} ->
+                {UserCert, UserKey};
+            _ ->
+                ArgCert = maps:get(cert, Args, filename:absname(UserCert)),
+                ArgKey = maps:get(key, Args, filename:absname(UserKey)),
+                case {filelib:is_file(ArgCert), filelib:is_file(ArgKey)} of
+                    {true, true} ->
+                        {ArgCert, ArgKey};
+                    _ ->
+                        {"/opt/swm/spool/secure/node/cert.pem", "/opt/swm/spool/secure/node/key.pem"}
+                end
+        end,
+    {filename:nativename(Cert), filename:nativename(Key)}.
