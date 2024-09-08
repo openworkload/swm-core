@@ -42,6 +42,9 @@ build-release-container:			##@CONTAINERS build release container image
 start-release-container:			##@CONTAINERS start release container
 			$(START_RELEASE_CONTAINER)
 
+shell-release-container:			##@CONTAINERS run shell in already running release container
+			docker exec -ti skyport /bin/bash
+
 cr: 		##@CONTAINERS run or attach to running container
 			$(START_DEBUG_CONTAINER)
 

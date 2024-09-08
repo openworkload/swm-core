@@ -140,12 +140,9 @@ def setup_skyport(username: str) -> None:
             stderr=subprocess.STDOUT,
         )
 
-        while process.poll() is None:
-            print(".", end="", flush=True)
-            time.sleep(1)
-
+        process.wait()
         if process.returncode == 0:
-            print("\n\n"
+            print("\n"
                   "Sky Port has been initialized.\n"
                   "Please ensure now that Azure is configured, see HOWTO/AZURE.md.\n"
                   "The container will be stopped now. Start again when Azure is ready.\n"
