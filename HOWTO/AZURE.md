@@ -1,7 +1,20 @@
 Sky Port Azure Integration
 ==========================
 
-# Prepare a new Azure account
+# Prepare credentials.json
+
+Copy template priv/examples/credentials.json to directory $HOME/.swm and fill azure section:
+* subscriptionid: Azure subscription ID,
+* tenantid: Azure tenant ID,
+* appid: Azure application ID,
+* usersshcert: public user ssh certificate content (generated manually on a user host).
+
+The following parameters are optional and needed in case if user jobs will pull container images from a registry that requires credentials.
+* containerregistryuser: container registry user name,
+* containerregistrypass: container registry password or token.
+
+
+# Prepare your Azure account
 
 ## Create a service principal
 
