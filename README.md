@@ -43,7 +43,30 @@ See also [openworkload.org](https://openworkload.org)
 
 ## How to run
 
-Pull or build a container that will run the Core. The procedure of building and running swm-core container is [described here](BUILD.md).
+### Pull skyport container:
+```bash
+docker pull openworkload/skyport:latest
+```
+
+### Start skyport container:
+```bash
+docker run -v $HOME/.ssh:$HOME/.ssh -v $HOME/.swm:$HOME/.swm -v $HOME/.cache/swm:/root/.cache/swm --name skyport -h $(hostname).openworkload.org -ti --network host -e SKYPORT_USER=$(id -u -n) -e SKYPORT_USER_ID=$(id -u) openworkload/skyport
+```
+On first run the container creates a configuration (generates sertificates, creates swm-core configuration, etc) and exists.
+After that user ensure that cloud provider is configured correctly.
+
+In case of Azure:
+* Service principal is created.
+* Newly generated skyport certificate is loaded to the service principal application.
+* Optionally configure container registry and load container images there which will be used by jobs
+See particular Azure commands [here](HOWTO/AZURE.md)
+
+When the cloud provider account is configured then run skyport container again:
+```bash
+docker start skyport
+```
+
+The procedure of building a new skyport container from scratch is described [here](HOWTO/BUILD.md).
 
 
 ## Contributing

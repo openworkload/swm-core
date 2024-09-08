@@ -50,7 +50,7 @@ if [ "$NOT_RUNNING" != "0" ]; then
         --workdir ${PWD}\
         --tty\
         --interactive\
-        --net host\
+        --network host\
         -e SKYPORT_USER=$(id -u -n)\
         -e SKYPORT_USER_ID=$(id -u)\
         ${IMAGE_NAME}
