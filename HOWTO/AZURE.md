@@ -46,8 +46,8 @@ az ad app credential reset --id <app-id> --cert @/opt/swm/spool/secure/node/cert
 
 ### Create container registry
 ```bash
-az group create --name contImagesRG --location eastus
-az acr create --resource-group contImagesRG --name swmregistry --sku Basic
+az group create --name containerImages --location eastus
+az acr create --resource-group containerImages --name swmregistry --sku Basic
 ```
 
 ### Create access token:
@@ -60,6 +60,7 @@ Save the token name and returned password in ACR_TONE_NAME and ACR_TOKEN_PASSWOR
 ```bash
 az acr login --name swmregistry
 docker tag jupyter/datascience-notebook:hub-3.1.1 swmregistry.azurecr.io/jupyter/datascience-notebook:hub-3.1.1
+docker push swmregistry.azurecr.io/jupyter/datascience-notebook:hub-3.1.1
 ```
 
 ### List uploaded container images in the Azure repository:

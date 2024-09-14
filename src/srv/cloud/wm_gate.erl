@@ -398,7 +398,9 @@ fetch_images(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Extra = [{<<"extra">>, <<"location=eastus;publisher=Canonical;offer=0001-com-ubuntu-server-jammy">>}],
+            Location = list_to_binary(wm_entity:get(location, Remote)),
+            ExtraValue = <<"location=", Location/binary, ";publisher=Canonical;offer=0001-com-ubuntu-server-jammy">>,
+            Extra = [{<<"extra">>, ExtraValue}],
             Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS ++ [?USER_SSH_CERT_HEADER], Extra),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Fetch images HTTP headers: ~p", [HeadersWithoutCredentials]),
@@ -446,7 +448,8 @@ fetch_flavors(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Extra = [{<<"extra">>, <<"location=eastus">>}],
+            Location = list_to_binary(wm_entity:get(location, Remote)),
+            Extra = [{<<"extra">>, <<"location=", Location/binary>>}],
             Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS ++ [?USER_SSH_CERT_HEADER], Extra),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
             ?LOG_DEBUG("Fetch flavors HTTP headers: ~p", [HeadersWithoutCredentials]),
