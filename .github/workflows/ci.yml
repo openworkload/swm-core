@@ -77,6 +77,8 @@ jobs:
       -
         name: Generate keys
         run: |
+          useradd test
+          cat /etc/passwd
           export USER=test
           ./scripts/setup-skyport-dev.sh
       -
