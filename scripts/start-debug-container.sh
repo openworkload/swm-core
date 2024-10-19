@@ -35,11 +35,10 @@ IMAGE_NAME=swm-build:24.2
 DOCKER_SOCKET=/var/run/docker.sock
 X11_SOCKET=/tmp/.X11-unix
 CONTAINER_NAME=skyport-dev
+DOMAIN=openworkload.org
 
-case "$(uname -s)" in
-  Linux*)     ;;
-  Darwin*)    USER=root;;
-esac
+JUPUTER_HUB_API_PORT=8081
+JUPUTER_HUB_PORT=8000
 
 RUNNING=$(${DOCKER} inspect -f '{{.State.Running}}' ${CONTAINER_NAME})
 if [ "$?" = "1" ]; then
@@ -53,12 +52,17 @@ if [ "$?" = "1" ]; then
     -v ${X11_SOCKET}:${X11_SOCKET}\
     -e DISPLAY=${DISPLAY}\
     --name ${CONTAINER_NAME}\
-    --hostname ${CONTAINER_NAME}.openworkload.org\
-    --domainname openworkload.org\
+    --hostname $(hostname)\
+    --domainname $DOMAIN\
     --workdir ${PWD}\
     --tty\
     --interactive\
-    --net host\
+    --network bridge\
+    -p 10000:10000\
+    -p 10011:10011\
+    -p 8443:8443\
+    -p $JUPUTER_HUB_PORT:$JUPUTER_HUB_PORT\
+    -p $JUPUTER_HUB_API_PORT:$JUPUTER_HUB_API_PORT\
     ${IMAGE_NAME}\
     runuser -u ${USER} /bin/bash
 
