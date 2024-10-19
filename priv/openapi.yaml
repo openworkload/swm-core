@@ -9,6 +9,21 @@ info:
 
 paths:
 
+  /user/image:
+    get:
+      summary: List all registred images
+      description: >-
+        Returns a list of registred image objects
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Image'
+
   /user/remote:
     get:
       summary: List all remote sites
@@ -437,3 +452,22 @@ components:
         comment:
           type: string
           description: Role comment
+
+    Image:
+      title: Image
+      description: A virtual machine or container image information
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Image ID
+        name:
+          type: string
+          description: Image name
+        kind:
+          type: string
+          description: Image kind
+        comment:
+          type: string
+          description: Image comment

@@ -39,6 +39,8 @@ json_handler(Req) ->
 -spec handle_request(binary(), map()) -> {[string()], pos_integer()}.
 handle_request(<<"GET">>, #{path := <<"/user">>} = _) ->
     get_api_version();
+handle_request(<<"GET">>, #{path := <<"/user/image">>} = Req) ->
+    get_images_info(Req);
 handle_request(<<"GET">>, #{path := <<"/user/node">>} = Req) ->
     get_nodes_info(Req);
 handle_request(<<"GET">>, #{path := <<"/user/flavor">>} = Req) ->
@@ -83,6 +85,22 @@ get_remotes_info(Req) ->
            [binary_to_list(RemoteJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], Remotes),
+    {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
+
+-spec get_images_info(map()) -> {[string()], pos_integer()}.
+get_images_info(Req) ->
+    #{limit := Limit} = cowboy_req:match_qs([{limit, int, 1000}], Req),
+    ?LOG_DEBUG("Handle images info HTTP request"),
+    Xs = gen_server:call(wm_user, {list, [image], Limit}),
+    F = fun(Image, FullJson) ->
+           ImageJson =
+               jsx:encode(#{id => list_to_binary(wm_entity:get(id, Image)),
+                            name => list_to_binary(wm_entity:get(name, Image)),
+                            kind => list_to_binary(wm_entity:get(kind, Image)),
+                            comment => list_to_binary(wm_entity:get(comment, Image))}),
+           [binary_to_list(ImageJson) | FullJson]
+        end,
+    Ms = lists:foldl(F, [], Xs),
     {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
 
 -spec get_nodes_info(map()) -> {[string()], pos_integer()}.

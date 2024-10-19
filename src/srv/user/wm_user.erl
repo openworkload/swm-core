@@ -102,6 +102,7 @@ handle_event(http_started, _) ->
     wm_http:add_route({api, wm_user_rest}, "/user"),
     wm_http:add_route({api, wm_user_rest}, "/user/node"),
     wm_http:add_route({api, wm_user_rest}, "/user/flavor"),
+    wm_http:add_route({api, wm_user_rest}, "/user/image"),
     wm_http:add_route({api, wm_user_rest}, "/user/remote"),
     wm_http:add_route({api, wm_user_rest}, "/user/job"),
     wm_http:add_route({api, wm_user_rest}, "/user/job/:id"),
