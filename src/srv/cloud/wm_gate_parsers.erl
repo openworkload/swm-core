@@ -112,6 +112,10 @@ fill_flavor_node_params([{<<"cpus">>, Value} | T], Node, AccountId) ->
     Resources = wm_entity:get(resources, Node),
     NewResource = wm_entity:set([{name, "cpus"}, {count, Value}], wm_entity:new(resource)),
     fill_flavor_node_params(T, wm_entity:set({resources, [NewResource | Resources]}, Node), AccountId);
+fill_flavor_node_params([{<<"gpus">>, Value} | T], Node, AccountId) when Value > 0 ->
+    Resources = wm_entity:get(resources, Node),
+    NewResource = wm_entity:set([{name, "gpus"}, {count, Value}], wm_entity:new(resource)),
+    fill_flavor_node_params(T, wm_entity:set({resources, [NewResource | Resources]}, Node), AccountId);
 fill_flavor_node_params([{<<"mem">>, Value} | T], Node, AccountId) ->
     Resources = wm_entity:get(resources, Node),
     NewResource = wm_entity:set([{name, "mem"}, {count, Value}], wm_entity:new(resource)),
