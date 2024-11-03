@@ -614,7 +614,7 @@ def create_archive(opts):
     archive = f"{root_dir}/{PRODUCT}-worker.tar.gz"
     transform_args = [
        "--transform", "'s,^.*\/swm/,,'",
-       "--transform", "'s,^home/" + opts["SWM_ADMIN_USER"] + "/.swm,,'",
+       "--transform", "'s,^home/" + opts["SWM_USER"] + "/.swm,,'",
     ]
     args = transform_args + ["-czf", archive, " ".join(files)]
 
