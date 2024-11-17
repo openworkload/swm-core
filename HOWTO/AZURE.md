@@ -59,19 +59,20 @@ Save the token name and returned password in ACR_TONE_NAME and ACR_TOKEN_PASSWOR
 ### Upload container image to the Azure registry
 ```bash
 az acr login --name swmregistry
-docker tag jupyter/datascience-notebook:hub-3.1.1 swmregistry.azurecr.io/jupyter/datascience-notebook:hub-3.1.1
-docker push swmregistry.azurecr.io/jupyter/datascience-notebook:hub-3.1.1
+docker pull quay.io/jupyter/pytorch-notebook:cuda12-hub-5.2.1
+docker tag quay.io/jupyter/pytorch-notebook:cuda12-hub-5.2.1 swmregistry.azurecr.io/jupyter/pytorch-notebook:cuda12-hub-5.2.1
+docker push swmregistry.azurecr.io/jupyter/pytorch-notebook:cuda12-hub-5.2.1
 ```
 
 ### List uploaded container images in the Azure repository:
 ```bash
 az acr repository list --name swmregistry
-az acr repository show-tags --name swmregistry --repository  jupyter/datascience-notebook
+az acr repository show-tags --name swmregistry --repository jupyter/pytorch-notebook
 ```
 
 ### Delete container image from the Azure repository:
 ```bash
-az acr repository delete --name swmregistry --image  jupyter/datascience-notebook:hub-3.1.1
+az acr repository delete --name swmregistry --image jupyter/pytorch-notebook:cuda12-hub-5.2.1
 ```
 
 ## Save credentials locally

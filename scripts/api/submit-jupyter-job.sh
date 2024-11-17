@@ -6,7 +6,7 @@ JOB_SCRIPT_PATH=$(mktemp --suffix=.swm)
 cat > ${JOB_SCRIPT_PATH} <<EOF
 #!/bin/bash
 #SWM relocatable
-#SWM image jupyter/datascience-notebook
+#SWM image jupyter/pytorch-notebook:cuda12-hub-5.2.1
 #SWM ports 8888/tcp
 # SWM flavor m1.small
 
