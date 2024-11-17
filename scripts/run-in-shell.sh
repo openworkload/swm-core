@@ -68,7 +68,7 @@ export SWM_SCHED_LIB=${ROOT_DIR}/../swm-sched/bin
 export SWM_DOCKER_VOLUMES_FROM=swm-dev:ro
 export SWM_FINALIZE_IN_CONTAINER=${ROOT_DIR}/scripts/swm-docker-finalize.sh
 export SWM_PORTER_IN_CONTAINER=${ROOT_DIR}/c_src/porter/swm-porter
-export SWM_WORKER_LOCAL_PATH="${ROOT_DIR}/_build/packages/swm-${SWM_VERSION}-worker.tar.gz"
+export SWM_WORKER_LOCAL_PATH="${ROOT_DIR}/_build/packages/swm-worker.tar.gz"
 
 VM_ARGS=$(grep -v -E '^#|^-name|^-sname|^-args_file' "${SWM_VM_ARGS}" | xargs | sed -e 's/ / /g')
 

@@ -176,7 +176,12 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term13 = jwalk:set({"WorkingDir"}, Term12, <<"/tmp">>),
     Term14 = jwalk:set({"AutoRemove"}, Term13, true),
     Term15 = jwalk:set({"User"}, Term14, <<"root">>),
-    jsx:encode(Term15).
+    Term16 = jwalk:set({"Entrypoint"}, Term15, get_entrypoint()),
+    jsx:encode(Term16).
+
+-spec get_entrypoint() -> [binary()].
+get_entrypoint() ->
+  [<<"tini">>, <<"-g">>, <<"--">>].
 
 -spec get_volumes() -> map().
 get_volumes() ->
@@ -189,7 +194,14 @@ get_host_config(_Request) ->
     RootBin = list_to_binary(wm_utils:get_env("SWM_ROOT")),
     #{<<"Binds">> => [<<"/home:/home">>, <<"/tmp:/tmp">>, <<RootBin/binary, <<":">>/binary, RootBin/binary>>],
       <<"NetworkMode">> => <<"host">>,
+      <<"DeviceRequests">> => get_devices_requests(),
       <<"PublishAllPorts">> => true}.
+
+-spec get_devices_requests() -> [map()].
+get_devices_requests() ->
+    [#{<<"Driver">> => <<"nvidia">>,
+       <<"Count">> => -1,
+       <<"Capabilities">> => [[<<"gpu">>, <<"nvidia">>, <<"compute">>]]}].
 
 -spec get_cmd(string()) -> [binary()].
 get_cmd(Porter) ->

@@ -434,7 +434,7 @@ get_records({TabName, MaxReturnedListSize}) ->
     case transaction(F) of
         {Objects, _} ->
             Objects;
-       '$end_of_table' ->
+        '$end_of_table' ->
             [];
         [] ->
             []

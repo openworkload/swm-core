@@ -399,7 +399,8 @@ fetch_images(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
             Location = list_to_binary(wm_entity:get(location, Remote)),
-            ExtraValue = <<"location=", Location/binary, ";publisher=Canonical;offer=0001-com-ubuntu-server-jammy">>,
+            %ExtraValue = <<"location=", Location/binary, ";publisher=Canonical;offer=0001-com-ubuntu-server-jammy">>,
+            ExtraValue = <<"location=", Location/binary, ";publisher=microsoft-dsvm;offer=ubuntu-hpc;sku=2204">>,
             Extra = [{<<"extra">>, ExtraValue}],
             Headers = generate_headers(Creds, ?AZURE_CONT_HEADERS ++ [?USER_SSH_CERT_HEADER], Extra),
             HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
