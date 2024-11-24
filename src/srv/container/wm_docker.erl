@@ -181,7 +181,7 @@ generate_container_json(#job{request = Request}, Porter) ->
 
 -spec get_entrypoint() -> [binary()].
 get_entrypoint() ->
-  [<<"tini">>, <<"-g">>, <<"--">>].
+    [<<"tini">>, <<"-g">>, <<"--">>].
 
 -spec get_volumes() -> map().
 get_volumes() ->
