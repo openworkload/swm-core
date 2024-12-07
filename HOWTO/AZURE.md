@@ -1,7 +1,7 @@
 Sky Port Azure Integration
 ==========================
 
-# Prepare credentials.json
+# Prepare file with Azure credentials for Sky Port
 
 Copy template priv/examples/credentials.json to directory $HOME/.swm and fill azure section:
 * subscriptionid: Azure subscription ID,
@@ -9,7 +9,8 @@ Copy template priv/examples/credentials.json to directory $HOME/.swm and fill az
 * appid: Azure application ID,
 * usersshcert: public user ssh certificate content (generated manually on a user host).
 
-The following parameters are optional and needed in case if user jobs will pull container images from a registry that requires credentials.
+The following parameters are optional and needed in case if user jobs will pull container
+images from a registry that requires credentials.
 * containerregistryuser: container registry user name,
 * containerregistrypass: container registry password or token.
 
@@ -42,12 +43,31 @@ az ad sp list --display-name swmSP --query "[].appId" --output tsv
 az ad app credential reset --id <app-id> --cert @/opt/swm/spool/secure/node/cert.pem
 ```
 
-## Upload container image to Azure
+## Upload data to Azure (if required by jobs)
 
-### Create container registry
+### Create storage resource group
 ```bash
-az group create --name containerImages --location eastus
-az acr create --resource-group containerImages --name swmregistry --sku Basic
+az group create --name swmStorage --location eastus2
+```
+
+### Create storage account
+```bash
+az storage account create -n swmdatastorageaccount -g containerImages -l eastus2 --sku Standard_LRS
+az role assignment create --role "Storage Blob Data Reader" --assignee <app-id> --scope <storage-account-id>
+```
+### Create blob storage container
+```bash
+az storage container create --name swmblobcontainer --account-name swmdatastorageaccount --auth-mode login
+```
+
+### Upload a directory to the storage
+```bash
+az storage copy -s <local-directory> -d https://swmdatastorageaccount.blob.core.windows.net/swmblobcontainer/ --recursive
+```
+
+### Create container registry (if jobs run in container images from this registry)
+```bash
+az acr create --resource-group swmStorage --name swmregistry --sku Basic
 ```
 
 ### Create access token:
@@ -108,17 +128,18 @@ az ad app list
 
 To get resource group ID:
 ```bash
-az group show --name swm-09ccc5c0-resource-group --query id --output tsv
+az group show --name <resource group name> --query id --output tsv
 ```
 
 List deployed resources in the resource group:
 ```bash
-az resource list --resource-group swm-09ccc5c0-resource-group
+az resource list --resource-group <resource group name>
 ```
 
 ## Register namespace
+
 If deployment creation fails with error like "Microsoft.Network namespace is not registered",
-then the following actions can be performed (for each namespace).
+then the following commands can help (for each namespace):
 ```bash
 az provider list --query "[?namespace=='Microsoft.Network']" --output table
 az provider register --namespace Microsoft.Network
