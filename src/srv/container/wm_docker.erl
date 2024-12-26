@@ -194,7 +194,7 @@ get_host_config(_Request) ->
     RootBin = list_to_binary(wm_utils:get_env("SWM_ROOT")),
     #{<<"Binds">> => [<<"/home:/home">>, <<"/tmp:/tmp">>, <<RootBin/binary, <<":">>/binary, RootBin/binary>>],
       <<"NetworkMode">> => <<"host">>,
-      <<"DeviceRequests">> => get_devices_requests(),
+      %<<"DeviceRequests">> => get_devices_requests(),
       <<"PublishAllPorts">> => true}.
 
 -spec get_devices_requests() -> [map()].
