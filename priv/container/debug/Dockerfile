@@ -11,8 +11,8 @@
 
 FROM ubuntu:22.04
 
-ENV ERL_VER="24.2"
-ENV ERL_TAG="24_2_SSL"
+ENV ERL_VER="24.3"
+ENV ERL_TAG="24_3_SSL"
 ENV KERL_CONFIGURE_OPTIONS="--without-odbc\
                             --disable-hipe\
                             --enable-smp-support\
@@ -103,7 +103,7 @@ RUN apt-get install docker.io -y
 
 # Build and install Erlang/OTP
 WORKDIR /tmp/kerl/
-RUN curl -O https://raw.githubusercontent.com/kerl/kerl/4.0.0/kerl
+RUN curl -O https://raw.githubusercontent.com/kerl/kerl/4.3.0/kerl
 RUN chmod +x kerl
 RUN ./kerl build ${ERL_VER} ${ERL_TAG}
 RUN mkdir -p /usr/erlang
@@ -113,7 +113,7 @@ RUN ./kerl install ${ERL_TAG} /usr/erlang
 RUN echo . /usr/erlang/activate >> /etc/bash.bashrc
 RUN mkdir /tmp/swm-sched
 RUN mkdir /var/run/swm
-COPY ./priv/build/build-package.sh /var/run/swm/
+COPY ./priv/container/debug/build-package.sh /var/run/swm/
 #COPY ./c_src/porter/swm-porter /var/run/swm/
 COPY ./scripts/swm-docker-finalize.sh /var/run/swm/
 
