@@ -27,6 +27,7 @@ HELP_FUN = \
     }; \
     print "\n"; }
 
+export REBAR_CACHE_DIR=\$HOME/.cache/rebar3
 
 all: gen compile porter format
 
@@ -57,7 +58,7 @@ porter:		##@SKYPORT Compile Porter
 			$(MAKE) -C c_src/porter
 
 compile:	##@SKYPORT Compile Core
-			REBAR_CACHE_DIR=\$HOME/.cache/rebar3 $(REBAR) compile
+			$(REBAR) compile
 
 release:	##@SKYPORT Build release tar.gz package
 			rm -fr ./_build/default/rel/swm
@@ -108,7 +109,7 @@ dialyzer:		##@DEV Run dialyzer
 			$(REBAR) dialyzer
 
 format:		##@DEV Format erlang code
-			REBAR_CACHE_DIR=\$HOME/.cache/rebar3 $(REBAR) format
+			$(REBAR) format
 
 static_checks:		##@DEV Run erlang static checks to validate the code
 			$(REBAR) lint
