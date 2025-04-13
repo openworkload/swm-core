@@ -1,11 +1,11 @@
 #######################################################################
 # This Dockerfile can be used to prepare a Docker image that contains #
-# everything required for Sky Port build (including Erlang).          #
+# everything required for Sky Port development (including Erlang).    #
 # Example:                                                            #
 # cd ~/projects/swm-core/priv/build                                   #
-# docker build -t swm-build:24.2 .                                    #
-# cd ~projects/swm-core                                               #
-# docker run -v `pwd`:/tmp/swm -ti swm-build:24.2 \                   #
+# docker build -t skyport-dev:24.3 .                                  #
+# cd ~/projects/swm-core                                              #
+# docker run -v `pwd`:/tmp/swm -ti skyport-dev:24.3 \                 #
 #  /bin/bash -c "make && make release"                                #
 #######################################################################
 
@@ -88,7 +88,7 @@ RUN pip3 install --upgrade pip
 RUN pip3 install --upgrade setuptools
 RUN pip3 install cogapp
 
-# For pythonic gates and terminals
+# For OpenStack cloud gate
 RUN pip3 install "apache-libcloud==3.1.0"
 
 # Generic python tools for all python code
@@ -114,19 +114,19 @@ RUN echo . /usr/erlang/activate >> /etc/bash.bashrc
 RUN mkdir /tmp/swm-sched
 RUN mkdir /var/run/swm
 COPY ./priv/container/debug/build-package.sh /var/run/swm/
-#COPY ./c_src/porter/swm-porter /var/run/swm/
 COPY ./scripts/swm-docker-finalize.sh /var/run/swm/
 
 # Build and install Google Tests
 WORKDIR /tmp
-RUN git clone https://github.com/google/googletest &&\
- cd googletest &&\
- cmake . -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr/local/GTest &&\
- make &&\
- make install
+RUN git clone --single-branch --branch v1.15.x https://github.com/google/googletest &&\
+    cd googletest &&\
+    cmake . -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr/local/GTest &&\
+    make &&\
+    make install
 
 # Install Anaconda (useful for jupyter related development)
 RUN curl -O https://repo.anaconda.com/archive/Anaconda3-2023.03-Linux-x86_64.sh
 RUN bash /tmp/Anaconda3-2023.03-Linux-x86_64.sh -b -p /usr/anaconda3
+RUN rm -fr /usr/anaconda3/lib/cmake
 
 WORKDIR /tmp/swm

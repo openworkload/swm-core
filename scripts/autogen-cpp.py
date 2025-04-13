@@ -29,7 +29,7 @@ def main():
     for entity in data:
       if entity in exclude:
           continue
-      cmd = "cog.py -U -z -d -e -c -D WM_ENTITY_NAME=%s" % entity
+      cmd = "cog -U -z -d -e -c -D WM_ENTITY_NAME=%s" % entity
       h_out_file = os.path.join(lib_path, "wm_%s.h" % entity)
       c_out_file = os.path.join(lib_path, "wm_%s.cpp" % entity)
       run("%s -o %s %s" % (cmd, h_out_file, h_cog_file))

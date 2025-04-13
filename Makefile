@@ -4,7 +4,7 @@
 .PHONY: cb cr
 .PHONY: dialyzer format static_checks
 
-COG = cog.py
+COG = cog
 REBAR = ./rebar3
 BUILD_DEBUG_CONTAINER = scripts/build-debug-container.sh
 START_DEBUG_CONTAINER = scripts/start-debug-container.sh -i
@@ -57,7 +57,7 @@ porter:		##@SKYPORT Compile Porter
 			$(MAKE) -C c_src/porter
 
 compile:	##@SKYPORT Compile Core
-			$(REBAR) compile
+			REBAR_CACHE_DIR=\$HOME/.cache/rebar3 $(REBAR) compile
 
 release:	##@SKYPORT Build release tar.gz package
 			rm -fr ./_build/default/rel/swm
@@ -108,7 +108,7 @@ dialyzer:		##@DEV Run dialyzer
 			$(REBAR) dialyzer
 
 format:		##@DEV Format erlang code
-			$(REBAR) format
+			REBAR_CACHE_DIR=\$HOME/.cache/rebar3 $(REBAR) format
 
 static_checks:		##@DEV Run erlang static checks to validate the code
 			$(REBAR) lint
