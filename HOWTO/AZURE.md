@@ -3,16 +3,24 @@ Sky Port Azure Integration
 
 # Prepare file with Azure credentials for Sky Port
 
-Copy template priv/examples/credentials.json to directory $HOME/.swm and fill azure section:
+Copy template priv/examples/credentials.json to directory $HOME/.swm and fill azure section.
+
+Mandatory parameters:
 * subscriptionid: Azure subscription ID,
 * tenantid: Azure tenant ID,
 * appid: Azure application ID,
 * usersshcert: public user ssh certificate content (generated manually on a user host).
 
-The following parameters are optional and needed in case if user jobs will pull container
-images from a registry that requires credentials.
+Optional parameters:
+
+a) if jobs pull container images from a registry that requires credentials:
 * containerregistryuser: container registry user name,
-* containerregistrypass: container registry password or token.
+* containerregistrypass: container registry password or token;
+
+b) if jobs require Azure storage mounting into their container:
+* storageaccount: name of Azure storage account,
+* storagekey: password generated for this storage
+* storagecontainer: name of the storage container that should be mounted to all containers.
 
 
 # Prepare your Azure account
@@ -55,6 +63,7 @@ az group create --name swmStorage --location eastus2
 az storage account create -n swmdatastorageaccount -g containerImages -l eastus2 --sku Standard_LRS
 az role assignment create --role "Storage Blob Data Reader" --assignee <app-id> --scope <storage-account-id>
 ```
+
 ### Create blob storage container
 ```bash
 az storage container create --name swmblobcontainer --account-name swmdatastorageaccount --auth-mode login
@@ -65,7 +74,7 @@ az storage container create --name swmblobcontainer --account-name swmdatastorag
 az storage copy -s <local-directory> -d https://swmdatastorageaccount.blob.core.windows.net/swmblobcontainer/ --recursive
 ```
 
-### Create container registry (if jobs run in container images from this registry)
+### Create container registry (if jobs run in container images stored in this registry)
 ```bash
 az acr create --resource-group swmStorage --name swmregistry --sku Basic
 ```
