@@ -6,7 +6,7 @@
 FROM ubuntu:22.04
 
 ARG PYTHON_VERSION=3.10
-ARG PYTHON_VERSION_FULL=3.10.14
+ARG PYTHON_VERSION_FULL=3.10.17
 ARG SWM_VERSION=$SWM_VERSION
 ARG SWM_GATE_PACKAGE
 
@@ -29,9 +29,10 @@ RUN cd /tmp && \
     cd Python-$PYTHON_VERSION_FULL && \
     ./configure --enable-optimizations && \
     make -j $(nproc) && \
-    make altinstall && \
-    ln -s /usr/local/bin/python$PYTHON_VERSION /usr/local/bin/python && \
-    ln -s /usr/local/bin/pip$PYTHON_VERSION /usr/local/bin/pip
+    make altinstall
+RUN ln -s /usr/local/lib/python$PYTHON_VERSION /usr/local/lib/python
+RUN update-alternatives --install /usr/local/bin/python3 python3 /usr/local/bin/python${PYTHON_VERSION} 1
+RUN update-alternatives --config python3 --skip-auto
 
 # Cache invalidation threshold
 ARG CACHEBUST=1

@@ -5,14 +5,22 @@
 # cd ~/projects/swm-core/priv/build                                   #
 # docker build -t skyport-dev:24.3 .                                  #
 # cd ~/projects/swm-core                                              #
-# docker run -v `pwd`:/tmp/swm -ti skyport-dev:24.3 \                 #
+# docker run -v `pwd`:/tmp/swm -ti skyport-dev:27.3 \                 #
 #  /bin/bash -c "make && make release"                                #
 #######################################################################
 
 FROM ubuntu:22.04
 
-ENV ERL_VER="24.3"
-ENV ERL_TAG="24_3_SSL"
+ARG PYTHON_VERSION=3.10
+ARG PYTHON_VERSION_FULL=3.10.17
+
+ARG GTEST_VER=1.15.x
+ARG LIBCLOUD_VER=3.1.0
+
+ARG ERL_VER=27.3.3
+ARG ERL_TAG=27_3_SSL
+
+ENV KERL_VER=4.3.1
 ENV KERL_CONFIGURE_OPTIONS="--without-odbc\
                             --disable-hipe\
                             --enable-smp-support\
@@ -36,25 +44,38 @@ RUN apt-get install tmuxinator -y
 RUN apt-get install sudo -y
 RUN apt-get install mc -y
 RUN apt-get install gcc -y
+RUN apt-get install build-essential -y
+RUN apt-get install libncurses5-dev -y
+RUN apt-get install libssl-dev -y
 
-# For python 3.9
-RUN apt-get install software-properties-common -y
-RUN add-apt-repository ppa:deadsnakes/ppa -y
-RUN apt-get update
-RUN apt-get install python3.9 -y
-RUN apt-get install python3.9-distutils -y
-RUN apt-get install python3-all-dev -y
-
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 2
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+# Python
+RUN apt-get install zlib1g-dev -y
+RUN apt-get install libgdbm-dev -y
+RUN apt-get install libnss3-dev -y
+RUN apt-get install libreadline-dev -y
+RUN apt-get install libffi-dev -y
+RUN apt-get install libsqlite3-dev -y
+RUN apt-get install wget -y
+RUN apt-get install libbz2-dev -y
+RUN cd /tmp && \
+    wget https://www.python.org/ftp/python/$PYTHON_VERSION_FULL/Python-$PYTHON_VERSION_FULL.tgz && \
+    tar -xf Python-$PYTHON_VERSION_FULL.tgz && \
+    cd Python-$PYTHON_VERSION_FULL && \
+    ./configure --enable-optimizations && \
+    make -j $(nproc) && \
+    make altinstall
+RUN ln -s /usr/local/lib/python$PYTHON_VERSION /usr/local/lib/python
+RUN update-alternatives --install /usr/local/bin/python3 python3 /usr/local/bin/python${PYTHON_VERSION} 1
 RUN update-alternatives --config python3 --skip-auto
+
+# For JupyterHub
+RUN apt-get install nodejs -y
+RUN apt-get install npm -y
+RUN npm install -g configurable-http-proxy
 
 # For Erlang Runtime compilation
 RUN apt-get install autoconf -y
-RUN apt-get install build-essential -y
-RUN apt-get install libncurses5-dev -y
 RUN apt-get install openssl -y
-RUN apt-get install libssl-dev -y
 RUN apt-get install fop -y
 RUN apt-get install xsltproc -y
 
@@ -77,19 +98,20 @@ RUN apt-get install libxml2-utils -y
 
 # For building Erlang/OTP with wxWidgets
 RUN apt-get install libwxgtk3.0-gtk3-dev -y
+RUN apt-get install libwxgtk-webview3.0-gtk3-dev -y
 RUN apt-get install libgl1-mesa-dev -y
 RUN apt-get install libglu1-mesa-dev -y
 RUN apt-get install libpng16* -y
 
 # For cogapp
 RUN apt-get install python3-pip -y
-RUN python3.9 -m pip install --upgrade pip
+RUN python${PYTHON_VERSION} -m pip install --upgrade pip
 RUN pip3 install --upgrade pip
 RUN pip3 install --upgrade setuptools
 RUN pip3 install cogapp
 
 # For OpenStack cloud gate
-RUN pip3 install "apache-libcloud==3.1.0"
+RUN pip3 install "apache-libcloud==${LIBCLOUD_VER}"
 
 # Generic python tools for all python code
 RUN pip3 install pip-tools
@@ -103,7 +125,7 @@ RUN apt-get install docker.io -y
 
 # Build and install Erlang/OTP
 WORKDIR /tmp/kerl/
-RUN curl -O https://raw.githubusercontent.com/kerl/kerl/4.3.0/kerl
+RUN curl -O https://raw.githubusercontent.com/kerl/kerl/${KERL_VER}/kerl
 RUN chmod +x kerl
 RUN ./kerl build ${ERL_VER} ${ERL_TAG}
 RUN mkdir -p /usr/erlang
@@ -118,15 +140,10 @@ COPY ./scripts/swm-docker-finalize.sh /var/run/swm/
 
 # Build and install Google Tests
 WORKDIR /tmp
-RUN git clone --single-branch --branch v1.15.x https://github.com/google/googletest &&\
+RUN git clone --single-branch --branch v${GTEST_VER} https://github.com/google/googletest &&\
     cd googletest &&\
     cmake . -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr/local/GTest &&\
     make &&\
     make install
-
-# Install Anaconda (useful for jupyter related development)
-RUN curl -O https://repo.anaconda.com/archive/Anaconda3-2023.03-Linux-x86_64.sh
-RUN bash /tmp/Anaconda3-2023.03-Linux-x86_64.sh -b -p /usr/anaconda3
-RUN rm -fr /usr/anaconda3/lib/cmake
 
 WORKDIR /tmp/swm

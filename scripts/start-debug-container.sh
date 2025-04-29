@@ -31,7 +31,7 @@
 set -x
 
 DOCKER=docker
-IMAGE_NAME=swm-build:24.2
+IMAGE_NAME=swm-build:27.3
 DOCKER_SOCKET=/var/run/docker.sock
 X11_SOCKET=/tmp/.X11-unix
 CONTAINER_NAME=skyport-dev

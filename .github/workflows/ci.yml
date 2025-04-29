@@ -10,15 +10,15 @@ permissions:
   contents: read
 
 env:
-  PYTHON_VERSION: 3.10
-  PYTHON_VERSION_FULL: 3.10.14
+  PYTHON_VERSION: 3.13
+  PYTHON_VERSION_FULL: 3.13.3
 
 jobs:
 
   unit_tests:
     runs-on: ubuntu-22.04
     container:
-      image: erlang:24.2.2
+      image: erlang:27.3.3
     steps:
       -
         name: Checkout
@@ -33,7 +33,7 @@ jobs:
   common_tests:
     runs-on: ubuntu-22.04
     container:
-      image: erlang:24.2.2
+      image: erlang:27.3.3
     steps:
       -
         name: Checkout
