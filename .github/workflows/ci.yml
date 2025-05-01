@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  PYTHON_VERSION: 3.13
-  PYTHON_VERSION_FULL: 3.13.3
+  PYTHON_VERSION: 3.10
+  PYTHON_VERSION_FULL: 3.10.17
 
 jobs:
 
