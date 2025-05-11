@@ -211,9 +211,11 @@ def spawn_vnode(opts):
     if opts.get("TESTING", False):
         args = [get_div_arg(opts), "-b"]
         script = os.path.join(SWM_VERSION_DIR, "scripts", "run-in-shell.sh")
+        LOG.info(f"Testing mode vnode: {script}")
     else:
         args = ["daemon"]
         script = os.path.join(SWM_VERSION_DIR, "bin", PRODUCT)
+        LOG.info(f"Daemon mode vnode: {script}")
         #opts["SWM_MNESIA_DIR"] = os.path.join(opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb")
 
     os.environ["SWM_MODE"] = "MAINT"

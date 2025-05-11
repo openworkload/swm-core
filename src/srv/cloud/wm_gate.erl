@@ -208,21 +208,19 @@ get_auth_body(PemData) ->
 -spec open_connection(#remote{}, string()) -> {ok, pid()} | {error | term()}.
 open_connection(Remote, Spool) ->
     {CaFile, KeyFile, CertFile} = wm_utils:get_node_cert_paths(Spool),
-    ServerFqdn = wm_entity:get(server, Remote),
-    Server = hd(string:split(ServerFqdn, ".")),
-    Port = wm_entity:get(port, Remote),
     ConnOpts =
         #{transport => tls,
           protocols => [http],
           tls_handshake_timeout => 5000,
           tls_opts =>
-              [{versions, ['tlsv1.3', 'tlsv1.2']},
+              [{versions, ['tlsv1.3']},
                {verify, verify_peer},
-               {fail_if_no_peer_cert, true},
                {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
                {cacertfile, CaFile},
                {certfile, CertFile},
                {keyfile, KeyFile}]},
+    Server = wm_entity:get(server, Remote),
+    Port = wm_entity:get(port, Remote),
     ConnPid =
         case gun:open(Server, Port, ConnOpts) of
             {ok, Pid} ->

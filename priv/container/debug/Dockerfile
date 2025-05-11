@@ -47,6 +47,7 @@ RUN apt-get install gcc -y
 RUN apt-get install build-essential -y
 RUN apt-get install libncurses5-dev -y
 RUN apt-get install libssl-dev -y
+RUN apt-get install jq -y
 
 # Python
 RUN apt-get install zlib1g-dev -y

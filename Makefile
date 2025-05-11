@@ -27,7 +27,7 @@ HELP_FUN = \
     }; \
     print "\n"; }
 
-export REBAR_CACHE_DIR=\$HOME/.cache/rebar3
+export REBAR_CACHE_DIR=${HOME}/.cache/rebar3
 
 all: gen compile porter format
 
@@ -121,6 +121,9 @@ tmux:	##@DEV Run tmux with Sky Port development layout
 update_rebar:
 	$(REBAR) local upgrade
 	$(REBAR) plugins upgrade --all
+
+unlock_rebar:
+	$(REBAR) unlock -a
 
 update_deps:
 	$(REBAR) update-deps

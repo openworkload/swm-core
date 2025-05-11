@@ -19,7 +19,12 @@ main(["skyport"]) ->
   add_paths(),
   NodeID = wm_utils:uuid(v4),
   {ok, Hostname} = inet:gethostname(),
-  wm_cert:create(node, NodeID, Hostname);
+  Domain = inet_db:res_option(domain),
+  FQDN = case Domain of
+    "" -> Hostname;
+    _ -> Hostname ++ "." ++ Domain
+  end,
+  wm_cert:create(node, NodeID, FQDN);
 main(["user", Name]) ->
   main(["user", Name, wm_utils:uuid(v4)]);
 main(["user", Name, UserID]) ->

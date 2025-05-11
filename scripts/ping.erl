@@ -4,7 +4,7 @@
 %% To run:
 %%  export PATH=/opt/swm/current/erts-12.2/bin:$PATH
 %%  export SWM_LIB=/opt/swm/current/lib/swm-0.3.0+build.191.ref0586b0d/ebin
-%%  ./ping.erl localhost 1001
+%%  ./ping.erl localhost 10001
 
 main([Hostname, Port]) ->
     process_flag(trap_exit, true),
@@ -51,7 +51,8 @@ do_ping(Hostname, Port) ->
                     io:format("Receiving data error: ~p~n", [Reason])
             end;
         {error, Error} ->
-            io:format("Connection error: ~p~n", [Error])
+            io:format("Connection error: ~p~n", [Error]),
+            halt(1)
     end.
 
 usage() ->
