@@ -1,6 +1,6 @@
 #/bin/bash
 
-CLOUD_GATE_VERSION=0.1.5
+CLOUD_GATE_VERSION=0.1.6
 
 ME=$( readlink -f "$0" )
 ROOT_DIR=$( dirname "$( dirname "$ME" )" )

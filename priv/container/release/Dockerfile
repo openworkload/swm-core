@@ -43,7 +43,7 @@ ENV SKYPORT_USER_ID=1000
 RUN mkdir -p /opt/swm
 
 COPY $SWM_GATE_PACKAGE /opt/swm/
-RUN pip install /opt/swm/$(basename "$SWM_GATE_PACKAGE")
+RUN python3 -m pip install /opt/swm/$(basename "$SWM_GATE_PACKAGE")
 
 COPY _build/packages/swm-$SWM_VERSION.tar.gz /opt/swm/swm.tar.gz
 RUN tar zfx /opt/swm/swm.tar.gz -C /opt/swm/ && ln -s /opt/swm/$SWM_VERSION /opt/swm/current
