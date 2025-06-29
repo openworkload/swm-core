@@ -48,6 +48,7 @@ RUN apt-get install build-essential -y
 RUN apt-get install libncurses5-dev -y
 RUN apt-get install libssl-dev -y
 RUN apt-get install jq -y
+RUN apt-get install supervisor -y
 
 # Python
 RUN apt-get install zlib1g-dev -y
@@ -138,6 +139,9 @@ RUN mkdir /tmp/swm-sched
 RUN mkdir /var/run/swm
 COPY ./priv/container/debug/build-package.sh /var/run/swm/
 COPY ./scripts/swm-docker-finalize.sh /var/run/swm/
+
+# for development of the prompt script
+RUN chmod 777 /etc/supervisor/conf.d/
 
 # Build and install Google Tests
 WORKDIR /tmp

@@ -50,6 +50,7 @@ RUN tar zfx /opt/swm/swm.tar.gz -C /opt/swm/ && ln -s /opt/swm/$SWM_VERSION /opt
 
 # To run multiple processes in one container:
 COPY priv/container/release/supervisord.conf /etc/supervisor/supervisord.conf.template
+COPY priv/container/release/supervisord_gate.conf /etc/supervisor/supervisord_gate.conf.template
 
 # parent swm-core -> chald swm-core connection port:
 EXPOSE 10001

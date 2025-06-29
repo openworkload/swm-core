@@ -30,12 +30,16 @@
 #
 # This script runs as an endpoint for skyport container.
 
+import argparse
 import os
-import sys
-import time
 import pwd
 import shutil
 import subprocess
+import sys
+import threading
+import time
+
+DEV_MODE: bool = False
 
 
 def get_username() -> str:
@@ -48,12 +52,17 @@ def get_username() -> str:
 
 
 def render_supervisor_config(username: str) -> None:
-    template_path = "/etc/supervisor/supervisord.conf.template"
-    output_path = "/etc/supervisor/conf.d/supervisord.conf"
-
+    if DEV_MODE:
+        output_path = "/tmp/supervisord.conf"
+        template_path = "./priv/container/debug/supervisord.conf"
+    else:
+        output_path = "/etc/supervisor/conf.d/supervisord.conf"
+        template_path = "/etc/supervisor/supervisord.conf.template"
     if os.path.exists(output_path):
         print(f"Supervisord configuration file exists: {output_path}")
         return
+
+    shutil.copy(source, destination)
 
     with open(template_path, "r") as template_file:
         template_content = template_file.read()
@@ -66,31 +75,103 @@ def render_supervisor_config(username: str) -> None:
     print(f"Supervisord configuration file rendered: {output_path}")
 
 
-def run_supervisord(username: str = "") -> None:
+def warm_up_cache(username: str) -> bool:
+    cache_dir = "/opt/swm/spool/cache/"
+    print(f"Try to warm the gate cache up: {cache_dir}")
+    if os.path.exists(cache_dir) and os.listdir(cache_dir):
+        print(f"Directory {cache_dir} is not empty (no cache update is required)")
+        return True
+
+    process_supervisor = run_supervisord(username, pipe=False, gate_only=True)
+    if not process_supervisor:
+        print("Cannot start supervisor")
+        return False
+    time.sleep(5)
+
+    if DEV_MODE:
+        script = "../swm-cloud-gate/swmcloudgate/update-azure-caches.py"
+    else:
+        script = (
+            "/usr/local/lib/python/site-packages/swmcloudgate/update-azure-caches.py"
+        )
+
+    result: Dict[str, int] = {}
+
+    def run_cache_update_scripts():
+        print(f"Run gate cache update script: {script}")
+        try:
+            process = subprocess.Popen([script])
+            print("Gate cache update script process started")
+            process.wait()
+            result["exit_code"] = process.returncode
+        except Exception as e:
+            result["exit_code"] = -1
+            print(f"Gate script {script} failed: {e}")
+
+    script_thread = threading.Thread(target=run_cache_update_scripts)
+    print("Start cache update script thread")
+    script_thread.start()
+
+    while script_thread.is_alive():
+        print(".", end="", flush=True)
+        time.sleep(10)
+
+    script_thread.join()
+
+    process_supervisor.terminate()
+    exit_code = result.get("exit_code", -1)
+    print(f"\nGate cache update script exit code: {exit_code}")
+    return exit_code
+
+
+def run_supervisord(
+    username: str, pipe: bool = True, gate_only: bool = False
+) -> subprocess.Popen:
     if username:
         render_supervisor_config(username)
-    command = ["supervisord", "-c", "/etc/supervisor/supervisord.conf", "-l", "/tmp/supervisord.log"]
-    print(f"Start supervisord for Sky Port daemons:\n  {' '.join(command)}")
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    if DEV_MODE:
+        supervisord_conf = (
+            "./priv/container/debug/supervisord_gate.conf"
+            if gate_only
+            else "/tmp/supervisord.conf"
+        )
+    else:
+        supervisord_conf = (
+            "/etc/supervisor/supervisord_gate.conf"
+            if gate_only
+            else "/etc/supervisor/supervisord.conf"
+        )
+    command = ["supervisord", "-c", supervisord_conf, "-l", "/tmp/supervisord.log"]
+    if pipe:
+        command += ["--nodaemon"]
+    print(f"Start supervisord:\n  {' '.join(command)}")
     try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE if pipe else subprocess.DEVNULL,
+            stderr=subprocess.PIPE if pipe else subprocess.DEVNULL,
+            text=True,
+        )
         while True:
+            if not pipe:
+                break
             if error := process.stderr.readline():
                 print(error.strip(), file=sys.stderr)
             output = process.stdout.readline()
             if output == process.stdout.readline():
                 print(output.strip())
-            if output == '' and process.poll() is not None:
+            if output == "" and process.poll() is not None:
                 break
+        return process
     except KeyboardInterrupt:
         print("Process interrupted by user")
+    except Exception as e:
+        print(f"Failed to start '{command}': {e}")
+        return None
     finally:
-        process.terminate()
-        process.wait()
+        if pipe:
+            process.terminate()
+            process.wait()
 
 
 def add_system_user(username: str) -> None:
@@ -99,14 +180,20 @@ def add_system_user(username: str) -> None:
         print(f"UID from environment: {uid}")
     else:
         uid = input("Enter container user system id: ").strip().lower()
+    if DEV_MODE:
+        print(f"SKIP adding system user in dev mode with UID={uid}")
+        return
     try:
-        subprocess.run([
-                        "useradd",
-                        "--uid", uid,
-                        "--no-create-home",
-                        username,
-                       ],
-                       check=True)
+        subprocess.run(
+            [
+                "useradd",
+                "--uid",
+                uid,
+                "--no-create-home",
+                username,
+            ],
+            check=True,
+        )
         print(f"User '{username}' created successfully with UID={uid}")
     except subprocess.CalledProcessError as e:
         print(f"Error creating user '{username}': {e}")
@@ -116,6 +203,9 @@ def add_system_user(username: str) -> None:
 def ensure_symlinks(home: str) -> None:
     src_path = f"{home}/.swm/spool"
     dst_path = "/opt/swm/spool"
+    if DEV_MODE:
+        print(f"SKIP creation of symlink in dev mode: {src_path} -> {dst_path}")
+        return
     os.makedirs(src_path, exist_ok=True)
     os.makedirs(os.path.dirname(dst_path), exist_ok=True)
     try:
@@ -128,10 +218,14 @@ def ensure_symlinks(home: str) -> None:
 
 
 def setup_skyport(username: str) -> None:
-    command = f"/opt/swm/current/scripts/setup-skyport.sh -u {username}"
-    log_file = "/var/log/setup-skyport.log"
+    if DEV_MODE:
+        log_file = "/tmp/setup-skyport.log"
+        command = f"./scripts/setup-skyport-dev.sh -u {username}"
+    else:
+        log_file = "/var/log/setup-skyport.log"
+        command = f"/opt/swm/current/scripts/setup-skyport.sh -u {username}"
 
-    print(f"Running command: {command}")
+    print(f"Run command: {command}")
     with open(log_file, "w") as log_file:
         process = subprocess.Popen(
             command,
@@ -142,14 +236,17 @@ def setup_skyport(username: str) -> None:
 
         process.wait()
         if process.returncode == 0:
-            print("\n"
-                  "Sky Port has been initialized.\n"
-                  "Please ensure now that Azure is configured, see HOWTO/AZURE.md.\n"
-                  "The container will be stopped now. Start again when Azure is ready.\n"
-                  )
+            print(
+                "\n"
+                "Sky Port has been initialized.\n"
+                "Please ensure now that Azure is configured, see HOWTO/AZURE.md.\n"
+                "The container will be stopped now. Start again when Azure is ready.\n"
+            )
         else:
-            print(f"Setup has failed with exit code {process.returncode}.\n"
-                  "See /var/log/setup-skyport.log for details.")
+            print(
+                f"Setup has failed with exit code {process.returncode}.\n"
+                "See /var/log/setup-skyport.log for details."
+            )
             sys.exit(1)
 
 
@@ -158,9 +255,18 @@ def ask_clean_spool(spool_directory: str) -> None:
         if not os.path.exists(spool_directory):
             break
         if os.listdir(spool_directory):
-            answer = input(f"Recreate configuration located in {spool_directory}? [N] ").strip().lower()
+            answer = (
+                input(f"Recreate configuration located in {spool_directory}? [N] ")
+                .strip()
+                .lower()
+            )
             if answer in ["yes", "y"]:
-                shutil.rmtree(spool_directory)
+                if DEV_MODE:
+                    print(
+                        f"SKIP spool directory removal in dev mode: {spool_directory}"
+                    )
+                else:
+                    shutil.rmtree(spool_directory)
                 break
             elif answer in ["no", "n"] or not answer:
                 break
@@ -178,38 +284,67 @@ def get_user_home(username: str) -> str:
 
 
 def touch(file_path: str) -> None:
-    with open(file_path, 'w') as file:
+    with open(file_path, "w") as file:
         pass
 
 
+def parse_args() -> None:
+    parser = argparse.ArgumentParser(description="Parse --dev flag")
+    parser.add_argument("--dev", action="store_true", help="Enable development mode")
+    args = parser.parse_args()
+
+    global DEV_MODE
+    DEV_MODE = args.dev
+
+
 def main() -> None:
+    parse_args()
+
     username = get_username()
     if not username:
         print("User name is unknown")
         sys.exit(1)
 
-    skyport_initialized_file = "/skyport-initialized"
+    if DEV_MODE:
+        skyport_initialized_file = "/tmp/skyport-initialized"
+    else:
+        skyport_initialized_file = "/skyport-initialized"
     if os.path.exists(skyport_initialized_file):
-        run_supervisord(username)
+        print(f"File exists: {skyport_initialized_file}")
+        if warm_up_cache(username):
+            sys.exit(1)
+        if process := run_supervisord(username):
+            process.terminate()
+            process.wait()
+            sys.exit(0)
+        sys.exit(1)
 
     home = get_user_home(username)
     if not home:
         print("User home is unknown")
         sys.exit(1)
 
-    spool_directory = f"{home}/.swm/spool"
+    if DEV_MODE:
+        spool_directory = f"/tmp/swm-spool.tmp"
+    else:
+        spool_directory = f"{home}/.swm/spool"
     ask_clean_spool(spool_directory)
 
     if not os.path.exists(spool_directory):
+        print(f"Create spool directory: {spool_directory}")
         os.makedirs(spool_directory)
 
-    if not os.path.exists(spool_directory) or not os.listdir(spool_directory):
-        print(f"Spool directory is not initialized: {spool_directory}")
+    if not os.listdir(spool_directory):
+        print(f"Spool directory is empty: {spool_directory}")
         add_system_user(username)
         ensure_symlinks(home)
         setup_skyport(username)
     else:
-        run_supervisord(username)
+        if warm_up_cache(username):
+            sys.exit(1)
+        if process := run_supervisord(username):
+            process.terminate()
+            process.wait()
 
     touch(skyport_initialized_file)
 
