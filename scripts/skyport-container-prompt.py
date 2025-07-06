@@ -121,7 +121,7 @@ def warm_up_cache(username: str) -> bool:
     process_supervisor.terminate()
     exit_code = result.get("exit_code", -1)
     print(f"\nGate cache update script exit code: {exit_code}")
-    return exit_code
+    return exit_code == 0
 
 
 def run_supervisord(
@@ -311,7 +311,7 @@ def main() -> None:
         skyport_initialized_file = "/skyport-initialized"
     if os.path.exists(skyport_initialized_file):
         print(f"File exists: {skyport_initialized_file}")
-        if warm_up_cache(username):
+        if not warm_up_cache(username):
             sys.exit(1)
         if process := run_supervisord(username):
             process.terminate()
@@ -340,7 +340,7 @@ def main() -> None:
         ensure_symlinks(home)
         setup_skyport(username)
     else:
-        if warm_up_cache(username):
+        if not warm_up_cache(username):
             sys.exit(1)
         if process := run_supervisord(username):
             process.terminate()
