@@ -44,7 +44,10 @@ DEV_MODE: bool = False
 
 def get_username() -> str:
     if username := os.environ.get("SKYPORT_USER"):
-        print(f"Username from environment: {username}")
+        print(f"Username from SKYPORT_USER environment: {username}")
+        return username
+    if username := os.environ.get("USER"):
+        print(f"Username from USER environment: {username}")
         return username
     while True:
         if username := input("Enter container user name: ").strip().lower():
@@ -113,14 +116,15 @@ def warm_up_cache(username: str) -> bool:
     script_thread.start()
 
     while script_thread.is_alive():
+        time.sleep(5)
         print(".", end="", flush=True)
-        time.sleep(10)
 
     script_thread.join()
 
     process_supervisor.terminate()
     exit_code = result.get("exit_code", -1)
     print(f"\nGate cache update script exit code: {exit_code}")
+    time.sleep(5)
     return exit_code == 0
 
 
