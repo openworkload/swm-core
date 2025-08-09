@@ -30,16 +30,26 @@
 #
 # This script runs as an endpoint for skyport container.
 
-import argparse
 import os
 import pwd
-import shutil
-import subprocess
 import sys
-import threading
 import time
+import shutil
+import argparse
+import threading
+import subprocess
 
 DEV_MODE: bool = False
+
+
+def get_location(default: str = "eastus2") -> str:
+    if location := os.environ.get("SKYPORT_REMOTE_LOCATION"):
+        print(f"Location from SKYPORT_REMOTE_LOCATION environment: {location}")
+        return location
+    if location := input(f"Enter remote location [{default}]: ").strip().lower():
+        return location
+    else:
+        return default
 
 
 def get_username() -> str:
@@ -221,13 +231,15 @@ def ensure_symlinks(home: str) -> None:
         print(f"Error creating symlink: {e}")
 
 
-def setup_skyport(username: str) -> None:
+def setup_skyport(username: str, location: str) -> None:
     if DEV_MODE:
         log_file = "/tmp/setup-skyport.log"
-        command = f"./scripts/setup-skyport-dev.sh -u {username}"
+        command = f"./scripts/setup-skyport-dev.sh -u {username} -l {location}"
     else:
         log_file = "/var/log/setup-skyport.log"
-        command = f"/opt/swm/current/scripts/setup-skyport.sh -u {username}"
+        command = (
+            f"/opt/swm/current/scripts/setup-skyport.sh -u {username} -l {location}"
+        )
 
     print(f"Run command: {command}")
     with open(log_file, "w") as log_file:
@@ -309,6 +321,11 @@ def main() -> None:
         print("User name is unknown")
         sys.exit(1)
 
+    location = get_location()
+    if not location:
+        print("Location is unknown")
+        sys.exit(1)
+
     if DEV_MODE:
         skyport_initialized_file = "/tmp/skyport-initialized"
     else:
@@ -342,7 +359,7 @@ def main() -> None:
         print(f"Spool directory is empty: {spool_directory}")
         add_system_user(username)
         ensure_symlinks(home)
-        setup_skyport(username)
+        setup_skyport(username, location)
     else:
         if not warm_up_cache(username):
             sys.exit(1)

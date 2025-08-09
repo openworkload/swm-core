@@ -32,17 +32,17 @@
 # Thus the service stoppage (in case it was started before) ends with the error "Invalid node name".
 # Also the stoppage will fail because old and new cookies may differ.
 
-import argparse
-import datetime
-import getpass
-import logging
 import os
 import pwd
-import shutil
-import socket
 import sys
 import time
 import uuid
+import shutil
+import socket
+import getpass
+import logging
+import argparse
+import datetime
 from subprocess import PIPE, Popen
 
 PRODUCT = "swm"

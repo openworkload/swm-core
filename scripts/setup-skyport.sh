@@ -32,15 +32,22 @@
 
 
 usage() {
-    echo "Usage: $0 [-u] <username>"
-    echo "  -u: specify the username (mandatory)"
+    echo "Usage: $0 -u USERNAME -l LOCATION"
+    echo "  -u: username (mandatory)"
+    echo "  -l: location (mandatory)"
     exit 1
 }
 
-while getopts ":u:" opt; do
+username=""
+location=""
+
+while getopts "l:u:" opt; do
     case $opt in
       u)
-          USERNAME=$OPTARG
+          username=$OPTARG
+          ;;
+      l)
+          location=$OPTARG
           ;;
       \?)
           echo "Error: Invalid option -$OPTARG"
@@ -53,14 +60,15 @@ while getopts ":u:" opt; do
     esac
 done
 
-if [[ -z $USERNAME ]]; then
-    echo "Error: Username is required"
-    usage
+if [ -z "$username" ] || [ -z "$location" ]; then
+    echo "Both -u (username) and -l (location) must be provided."
+    echo "Usage: $0 -u username -l location"
+    exit 1
 fi
 
 export SWM_ROOT=/opt/swm
 export SWM_VERSION_DIR=/opt/swm/current
-export SWM_SPOOL=/home/$USERNAME/.swm/spool
+export SWM_SPOOL=/home/$username/.swm/spool
 export SWM_API_PORT=10001
 
 source ${SWM_VERSION_DIR}/scripts/swm.env
@@ -73,7 +81,8 @@ ${SWM_VERSION_DIR}/scripts/setup-swm-core.py -n\
                                              -p $SWM_ROOT\
                                              -s $SWM_SPOOL\
                                              -c $CONFIG_BASE\
-                                             -u $USERNAME\
+                                             -u $username\
+                                             -l $location
                                              -d cluster
 EXIT_CODE=$?
 if [ "$EXIT_CODE" != "0" ]; then
