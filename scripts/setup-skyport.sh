@@ -82,7 +82,7 @@ ${SWM_VERSION_DIR}/scripts/setup-swm-core.py -n\
                                              -s $SWM_SPOOL\
                                              -c $CONFIG_BASE\
                                              -u $username\
-                                             -l $location
+                                             -l $location\
                                              -d cluster
 EXIT_CODE=$?
 if [ "$EXIT_CODE" != "0" ]; then
