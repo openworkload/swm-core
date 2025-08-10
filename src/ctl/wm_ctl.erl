@@ -798,7 +798,7 @@ consult(File) ->
             Root = os:getenv("SWM_ROOT"),
             User = os:getenv("SWM_ADMIN_USER"),
             UserId = os:getenv("SWM_ADMIN_ID"),
-            Location = os:getenv("SWM_REMOTE_LOCATION", ""),
+            Location = os:getenv("SWM_REMOTE_LOCATION"),
             S2 = re:replace(S1, "_HOSTNAME_", FQDN, [global, {return, list}]),
             S3 = re:replace(S2, "_SWM_SPOOL_", Spool, [global, {return, list}]),
             S4 = re:replace(S3, "_SWM_ROOT_", Root, [global, {return, list}]),

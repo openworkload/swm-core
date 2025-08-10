@@ -32,18 +32,20 @@
 # Thus the service stoppage (in case it was started before) ends with the error "Invalid node name".
 # Also the stoppage will fail because old and new cookies may differ.
 
-import os
-import pwd
-import sys
-import time
-import uuid
-import shutil
-import socket
-import getpass
-import logging
 import argparse
 import datetime
-from subprocess import PIPE, Popen
+import getpass
+import logging
+import os
+import sys
+import shutil
+import socket
+import time
+import uuid
+import pwd
+
+from subprocess import Popen
+from subprocess import PIPE
 
 PRODUCT = "swm"
 SERVICES_DIR = "/lib/systemd/system"
@@ -57,7 +59,7 @@ def setup_logger(opts):
     for hdlr in LOG.handlers[:]:
         LOG.removeHandler(hdlr)
     fh = logging.FileHandler(LOG_FILE)
-    fmr = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    fmr = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
     fh.setFormatter(fmr)
     LOG.addHandler(fh)
 
@@ -71,11 +73,11 @@ def setup_logger(opts):
     LOG.addHandler(ch)
 
 
-def run(exe, args, env, exit_on_fail=True, verbose=True, user=None):
+def run(exe, args, env, exit_on_fail = True, verbose = True, user = None):
     def normalize(x):
         return list(filter(None, x.decode("utf-8", "strict").split("\n")))
 
-    cmdline = exe + " " + " ".join(args)
+    cmdline = exe + ' ' + ' '.join(args)
     if user == "root":
         cmdline = f"runuser -u {user} {cmdline}"
     LOG.info("Run " + "'" + cmdline + "'")
@@ -106,10 +108,10 @@ def run(exe, args, env, exit_on_fail=True, verbose=True, user=None):
     return (stdout, stderr)
 
 
-def write_file(filepath, content):
+def  write_file(filepath, content):
     try:
         LOG.info("Write %s" % filepath)
-        with open(filepath, "w", encoding="utf-8") as fh:
+        with open(filepath, "w", encoding='utf-8') as fh:
             fh.write(content)
     except Exception as e:
         LOG.error("Could not write %s: %s" % (filepath, e))
@@ -118,7 +120,7 @@ def write_file(filepath, content):
 
 def question(msg, default, ispath=True):
     msgfull = (msg + " [%s]: ") % default
-    print(msgfull, end="", flush=True)
+    print(msgfull, end="",flush=True)
     answer = sys.stdin.readline()
     answer = answer.strip()
     if len(answer) == 0:
@@ -163,7 +165,7 @@ def generate_service_file(opts):
     try:
         with open(tmplfp, "r") as f:
             lines = f.readlines()
-            template = "".join(lines)
+            template = ''.join(lines)
     except OSError as e:
         LOG.error("Could not read %s: %s" % (tmplfp, e))
         sys.exit(1)
@@ -177,19 +179,15 @@ def generate_service_file(opts):
 
 
 def env(opts):
-    command = [
-        "bash",
-        "-c",
-        "source {env}".format(env=os.path.join(SWM_VERSION_DIR, "scripts", "swm.env")),
-    ]
-    LOG.info("Run '%s'" % " ".join(command))
+    command = ['bash', '-c', 'source {env}'.format(env=os.path.join(SWM_VERSION_DIR, "scripts", "swm.env"))]
+    LOG.info("Run '%s'" % ' '.join(command))
 
     envs = os.environ
-    for key, val in opts.items():
+    for (key,val) in opts.items():
         if isinstance(val, str) and key.startswith("SWM"):
             envs[key] = val
 
-    proc = Popen(command, stdout=PIPE, env=envs)
+    proc = Popen(command, stdout = PIPE, env=envs)
     for line in proc.stdout:
         line = line.decode()
         (key, _, value) = line.partition("=")
@@ -218,14 +216,14 @@ def spawn_vnode(opts):
         args = ["daemon"]
         script = os.path.join(SWM_VERSION_DIR, "bin", PRODUCT)
         LOG.info(f"Daemon mode vnode: {script}")
-        # opts["SWM_MNESIA_DIR"] = os.path.join(opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb")
+        #opts["SWM_MNESIA_DIR"] = os.path.join(opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb")
 
     os.environ["SWM_MODE"] = "MAINT"
     envs = os.environ
-    for key, val in opts.items():
+    for (key,val) in opts.items():
         if isinstance(val, str):
             envs[key] = val
-    for key, val in envs.items():
+    for key,val in envs.items():
         if key.startswith("SWM"):
             LOG.info("export %s=%s" % (key, val))
 
@@ -242,7 +240,7 @@ def wait_vnode(opts):
                     return
             time.sleep(1)
             n = n - 1
-        ping_vnode(exit_on_fail=True, verbose=True)
+        ping_vnode(exit_on_fail = True, verbose = True)
 
     if opts["DIVISION"] not in ("grid", "cluster"):
         return
@@ -254,12 +252,7 @@ def wait_vnode(opts):
         script = os.path.join(SWM_VERSION_DIR, "bin", "swm")
         args = ["ping"]
 
-    poll(
-        lambda exit_on_fail=False, verbose=False: run(
-            script, args, os.environ, exit_on_fail, verbose
-        ),
-        60,
-    )
+    poll(lambda exit_on_fail = False, verbose = False: run(script, args, os.environ, exit_on_fail, verbose), 60)
 
 
 def stop_vnode(opts, exit_on_fail=True):
@@ -283,7 +276,7 @@ def run_ctl(args, opts):
         ctl = os.path.join(SWM_VERSION_DIR, "bin", "swmctl")
 
     envs = os.environ
-    for key, val in opts.items():
+    for (key,val) in opts.items():
         if isinstance(val, str):
             envs[key] = val
 
@@ -312,7 +305,7 @@ def run_create_cert(args, opts):
     else:
         script = os.path.join(SWM_VERSION_DIR, "bin", "swm-create-cert")
     envs = os.environ
-    for key, val in opts.items():
+    for (key,val) in opts.items():
         if isinstance(val, str):
             envs[key] = val
 
@@ -340,11 +333,8 @@ def generate_certificates(opts):
 
 
 def create_chain_cert(opts):
-    filenames = [
-        "/opt/swm/spool/secure/cluster/cert.pem",
-        "/opt/swm/spool/secure/grid/cert.pem",
-    ]
-    with open("/opt/swm/spool/secure/cluster/ca-chain-cert.pem", "w") as outfile:
+    filenames = ['/opt/swm/spool/secure/cluster/cert.pem', '/opt/swm/spool/secure/grid/cert.pem']
+    with open('/opt/swm/spool/secure/cluster/ca-chain-cert.pem', 'w') as outfile:
         for fname in filenames:
             with open(fname) as infile:
                 outfile.write(infile.read())
@@ -405,12 +395,14 @@ def get_setup_options():
     if args.division:
         opts["DIVISION"] = args.division
     if args.testing:
-        opts["TESTING"] = True  # see scripts/setup-dev.linux
+        opts["TESTING"] = True # see scripts/setup-dev.linux
         opts["DEBUG"] = True
     if args.archive:
         opts["ARCHIVE"] = True
     if args.extra:
         opts["EXTRA_CONFIG"] = args.extra
+    if args.location:
+        opts["SWM_REMOTE_LOCATION"] = args.location
     if args.extra and not os.path.exists(args.extra):
         LOG.error("No such file: " + str(args.extra))
         sys.exit(1)
@@ -451,58 +443,70 @@ def get_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "-d",
-        "--division",
-        default="node",
-        choices=["grid", "cluster"],
-        help="Configuring division name",
+        "-d", "--division",
+        default='node',
+        choices=['grid', 'cluster'],
+        help="Configuring division name"
     )
 
     parser.add_argument(
-        "-u", "--user-name", help="User name that will be admin (default: current user)"
+        "-u", "--user-name",
+        help="User name that will be admin (default: current user)"
     )
 
     parser.add_argument(
-        "-p",
-        "--prefix",
-        help="Path to root directory (can also be defined with $SWM_ROOT)",
+        "-p", "--prefix",
+        help="Path to root directory (can also be defined with $SWM_ROOT)"
     )
 
     parser.add_argument(
-        "-s",
-        "--spool",
+        "-s", "--spool",
         help="Path to spool directory (can also be defined with $SWM_SPOOL, "
-        "if not set, then $SWM_ROOT/spool is used)",
+             "if not set, then $SWM_ROOT/spool is used)"
     )
 
     parser.add_argument(
-        "-c", "--config", help="Path to file with default setup options"
+        "-c", "--config",
+        help="Path to file with default setup options"
     )
 
     parser.add_argument(
-        "-e", "--extra", help="Path to file with additional DB configuration"
+        "-l", "--location",
+        help="Remote site location name"
     )
 
     parser.add_argument(
-        "-n",
-        "--no-service",
+        "-e", "--extra",
+        help="Path to file with additional DB configuration"
+    )
+
+    parser.add_argument(
+        "-n", "--no-service",
         action="store_true",
-        help="Do not install swm service file",
+        help="Do not install swm service file"
     )
 
     parser.add_argument(
-        "-t",
-        "--testing",
+        "-t", "--testing",
         action="store_true",
-        help="Setup for testing purposes (no service file, just a spool)",
+        help="Setup for testing purposes (no service file, just a spool)"
     )
 
-    parser.add_argument("-x", "--skyport", action="store_true", help="Setup Sky Port")
-
-    parser.add_argument("-v", "--version", help="Specify version")
+    parser.add_argument(
+        "-x", "--skyport",
+        action="store_true",
+        help="Setup Sky Port"
+    )
 
     parser.add_argument(
-        "-a", "--archive", action="store_true", help="Generate final worker SWM archive"
+        "-v", "--version",
+        help="Specify version"
+    )
+
+    parser.add_argument(
+        "-a", "--archive",
+        action="store_true",
+        help="Generate final worker SWM archive"
     )
 
     return parser.parse_args()
@@ -512,7 +516,7 @@ def userInput(env, default, descr, opts, replacements=[], ispath=True):
     if env not in opts:
         answer = question("Enter " + descr, default, ispath)
         opts[env] = answer
-    for x, y in replacements:
+    for (x,y) in replacements:
         opts[env] = opts[env].replace(x, y)
     LOG.info("Entered " + descr + ": " + opts[env])
 
@@ -525,33 +529,34 @@ def set_default(env, default, descr, opts):
 
 
 def get_defaults(opts):
-    set_default("SWM_VERSION", os.environ["SWM_VERSION"], "version", opts)
-    set_default("SWM_ROOT", os.environ["SWM_ROOT"], "product directory", opts)
-    set_default("SWM_SPOOL", os.environ["SWM_SPOOL"], "product spool directory", opts)
-    set_default(
-        "SWM_PRIV_DIR", os.path.join(SWM_VERSION_DIR, "priv"), "priv directory", opts
-    )
+    set_default("SWM_VERSION",     os.environ["SWM_VERSION"],             "version",                 opts)
+    set_default("SWM_ROOT",        os.environ["SWM_ROOT"],                "product directory",       opts)
+    set_default("SWM_SPOOL",       os.environ["SWM_SPOOL"],               "product spool directory", opts)
+    set_default("SWM_PRIV_DIR",    os.path.join(SWM_VERSION_DIR, "priv"), "priv directory",          opts)
 
     if "EXTRA_CONFIG" not in opts:
         if opts["DIVISION"] == "grid":
-            opts["EXTRA_CONFIG"] = os.path.join(
-                opts["SWM_PRIV_DIR"], "setup", "grid.config"
-            )
+            opts["EXTRA_CONFIG"] = os.path.join(opts["SWM_PRIV_DIR"], "setup", "grid.config")
         elif opts["DIVISION"] == "cluster":
             conf = "skyport.config" if opts["SWM_SKY_PORT"] else "cluster.config"
             opts["EXTRA_CONFIG"] = os.path.join(opts["SWM_PRIV_DIR"], "setup", conf)
 
     if "SWM_SNAME" not in opts:
         division = opts.get("DIVISION", "")
-        if division == "grid":
+        if division == 'grid':
             opts["SWM_SNAME"] = "ghead"
-        elif division == "cluster":
+        elif division == 'cluster':
             opts["SWM_SNAME"] = "node" if opts["SWM_SKY_PORT"] else "chead1"
         else:
             opts["SWM_SNAME"] = division
 
 
 def get_from_user(opts):
+    default_remote_location = "eastus2"
+    if "SWM_REMOTE_LOCATION" not in opts:
+        opts["SWM_REMOTE_LOCATION"] = default_remote_location
+    userInput("SWM_REMOTE_LOCATION", default_remote_location, "Remote site location", opts)
+
     default_api_port = "10001"
     if "SWM_API_PORT" not in opts:
         opts["SWM_API_PORT"] = default_api_port
@@ -568,36 +573,15 @@ def get_from_user(opts):
     userInput("SWM_PARENT_HOST", default_parent_host, "Parent host", opts)
 
     hostname = socket.gethostname()
-    userInput(
-        "SWM_SNAME",
-        "ghead" + "@" + hostname,
-        "Division management vnode name",
-        opts,
-        [("{HOSTNAME}", hostname)],
-        False,
-    )
-    userInput(
-        "SWM_HOST",
-        hostname,
-        "Division management host name",
-        opts,
-        [("{HOSTNAME}", hostname)],
-        False,
-    )
+    userInput("SWM_SNAME", "ghead" + "@" + hostname,
+              "Division management vnode name", opts, [("{HOSTNAME}", hostname)], False)
+    userInput("SWM_HOST", hostname, "Division management host name", opts,
+              [("{HOSTNAME}", hostname)], False)
 
     admin = opts.get("SWM_USER", "root")
     opts["SWM_ADMIN_ID"] = str(uuid.uuid4())
-    userInput(
-        "SWM_ADMIN_USER", admin, "administrator user", opts, [("{USER}", admin)], False
-    )
-    userInput(
-        "SWM_ADMIN_EMAIL",
-        admin + "@" + opts["SWM_HOST"],
-        "administrator email",
-        opts,
-        [("{USER}", admin)],
-        False,
-    )
+    userInput("SWM_ADMIN_USER", admin, "administrator user", opts, [("{USER}", admin)], False)
+    userInput("SWM_ADMIN_EMAIL", admin+"@"+opts["SWM_HOST"], "administrator email", opts, [("{USER}", admin)], False)
 
     userInput("SWM_UNIT_NAME", "Dev", "organizational unit name", opts, ispath=False)
     userInput("SWM_ORG_NAME", "Open Workload", "organization name", opts, ispath=False)
@@ -606,13 +590,12 @@ def get_from_user(opts):
 
 
 def create_archive(opts):
-    spool_dir = opts["SWM_SPOOL"]
+    spool_dir   = opts["SWM_SPOOL"]
     swm_version = opts["SWM_VERSION"]
-    key_dirs = [
-        os.path.join(spool_dir, "secure/cluster"),
-        os.path.join(spool_dir, "secure/node"),
-        os.path.join(spool_dir, "secure/host"),
-    ]
+    key_dirs = [os.path.join(spool_dir, "secure/cluster"),
+                os.path.join(spool_dir, "secure/node"),
+                os.path.join(spool_dir, "secure/host"),
+               ]
 
     for key_dir in key_dirs:
         if not os.path.isdir(key_dir):
@@ -635,9 +618,7 @@ def create_archive(opts):
         secure_dir = os.path.join(tmp_dir, "spool", "secure")
         make_dirs(secure_dir)
         for key_dir in key_dirs:
-            copy_and_overwrite(
-                key_dir, os.path.join(secure_dir, os.path.basename(key_dir))
-            )
+            copy_and_overwrite(key_dir, os.path.join(secure_dir, os.path.basename(key_dir)))
         files.append(secure_dir)
     else:
         root_dir = opts["SWM_ROOT"]
@@ -646,10 +627,8 @@ def create_archive(opts):
 
     archive = f"{root_dir}/{PRODUCT}-worker.tar.gz"
     transform_args = [
-        "--transform",
-        "'s,^.*\/swm/,,'",
-        "--transform",
-        "'s,^home/" + opts["SWM_USER"] + "/.swm,,'",
+       "--transform", "'s,^.*\/swm/,,'",
+       "--transform", "'s,^home/" + opts["SWM_USER"] + "/.swm,,'",
     ]
     args = transform_args + ["-czf", archive, " ".join(files)]
 
