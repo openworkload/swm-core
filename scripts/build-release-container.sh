@@ -1,7 +1,5 @@
 #/bin/bash
 
-CLOUD_GATE_VERSION=0.1.6
-
 ME=$( readlink -f "$0" )
 ROOT_DIR=$( dirname "$( dirname "$ME" )" )
 DOCKERFILE=${ROOT_DIR}/priv/container/release/Dockerfile
@@ -18,6 +16,7 @@ DOCKER=docker
 IMAGE_NAME=skyport
 TAG=latest
 
+CLOUD_GATE_VERSION=$(cd ../swm-cloud-gate/scripts > /dev/null; ./version)
 GATE_PACKAGE_NAME=swmcloudgate-${CLOUD_GATE_VERSION}-py3-none-any.whl
 GATE_PACKAGE_PATH_OLD=$ROOT_DIR/../swm-cloud-gate/dist/$GATE_PACKAGE_NAME
 GATE_PACKAGE_PATH_NEW=_build/packages/$GATE_PACKAGE_NAME
