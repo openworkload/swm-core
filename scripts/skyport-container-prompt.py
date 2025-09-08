@@ -30,14 +30,14 @@
 #
 # This script runs as an endpoint for skyport container.
 
+import argparse
 import os
 import pwd
-import sys
-import time
 import shutil
-import argparse
-import threading
 import subprocess
+import sys
+import threading
+import time
 
 DEV_MODE: bool = False
 
@@ -75,8 +75,6 @@ def render_supervisor_config(username: str) -> None:
         print(f"Supervisord configuration file exists: {output_path}")
         return
 
-    shutil.copy(source, destination)
-
     with open(template_path, "r") as template_file:
         template_content = template_file.read()
 
@@ -88,7 +86,7 @@ def render_supervisor_config(username: str) -> None:
     print(f"Supervisord configuration file rendered: {output_path}")
 
 
-def warm_up_cache(username: str) -> bool:
+def warm_up_cache(username: str, home: str) -> bool:
     cache_dir = "/opt/swm/spool/cache/"
     print(f"Try to warm the gate cache up: {cache_dir}")
     if os.path.exists(cache_dir) and os.listdir(cache_dir):
@@ -110,10 +108,14 @@ def warm_up_cache(username: str) -> bool:
 
     result: Dict[str, int] = {}
 
+    env = os.environ
+    env["SWM_CLOUD_CREDENTIALS_FILE"] = f"{home}/.swm/credentials.json"
+    env["SWM_SPOOL"] =  "/opt/swm/spool" if username == "root" else f"{home}/.swm/spool"
+
     def run_cache_update_scripts():
         print(f"Run gate cache update script: {script}")
         try:
-            process = subprocess.Popen([script])
+            process = subprocess.Popen(["python3", script], env=env)
             print("Gate cache update script process started")
             process.wait()
             result["exit_code"] = process.returncode
@@ -134,7 +136,7 @@ def warm_up_cache(username: str) -> bool:
     process_supervisor.terminate()
     exit_code = result.get("exit_code", -1)
     print(f"\nGate cache update script exit code: {exit_code}")
-    time.sleep(5)
+    time.sleep(10005)
     return exit_code == 0
 
 
@@ -321,9 +323,9 @@ def main() -> None:
         print("User name is unknown")
         sys.exit(1)
 
-    location = get_location()
-    if not location:
-        print("Location is unknown")
+    home = get_user_home(username)
+    if not home:
+        print("User home is unknown")
         sys.exit(1)
 
     if DEV_MODE:
@@ -332,7 +334,7 @@ def main() -> None:
         skyport_initialized_file = "/skyport-initialized"
     if os.path.exists(skyport_initialized_file):
         print(f"File exists: {skyport_initialized_file}")
-        if not warm_up_cache(username):
+        if not warm_up_cache(username, home):
             sys.exit(1)
         if process := run_supervisord(username):
             process.terminate()
@@ -340,9 +342,9 @@ def main() -> None:
             sys.exit(0)
         sys.exit(1)
 
-    home = get_user_home(username)
-    if not home:
-        print("User home is unknown")
+    location = get_location()
+    if not location:
+        print("Location is unknown")
         sys.exit(1)
 
     if DEV_MODE:
@@ -351,19 +353,23 @@ def main() -> None:
         spool_directory = f"{home}/.swm/spool"
     ask_clean_spool(spool_directory)
 
+    if os.path.islink(spool_directory):
+        print(f"Remove symlink: {spool_directory}")
+        os.remove(spool_directory)
+
     if not os.path.exists(spool_directory):
         print(f"Create spool directory: {spool_directory}")
         os.makedirs(spool_directory)
 
+    ensure_symlinks(home)
     if not os.listdir(spool_directory):
         print(f"Spool directory is empty: {spool_directory}")
         add_system_user(username)
-        ensure_symlinks(home)
         setup_skyport(username, location)
     else:
-        if not warm_up_cache(username):
+        if not warm_up_cache(username, home):
             sys.exit(1)
-        if process := run_supervisord(username):
+        if process := run_supervisord(username, pipe=False):
             process.terminate()
             process.wait()
 

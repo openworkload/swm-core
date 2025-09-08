@@ -118,11 +118,16 @@ create_host_key(Name) ->
     RSAKey = filename:join([KeysDir, "ssh_host_rsa_key"]),
     DSAKey = filename:join([KeysDir, "ssh_host_dsa_key"]),
     ECDSAKey = filename:join([KeysDir, "ssh_host_ecdsa_key"]),
-    ok = filelib:ensure_dir(KeysDir),
-    create_dirs(SecureDir, [Name]),
-    generate_host_key(KeysDir, ssh_keygen_cmd(), "rsa", RSAKey),
-    generate_host_key(KeysDir, ssh_keygen_cmd(), "dsa", DSAKey),
-    generate_host_key(KeysDir, ssh_keygen_cmd(), "ecdsa", ECDSAKey).
+    case filelib:ensure_dir(KeysDir) of
+        ok ->
+            create_dirs(SecureDir, [Name]),
+            generate_host_key(KeysDir, ssh_keygen_cmd(), "rsa", RSAKey),
+            generate_host_key(KeysDir, ssh_keygen_cmd(), "dsa", DSAKey),
+            generate_host_key(KeysDir, ssh_keygen_cmd(), "ecdsa", ECDSAKey);
+        {error, eacces} ->
+            io:format(standard_error, "No access to ~p~n", [KeysDir])
+    end.
+
 
 %% ============================================================================
 %% Auxiliary functions

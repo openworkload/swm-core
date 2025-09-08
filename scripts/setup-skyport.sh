@@ -91,9 +91,9 @@ if [ "$EXIT_CODE" != "0" ]; then
 fi
 
 echo "Tune permissions"
-chown -v -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.swm/spool
-chown -v -R ${USERNAME}:${USERNAME} ${SWM_VERSION_DIR}/log
-chown -v -R ${USERNAME}:${USERNAME} ${SWM_VERSION_DIR}/releases
+chown -v -R ${username}:${username} /home/${username}/.swm/spool
+chown -v -R ${username}:${username} ${SWM_VERSION_DIR}/log
+chown -v -R ${username}:${username} ${SWM_VERSION_DIR}/releases
 
 echo
 echo "Sky Port setup finished"

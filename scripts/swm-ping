@@ -43,6 +43,6 @@ else # run from sources
   ESCRIPT=escript
 fi
 
-SWMCREATECERT=${DIR}/create-cert.escript
+SCRIPT=${DIR}/ping.escript
 
-$ESCRIPT $SWMCREATECERT $@
+$ESCRIPT $SCRIPT $@

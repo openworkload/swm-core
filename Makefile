@@ -132,6 +132,6 @@ upgrade_deps:
 	$(REBAR) upgrade -a
 
 worker: release
-	export SWM_VERSION=$(VERSION)
-	scripts/setup-swm-core.py -a -t
+	scripts/swm.env
+	scripts/setup-swm-core.py -a -t -v $(VERSION)
 	cp _build/packages/swm-worker.tar.gz ../openstack-box/

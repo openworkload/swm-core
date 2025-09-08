@@ -37,15 +37,13 @@ import datetime
 import getpass
 import logging
 import os
-import sys
+import pwd
 import shutil
 import socket
+import sys
 import time
 import uuid
-import pwd
-
-from subprocess import Popen
-from subprocess import PIPE
+from subprocess import PIPE, Popen
 
 PRODUCT = "swm"
 SERVICES_DIR = "/lib/systemd/system"
@@ -59,7 +57,7 @@ def setup_logger(opts):
     for hdlr in LOG.handlers[:]:
         LOG.removeHandler(hdlr)
     fh = logging.FileHandler(LOG_FILE)
-    fmr = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+    fmr = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
     fh.setFormatter(fmr)
     LOG.addHandler(fh)
 
@@ -73,13 +71,37 @@ def setup_logger(opts):
     LOG.addHandler(ch)
 
 
-def run(exe, args, env, exit_on_fail = True, verbose = True, user = None):
+def run_in_background(exe: str, args: list[str], env: dict[str, str]) -> Popen | None:
+    command: list = [exe] + args
+    print(f"Start command in background: {' '.join(command)}")
+    try:
+        process = Popen(command, env=env)
+        if process.poll() is None:
+            print(f"Process started with pid={process.pid}")
+            return process
+        else:
+            print("Process failed to start")
+    except Exception as e:
+        print(f"Failed to start '{command}': {e}")
+        return None
+    return None
+
+
+def run(
+    exe: str,
+    args: list[str],
+    env: dict[str, str],
+    exit_on_fail: bool = True,
+    verbose: bool = True,
+    user: str | None = None,
+) -> tuple[list[str], list[str], int]:
     def normalize(x):
         return list(filter(None, x.decode("utf-8", "strict").split("\n")))
 
-    cmdline = exe + ' ' + ' '.join(args)
-    if user == "root":
-        cmdline = f"runuser -u {user} {cmdline}"
+    cmdline = exe + " " + " ".join(args)
+    #is_root = os.geteuid() == 0
+    # if is_root and user and user != "root":
+        # cmdline = f"runuser -u {user} {cmdline}"
     LOG.info("Run " + "'" + cmdline + "'")
     filename = os.path.basename(exe)
 
@@ -105,22 +127,22 @@ def run(exe, args, env, exit_on_fail = True, verbose = True, user = None):
     except Exception as e:
         LOG.error("     " + filename + " execution: " + e)
         sys.exit(1)
-    return (stdout, stderr)
+    return (stdout, stderr, pipe.returncode)
 
 
-def  write_file(filepath, content):
+def write_file(filepath: str, content: str) -> None:
     try:
         LOG.info("Write %s" % filepath)
-        with open(filepath, "w", encoding='utf-8') as fh:
+        with open(filepath, "w", encoding="utf-8") as fh:
             fh.write(content)
     except Exception as e:
         LOG.error("Could not write %s: %s" % (filepath, e))
         sys.exit(1)
 
 
-def question(msg, default, ispath=True):
+def question(msg: str, default: str, ispath: bool = True) -> str:
     msgfull = (msg + " [%s]: ") % default
-    print(msgfull, end="",flush=True)
+    print(msgfull, end="", flush=True)
     answer = sys.stdin.readline()
     answer = answer.strip()
     if len(answer) == 0:
@@ -136,7 +158,7 @@ def question(msg, default, ispath=True):
     return answer
 
 
-def make_dirs(dir):
+def make_dirs(dir: str) -> None:
     if not os.path.exists(dir):
         try:
             LOG.info("Making dir: " + dir)
@@ -146,15 +168,15 @@ def make_dirs(dir):
             sys.exit(1)
 
 
-def ensure_dirs(opts):
+def ensure_dirs(opts: dict[str, str]) -> None:
     make_dirs(opts["SWM_SPOOL"])
 
 
-def generate_configs(opts):
+def generate_configs(opts: dict[str, str]) -> None:
     generate_service_file(opts)
 
 
-def generate_service_file(opts):
+def generate_service_file(opts: dict[str, str]) -> None:
     if opts["NO_SERVICE"]:
         return
     if opts.get("TESTING", False):
@@ -165,7 +187,7 @@ def generate_service_file(opts):
     try:
         with open(tmplfp, "r") as f:
             lines = f.readlines()
-            template = ''.join(lines)
+            template = "".join(lines)
     except OSError as e:
         LOG.error("Could not read %s: %s" % (tmplfp, e))
         sys.exit(1)
@@ -178,24 +200,28 @@ def generate_service_file(opts):
     write_file(service_fp, template)
 
 
-def env(opts):
-    command = ['bash', '-c', 'source {env}'.format(env=os.path.join(SWM_VERSION_DIR, "scripts", "swm.env"))]
-    LOG.info("Run '%s'" % ' '.join(command))
+def env(opts: dict[str, str]) -> None:
+    command = [
+        "bash",
+        "-c",
+        "source {env}".format(env=os.path.join(SWM_VERSION_DIR, "scripts", "swm.env")),
+    ]
+    LOG.info("Run '%s'" % " ".join(command))
 
     envs = os.environ
-    for (key,val) in opts.items():
+    for key, val in opts.items():
         if isinstance(val, str) and key.startswith("SWM"):
             envs[key] = val
 
-    proc = Popen(command, stdout = PIPE, env=envs)
-    for line in proc.stdout:
+    process = Popen(command, stdout=PIPE, env=envs)
+    for line in process.stdout:
         line = line.decode()
         (key, _, value) = line.partition("=")
         os.environ[key] = value.strip()
-    proc.communicate()
+    process.communicate()
 
 
-def get_div_arg(opts):
+def get_div_arg(opts: dict[str, str]) -> str:
     div_arg = "-x"
     if opts["DIVISION"] == "grid":
         div_arg = "-g"
@@ -204,43 +230,56 @@ def get_div_arg(opts):
     return div_arg
 
 
-def spawn_vnode(opts):
+def spawn_vnode(opts: dict[str, str]) -> Popen:
     if opts["DIVISION"] not in ("grid", "cluster"):
-        return
+        return None
 
     if opts.get("TESTING", False):
         args = [get_div_arg(opts), "-b"]
         script = os.path.join(SWM_VERSION_DIR, "scripts", "run-in-shell.sh")
         LOG.info(f"Testing mode vnode: {script}")
     else:
-        args = ["daemon"]
+        args = ["foreground"]
         script = os.path.join(SWM_VERSION_DIR, "bin", PRODUCT)
         LOG.info(f"Daemon mode vnode: {script}")
-        #opts["SWM_MNESIA_DIR"] = os.path.join(opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb")
+        opts["SWM_LOG_DIR"] = os.path.join(
+            opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "log"
+        )
+        opts["SWM_MNESIA_DIR"] = os.path.join(
+            opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb"
+        )
 
     os.environ["SWM_MODE"] = "MAINT"
-    envs = os.environ
-    for (key,val) in opts.items():
+    env = os.environ
+    for key, val in opts.items():
         if isinstance(val, str):
-            envs[key] = val
-    for key,val in envs.items():
+            env[key] = val
+    for key, val in env.items():
         if key.startswith("SWM"):
             LOG.info("export %s=%s" % (key, val))
 
-    run(script, args, envs, user=opts["SWM_ADMIN_USER"])
+    process = run_in_background(script, args, env)
+    if not process:
+        LOG.error(f"Could not start {script} with arguments: {args}")
+        sys.exit(1)
+    return process
 
 
-def wait_vnode(opts):
+def wait_vnode(opts: dict[str, str]) -> None:
+    env = os.environ
+    for key, val in opts.items():
+        if isinstance(val, str):
+            env[key] = val
+
     def poll(ping_vnode, n):
         while n > 0:
-            (stdout, stderr) = ping_vnode()
-            for line in stdout:
-                if line == "pong":
-                    time.sleep(5)
-                    return
             time.sleep(1)
-            n = n - 1
-        ping_vnode(exit_on_fail = True, verbose = True)
+            (_, _, exit_code) = ping_vnode()
+            if exit_code:
+                return
+            LOG.error("No ping")
+            n -= 1
+        ping_vnode(exit_on_fail=True, verbose=True)
 
     if opts["DIVISION"] not in ("grid", "cluster"):
         return
@@ -249,34 +288,37 @@ def wait_vnode(opts):
         script = os.path.join(SWM_VERSION_DIR, "scripts", "run-in-shell.sh")
         args = [get_div_arg(opts), "-p"]
     else:
-        script = os.path.join(SWM_VERSION_DIR, "bin", "swm")
-        args = ["ping"]
+        script = os.path.join(SWM_VERSION_DIR, "scripts", "swm-ping")
+        args = ["localhost", opts["SWM_API_PORT"]]
 
-    poll(lambda exit_on_fail = False, verbose = False: run(script, args, os.environ, exit_on_fail, verbose), 60)
+    poll(
+        lambda exit_on_fail=False, verbose=False: run(
+            script, args, env, exit_on_fail, verbose
+        ),
+        60,
+    )
 
 
-def stop_vnode(opts, exit_on_fail=True):
+def stop_vnode(process: Popen | None, opts, exit_on_fail=True) -> None:
     if opts["DIVISION"] not in ("grid", "cluster"):
         return
-
     if opts.get("TESTING", False):
         script = os.path.join(SWM_VERSION_DIR, "scripts", "run-in-shell.sh")
         args = [get_div_arg(opts), "-s"]
         run(script, args, os.environ)
-    else:
-        script = os.path.join(SWM_VERSION_DIR, "bin", "swm")
-        if os.path.exists(script):
-            run(script, ["stop"], os.environ, exit_on_fail)
+    if process:
+        process.terminate()
+        process.wait()
 
 
-def run_ctl(args, opts):
+def run_ctl(args: list[str], opts: dict[str, str]) -> None:
     if opts.get("TESTING", False):
         ctl = os.path.join(SWM_VERSION_DIR, "scripts", "swmctl")
     else:
         ctl = os.path.join(SWM_VERSION_DIR, "bin", "swmctl")
 
     envs = os.environ
-    for (key,val) in opts.items():
+    for key, val in opts.items():
         if isinstance(val, str):
             envs[key] = val
 
@@ -285,7 +327,7 @@ def run_ctl(args, opts):
     run(ctl, args, envs)
 
 
-def load_db_configs(opts):
+def load_db_configs(opts: dict[str, str]) -> None:
     if opts["DIVISION"] not in ["grid", "cluster"]:
         LOG.info(f'Skip loading db configs (division: {opts["DIVISION"]})')
         return
@@ -299,13 +341,13 @@ def load_db_configs(opts):
     add_default_users(opts)
 
 
-def run_create_cert(args, opts):
+def run_create_cert(args: list[str], opts: dict[str, str]) -> None:
     if opts.get("TESTING", False):
         script = os.path.join(SWM_VERSION_DIR, "scripts", "swm-create-cert")
     else:
         script = os.path.join(SWM_VERSION_DIR, "bin", "swm-create-cert")
     envs = os.environ
-    for (key,val) in opts.items():
+    for key, val in opts.items():
         if isinstance(val, str):
             envs[key] = val
 
@@ -315,7 +357,7 @@ def run_create_cert(args, opts):
         run(script, args, envs)
 
 
-def generate_certificates(opts):
+def generate_certificates(opts: dict[str, str]) -> None:
     if opts["DIVISION"] != "grid" and not opts["SWM_SKY_PORT"]:
         LOG.info("Skip certificates generation")
         return
@@ -332,9 +374,12 @@ def generate_certificates(opts):
     create_chain_cert(opts)
 
 
-def create_chain_cert(opts):
-    filenames = ['/opt/swm/spool/secure/cluster/cert.pem', '/opt/swm/spool/secure/grid/cert.pem']
-    with open('/opt/swm/spool/secure/cluster/ca-chain-cert.pem', 'w') as outfile:
+def create_chain_cert(opts: dict[str, str]) -> None:
+    filenames = [
+        "/opt/swm/spool/secure/cluster/cert.pem",
+        "/opt/swm/spool/secure/grid/cert.pem",
+    ]
+    with open("/opt/swm/spool/secure/cluster/ca-chain-cert.pem", "w") as outfile:
         for fname in filenames:
             with open(fname) as infile:
                 outfile.write(infile.read())
@@ -348,7 +393,7 @@ def get_user_home(username: str) -> str:
         sys.exit(1)
 
 
-def install_admin_cert(opts):
+def install_admin_cert(opts: dict[str, str]) -> None:
     home = get_user_home(opts["SWM_USER"])
     if not home:
         LOG.error("User home is unknown is not defined")
@@ -376,7 +421,7 @@ def install_admin_cert(opts):
             sys.exit(1)
 
 
-def add_default_users(opts):
+def add_default_users(opts: dict[str, str]) -> None:
     LOG.info("Add default users")
     if opts["DIVISION"] not in ["grid", "cluster"]:
         LOG.info("User will not be added")
@@ -384,9 +429,10 @@ def add_default_users(opts):
     run_ctl(["user", "create", opts["SWM_ADMIN_USER"], opts["SWM_ADMIN_ID"]], opts)
 
 
-def get_setup_options():
+def get_setup_options() -> None:
     args = get_args()
     opts = {}
+    opts["SWM_VERSION"] = args.version
     opts["SWM_USER"] = args.user_name or "root"
     opts["NO_SERVICE"] = args.no_service
     opts["SWM_SKY_PORT"] = args.skyport
@@ -395,7 +441,7 @@ def get_setup_options():
     if args.division:
         opts["DIVISION"] = args.division
     if args.testing:
-        opts["TESTING"] = True # see scripts/setup-dev.linux
+        opts["TESTING"] = True  # see scripts/setup-dev.linux
         opts["DEBUG"] = True
     if args.archive:
         opts["ARCHIVE"] = True
@@ -439,123 +485,128 @@ def get_setup_options():
     return opts
 
 
-def get_args():
+def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "-d", "--division",
-        default='node',
-        choices=['grid', 'cluster'],
-        help="Configuring division name"
+        "-d",
+        "--division",
+        default="node",
+        choices=["grid", "cluster"],
+        help="Configuring division name",
     )
 
     parser.add_argument(
-        "-u", "--user-name",
-        help="User name that will be admin (default: current user)"
+        "-u", "--user-name", help="User name that will be admin (default: current user)"
     )
 
     parser.add_argument(
-        "-p", "--prefix",
-        help="Path to root directory (can also be defined with $SWM_ROOT)"
+        "-p",
+        "--prefix",
+        help="Path to root directory (can also be defined with $SWM_ROOT)",
     )
 
     parser.add_argument(
-        "-s", "--spool",
+        "-s",
+        "--spool",
         help="Path to spool directory (can also be defined with $SWM_SPOOL, "
-             "if not set, then $SWM_ROOT/spool is used)"
+        "if not set, then $SWM_ROOT/spool is used)",
     )
 
     parser.add_argument(
-        "-c", "--config",
-        help="Path to file with default setup options"
+        "-c", "--config", help="Path to file with default setup options"
+    )
+
+    parser.add_argument("-l", "--location", help="Remote site location name")
+
+    parser.add_argument(
+        "-e", "--extra", help="Path to file with additional DB configuration"
     )
 
     parser.add_argument(
-        "-l", "--location",
-        help="Remote site location name"
-    )
-
-    parser.add_argument(
-        "-e", "--extra",
-        help="Path to file with additional DB configuration"
-    )
-
-    parser.add_argument(
-        "-n", "--no-service",
+        "-n",
+        "--no-service",
         action="store_true",
-        help="Do not install swm service file"
+        help="Do not install swm service file",
     )
 
     parser.add_argument(
-        "-t", "--testing",
+        "-t",
+        "--testing",
         action="store_true",
-        help="Setup for testing purposes (no service file, just a spool)"
+        help="Setup for testing purposes (no service file, just a spool)",
     )
 
-    parser.add_argument(
-        "-x", "--skyport",
-        action="store_true",
-        help="Setup Sky Port"
-    )
+    parser.add_argument("-x", "--skyport", action="store_true", help="Setup Sky Port")
+
+    parser.add_argument("-v", "--version", help="Specify version")
 
     parser.add_argument(
-        "-v", "--version",
-        help="Specify version"
-    )
-
-    parser.add_argument(
-        "-a", "--archive",
-        action="store_true",
-        help="Generate final worker SWM archive"
+        "-a", "--archive", action="store_true", help="Generate final worker SWM archive"
     )
 
     return parser.parse_args()
 
 
-def userInput(env, default, descr, opts, replacements=[], ispath=True):
+def userInput(
+    env: dict[str, str],
+    default: str,
+    descr: str,
+    opts: dict[str, str],
+    replacements: dict[str, str] = {},
+    ispath: bool = True,
+) -> None:
     if env not in opts:
         answer = question("Enter " + descr, default, ispath)
         opts[env] = answer
-    for (x,y) in replacements:
+    for x, y in replacements:
         opts[env] = opts[env].replace(x, y)
     LOG.info("Entered " + descr + ": " + opts[env])
 
 
-def set_default(env, default, descr, opts):
+def set_default(
+    env: dict[str, str], default: str, descr: str, opts: dict[str, str]
+) -> None:
     if env not in opts:
         opts[env] = default
     os.environ[env] = opts[env]
     LOG.info("Using " + descr + ": " + opts[env])
 
 
-def get_defaults(opts):
-    set_default("SWM_VERSION",     os.environ["SWM_VERSION"],             "version",                 opts)
-    set_default("SWM_ROOT",        os.environ["SWM_ROOT"],                "product directory",       opts)
-    set_default("SWM_SPOOL",       os.environ["SWM_SPOOL"],               "product spool directory", opts)
-    set_default("SWM_PRIV_DIR",    os.path.join(SWM_VERSION_DIR, "priv"), "priv directory",          opts)
+def get_defaults(opts: dict[str, str]) -> None:
+    set_default("SWM_VERSION", os.environ["SWM_VERSION"], "version", opts)
+    set_default("SWM_ROOT", os.environ["SWM_ROOT"], "product directory", opts)
+    set_default("SWM_SPOOL", os.environ["SWM_SPOOL"], "product spool directory", opts)
+    set_default(
+        "SWM_PRIV_DIR", os.path.join(SWM_VERSION_DIR, "priv"), "priv directory", opts
+    )
 
     if "EXTRA_CONFIG" not in opts:
         if opts["DIVISION"] == "grid":
-            opts["EXTRA_CONFIG"] = os.path.join(opts["SWM_PRIV_DIR"], "setup", "grid.config")
+            opts["EXTRA_CONFIG"] = os.path.join(
+                opts["SWM_PRIV_DIR"], "setup", "grid.config"
+            )
         elif opts["DIVISION"] == "cluster":
             conf = "skyport.config" if opts["SWM_SKY_PORT"] else "cluster.config"
             opts["EXTRA_CONFIG"] = os.path.join(opts["SWM_PRIV_DIR"], "setup", conf)
 
     if "SWM_SNAME" not in opts:
         division = opts.get("DIVISION", "")
-        if division == 'grid':
+        if division == "grid":
             opts["SWM_SNAME"] = "ghead"
-        elif division == 'cluster':
+        elif division == "cluster":
             opts["SWM_SNAME"] = "node" if opts["SWM_SKY_PORT"] else "chead1"
         else:
             opts["SWM_SNAME"] = division
 
 
-def get_from_user(opts):
+def apply_input_from_user(opts: dict[str, str]) -> None:
     default_remote_location = "eastus2"
     if "SWM_REMOTE_LOCATION" not in opts:
         opts["SWM_REMOTE_LOCATION"] = default_remote_location
-    userInput("SWM_REMOTE_LOCATION", default_remote_location, "Remote site location", opts)
+    userInput(
+        "SWM_REMOTE_LOCATION", default_remote_location, "Remote site location", opts
+    )
 
     default_api_port = "10001"
     if "SWM_API_PORT" not in opts:
@@ -573,15 +624,36 @@ def get_from_user(opts):
     userInput("SWM_PARENT_HOST", default_parent_host, "Parent host", opts)
 
     hostname = socket.gethostname()
-    userInput("SWM_SNAME", "ghead" + "@" + hostname,
-              "Division management vnode name", opts, [("{HOSTNAME}", hostname)], False)
-    userInput("SWM_HOST", hostname, "Division management host name", opts,
-              [("{HOSTNAME}", hostname)], False)
+    userInput(
+        "SWM_SNAME",
+        "ghead" + "@" + hostname,
+        "Division management vnode name",
+        opts,
+        [("{HOSTNAME}", hostname)],
+        False,
+    )
+    userInput(
+        "SWM_HOST",
+        hostname,
+        "Division management host name",
+        opts,
+        [("{HOSTNAME}", hostname)],
+        False,
+    )
 
     admin = opts.get("SWM_USER", "root")
     opts["SWM_ADMIN_ID"] = str(uuid.uuid4())
-    userInput("SWM_ADMIN_USER", admin, "administrator user", opts, [("{USER}", admin)], False)
-    userInput("SWM_ADMIN_EMAIL", admin+"@"+opts["SWM_HOST"], "administrator email", opts, [("{USER}", admin)], False)
+    userInput(
+        "SWM_ADMIN_USER", admin, "administrator user", opts, [("{USER}", admin)], False
+    )
+    userInput(
+        "SWM_ADMIN_EMAIL",
+        admin + "@" + opts["SWM_HOST"],
+        "administrator email",
+        opts,
+        [("{USER}", admin)],
+        False,
+    )
 
     userInput("SWM_UNIT_NAME", "Dev", "organizational unit name", opts, ispath=False)
     userInput("SWM_ORG_NAME", "Open Workload", "organization name", opts, ispath=False)
@@ -589,13 +661,14 @@ def get_from_user(opts):
     userInput("SWM_COUNTRY", "US", "country name", opts, ispath=False)
 
 
-def create_archive(opts):
-    spool_dir   = opts["SWM_SPOOL"]
+def create_archive(opts: dict[str, str]) -> None:
+    spool_dir = opts["SWM_SPOOL"]
     swm_version = opts["SWM_VERSION"]
-    key_dirs = [os.path.join(spool_dir, "secure/cluster"),
-                os.path.join(spool_dir, "secure/node"),
-                os.path.join(spool_dir, "secure/host"),
-               ]
+    key_dirs = [
+        os.path.join(spool_dir, "secure/cluster"),
+        os.path.join(spool_dir, "secure/node"),
+        os.path.join(spool_dir, "secure/host"),
+    ]
 
     for key_dir in key_dirs:
         if not os.path.isdir(key_dir):
@@ -618,7 +691,9 @@ def create_archive(opts):
         secure_dir = os.path.join(tmp_dir, "spool", "secure")
         make_dirs(secure_dir)
         for key_dir in key_dirs:
-            copy_and_overwrite(key_dir, os.path.join(secure_dir, os.path.basename(key_dir)))
+            copy_and_overwrite(
+                key_dir, os.path.join(secure_dir, os.path.basename(key_dir))
+            )
         files.append(secure_dir)
     else:
         root_dir = opts["SWM_ROOT"]
@@ -627,8 +702,10 @@ def create_archive(opts):
 
     archive = f"{root_dir}/{PRODUCT}-worker.tar.gz"
     transform_args = [
-       "--transform", "'s,^.*\/swm/,,'",
-       "--transform", "'s,^home/" + opts["SWM_USER"] + "/.swm,,'",
+        "--transform",
+        "'s,^.*\/swm/,,'",
+        "--transform",
+        "'s,^home/" + opts["SWM_USER"] + "/.swm,,'",
     ]
     args = transform_args + ["-czf", archive, " ".join(files)]
 
@@ -640,14 +717,14 @@ def create_archive(opts):
         shutil.rmtree(tmp_dir)
 
 
-def copy_and_overwrite(from_path, to_path):
+def copy_and_overwrite(from_path: str, to_path: str) -> None:
     LOG.info(f"Copy/overwrite {from_path} -> {to_path}")
     if os.path.exists(to_path):
         shutil.rmtree(to_path)
     shutil.copytree(from_path, to_path)
 
 
-def symlink_to_current(opts):
+def symlink_to_current(opts: dict[str, str]) -> None:
     if opts.get("TESTING", False):
         LOG.info("Do not create a symlink 'current'")
         return
@@ -664,7 +741,7 @@ def symlink_to_current(opts):
     LOG.info("Create symlink %s -> %s" % (dst, src))
 
 
-def main():
+def main() -> None:
     opts = get_setup_options()
     setup_logger(opts)
 
@@ -674,15 +751,15 @@ def main():
     if opts.get("ARCHIVE", False):
         create_archive(opts)
     else:
-        get_from_user(opts)
-        stop_vnode(opts, exit_on_fail=False)
+        apply_input_from_user(opts)
+        stop_vnode(None, opts, exit_on_fail=False)
         ensure_dirs(opts)
         generate_configs(opts)
         generate_certificates(opts)
-        spawn_vnode(opts)
+        process = spawn_vnode(opts)
         wait_vnode(opts)
         load_db_configs(opts)
-        stop_vnode(opts)
+        stop_vnode(process, opts)
         create_archive(opts)
         symlink_to_current(opts)
 
