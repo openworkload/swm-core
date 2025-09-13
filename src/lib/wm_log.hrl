@@ -20,7 +20,8 @@
 -define(LOG_ERROR(X, Y), wm_log:err("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_FATAL(X, Y), wm_log:fatal("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 
-- else .                                            %TEST
+% TEST
+- else
 -ifndef(DISABLE_LOGGING_IN_TESTS).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -38,7 +39,8 @@
 -define(LOG_ERROR(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_FATAL(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 
-- else .                                            %!DISABLE_LOGGING_IN_TESTS
+% !DISABLE_LOGGING_IN_TESTS
+- else
 -define(LOG_DEBUG(X), ok).
 -define(LOG_INFO(X), ok).
 -define(LOG_NOTE(X), ok).
@@ -55,7 +57,8 @@
 -endif. %DISABLE_LOGGING_IN_TESTS
 -endif. %TEST
 
-- else .                                            %!DEBUG
+%!DEBUG
+- else
 -ifndef(TEST).
 
 -define(LOG_DEBUG(X), true).
@@ -70,7 +73,8 @@
 -define(LOG_ERROR(X, Y), wm_log:err(X, Y)).
 -define(LOG_FATAL(X, Y), wm_log:fatal(X, Y)).
 
-- else .                                            %TEST
+ % TEST
+- else
 -ifndef(DISABLE_LOGGING_IN_TESTS).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -87,7 +91,8 @@
 -define(LOG_ERROR(X, Y), ?debugFmt(X, Y)).
 -define(LOG_FATAL(X, Y), ?debugFmt(X, Y)).
 
-- else .                                            %DISABLE_LOGGING_IN_TESTS
+% DISABLE_LOGGING_IN_TESTS
+- else
 -define(LOG_DEBUG(X), ok).
 -define(LOG_INFO(X), ok).
 -define(LOG_NOTE(X), ok).
