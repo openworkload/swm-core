@@ -67,6 +67,8 @@ parse_line(Ws, Job) when hd(Ws) == "ports", length(Ws) > 1 ->
     add_requested_resource("ports", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "cloud-image", length(Ws) > 1 ->
     add_requested_resource("cloud-image", lists:flatten(tl(Ws)), Job);
+parse_line(Ws, Job) when hd(Ws) == "submission-address", length(Ws) > 1 ->
+    add_requested_resource("submission-address", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "container-image", length(Ws) > 1 ->
     add_requested_resource("container-image", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "flavor", length(Ws) > 1 ->
