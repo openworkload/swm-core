@@ -61,7 +61,7 @@ docker pull openworkload/skyport:latest
 DOMAIN=openworkload.org
 FQDN=$(hostname).$DOMAIN
 docker network create skyportnet
-docker run -v $HOME/.ssh:$HOME/.ssh -v $HOME/.swm:$HOME/.swm -v $HOME/.cache/swm:/root/.cache/swm --name skyport --network skyportnet --network-alias $FQDN -h $FQDN --domainname $DOMAIN -ti -e SKYPORT_USER=$(id -u -n) -e SKYPORT_USER_ID=$(id -u) openworkload/skyport
+docker run -v $HOME/.ssh:$HOME/.ssh -v $HOME/.swm:$HOME/.swm -v $HOME/.cache/swm:/root/.cache/swm --name skyport --network skyportnet --network-alias $FQDN -h $(hostname) --domainname $DOMAIN -ti -e SKYPORT_USER=$(id -u -n) -e SKYPORT_USER_ID=$(id -u) openworkload/skyport
 ```
 On first run the container creates a configuration in $HOME/.swm/spool (generates sertificates, creates swm-core configuration, etc) and exits.
 After the exit the user needs to ensure that Azure cloud provider is configured correctly:

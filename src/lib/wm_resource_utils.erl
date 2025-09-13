@@ -1,6 +1,6 @@
 -module(wm_resource_utils).
 
--export([get_ingres_ports_map/2, get_ingres_ports_str/1, get_port_tuples/1]).
+-export([get_ingres_ports_map/2, get_ingres_ports_str/1, get_port_tuples/1, get_job_networking_info/2]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -77,3 +77,22 @@ get_port_tuples([#resource{name = "ports", properties = Properties} | _]) ->
                 string:split(Value, ",", all));
 get_port_tuples([_ | T]) ->
     get_port_tuples(T).
+
+-spec get_submission_address([#resource{}]) -> {[{string(), integer(), integer()}], []}.
+get_submission_address([]) ->
+    [];
+get_submission_address([#resource{name = "submission-address", properties = Properties} | _]) ->
+    proplists:get_value(value, Properties);
+get_submission_address([_ | T]) ->
+    get_submission_address(T).
+
+-spec get_job_resources(job_id()) -> [#resource{}].
+get_job_resources(JobId) ->
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    wm_entity:get(request, Job).
+
+-spec get_job_networking_info(job_id(), atom()) -> [{inet:port_number(), inet:port_number()}] | node_address().
+get_job_networking_info(JobId, ports) ->
+    get_port_tuples(get_job_resources(JobId));
+get_job_networking_info(JobId, submission_address) ->
+    get_submission_address(get_job_resources(JobId)).

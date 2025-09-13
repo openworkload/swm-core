@@ -27,6 +27,7 @@
          ssh_tunnel_conn_timer = undefined :: reference(),
          ssh_tunnel_client_pid = undefined :: pid(),
          forwarded_ports = [] :: [inet:port_number()],
+         proxy_pids = [] :: [pid()],
          part_check_timer = undefined :: reference(),
          upload_ref = undefined :: reference(),
          download_ref = undefined :: reference(),
@@ -245,7 +246,8 @@ creating(cast, ssh_swm_connected, #mstate{job_id = JobId, ssh_tunnel_client_pid 
      creating,
      MState#mstate{wait_ref = undefined,
                    readiness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
-                   forwarded_ports = start_port_forwarding(SshClientPid, JobId)}};
+                   forwarded_ports = start_port_forwarding(SshClientPid, JobId),
+                   proxy_pids = start_proxies(JobId)}};
 creating(cast, {error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     wm_virtres_handler:update_job([{state_details, "Partition has not been created yet"}], JobId),
     ?LOG_DEBUG("Partition has not been created yet for job ~p (~p)", [JobId, Error]),
@@ -299,13 +301,13 @@ downloading({call, From}, get_current_state, MState) ->
 downloading(cast, {Ref, ok}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Downloading has finished => delete entities [~p, ~p]", [Ref, JobId]),
     wm_virtres_handler:update_job([{state_details, "Destroying remote resources"}], JobId),
-    stop_port_forwarding(JobId),
+    stop_port_forwarding(MState),
     gen_statem:cast(self(), start_destroying),
     {next_state, destroying, MState#mstate{download_ref = finished}};
 downloading(cast, {Ref, {error, File, Reason}}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_WARN("Downloading of ~p has failed: ~p", [File, Reason]),
     wm_virtres_handler:update_job([{state_details, "Data downloading failed"}], JobId),
-    stop_port_forwarding(JobId),
+    stop_port_forwarding(MState),
     gen_statem:cast(self(), start_destroying),
     {next_state, destroying, MState#mstate{download_ref = finished}};
 downloading(cast, {Ref, 'EXIT', Reason}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
@@ -383,7 +385,7 @@ is_local_job(#job{nodes = [Node]}) ->
 is_local_job(_) ->
     false.
 
--spec get_wm_api_port() -> inet:port_number().
+-spec get_wm_api_port() -> {string(), inet:port_number(), inet:port_number()}.
 get_wm_api_port() ->
     {ok, SelfNode} = wm_self:get_node(),
     ApiPort = wm_entity:get(api_port, SelfNode),
@@ -392,12 +394,9 @@ get_wm_api_port() ->
 
 -spec start_port_forwarding(pid(), job_id()) -> [inet:port_number()].
 start_port_forwarding(SshClientPid, JobId) ->
-    {ok, Job} = wm_conf:select(job, {id, JobId}),
-
     ListenHost = "localhost",
     RemoteHost = "localhost",
-    ResourcesRequest = wm_entity:get(request, Job),
-    PortsToForward = wm_resource_utils:get_port_tuples(ResourcesRequest) ++ [get_wm_api_port()],
+    PortsToForward = wm_resource_utils:get_job_networking_info(JobId, ports) ++ [get_wm_api_port()],
 
     lists:foldl(fun ({"out", ListenPort, PortToForward}, OpenedPorts) ->
                         case wm_ssh_client:make_tunnel(SshClientPid, ListenHost, ListenPort, RemoteHost, PortToForward)
@@ -417,9 +416,33 @@ start_port_forwarding(SshClientPid, JobId) ->
                 [],
                 PortsToForward).
 
--spec stop_port_forwarding(job_id()) -> ok.
-stop_port_forwarding(_JobId) ->
-    ok.  %TODO: stop port forwarding?
+-spec stop_port_forwarding(#mstate{}) -> ok.
+stop_port_forwarding(#mstate{job_id = JobId, proxy_pids = ProxyPids}) ->
+    ?LOG_INFO("Stop ports forwarding for job ~p", [JobId]),
+    [wm_tcp_proxy:stop(Pid) || Pid <- ProxyPids],
+    %TODO: stop port forwarding?
+    ok.
+
+-spec start_proxies(job_id()) -> [pid()].
+start_proxies(JobId) ->
+    PortsTuples = wm_resource_utils:get_job_networking_info(JobId, ports),
+    JobAddr = wm_resource_utils:get_job_networking_info(JobId, submission_address),
+    ?LOG_INFO("Start proxing ~p ports for job ~p to job submission address: ~p", [length(PortsTuples), JobId, JobAddr]),
+    lists:foldl(fun ({"out", PortSrc, PortDst}, ProxyPids) ->
+                        case wm_tcp_proxy:start_link(PortSrc, JobAddr, PortDst) of
+                            {ok, Pid} ->
+                                ?LOG_DEBUG("Started proxy ~p -> ~p:~p with pid=~p", [PortSrc, JobAddr, PortDst, Pid]),
+                                [Pid | ProxyPids];
+                            {error, Reason} ->
+                                ?LOG_ERROR("Failed to start proxy ~p -> ~p:~p: ~p",
+                                           [PortSrc, JobAddr, PortDst, Reason]),
+                                ProxyPids
+                        end;
+                    (_, ProxyPids) ->
+                        ProxyPids
+                end,
+                [],
+                PortsTuples).
 
 -spec try_ssh_connection(pos_integer(), pid(), job_id(), atom(), node_id(), string(), string(), string()) ->
                             ok | not_ready.
