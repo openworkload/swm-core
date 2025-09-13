@@ -569,17 +569,15 @@ def set_default(
 ) -> None:
     if env not in opts:
         opts[env] = default
+    LOG.info(f"Using {descr}: {opts[env]}, opts={opts}")
     os.environ[env] = opts[env]
-    LOG.info("Using " + descr + ": " + opts[env])
 
 
 def get_defaults(opts: dict[str, str]) -> None:
-    set_default("SWM_VERSION", os.environ["SWM_VERSION"], "version", opts)
-    set_default("SWM_ROOT", os.environ["SWM_ROOT"], "product directory", opts)
-    set_default("SWM_SPOOL", os.environ["SWM_SPOOL"], "product spool directory", opts)
-    set_default(
-        "SWM_PRIV_DIR", os.path.join(SWM_VERSION_DIR, "priv"), "priv directory", opts
-    )
+    set_default("SWM_VERSION", os.getenv("SWM_VERSION", "UNDEFINED"), "Sky Port version", opts)
+    set_default("SWM_ROOT", os.getenv("SWM_ROOT", "/opt/swm"), "root directory", opts)
+    set_default("SWM_SPOOL", os.getenv("SWM_SPOOL", "/opt/swm/spool"), "spool directory", opts)
+    set_default("SWM_PRIV_DIR", os.path.join(SWM_VERSION_DIR, "priv"), "priv dir", opts)
 
     if "EXTRA_CONFIG" not in opts:
         if opts["DIVISION"] == "grid":
@@ -662,6 +660,7 @@ def apply_input_from_user(opts: dict[str, str]) -> None:
 
 
 def create_archive(opts: dict[str, str]) -> None:
+    LOG.info("Create SkyPort distribution archives")
     spool_dir = opts["SWM_SPOOL"]
     swm_version = opts["SWM_VERSION"]
     key_dirs = [

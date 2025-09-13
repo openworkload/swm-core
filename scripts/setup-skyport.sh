@@ -75,15 +75,10 @@ source ${SWM_VERSION_DIR}/scripts/swm.env
 cd $SWM_VERSION_DIR
 
 CONFIG_BASE=${SWM_VERSION_DIR}/priv/setup/setup.config
-${SWM_VERSION_DIR}/scripts/setup-swm-core.py -n\
-                                             -x\
-                                             -v $SWM_VERSION\
-                                             -p $SWM_ROOT\
-                                             -s $SWM_SPOOL\
-                                             -c $CONFIG_BASE\
-                                             -u $username\
-                                             -l $location\
-                                             -d cluster
+COMMAND="${SWM_VERSION_DIR}/scripts/setup-swm-core.py -n -x -v $SWM_VERSION -p $SWM_ROOT -s $SWM_SPOOL -c $CONFIG_BASE -u $username -l $location -d cluster"
+echo "Run the setup: $COMMAND"
+$COMMAND
+
 EXIT_CODE=$?
 if [ "$EXIT_CODE" != "0" ]; then
     echo "Sky Port setup failed with code $EXIT_CODE"

@@ -86,6 +86,28 @@ def render_supervisor_config(username: str) -> None:
     print(f"Supervisord configuration file rendered: {output_path}")
 
 
+def render_supervisor_gate_config(username: str) -> None:
+    if DEV_MODE:
+        output_path = "/tmp/supervisord_gate.conf"
+        template_path="./priv/container/debug/supervisord_gate.conf"
+    else:
+        output_path = "/etc/supervisor/conf.d/supervisord_gate.conf"
+        template_path = "/etc/supervisor/supervisord_gate.conf.template"
+    if os.path.exists(output_path):
+        print(f"Supervisord configuration file exists: {output_path}")
+        return
+
+    with open(template_path, "r") as template_file:
+        template_content = template_file.read()
+
+    rendered_content = template_content.replace("{{ USERNAME }}", username)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as output_file:
+        output_file.write(rendered_content)
+
+    print(f"Supervisord configuration file rendered: {output_path}")
+
+
 def warm_up_cache(username: str, home: str) -> bool:
     cache_dir = "/opt/swm/spool/cache/"
     print(f"Try to warm the gate cache up: {cache_dir}")
@@ -136,8 +158,42 @@ def warm_up_cache(username: str, home: str) -> bool:
     process_supervisor.terminate()
     exit_code = result.get("exit_code", -1)
     print(f"\nGate cache update script exit code: {exit_code}")
-    time.sleep(10005)
     return exit_code == 0
+
+
+def ensure_worker_exists() -> bool:
+    if DEV_MODE:
+        return
+    script_dir = os.path.abspath(os.path.dirname(__file__))
+    command = f"{script_dir}/update-worker.sh"
+    print(f"Update worker archive with command: {command}")
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        while True:
+            if error := process.stderr.readline():
+                if msg := error.strip():
+                    print(msg, file=sys.stderr)
+            output = process.stdout.readline()
+            if output == process.stdout.readline():
+                if msg := output.strip():
+                    print(msg)
+            if output == "" and process.poll() is not None:
+                break
+    except KeyboardInterrupt:
+        print("Process interrupted by user")
+        return False
+    except Exception as e:
+        print(f"Failed to update worker archive: {e}")
+        return False
+    finally:
+        process.terminate()
+        process.wait()
+    return True
 
 
 def run_supervisord(
@@ -145,19 +201,10 @@ def run_supervisord(
 ) -> subprocess.Popen:
     if username:
         render_supervisor_config(username)
-    if DEV_MODE:
-        supervisord_conf = (
-            "./priv/container/debug/supervisord_gate.conf"
-            if gate_only
-            else "/tmp/supervisord.conf"
-        )
-    else:
-        supervisord_conf = (
-            "/etc/supervisor/supervisord_gate.conf"
-            if gate_only
-            else "/etc/supervisor/supervisord.conf"
-        )
-    command = ["supervisord", "-c", supervisord_conf, "-l", "/tmp/supervisord.log"]
+        render_supervisor_gate_config(username)
+    sup_dir = "/tmp" if DEV_MODE else "/etc/supervisor/conf.d"
+    sup_conf = f"{sup_dir}/supervisord{'_gate' if gate_only else ''}.conf"
+    command = ["supervisord", "-c", sup_conf, "-l", "/tmp/supervisord.log"]
     if pipe:
         command += ["--nodaemon"]
     print(f"Start supervisord:\n  {' '.join(command)}")
@@ -190,7 +237,15 @@ def run_supervisord(
             process.wait()
 
 
-def add_system_user(username: str) -> None:
+def user_exists(username: str) -> bool:
+    try:
+        pwd.getpwnam(username)
+        return True
+    except KeyError:
+        return False
+
+
+def ensure_system_user_exists(username: str) -> None:
     uid = os.environ.get("SKYPORT_USER_ID")
     if uid:
         print(f"UID from environment: {uid}")
@@ -198,6 +253,9 @@ def add_system_user(username: str) -> None:
         uid = input("Enter container user system id: ").strip().lower()
     if DEV_MODE:
         print(f"SKIP adding system user in dev mode with UID={uid}")
+        return
+    if user_exists(username):
+        print(f"User {username} already exists")
         return
     try:
         subprocess.run(
@@ -328,6 +386,8 @@ def main() -> None:
         print("User home is unknown")
         sys.exit(1)
 
+    ensure_system_user_exists(username)
+
     if DEV_MODE:
         skyport_initialized_file = "/tmp/skyport-initialized"
     else:
@@ -337,6 +397,7 @@ def main() -> None:
         if not warm_up_cache(username, home):
             sys.exit(1)
         if process := run_supervisord(username):
+            print(f"Supervisor process terminated")
             process.terminate()
             process.wait()
             sys.exit(0)
@@ -364,12 +425,14 @@ def main() -> None:
     ensure_symlinks(home)
     if not os.listdir(spool_directory):
         print(f"Spool directory is empty: {spool_directory}")
-        add_system_user(username)
         setup_skyport(username, location)
     else:
         if not warm_up_cache(username, home):
             sys.exit(1)
-        if process := run_supervisord(username, pipe=False):
+        if not ensure_worker_exists():
+            sys.exit(1)
+        if process := run_supervisord(username, pipe=True):
+            print(f"Supervisor process terminated (piped)")
             process.terminate()
             process.wait()
 
