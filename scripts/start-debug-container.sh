@@ -30,46 +30,56 @@
 
 set -x
 
-DOCKER=docker
+HOSTNAME=skyport
 IMAGE_NAME=swm-build:27.3
 DOCKER_SOCKET=/var/run/docker.sock
 X11_SOCKET=/tmp/.X11-unix
 CONTAINER_NAME=skyport-dev
+NETWORK=skyportnet-dev
 DOMAIN=openworkload.org
 
 JUPUTER_HUB_API_PORT=8081
 JUPUTER_HUB_PORT=8000
+USER_API_PORT=8443
+CORE_API_PORT=10001
 
-RUNNING=$(${DOCKER} inspect -f '{{.State.Running}}' ${CONTAINER_NAME})
-if [ "$?" = "1" ]; then
-  ${DOCKER} run\
-    -v ${HOME}:${HOME}\
-    -v /etc/passwd:/etc/passwd\
-    -v /etc/shadow:/etc/shadow\
-    -v /etc/group:/etc/group\
-    -v /opt:/opt\
-    -v ${DOCKER_SOCKET}:${DOCKER_SOCKET}\
-    -v ${X11_SOCKET}:${X11_SOCKET}\
-    -e DISPLAY=${DISPLAY}\
-    --name ${CONTAINER_NAME}\
-    --hostname $(hostname)\
-    --domainname $DOMAIN\
-    --workdir ${PWD}\
-    --tty\
-    --interactive\
-    --network bridge\
-    -p 10000:10000\
-    -p 10011:10011\
-    -p 8443:8443\
-    -p $JUPUTER_HUB_PORT:$JUPUTER_HUB_PORT\
-    -p $JUPUTER_HUB_API_PORT:$JUPUTER_HUB_API_PORT\
-    ${IMAGE_NAME}\
-    runuser -u ${USER} /bin/bash
-
+if docker network inspect "${NETWORK}" >/dev/null 2>&1; then
+    echo "Docker network '${NETWORK}' already exists"
 else
-  if [ ${RUNNING} = "false" ]; then
-    ${DOCKER} start ${CONTAINER_NAME}
-  fi
-  ${DOCKER} exec -ti ${CONTAINER_NAME} runuser -u ${USER} /bin/bash
+    docker network create "${NETWORK}" >/dev/null
+    echo "Created docker network '${NETWORK}'"
 fi
 
+RUNNING=$(docker inspect -f '{{.State.Running}}' ${CONTAINER_NAME})
+if [ "$?" = "1" ]; then
+    docker run\
+        -v ${HOME}:${HOME}\
+        -v /etc/passwd:/etc/passwd\
+        -v /etc/shadow:/etc/shadow\
+        -v /etc/group:/etc/group\
+        -v /opt:/opt\
+        -v ${DOCKER_SOCKET}:${DOCKER_SOCKET}\
+        -v ${X11_SOCKET}:${X11_SOCKET}\
+        -e DISPLAY=${DISPLAY}\
+        --name ${CONTAINER_NAME}\
+        --hostname $HOSTNAME\
+        --domainname $DOMAIN\
+        --network-alias $HOSTNAME.$DOMAIN\
+        --workdir ${PWD}\
+        --tty\
+        --interactive\
+        --network $NETWORK\
+        -p $CORE_API_PORT:$CORE_API_PORT\
+        -p $USER_API_PORT:$USER_API_PORT\
+        -p $JUPUTER_HUB_PORT:$JUPUTER_HUB_PORT\
+        -p $JUPUTER_HUB_API_PORT:$JUPUTER_HUB_API_PORT\
+        ${IMAGE_NAME}\
+        runuser -u ${USER} /bin/bash
+else
+    if [ ${RUNNING} = "false" ]; then
+        docker start ${CONTAINER_NAME}
+    fi
+    docker exec -ti ${CONTAINER_NAME} runuser -u ${USER} /bin/bash
+fi
+
+exit 0
