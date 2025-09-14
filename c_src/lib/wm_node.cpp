@@ -117,50 +117,43 @@ SwmNode::SwmNode(const char* buf, int &index) {
     return;
   }
 
-  if (ei_buffer_to_uint64_t(buf, index, this->malfunctions)) {
-    std::cerr << "Could not init node::malfunctions at pos 14: ";
-    ei_print_term(stderr, buf, &index);
-    std::cerr << std::endl;
-    return;
-  }
-
   if (ei_buffer_to_str(buf, index, this->comment)) {
-    std::cerr << "Could not init node::comment at pos 15: ";
+    std::cerr << "Could not init node::comment at pos 14: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->remote_id)) {
-    std::cerr << "Could not init node::remote_id at pos 16: ";
+    std::cerr << "Could not init node::remote_id at pos 15: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_atom(buf, index, this->is_template)) {
-    std::cerr << "Could not init node::is_template at pos 17: ";
+    std::cerr << "Could not init node::is_template at pos 16: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->gateway)) {
-    std::cerr << "Could not init node::gateway at pos 18: ";
+    std::cerr << "Could not init node::gateway at pos 17: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_map(buf, index, this->prices)) {
-    std::cerr << "Could not init node::prices at pos 19: ";
+    std::cerr << "Could not init node::prices at pos 18: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
-    std::cerr << "Could not init node::revision at pos 20: ";
+    std::cerr << "Could not init node::revision at pos 19: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
@@ -215,10 +208,6 @@ void SwmNode::set_subdivision(const std::string &new_val) {
 
 void SwmNode::set_subdivision_id(const std::string &new_val) {
   subdivision_id = new_val;
-}
-
-void SwmNode::set_malfunctions(const std::vector<uint64_t> &new_val) {
-  malfunctions = new_val;
 }
 
 void SwmNode::set_comment(const std::string &new_val) {
@@ -291,10 +280,6 @@ std::string SwmNode::get_subdivision() const {
 
 std::string SwmNode::get_subdivision_id() const {
   return subdivision_id;
-}
-
-std::vector<uint64_t> SwmNode::get_malfunctions() const {
-  return malfunctions;
 }
 
 std::string SwmNode::get_comment() const {
@@ -408,15 +393,6 @@ void SwmNode::print(const std::string &prefix, const char separator) const {
   }
   std::cerr << prefix << subdivision << separator;
   std::cerr << prefix << subdivision_id << separator;
-  if (malfunctions.empty()) {
-    std::cerr << prefix << "malfunctions: []" << separator;
-  } else {
-    std::cerr << prefix << "malfunctions" << ": [";
-    for (const auto &q: malfunctions) {
-      std::cerr << q << ",";
-    }
-    std::cerr << "]" << separator;
-  }
   std::cerr << prefix << comment << separator;
   std::cerr << prefix << remote_id << separator;
   std::cerr << prefix << is_template << separator;

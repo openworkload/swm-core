@@ -30,7 +30,7 @@
 """ Helper functions and data for C++ and Erlang files generation.
 """
 
-exclude = {"malfunction", "table", "service", "subscriber", "test"}
+exclude = {"table", "service", "subscriber", "test"}
 
 types_map = {
     "atom()": "std::string",

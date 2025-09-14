@@ -275,7 +275,7 @@ def wait_vnode(opts: dict[str, str]) -> None:
         while n > 0:
             time.sleep(1)
             (_, _, exit_code) = ping_vnode()
-            if exit_code:
+            if exit_code == 0:
                 return
             LOG.error("No ping")
             n -= 1
@@ -284,15 +284,11 @@ def wait_vnode(opts: dict[str, str]) -> None:
     if opts["DIVISION"] not in ("grid", "cluster"):
         return
 
-    if opts.get("TESTING", False):
-        script = os.path.join(SWM_VERSION_DIR, "scripts", "run-in-shell.sh")
-        args = [get_div_arg(opts), "-p"]
-    else:
-        script = os.path.join(SWM_VERSION_DIR, "scripts", "swm-ping")
-        args = ["localhost", opts["SWM_API_PORT"]]
+    script = os.path.join(SWM_VERSION_DIR, "scripts", "swm-ping")
+    args = ["localhost", opts["SWM_API_PORT"]]
 
     poll(
-        lambda exit_on_fail=False, verbose=False: run(
+        lambda exit_on_fail=False, verbose=True: run(
             script, args, env, exit_on_fail, verbose
         ),
         60,

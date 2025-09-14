@@ -44,7 +44,7 @@ def main():
     json_data = open("./priv/schema.json")
     data = json.load(json_data, object_pairs_hook=collections.OrderedDict)
 
-    exclude = {"malfunction", "table", "service", "subscriber", "test"}
+    exclude = {"table", "service", "subscriber", "test"}
 
     lib_path = "./c_src/lib"
     h_cog_file = os.path.join(lib_path, "wm_entity.h.cog")

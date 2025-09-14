@@ -54,7 +54,6 @@ TEST(Node, construct) {
 
   EXPECT_EQ(ei_x_encode_atom(&x, "partition"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "subdivision-id"), 0);
-  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // malfunctions
   EXPECT_EQ(ei_x_encode_string(&x, "a comment"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "remote-id"), 0);
   EXPECT_EQ(ei_x_encode_atom(&x, "false"), 0);
@@ -353,7 +352,6 @@ TEST(Job, construct) {
   EXPECT_THAT(entity.get_hooks(), ElementsAre("hook-id-1"));
   EXPECT_THAT(entity.get_env(), ElementsAre(std::pair("HOME", "/home/dude")));
   EXPECT_THAT(entity.get_deps(), ElementsAre(std::pair("ok", "job-id-42")));
-  EXPECT_TRUE(entity.get_projects().empty());
   EXPECT_EQ(entity.get_account_id(), "account-id-2");
   EXPECT_EQ(entity.get_gang_id(), "gang-id-4");
   EXPECT_EQ(entity.get_execution_path(), "/home/dude/exec1");

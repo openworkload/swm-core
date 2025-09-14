@@ -29,7 +29,6 @@ class SwmNode:SwmEntity {
   void set_properties(const std::vector<SwmTupleAtomBuff>&);
   void set_subdivision(const std::string&);
   void set_subdivision_id(const std::string&);
-  void set_malfunctions(const std::vector<uint64_t>&);
   void set_comment(const std::string&);
   void set_remote_id(const std::string&);
   void set_is_template(const std::string&);
@@ -49,7 +48,6 @@ class SwmNode:SwmEntity {
   std::vector<SwmTupleAtomBuff> get_properties() const;
   std::string get_subdivision() const;
   std::string get_subdivision_id() const;
-  std::vector<uint64_t> get_malfunctions() const;
   std::string get_comment() const;
   std::string get_remote_id() const;
   std::string get_is_template() const;
@@ -70,7 +68,6 @@ class SwmNode:SwmEntity {
   std::vector<SwmTupleAtomBuff> properties;
   std::string subdivision;
   std::string subdivision_id;
-  std::vector<uint64_t> malfunctions;
   std::string comment;
   std::string remote_id;
   std::string is_template;

@@ -126,12 +126,7 @@ phase2(cast, {pre_commit, LastElected, LastAttempt, From}, #mstate{my_addr = MyA
     case MState#mstate.leader of
         From ->
             Reply = {pre_committed, MyAddr},
-            case wm_core:has_malfunction(e3pc_phase2) of
-                not_found ->
-                    send_reply(Reply, From, MState);
-                no_answer ->
-                    ok
-            end,
+            send_reply(Reply, From, MState),
             {next_state, phase3, MState};
         Other ->
             ?LOG_DEBUG("New transaction leader has been detected: ~p", [Other]),

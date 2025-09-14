@@ -11,9 +11,9 @@
 
 % https://www.python.org/about/success/cog
 -define(ENTITIES,
-        [global, executable, malfunction, table, hook, grid, cluster, partition, node, resource, service, role, job,
-         process, user, queue, scheduler, timetable, relocation, subscriber, image, remote, account, metric,
-         scheduler_result, boot_info, test]).
+        [global, executable, table, hook, grid, cluster, partition, node, resource, service, role, job, process, user,
+         queue, scheduler, timetable, relocation, subscriber, image, remote, account, metric, scheduler_result,
+         boot_info, test]).
 
 -compile({parse_transform, exprecs}).
 
@@ -28,10 +28,6 @@ new(<<"executable">>) ->
     '#new-executable'();
 new(executable) ->
     '#new-executable'();
-new(<<"malfunction">>) ->
-    '#new-malfunction'();
-new(malfunction) ->
-    '#new-malfunction'();
 new(<<"table">>) ->
     '#new-table'();
 new(table) ->
@@ -136,8 +132,6 @@ rec(#global{}) ->
     true;
 rec(#executable{}) ->
     true;
-rec(#malfunction{}) ->
-    true;
 rec(#table{}) ->
     true;
 rec(#hook{}) ->
@@ -209,19 +203,6 @@ get_type(executable, Attr) when is_atom(Attr) ->
             string;
         user ->
             string;
-        comment ->
-            string;
-        revision ->
-            integer
-    end;
-get_type(malfunction, Attr) when is_atom(Attr) ->
-    case Attr of
-        id ->
-            integer;
-        name ->
-            binary;
-        failures ->
-            {list, {atom, any}};
         comment ->
             string;
         revision ->
@@ -370,8 +351,6 @@ get_type(node, Attr) when is_atom(Attr) ->
             atom;
         subdivision_id ->
             string;
-        malfunctions ->
-            {list, integer};
         comment ->
             string;
         remote_id ->
@@ -744,8 +723,7 @@ get_names(local_bag) ->
 get_names(non_replicable) ->
     [schema, subscriber, timetable, job];
 get_names(with_ids) ->
-    [malfunction,
-     hook,
+    [hook,
      grid,
      cluster,
      partition,

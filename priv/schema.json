@@ -38,29 +38,6 @@
     }
   },
 
-  "malfunction": {
-    "id": {
-      "default": 0,
-      "type": "pos_integer()"
-    },
-    "name": {
-      "type": "binary()"
-    },
-    "failures": {
-      "default": [],
-      "type": "[{atom(), any()}]"
-
-    },
-    "comment": {
-      "default": "",
-      "type": "string()"
-    },
-    "revision": {
-      "default": 0,
-      "type": "pos_integer()"
-    }
-  },
-
   "table": {
     "name": {
       "type": "binary()"
@@ -323,10 +300,6 @@
     "subdivision_id": {
       "default": "",
       "type": "string()"
-    },
-    "malfunctions": {
-      "default": [],
-      "type": "[pos_integer()]"
     },
     "comment": {
       "default": "",

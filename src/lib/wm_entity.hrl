@@ -38,12 +38,6 @@
          usage_time = 1 :: pos_integer(),
          resources = [] :: [#resource{}]}).
 -record(global, {name :: atom(), value :: string(), comment = "" :: string(), revision = 0 :: pos_integer()}).
--record(malfunction,
-        {id = 0 :: pos_integer(),
-         name :: binary(),
-         failures = [] :: [{atom(), any()}],
-         comment = "" :: string(),
-         revision = 0 :: pos_integer()}).
 -record(table, {name :: binary(), fields = [] :: [any()], revision = 0 :: pos_integer()}).
 -record(grid,
         {id = "" :: grid_id(),
@@ -102,7 +96,6 @@
          properties = [] :: [{atom(), any()}],
          subdivision = grid :: atom(),
          subdivision_id = "" :: string(),
-         malfunctions = [] :: [pos_integer()],
          comment = "" :: string(),
          remote_id = "" :: remote_id(),
          is_template = false :: atom(),

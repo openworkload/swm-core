@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, get_parent/0, start_slave/3, has_malfunction/1, allocate_port/0, get_my_gateway_address/0]).
+-export([start_link/1, get_parent/0, start_slave/3, allocate_port/0, get_my_gateway_address/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../../lib/wm_entity.hrl").
@@ -40,11 +40,6 @@ get_parent() ->
 -spec start_slave(atom(), list(), list()) -> {ok, term()} | {error, term()}.
 start_slave(ShortName, SlaveArgs, AppArgs) ->
     do_start_slave(ShortName, SlaveArgs, AppArgs).
-
-%% @doc Return value associated with failure type or not_found if not set
--spec has_malfunction(atom()) -> term() | not_found.
-has_malfunction(FailureType) ->
-    wm_utils:protected_call(?MODULE, {has_malfunction, FailureType}, not_found).
 
 %% @doc Return allocated port number
 -spec allocate_port() -> number().
@@ -105,8 +100,6 @@ handle_call(allocate_port, _, #mstate{} = MState) ->
 handle_call({deallocate_port, Port}, _, #mstate{} = MState) ->
     %TODO: use or delete this code
     {reply, deallocate_port(Port), MState};
-handle_call({has_malfunction, FailureType}, _, #mstate{} = MState) ->
-    {reply, do_has_malfunction(FailureType), MState};
 handle_call(get_parent, _From, MState) ->
     {reply, wm_parent:get_current(MState#mstate.pstack), #mstate{} = MState};
 handle_call(_Msg, _From, #mstate{} = MState) ->
@@ -537,23 +530,6 @@ ask_root_sup_restart_all() ->
     Msg = {restart_all, self()},
     ?LOG_DEBUG("Send message to the restarting process: ~p", [Msg]),
     wm_restarter ! Msg.
-
-do_has_malfunction(FailureType) ->
-    case wm_self:get_node() of
-        {error, _} ->
-            not_found;
-        {ok, Node} ->
-            MfsIDs = wm_entity:get(malfunctions, Node),
-            Mfs = wm_conf:select(malfunction, MfsIDs),
-            Failures = lists:flatten([wm_entity:get(failures, X) || X <- Mfs]),
-            case lists:keysearch(FailureType, 1, Failures) of
-                false ->
-                    not_found;
-                {value, {FailureType, Value}} ->
-                    ?LOG_DEBUG("Controlled failure found: {~p,~p}", [FailureType, Value]),
-                    Value
-            end
-    end.
 
 check_required_mode() ->
     case wm_utils:get_env("SWM_MODE") of
