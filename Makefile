@@ -7,9 +7,9 @@
 COG = cog
 REBAR = ./rebar3
 BUILD_DEBUG_CONTAINER = scripts/build-debug-container.sh
-START_DEBUG_CONTAINER = scripts/start-debug-container.sh -i
+START_DEBUG_CONTAINER = scripts/start-debug-container.sh
 BUILD_RELEASE_CONTAINER = scripts/build-release-container.sh
-START_RELEASE_CONTAINER = scripts/start-release-container.sh -i
+START_RELEASE_CONTAINER = scripts/start-release-container.sh
 
 VERSION = $(shell scripts/version)
 

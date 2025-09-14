@@ -30,13 +30,25 @@
 #
 # This script is used for running Sky Port containers
 
+set +x
+
+HOSTNAME=skyport
+DOMAIN=openworkload.org
+NETWORK=skyportnet
+
 CONTAINER_NAME=skyport
 IMAGE_NAME=skyport:latest
-DOMAIN=openworkload.org
-DOCKER_SOCKET=/var/run/docker.sock  # for local jobs
+DOCKER_SOCKET=/var/run/docker.sock  # for local jobs testing
 
 RUNNING=$(docker inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null)
 NOT_RUNNING=$?
+
+if docker network inspect "${NETWORK}" >/dev/null 2>&1; then
+    echo "Docker network '${NETWORK}' already exists"
+else
+    docker network create "${NETWORK}" >/dev/null
+    echo "Created docker network '${NETWORK}'"
+fi
 
 if [ "$NOT_RUNNING" != "0" ]; then
     docker run\
@@ -45,12 +57,13 @@ if [ "$NOT_RUNNING" != "0" ]; then
         --volume $HOME/.cache/swm:/root/.cache/swm\
         --volume ${DOCKER_SOCKET}:${DOCKER_SOCKET}\
         --name ${CONTAINER_NAME}\
-        --hostname $(hostname).$DOMAIN\
+        --hostname $HOSTNAME.$DOMAIN\
         --domainname $DOMAIN\
+        --network-alias $HOSTNAME.$DOMAIN\
         --workdir ${PWD}\
         --tty\
         --interactive\
-        --network host\
+        --network $NETWORK\
         -e SKYPORT_USER=$(id -u -n)\
         -e SKYPORT_USER_ID=$(id -u)\
         ${IMAGE_NAME}
