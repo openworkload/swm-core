@@ -126,8 +126,7 @@ parse_args([{_, _} | T], #mstate{} = MState) ->
 do_export_data() ->
     case wm_self:has_role("grid") of
         true ->
-            ?LOG_DEBUG("Grid manager role is assigned => do "
-                       "not export metrics"),
+            ?LOG_DEBUG("Grid manager role is assigned => do not export metrics"),
             [];
         false ->
             MetricNames = folsom_metrics:get_metrics(),
@@ -180,9 +179,7 @@ do_get_values_in_interval(Name, BeginTime, EndTime, Limit) ->
         {Xs1, '$end_of_table'} ->
             Xs1;
         {Xs1, _} ->
-            ?LOG_DEBUG("Not all metrics were selected for [~p; "
-                       "~p])",
-                       [BeginTime, EndTime]),
+            ?LOG_DEBUG("Not all metrics were selected for [~p; ~p])", [BeginTime, EndTime]),
             Xs1;
         '$end_of_table' ->
             ?LOG_DEBUG("No metrics were selected for [~p; ~p])", [BeginTime, EndTime]),

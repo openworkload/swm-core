@@ -18,9 +18,9 @@ get_current(PStack) ->
 %% @doc Search for my parent and return a new parents list
 -spec find_my_parents(string(), pos_integer(), string()) -> list().
 find_my_parents(ParentHost, ParentPort, NodeName) ->
-    case is_grid_management_node(NodeName) of
+    case is_grid_or_cluster_management_node(NodeName) of
         true ->
-            ?LOG_DEBUG("No parents are set (I am a grid management node)"),
+            ?LOG_DEBUG("No parents are set"),
             [];
         false ->
             add_parent_from_boot_args(ParentHost, ParentPort, [])
@@ -34,10 +34,17 @@ add_parent_from_boot_args(_, _, List) ->
     List.
 
 %% @doc Returns true if the short name is owned by grid management node
-is_grid_management_node(ShortName) ->
+is_grid_or_cluster_management_node(ShortName) ->
     case wm_conf:select(node, {name, ShortName}) of
         {ok, Node} ->
-            wm_entity:get(subdivision, Node) == grid;
+            case wm_entity:get(subdivision, Node) of
+                grid ->
+                    true;
+                cluster ->
+                    true;
+                _ ->
+                    false
+            end;
         _ ->
             false
     end.
