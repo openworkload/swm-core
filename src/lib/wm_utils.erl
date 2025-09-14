@@ -362,7 +362,12 @@ terminate_msg(Mod, Reason) ->
                     false ->
                         Reason
                 end,
-            ?LOG_INFO("Terminating ~p with reason: ~P", [Mod, S, 5]);
+            case S of
+                {function_clause, _} ->
+                    ?LOG_ERROR("Terminating ~p with reason:~n~p", [Mod, S]);
+                _ ->
+                    ?LOG_INFO("Terminating ~p with reason: ~P", [Mod, S, 5])
+            end;
         _ ->
             ok
     end.
