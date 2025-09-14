@@ -59,7 +59,7 @@ function wait_swm() {
   echo "Wait for Sky Port Daemon"
   while [ $attempt -lt 10 ]; do
     echo "Ping attempt $attempt"
-    ${ROOT_DIR}/scripts/ping.erl localhost $SWM_API_PORT
+    ${ROOT_DIR}/scripts/swm-ping localhost $SWM_API_PORT
     if [ "$CONDITION" == "started" ]; then
         if [ "$?" == "0" ]; then
           EXIT_CODE=0
