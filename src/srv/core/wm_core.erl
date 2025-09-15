@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, get_parent/0, start_slave/3, allocate_port/0, get_my_gateway_address/0]).
+-export([start_link/1, get_parent/0, start_peer/3, allocate_port/0, get_my_gateway_address/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../../lib/wm_entity.hrl").
@@ -36,10 +36,10 @@ start_link(Args) ->
 get_parent() ->
     wm_utils:protected_call(?MODULE, get_parent, none).
 
-%% @doc Start slave node on the same host (parent or simulation node)
--spec start_slave(atom(), list(), list()) -> {ok, term()} | {error, term()}.
-start_slave(ShortName, SlaveArgs, AppArgs) ->
-    do_start_slave(ShortName, SlaveArgs, AppArgs).
+%% @doc Start peer node on the same host (parent or simulation node)
+-spec start_peer(atom(), list(), list()) -> {ok, term()} | {error, term()}.
+start_peer(ShortName, PeerArgs, AppArgs) ->
+    do_start_peer(ShortName, PeerArgs, AppArgs).
 
 %% @doc Return allocated port number
 -spec allocate_port() -> number().
@@ -120,7 +120,7 @@ handle_info(Info, MState) ->
 terminate(Reason, MState) ->
     wm_utils:terminate_msg(?MODULE, Reason),
     wm_works:disable(),
-    wm_pinger:del(
+    wm_pinger:delete(
         wm_parent:get_current(MState#mstate.pstack)).
 
 code_change(_OldVsn, MState, _Extra) ->
@@ -242,16 +242,16 @@ handle_event(nodedown, {AllocState, NodeName}, MState) ->
     Parent = wm_parent:get_current(MState2#mstate.pstack),
     wm_api:cast_self({event, nodedown, {AllocState, NodeName}}, [Parent]),
     MState2;
-handle_event(started_slave, Node, MState) ->
+handle_event(started_peer, Node, MState) ->
     ?LOG_DEBUG("Received event: virtual node ~p has been spawned", [Node]),
     wm_conf:set_node_state(power, up, Node),
     wm_pinger:add(
         wm_utils:get_address(Node)),
     MState;
-handle_event(stopped_slave, Node, MState) ->
+handle_event(stopped_peer, Node, MState) ->
     ?LOG_DEBUG("Received event: virtual node ~p has been stopped", [Node]),
     wm_conf:set_node_state(power, down, Node),
-    wm_pinger:del(
+    wm_pinger:delete(
         wm_utils:get_address(Node)),
     MState;
 handle_event(new_node_state, {Node, NodeState}, MState) ->
@@ -373,7 +373,7 @@ add_parent({ParentHost, ParentPort}, #mstate{} = MState) ->
             MState;
         OldAddr ->
             ?LOG_DEBUG("Stop monitoring and subscription for ~p", [OldAddr]),
-            wm_pinger:del(OldAddr),
+            wm_pinger:delete(OldAddr),
             monitor_parent(ParentHost, ParentPort, MState)
     end;
 add_parent(ParentShortName, #mstate{} = MState) when is_list(ParentShortName) ->
@@ -388,14 +388,14 @@ add_parent(ParentShortName, #mstate{} = MState) when is_list(ParentShortName) ->
             MState
     end.
 
-do_start_slave(ShortName, SlaveArgs, AppArgs) ->
+do_start_peer(ShortName, PeerArgs, AppArgs) ->
     Host = wm_utils:get_my_fqdn(),
-    ?LOG_DEBUG("Starting new node ~s@~s: erl~s", [ShortName, Host, SlaveArgs]),
-    case slave:start(Host, ShortName, SlaveArgs, self(), "erl") of
+    ?LOG_DEBUG("Starting new node ~s@~s: erl~s", [ShortName, Host, PeerArgs]),
+    case peer:start(Host, ShortName, PeerArgs, self(), "erl") of
         {ok, Node} ->
-            wm_event:announce(started_slave, Node),
-            Pid = spawn(Node, wm_root_sup, start_slave, [AppArgs]),
-            ?LOG_DEBUG("Slave node ~p has been spawned (supervisor: ~p)", [Node, Pid]),
+            wm_event:announce(started_peer, Node),
+            Pid = spawn(Node, wm_root_sup, start_peer, [AppArgs]),
+            ?LOG_DEBUG("Peer node ~p has been spawned (supervisor: ~p)", [Node, Pid]),
             {ok, Node};
         {error, Reason} ->
             error_logger:error_msg(Reason),
@@ -421,12 +421,12 @@ start_parent(MState) ->
          {root, MState#mstate.root},
          {api_port, Port},
          {sname, NewParentName}],
-    SlaveArgs = get_parent_slave_args(),
+    PeerArgs = get_parent_peer_args(),
     FullName = lists:flatten(NewParentName ++ "@" ++ tl(ParentParts)),
     ?LOG_INFO("Start new parent: ~p", [NewParentName]),
     ?LOG_DEBUG("New parent app args: ~p", [AppArgs]),
-    ?LOG_DEBUG("New parent node args: ~p", [SlaveArgs]),
-    case do_start_slave(NewParentName, SlaveArgs, AppArgs) of
+    ?LOG_DEBUG("New parent node args: ~p", [PeerArgs]),
+    case do_start_peer(NewParentName, PeerArgs, AppArgs) of
         {ok, _} ->
             wm_event:announce(new_parent, {FullName, Port}),
             wm_event:announce_neighbours(new_parent, {FullName, Port});
@@ -460,8 +460,7 @@ add_parent_to_subdiv(Node) ->
     SubDiv2 = wm_entity:set({manager, FullName}, SubDiv1),
     wm_conf:update(SubDiv2).
 
-get_parent_slave_args() ->
-    %TODO Make these parameters configurable
+get_parent_peer_args() ->
     AppConf = wm_utils:get_env("SWM_SYS_CONFIG"),
     Config = "'" ++ AppConf ++ "'",
     Boot = " -boot start_sasl -config " ++ Config,
@@ -558,7 +557,7 @@ start_modules(Modules, Args, ID, MState) when is_list(Modules) ->
 
 monitor_parent(ParentHost, ParentPort, MState) ->
     Address = {ParentHost, ParentPort},
-    wm_pinger:del(Address),
+    wm_pinger:delete(Address),
     NewPStack = [Address | lists:delete(Address, MState#mstate.pstack)],
     ?LOG_DEBUG("New pstack: ~p", [NewPStack]),
     MState#mstate{pstack = NewPStack}.

@@ -278,9 +278,14 @@ delete_resources([#resource{name = "node", properties = Props} | T], Job, Cnt) -
         false ->
             ?LOG_DEBUG("Node resource does not have id property: ~p [job=~p]", [Props, JobId]),
             Cnt;
-        {id, NodeID} ->
-            ?LOG_DEBUG("Delete node entity ~p [job=~p]", [NodeID, JobId]),
-            ok = wm_conf:delete(node, NodeID),
+        {id, NodeId} ->
+            {ok, SelfNode} = wm_self:get_node(),
+            {ok, JobNode} = wm_conf:select(node, {id, NodeId}),
+            JobNodeAddress = wm_conf:get_relative_address(JobNode, SelfNode),
+            ?LOG_DEBUG("Delete node entity from config and address from pinger: ~p, ~p [job=~p]",
+                       [NodeId, JobNodeAddress, JobId]),
+            ok = wm_pinger:delete(JobNodeAddress),
+            ok = wm_conf:delete(node, NodeId),
             delete_resources(T, Job, Cnt + 1)
     end.
 

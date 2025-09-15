@@ -4,7 +4,7 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([add/1, del/1, send_if_pinged/3, ping_sync/1, start_route/4]).
+-export([add/1, delete/1, send_if_pinged/3, ping_sync/1, start_route/4]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -29,10 +29,10 @@ add(Address) ->
     Ms = wm_conf:g(node_ping_period, {?DEFAULT_PING_PERIOD, integer}),
     gen_server:cast(?MODULE, {add, Address, Ms}).
 
-%%doc Remove new node address from monitoring
--spec del({string(), number()}) -> ok.
-del(Address) ->
-    gen_server:cast(?MODULE, {del, Address}).
+%%doc Delete node address from pinging
+-spec delete({string(), number()}) -> ok.
+delete(Address) ->
+    gen_server:cast(?MODULE, {delete, Address}).
 
 -spec send_if_pinged(node_address(), module(), term()) -> ok.
 send_if_pinged(Address, CallbackModule, Msg) ->
@@ -124,7 +124,7 @@ handle_cast({add, Address, Interval}, MState) ->
     Now = wm_utils:timestamp(second),
     NewMap = maps:put(Address, {Now, Interval}, MState#mstate.nodes),
     {noreply, MState#mstate{nodes = NewMap}};
-handle_cast({del, Address}, MState) ->
+handle_cast({delete, Address}, MState) ->
     ?LOG_DEBUG("Remove address: ~p", [Address]),
     NewMap = maps:remove(Address, MState#mstate.nodes),
     {noreply, MState#mstate{nodes = NewMap}};
