@@ -36,7 +36,7 @@ start_link(Args) ->
 get_parent() ->
     wm_utils:protected_call(?MODULE, get_parent, none).
 
-%% @doc Start peer node on the same host (parent or simulation node)
+%% @doc Start peer node on the same host (new parent)
 -spec start_peer(atom(), list(), list()) -> {ok, term()} | {error, term()}.
 start_peer(ShortName, PeerArgs, AppArgs) ->
     do_start_peer(ShortName, PeerArgs, AppArgs).
@@ -465,8 +465,6 @@ get_parent_peer_args() ->
     Config = "'" ++ AppConf ++ "'",
     Boot = " -boot start_sasl -config " ++ Config,
     Hidden = " -hidden",
-    %SaslLogDir = "\"/opt/swm/spool-sim/" ++ FullNodeName ++ "/log/sasl/\"",
-    %SaslConf = " -sasl errlog_type error",
     Pa = " -pa " ++ wm_utils:get_module_dir(wm_root_sup),
     E = " -env DISPLAY " ++ wm_self:get_host() ++ ":0 ",
     RSH = " -rsh ssh",

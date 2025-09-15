@@ -112,8 +112,6 @@ grid({ArgsDict, Ent}, ConnArgs) ->
             grid(show, T, Ent, ConnArgs);
         ["ca" | T] ->
             grid(ca, T, Ent, ConnArgs);
-        ["sim" | T] ->
-            grid(sim, T, Ent, ConnArgs);
         ["create" | T] ->
             grid(create, T, Ent, ConnArgs);
         ["remove" | T] ->
@@ -193,10 +191,6 @@ node({ArgsDict, Ent}, ConnArgs) ->
             node(show, T, Ent, ConnArgs);
         ["cert" | T] ->
             node(cert, T, Ent, ConnArgs);
-        ["startsim" | T] ->
-            node(startsim, T, Ent, ConnArgs);
-        ["stopsim" | T] ->
-            node(stopsim, T, Ent, ConnArgs);
         ["create" | T] ->
             node(create, T, Ent, ConnArgs);
         ["remove" | T] ->
@@ -393,24 +387,6 @@ grid(tree, _, Ent, _ConnArgs) ->
             io:format("~s~n", [String])
     end,
     get_entity_submode(Ent);
-grid(sim, [Action | T], Ent, _ConnArgs) ->
-    case Action of
-        "start" ->
-            case wm_rpc:call(wm_admin, grid, {sim, start, T}) of
-                Xs when is_list(Xs) ->
-                    [io:format("~p~n", [X]) || {_, X} <- Xs];
-                {error, Error} ->
-                    fatal_error(Error)
-            end;
-        "stop" ->
-            case wm_rpc:call(wm_admin, grid, {sim, stop, T}) of
-                Xs when is_list(Xs) ->
-                    [io:format("~p~n", [X]) || {_, X} <- Xs];
-                {error, Error} ->
-                    fatal_error(Error)
-            end
-    end,
-    get_entity_submode(Ent);
 grid(ca, [Action | _Args], Ent, _) ->
     %TODO connect to SWM, add a grid and get ID (and name?)
     GridName = "grid",
@@ -516,12 +492,6 @@ node(list, _, Ent, ConnArgs) ->
     get_entity_submode(Ent);
 node(remove, [Name | Args], Ent, ConnArgs) ->
     generic_remove(node, Name, Args, ConnArgs),
-    get_entity_submode(Ent);
-node(startsim, [Name | _], Ent, ConnArgs) ->
-    rpc_generic(node, {startsim, Name}, ConnArgs),
-    get_entity_submode(Ent);
-node(stopsim, [Name | _], Ent, ConnArgs) ->
-    rpc_generic(node, {stopsim, Name}, ConnArgs),
     get_entity_submode(Ent);
 node(create, [Name | Args], Ent, ConnArgs) ->
     generic_create(node, Name, Args, ConnArgs, no_cert),

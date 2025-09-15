@@ -57,16 +57,6 @@ handle_call({grid, tree, static}, _From, MState) ->
     {reply, {map, wm_topology:get_tree(static)}, MState};
 handle_call({grid, set, Ent, Attr, Value}, _From, MState) ->
     {reply, process_set_param(grid, Ent, Attr, Value), MState};
-handle_call({grid, sim, start, _}, _From, MState) ->
-    ?LOG_DEBUG("Starting simulation module"),
-    start_sim_module(MState),
-    wm_sim:start_all(),
-    {reply, {string, "Simulation has been started"}, MState};
-handle_call({grid, sim, stop, _}, _From, MState) ->
-    ?LOG_DEBUG("Stopping simulation"),
-    wm_sim:stop_all(),
-    wm_root_sup:stop_child(wm_sim),
-    {reply, {string, "Simulation has been stopped"}, MState};
 handle_call({cluster, set, Ent, Attr, Value}, _From, MState) ->
     {reply, process_set_param(cluster, Ent, Attr, Value), MState};
 handle_call({cluster, get, Ent, Attr}, _From, MState) ->
@@ -91,12 +81,6 @@ handle_call({node, list}, _From, MState) ->
     {reply, wm_conf:select([node], all), MState};
 handle_call({node, show, Ent}, _From, MState) ->
     {reply, process_show_by_name(node, Ent), MState};
-handle_call({node, startsim, Ent}, _From, MState) ->
-    start_sim_module(MState),
-    {reply, process_startsim(node, Ent), MState};
-handle_call({node, stopsim, Ent}, _From, MState) ->
-    start_sim_module(MState),
-    {reply, process_stopsim(node, Ent), MState};
 handle_call({user, set, Ent, Attr, Value}, _From, MState) ->
     {reply, process_set_param(user, Ent, Attr, Value), MState};
 handle_call({user, get, Ent, Attr}, _From, MState) ->
@@ -258,26 +242,6 @@ process_get_param(Tab, Ent, Attr) ->
             end;
         {error, not_found} ->
             {atom, not_found}
-    end.
-
-process_startsim(node, Name) ->
-    ?LOG_INFO("Start simulation node ~p", [Name]),
-    wm_sim:start_node(Name),
-    {string, io_lib:format("Node ~s has been started", [Name])}.
-
-process_stopsim(node, Name) ->
-    ?LOG_INFO("Stop simulation node ~p", [Name]),
-    wm_sim:stop_node(Name),
-    {string, io_lib:format("Node ~s has been stopped", [Name])}.
-
-start_sim_module(MState) ->
-    Args = [{sim_type, partition_per_node}, {sim_spool, wm_utils:get_env("SWM_SPOOL")}, {root, MState#mstate.root}],
-    ?LOG_DEBUG("Start wm_sim with arguments: ~p", [Args]),
-    case wm_root_sup:start_child(wm_sim, [Args], worker) of
-        {error, {already_started, _}} ->
-            ?LOG_DEBUG("Simulation module has already been started");
-        Msg ->
-            ?LOG_DEBUG("Simulation module starting result: ~p", [Msg])
     end.
 
 new_defaults(remote, _, Rec0) ->
