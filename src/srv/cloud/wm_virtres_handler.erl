@@ -1,6 +1,6 @@
 -module(wm_virtres_handler).
 
--export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/2,
+-export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/3,
          upload_swm_worker/2, start_job_data_uploading/3, start_job_data_downloading/3, delete_partition/2,
          spawn_partition/2, wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0, wait_for_ssh_connection/1,
          remove_relocation_entities/1, ensure_entities_created/3, try_upload_worker_later/0]).
@@ -72,12 +72,22 @@ is_job_partition_ready(JobId) ->
         end,
     not lists:any(NotReady, NodeIds).
 
--spec update_job(list(), job_id()) -> 1.
-update_job(NewParams, JobId) ->
+-spec update_job(list(), job_id(), string()) -> 1.
+update_job(Params, JobId, []) ->
     {ok, Job1} = wm_conf:select(job, {id, JobId}),
-    Job2 = wm_entity:set(NewParams, Job1),
-    ?LOG_DEBUG("Update job ~p with new parameters: ~10000p", [JobId, NewParams]),
-    1 = wm_conf:update(Job2).
+    Job2 = wm_entity:set(Params, Job1),
+    ?LOG_DEBUG("Update job ~p with new parameters: ~10000p", [JobId, Params]),
+    1 = wm_conf:update(Job2);
+update_job(Params, JobId, ErrMsg) ->
+    NewParams = lists:map(
+      fun
+          ({state_details, Str}) when is_list(Str) ->
+              {state_details, Str ++ ". " ++ ErrMsg};
+          (Other) ->
+              Other
+      end,
+      Params),
+      update_job(NewParams, JobId, []).
 
 -spec upload_swm_worker(node_id(), string()) -> ok | {error, term()}.
 upload_swm_worker(RemoteNodeId, SshUserDir) ->
@@ -133,13 +143,14 @@ start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
 
 -spec delete_partition(partition_id(), #remote{}) -> {ok, string()} | {error, atom()}.
 delete_partition(PartId, Remote) ->
+    {ok, Creds} = wm_gate:get_credentials(Remote),
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
             ExternalId = wm_entity:get(external_id, Partition),
-            {ok, Creds} = wm_gate:get_credentials(Remote),
             wm_gate:delete_partition(self(), Remote, Creds, ExternalId);
-        {error, Error} ->
-            {error, Error}
+        {error, _} ->
+            ?LOG_INFO("Unknown partition, try to delete by id=~p", [PartId]),
+            wm_gate:delete_partition(self(), Remote, Creds, PartId)
     end.
 
 -spec spawn_partition(#job{}, #remote{}) -> {ok, string()} | {error, any()}.

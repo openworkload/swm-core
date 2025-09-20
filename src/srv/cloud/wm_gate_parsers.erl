@@ -139,6 +139,8 @@ parse_partition_created(Bin) ->
     case wm_json:decode(JsonStr) of
         {struct, [{<<"partition">>, {struct, [{<<"id">>, PartIdBin} | _]}}]} ->
             {ok, binary_to_list(PartIdBin)};
+        {struct, [{<<"error">>, Msg}, {<<"partition">>, {struct, [{<<"id">>, PartIdBin} | _]}}]} ->
+            {error, {Msg, {part_id, binary_to_list(PartIdBin)}}};
         Error ->
             {error, Error}
     end.

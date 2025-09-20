@@ -190,12 +190,19 @@ get_volumes() ->
       list_to_binary(wm_utils:get_env("SWM_ROOT")) => #{}}.
 
 -spec get_host_config([#resource{}]) -> map().
-get_host_config(_Request) ->
+get_host_config(Request) ->
     RootBin = list_to_binary(wm_utils:get_env("SWM_ROOT")),
-    #{<<"Binds">> => [<<"/home:/home">>, <<"/tmp:/tmp">>, <<RootBin/binary, <<":">>/binary, RootBin/binary>>],
-      <<"NetworkMode">> => <<"host">>,
-      %<<"DeviceRequests">> => get_devices_requests(),
-      <<"PublishAllPorts">> => true}.
+    Binds = [<<"/home:/home">>, <<"/tmp:/tmp">>, <<RootBin/binary, <<":">>/binary, RootBin/binary>>],
+    HostConfig =
+        #{<<"Binds">> => Binds,
+          <<"NetworkMode">> => <<"host">>,
+          <<"PublishAllPorts">> => true},
+    case get_gpus(Request) of
+        <<"0">> ->
+            HostConfig;
+        _ ->
+            HostConfig#{<<"DeviceRequests">> => get_devices_requests()}
+    end.
 
 -spec get_devices_requests() -> [map()].
 get_devices_requests() ->
@@ -210,6 +217,14 @@ get_cmd(Porter) ->
 -spec get_volumes_from() -> binary().
 get_volumes_from() ->
     [list_to_binary(os:getenv("SWM_DOCKER_VOLUMES_FROM", "swm-core:ro"))].
+
+-spec get_gpus([#resource{}]) -> binary().
+get_gpus([]) ->
+    <<"0">>;
+get_gpus([#resource{name = "gpus", count = Count} | _]) ->
+    integer_to_binary(Count);
+get_gpus([_ | T]) ->
+    get_gpus(T).
 
 -spec get_container_image([#resource{}]) -> binary().
 get_container_image([]) ->
