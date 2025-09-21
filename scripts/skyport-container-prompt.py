@@ -131,7 +131,7 @@ def warm_up_cache(username: str, home: str) -> bool:
     result: Dict[str, int] = {}
 
     env = os.environ
-    env["SWM_CLOUD_CREDENTIALS_FILE"] = f"{home}/.swm/credentials.json"
+    env["SWM_CLOUD_GATE_CONFIG"] = f"{home}/.swm/credentials.json"
     env["SWM_SPOOL"] =  "/opt/swm/spool" if username == "root" else f"{home}/.swm/spool"
 
     def run_cache_update_scripts():

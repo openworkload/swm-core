@@ -106,9 +106,8 @@ handle_info(update, MState = #mstate{refs_in_process = Refs, timer = OldTRef}) -
                 ?LOG_DEBUG("Update cloud information for ~p remote site(s)", [SiteNames]),
                 lists:foldl(fun(Remote, Accum) ->
                                RemoteId = wm_entity:get(id, Remote),
-                               {ok, Creds} = wm_gate:get_credentials(Remote),
-                               {ok, RefFlavors} = wm_gate:list_flavors(?MODULE, Remote, Creds),
-                               {ok, RefImages} = wm_gate:list_images(?MODULE, Remote, Creds),
+                               {ok, RefFlavors} = wm_gate:list_flavors(?MODULE, Remote),
+                               {ok, RefImages} = wm_gate:list_images(?MODULE, Remote),
                                ?LOG_DEBUG("Flavors and images requested, refs: ~p and ~p", [RefFlavors, RefImages]),
                                Accum#{RefFlavors => RemoteId, RefImages => RemoteId}
                             end,

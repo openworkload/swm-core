@@ -4,10 +4,9 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([create_partition/4, delete_partition/4, partition_exists/4, get_partition/4, list_partitions/3]).
--export([list_images/3, get_image/4]).
--export([list_flavors/3]).
--export([get_credentials/1]).
+-export([create_partition/3, delete_partition/3, partition_exists/3, get_partition/3, list_partitions/2]).
+-export([list_images/2, get_image/3]).
+-export([list_flavors/2]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
@@ -17,13 +16,6 @@
 
 -define(CONNECTION_AWAIT_TIMEOUT, timer:seconds(5)).
 -define(GATE_RESPONSE_TIMEOUT, 5 * 60 * 1000).
--define(AZURE_STORAGE_HEADERS,
-        [<<"containerregistryuser">>,
-         <<"containerregistrypass">>,
-         <<"storageaccount">>,
-         <<"storagekey">>,
-         <<"storagecontainer">>]).
--define(USER_SSH_CERT_HEADER, <<"usersshcert">>).
 
 %% ============================================================================
 %% Module API
@@ -33,41 +25,37 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
--spec create_partition(atom() | pid(), #remote{}, [{binary(), binary()}], map()) -> {ok, string()}.
-create_partition(CallbackModule, Remote, Creds, Options) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {create_partition, CallbackModule, Remote, Creds, Options}).
+-spec create_partition(atom() | pid(), #remote{}, map()) -> {ok, string()}.
+create_partition(CallbackModule, Remote, Options) ->
+    {ok, _Ref} = gen_server:call(?MODULE, {create_partition, CallbackModule, Remote, Options}).
 
--spec delete_partition(atom() | pid(), #remote{}, [{binary(), binary()}], string()) -> {ok, string()}.
-delete_partition(CallbackModule, Remote, Creds, PartExtId) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {delete_partition, CallbackModule, PartExtId, Remote, Creds}).
+-spec delete_partition(atom() | pid(), #remote{}, string()) -> {ok, string()}.
+delete_partition(CallbackModule, Remote, PartExtId) ->
+    {ok, _Ref} = gen_server:call(?MODULE, {delete_partition, CallbackModule, PartExtId, Remote}).
 
--spec partition_exists(atom() | pid(), #remote{}, [{binary(), binary()}], string()) -> {ok, string()}.
-partition_exists(CallbackModule, Remote, Creds, PartExtIdOrName) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {partition_exists, CallbackModule, PartExtIdOrName, Remote, Creds}).
+-spec partition_exists(atom() | pid(), #remote{}, string()) -> {ok, string()}.
+partition_exists(CallbackModule, Remote, PartExtIdOrName) ->
+    {ok, _Ref} = gen_server:call(?MODULE, {partition_exists, CallbackModule, PartExtIdOrName, Remote}).
 
--spec get_partition(atom() | pid(), #remote{}, [{binary(), binary()}], string()) -> {ok, string()}.
-get_partition(CallbackModule, Remote, Creds, PartExtId) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {get_partition, CallbackModule, PartExtId, Remote, Creds}).
+-spec get_partition(atom() | pid(), #remote{}, string()) -> {ok, string()}.
+get_partition(CallbackModule, Remote, PartExtId) ->
+    {ok, _Ref} = gen_server:call(?MODULE, {get_partition, CallbackModule, PartExtId, Remote}).
 
--spec list_partitions(atom() | pid(), #remote{}, [{binary(), binary()}]) -> {ok, string()}.
-list_partitions(CallbackModule, Remote, Creds) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {list_partitions, CallbackModule, Remote, Creds}).
+-spec list_partitions(atom() | pid(), #remote{}) -> {ok, string()}.
+list_partitions(CallbackModule, Remote) ->
+    {ok, _Ref} = gen_server:call(?MODULE, {list_partitions, CallbackModule, Remote}).
 
--spec list_images(atom() | pid(), #remote{}, [{binary(), binary()}]) -> {ok, string()}.
-list_images(CallbackModule, Remote, Creds) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {list_images, CallbackModule, Remote, Creds}).
+-spec list_images(atom() | pid(), #remote{}) -> {ok, string()}.
+list_images(CallbackModule, Remote) ->
+    {ok, _Ref} = gen_server:call(?MODULE, {list_images, CallbackModule, Remote}).
 
--spec get_image(atom() | pid(), #remote{}, [{binary(), binary()}], string()) -> {ok, string()}.
-get_image(CallbackModule, Remote, Creds, ImageID) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {get_image, CallbackModule, Remote, Creds, ImageID}).
+-spec get_image(atom() | pid(), #remote{}, string()) -> {ok, string()}.
+get_image(CallbackModule, Remote, ImageID) ->
+    {ok, _Ref} = gen_server:call(?MODULE, {get_image, CallbackModule, Remote, ImageID}).
 
--spec list_flavors(atom() | pid(), #remote{}, [{binary(), binary()}]) -> {ok, string()}.
-list_flavors(CallbackModule, Remote, Creds) ->
-    {ok, _Ref} = gen_server:call(?MODULE, {list_flavors, CallbackModule, Remote, Creds}).
-
--spec get_credentials(#remote{}) -> {ok, map()} | {error, string()}.
-get_credentials(Remote) ->
-    gen_server:call(?MODULE, {get_credentials, Remote}).
+-spec list_flavors(atom() | pid(), #remote{}) -> {ok, string()}.
+list_flavors(CallbackModule, Remote) ->
+    {ok, _Ref} = gen_server:call(?MODULE, {list_flavors, CallbackModule, Remote}).
 
 %% ============================================================================
 %% Server callbacks
@@ -97,22 +85,19 @@ init(Args) ->
     MState2 = MState1#mstate{pem_data = read_pem_data(MState1#mstate.spool)},
     {ok, MState2}.
 
-handle_call({get_credentials, Remote}, _, MState = #mstate{}) ->
-    ?LOG_DEBUG("Get credentials for remote site: ~p", [wm_entity:get(name, Remote)]),
-    {reply, read_credentials_from_file(Remote), MState};
-handle_call({create_partition, CallbackModule, Remote, Creds, Options}, _, MState = #mstate{}) ->
-    handle_http_call(fun() -> do_partition_create(Remote, Creds, Options, MState) end,
+handle_call({create_partition, CallbackModule, Remote, Options}, _, MState = #mstate{}) ->
+    handle_http_call(fun() -> do_partition_create(Remote, Options, MState) end,
                      partition_spawned,
                      CallbackModule,
                      MState);
-handle_call({delete_partition, CallbackModule, PartExtId, Remote, Creds}, _, MState = #mstate{}) ->
-    handle_http_call(fun() -> do_partition_delete(Remote, Creds, PartExtId, MState) end,
+handle_call({delete_partition, CallbackModule, PartExtId, Remote}, _, MState = #mstate{}) ->
+    handle_http_call(fun() -> do_partition_delete(Remote, PartExtId, MState) end,
                      partition_deleted,
                      CallbackModule,
                      MState);
-handle_call({partition_exists, CallbackModule, PartExtIdOrName, Remote, Creds}, _, MState = #mstate{}) ->
+handle_call({partition_exists, CallbackModule, PartExtIdOrName, Remote}, _, MState = #mstate{}) ->
     handle_http_call(fun() ->
-                        case fetch_partition(Remote, Creds, PartExtIdOrName, MState) of
+                        case fetch_partition(Remote, PartExtIdOrName, MState) of
                             {ok, _} ->
                                 {ok, true};
                             _ ->
@@ -122,16 +107,16 @@ handle_call({partition_exists, CallbackModule, PartExtIdOrName, Remote, Creds}, 
                      partition_exists,
                      CallbackModule,
                      MState);
-handle_call({list_images, CallbackModule, Remote, Creds}, _, MState = #mstate{}) ->
-    handle_http_call(fun() -> fetch_images(Remote, Creds, MState) end, list_images, CallbackModule, MState);
-handle_call({get_image, CallbackModule, Remote, Creds, ImageID}, _, MState = #mstate{}) ->
-    handle_http_call(fun() -> fetch_image(Remote, Creds, ImageID, MState) end, get_image, CallbackModule, MState);
-handle_call({list_flavors, CallbackModule, Remote, Creds}, _, MState = #mstate{}) ->
-    handle_http_call(fun() -> fetch_flavors(Remote, Creds, MState) end, list_flavors, CallbackModule, MState);
-handle_call({list_partitions, CallbackModule, Remote, Creds}, _, MState = #mstate{}) ->
-    handle_http_call(fun() -> fetch_partitions(Remote, Creds, MState) end, list_partitions, CallbackModule, MState);
-handle_call({get_partition, CallbackModule, PartExtId, Remote, Creds}, _, MState = #mstate{}) ->
-    handle_http_call(fun() -> fetch_partition(Remote, Creds, PartExtId, MState) end,
+handle_call({list_images, CallbackModule, Remote}, _, MState = #mstate{}) ->
+    handle_http_call(fun() -> fetch_images(Remote, MState) end, list_images, CallbackModule, MState);
+handle_call({get_image, CallbackModule, Remote, ImageID}, _, MState = #mstate{}) ->
+    handle_http_call(fun() -> fetch_image(Remote, ImageID, MState) end, get_image, CallbackModule, MState);
+handle_call({list_flavors, CallbackModule, Remote}, _, MState = #mstate{}) ->
+    handle_http_call(fun() -> fetch_flavors(Remote, MState) end, list_flavors, CallbackModule, MState);
+handle_call({list_partitions, CallbackModule, Remote}, _, MState = #mstate{}) ->
+    handle_http_call(fun() -> fetch_partitions(Remote, MState) end, list_partitions, CallbackModule, MState);
+handle_call({get_partition, CallbackModule, PartExtId, Remote}, _, MState = #mstate{}) ->
+    handle_http_call(fun() -> fetch_partition(Remote, PartExtId, MState) end,
                      partition_fetched,
                      CallbackModule,
                      MState);
@@ -183,23 +168,9 @@ get_address(SectionName, Remote) ->
     ?LOG_DEBUG("HTTP RPC path: ~p", [Path]),
     Path.
 
--spec generate_headers([{binary(), binary()}], [binary()], [{binary(), binary()}]) -> [{binary(), binary()}].
-generate_headers(Creds, Filter, ExtraHeaders) ->
-    FilteredCreds =
-        lists:reverse(
-            lists:filter(fun({Key, _}) -> not lists:member(Key, Filter) end, Creds)),
-    MergedCreds =
-        lists:foldl(fun({Key, Value}, Acc) ->
-                       case lists:keymember(Key, 1, Acc) of
-                           true ->
-                               Acc;
-                           false ->
-                               [{Key, Value} | Acc]
-                       end
-                    end,
-                    FilteredCreds,
-                    ExtraHeaders),
-    [{<<"Accept">>, <<"application/json">>} | lists:reverse(MergedCreds)].
+-spec generate_headers([{binary(), binary()}]) -> [{binary(), binary()}].
+generate_headers(ExtraHeaders) ->
+    [{<<"Accept">>, <<"application/json">>} | lists:reverse(ExtraHeaders)].
 
 -spec get_auth_body(binary()) -> [{binary(), binary()}].
 get_auth_body(PemData) ->
@@ -292,9 +263,8 @@ handle_http_call(Func, Label, CallbackModule, MState = #mstate{children = Childr
                               end),
     {reply, {ok, Ref}, MState#mstate{children = Children#{Pid => {CallbackModule, Ref}}}}.
 
--spec do_partition_create(#remote{}, [{binary(), binary()}], map(), #mstate{}) ->
-                             {ok, string(), string()} | {error, string()}.
-do_partition_create(Remote, Creds, Options, #mstate{spool = Spool, pem_data = PemData}) ->
+-spec do_partition_create(#remote{}, map(), #mstate{}) -> {ok, string(), string()} | {error, string()}.
+do_partition_create(Remote, Options, #mstate{spool = Spool, pem_data = PemData}) ->
     ?LOG_DEBUG("Create partition with options: ~10000p", [Options]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
@@ -311,9 +281,8 @@ do_partition_create(Remote, Creds, Options, #mstate{spool = Spool, pem_data = Pe
                  {<<"runtime">>, list_to_binary(get_runtime_parameters_string(Remote))},
                  {<<"location">>, list_to_binary(wm_entity:get(location, Remote))},
                  {<<"ports">>, list_to_binary(maps:get(ports, Options, ""))}],
-            Headers = generate_headers(Creds, [], ExtraHeaders), %TODO make remote-dependent exclude list
-            HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
-            ?LOG_DEBUG("Partition creation POST HTTP headers: ~p", [HeadersWithoutCredentials]),
+            Headers = generate_headers(ExtraHeaders),
+            ?LOG_DEBUG("Partition creation POST HTTP headers: ~p", [Headers]),
             StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -328,59 +297,24 @@ do_partition_create(Remote, Creds, Options, #mstate{spool = Spool, pem_data = Pe
             {error, Error}
     end.
 
--spec hide_credentials_from_headers([{binary(), binary()}], [{binary(), binary()}]) -> [{binary(), binary()}].
-hide_credentials_from_headers(Headers, Creds) ->
-    lists:map(fun({Key, Value}) ->
-                 case lists:keyfind(Key, 1, Creds) of
-                     false ->
-                         {Key, Value};
-                     _ ->
-                         {Key, <<"*****">>}
-                 end
-              end,
-              Headers).
-
--spec search_in_credentials(binary(), #remote{}) -> {ok, binary()} | {error, not_found}.
-search_in_credentials(BinToFind, Remote) ->
-    case get_credentials(Remote) of
-        {ok, Creds} ->
-            case lists:keyfind(BinToFind, 1, Creds) of
-                {BinToFind, Value} ->
-                    {ok, Value};
-                false ->
-                    {error, not_found}
-            end;
-        Other ->
-            Other
-    end.
-
 -spec get_runtime_parameters_string(#remote{}) -> str.
-get_runtime_parameters_string(#remote{runtime = RuntimeMap} = Remote) ->
-    StrFromRuntime =
-        lists:flatten(
-            maps:fold(fun (Key, Value, "") ->
-                              io_lib:format("~s=~s", [Key, Value]);
-                          (Key, Value, Acc) ->
-                              io_lib:format("~s,~s=~s", [Acc, Key, Value])
-                      end,
-                      "",
-                      RuntimeMap)),
-    case search_in_credentials(<<"usersshcert">>, Remote) of
-        {ok, Value} ->
-            io_lib:format("~s,ssh_pub_key=~s", [StrFromRuntime, Value]);
-        {error, not_found} ->
-            ?LOG_ERROR("User ssh certificate not found in credentials"),
-            StrFromRuntime
-    end.
+get_runtime_parameters_string(#remote{runtime = RuntimeMap}) ->
+    lists:flatten(
+        maps:fold(fun (Key, Value, "") ->
+                          io_lib:format("~s=~s", [Key, Value]);
+                      (Key, Value, Acc) ->
+                          io_lib:format("~s,~s=~s", [Acc, Key, Value])
+                  end,
+                  "",
+                  RuntimeMap)).
 
--spec do_partition_delete(#remote{}, [{binary(), binary()}], string(), #mstate{}) -> {ok, string()} | {error, any()}.
-do_partition_delete(Remote, Creds, PartExtId, #mstate{spool = Spool, pem_data = PemData}) ->
+-spec do_partition_delete(#remote{}, string(), #mstate{}) -> {ok, string()} | {error, any()}.
+do_partition_delete(Remote, PartExtId, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Headers = generate_headers(Creds, ?AZURE_STORAGE_HEADERS ++ [?USER_SSH_CERT_HEADER], []),
-            HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
-            ?LOG_DEBUG("Partition deletion HTTP headers: ~p", [HeadersWithoutCredentials]),
+            Headers = generate_headers([]),
+            ?LOG_DEBUG("Partition deletion HTTP headers: ~p", [Headers]),
             StreamRef =
                 gun:request(ConnPid, <<"DELETE">>, get_address("partitions/" ++ PartExtId, Remote), Headers, Body),
             Result =
@@ -396,18 +330,15 @@ do_partition_delete(Remote, Creds, PartExtId, #mstate{spool = Spool, pem_data = 
             {error, Error}
     end.
 
--spec fetch_images(#remote{}, [{binary(), binary()}], #mstate{}) -> {ok, [#image{}]} | {error, any()}.
-fetch_images(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
+-spec fetch_images(#remote{}, #mstate{}) -> {ok, [#image{}]} | {error, any()}.
+fetch_images(Remote, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
             Location = list_to_binary(wm_entity:get(location, Remote)),
-            ExtraValue = <<"location=", Location/binary, ";publisher=Canonical;offer=0001-com-ubuntu-server-jammy">>,
-            %ExtraValue = <<"location=", Location/binary, ";publisher=microsoft-dsvm;offer=ubuntu-hpc;sku=2204">>,
-            Extra = [{<<"extra">>, ExtraValue}],
-            Headers = generate_headers(Creds, ?AZURE_STORAGE_HEADERS ++ [?USER_SSH_CERT_HEADER], Extra),
-            HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
-            ?LOG_DEBUG("Fetch images HTTP headers: ~p", [HeadersWithoutCredentials]),
+            Extra = [{<<"extra">>, <<"location=", Location/binary>>}],
+            Headers = generate_headers(Extra),
+            ?LOG_DEBUG("Fetch images HTTP headers: ~p", [Headers]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("images", Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -424,14 +355,13 @@ fetch_images(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
             {error, Error}
     end.
 
--spec fetch_image(#remote{}, [{binary(), binary()}], string(), #mstate{}) -> {ok, [#image{}]} | {error, string()}.
-fetch_image(Remote, Creds, ImageID, #mstate{spool = Spool, pem_data = PemData}) ->
+-spec fetch_image(#remote{}, string(), #mstate{}) -> {ok, [#image{}]} | {error, string()}.
+fetch_image(Remote, ImageID, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Headers = generate_headers(Creds, ?AZURE_STORAGE_HEADERS ++ [?USER_SSH_CERT_HEADER], []),
-            HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
-            ?LOG_DEBUG("Fetch image HTTP headers: ~p", [HeadersWithoutCredentials]),
+            Headers = generate_headers([]),
+            ?LOG_DEBUG("Fetch image HTTP headers: ~p", [Headers]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("images/" ++ ImageID, Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -446,17 +376,16 @@ fetch_image(Remote, Creds, ImageID, #mstate{spool = Spool, pem_data = PemData}) 
             {error, Error}
     end.
 
--spec fetch_flavors(#remote{}, [{binary(), binary()}], #mstate{}) -> {ok, [#image{}]} | {error, string()}.
-fetch_flavors(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
+-spec fetch_flavors(#remote{}, #mstate{}) -> {ok, [#image{}]} | {error, string()}.
+fetch_flavors(Remote, #mstate{spool = Spool, pem_data = PemData}) ->
     ?LOG_DEBUG("Fetch flavors from ~p", [wm_entity:get(name, Remote)]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
             Location = list_to_binary(wm_entity:get(location, Remote)),
             Extra = [{<<"extra">>, <<"location=", Location/binary>>}],
-            Headers = generate_headers(Creds, ?AZURE_STORAGE_HEADERS ++ [?USER_SSH_CERT_HEADER], Extra),
-            HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
-            ?LOG_DEBUG("Fetch flavors HTTP headers: ~p", [HeadersWithoutCredentials]),
+            Headers = generate_headers(Extra),
+            ?LOG_DEBUG("Fetch flavors HTTP headers: ~p", [Headers]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("flavors", Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -471,14 +400,13 @@ fetch_flavors(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
             {error, Error}
     end.
 
--spec fetch_partitions(#remote{}, [{binary(), binary()}], #mstate{}) -> {ok, [#image{}]} | {error, string()}.
-fetch_partitions(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
+-spec fetch_partitions(#remote{}, #mstate{}) -> {ok, [#image{}]} | {error, string()}.
+fetch_partitions(Remote, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Headers = generate_headers(Creds, ?AZURE_STORAGE_HEADERS ++ [?USER_SSH_CERT_HEADER], []),
-            HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
-            ?LOG_DEBUG("Fetch partitions HTTP headers: ~p", [HeadersWithoutCredentials]),
+            Headers = generate_headers([]),
+            ?LOG_DEBUG("Fetch partitions HTTP headers: ~p", [Headers]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("partitions", Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -493,15 +421,13 @@ fetch_partitions(Remote, Creds, #mstate{spool = Spool, pem_data = PemData}) ->
             {error, Error}
     end.
 
--spec fetch_partition(#remote{}, [{binary(), binary()}], string(), #mstate{}) ->
-                         {ok, [#partition{}]} | {error, string()}.
-fetch_partition(Remote, Creds, PartExtIdOrName, #mstate{spool = Spool, pem_data = PemData}) ->
+-spec fetch_partition(#remote{}, string(), #mstate{}) -> {ok, [#partition{}]} | {error, string()}.
+fetch_partition(Remote, PartExtIdOrName, #mstate{spool = Spool, pem_data = PemData}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            Headers = generate_headers(Creds, ?AZURE_STORAGE_HEADERS ++ [?USER_SSH_CERT_HEADER], []),
-            HeadersWithoutCredentials = hide_credentials_from_headers(Headers, Creds),
-            ?LOG_DEBUG("Fetch partition HTTP headers: ~p", [HeadersWithoutCredentials]),
+            Headers = generate_headers([]),
+            ?LOG_DEBUG("Fetch partition HTTP headers: ~p", [Headers]),
             StreamRef =
                 gun:request(ConnPid, <<"GET">>, get_address("partitions/" ++ PartExtIdOrName, Remote), Headers, Body),
             Result =
@@ -515,51 +441,6 @@ fetch_partition(Remote, Creds, PartExtIdOrName, #mstate{spool = Spool, pem_data 
             Result;
         {error, Error} ->
             {error, Error}
-    end.
-
--spec get_credentials_file_path() -> {ok, string()} | {error, string()}.
-get_credentials_file_path() ->
-    case os:getenv("SWM_CLOUD_CREDENTIALS_FILE") of
-        false ->
-            case os:getenv("HOME") of
-                false ->
-                    {error, "User home is not set"};
-                HomeDir ->
-                    {ok, HomeDir ++ "/" ++ ?CREDENTIALS_FILE}
-            end;
-        CredentialsFile ->
-            {ok, CredentialsFile}
-    end.
-
--spec read_credentials_from_file(#remote{}) -> {ok, [{binary(), binary()}]} | {error, string()}.
-read_credentials_from_file(Remote) ->
-    case wm_entity:get(kind, Remote) of
-        localhost ->
-            {ok, []};
-        RemoteKind ->
-            {ok, FilePath} = get_credentials_file_path(),
-            ?LOG_DEBUG("Use credentials file path: ~p", [FilePath]),
-            AbsPath = filename:absname(FilePath),
-            case wm_utils:read_file(AbsPath, [binary]) of
-                {ok, CredsBin} ->
-                    case wm_json:decode(CredsBin) of
-                        {struct, CredsStruct} ->
-                            RemoteKindBin = atom_to_binary(RemoteKind),
-                            case lists:keyfind(RemoteKindBin, 1, CredsStruct) of
-                                {RemoteKindBin, {struct, ParamTuples}} ->
-                                    {ok, ParamTuples};
-                                false ->
-                                    ?LOG_ERROR("Cannot find section '~p' in the credentials file", [RemoteKind]),
-                                    {error, not_found}
-                            end;
-                        Error ->
-                            ?LOG_ERROR("Cannot parse credentials file ~p: ~p", [AbsPath, Error]),
-                            {error, not_found}
-                    end;
-                {error, Error} ->
-                    ?LOG_ERROR("Cannot read file ~p: ~p", [AbsPath, Error]),
-                    {error, not_found}
-            end
     end.
 
 -spec read_pem_data(string()) -> binary().

@@ -134,7 +134,8 @@ validating(cast,
            {partition_exists, Ref, true},
            #mstate{action = create,
                    wait_ref = Ref,
-                   job_id = JobId, err_msg = ErrMsg} =
+                   job_id = JobId,
+                   err_msg = ErrMsg} =
                MState) ->
     ?LOG_INFO("Remote partition exits => reuse for job ~p", [JobId]),
     wm_virtres_handler:update_job([{state_details, "Fetch the partition details"}], JobId, ErrMsg),
@@ -144,7 +145,8 @@ validating(cast,
            {partition_exists, Ref, false},
            #mstate{action = destroy,
                    wait_ref = Ref,
-                   job_id = JobId, err_msg = ErrMsg} =
+                   job_id = JobId,
+                   err_msg = ErrMsg} =
                MState) ->
     ?LOG_DEBUG("No resources found for job ~s", [JobId]),
     wm_virtres_handler:update_job([{state_details, "Remote resources destroyed"}], JobId, ErrMsg),
@@ -155,18 +157,29 @@ validating(cast,
                    wait_ref = Ref,
                    job_id = JobId,
                    part_id = PartId,
-                   remote = Remote, err_msg = ErrMsg} =
+                   remote = Remote,
+                   err_msg = ErrMsg} =
                MState) ->
     ?LOG_DEBUG("Destroy remote partition while validating for job ~p", [JobId]),
     wm_virtres_handler:update_job([{state_details, "Destroying remote resources"}], JobId, ErrMsg),
     {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
-validating(cast, {error, Ref, Msg}, #mstate{wait_ref = Ref, job_id = JobId, err_msg = ErrMsg} = MState) ->
+validating(cast,
+           {error, Ref, Msg},
+           #mstate{wait_ref = Ref,
+                   job_id = JobId,
+                   err_msg = ErrMsg} =
+               MState) ->
     ?LOG_INFO("Could not validate partition for job ~p: ~p", [JobId, Msg]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
     wm_virtres_handler:update_job([{state_details, "Could not validate the partition"}], JobId, ErrMsg),
     {next_state, validating, MState#mstate{part_check_timer = Timer}};
-validating(cast, {Ref, 'EXIT', timeout}, #mstate{wait_ref = Ref, job_id = JobId, err_msg = ErrMsg} = MState) ->
+validating(cast,
+           {Ref, 'EXIT', timeout},
+           #mstate{wait_ref = Ref,
+                   job_id = JobId,
+                   err_msg = ErrMsg} =
+               MState) ->
     ?LOG_INFO("Timeout when validating partition for job ~p => try to fetch the partition later", [JobId]),
     wm_virtres_handler:update_job([{state_details, "Timeout when validating partition"}], JobId, ErrMsg),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
@@ -179,7 +192,12 @@ validating(cast, Msg, MState) ->
 -spec creating({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 creating({call, From}, get_current_state, MState) ->
     {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
-creating(cast, {partition_spawned, Ref, NewPartExtId}, #mstate{job_id = JobId, wait_ref = Ref, err_msg = ErrMsg} = MState) ->
+creating(cast,
+         {partition_spawned, Ref, NewPartExtId},
+         #mstate{job_id = JobId,
+                 wait_ref = Ref,
+                 err_msg = ErrMsg} =
+             MState) ->
     ?LOG_INFO("Partition spawned => check status: ~p, job ~p", [NewPartExtId, JobId]),
     wm_virtres_handler:update_job([{state_details, "Partition spawned"}], JobId, ErrMsg),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
@@ -188,7 +206,8 @@ creating(cast,
          {partition_fetched, Ref, Partition},
          #mstate{job_id = JobId,
                  wait_ref = Ref,
-                 template_node = TplNode, err_msg = ErrMsg} =
+                 template_node = TplNode,
+                 err_msg = ErrMsg} =
              MState) ->
     PartId = wm_entity:get(id, Partition),
     ?LOG_DEBUG("Partition fetched for job ~p, partition id: ~p", [JobId, PartId]),
@@ -217,7 +236,12 @@ creating(cast,
             Timer = wm_virtres_handler:wait_for_partition_fetch(),
             {next_state, creating, MState#mstate{part_check_timer = Timer}}
     end;
-creating(cast, ssh_prov_connected, #mstate{job_id = JobId, part_mgr_id = PartMgrNodeId, err_msg = ErrMsg} = MState) ->
+creating(cast,
+         ssh_prov_connected,
+         #mstate{job_id = JobId,
+                 part_mgr_id = PartMgrNodeId,
+                 err_msg = ErrMsg} =
+             MState) ->
     ?LOG_INFO("SSH for provisioning is ready for job ~p", [JobId]),
     wm_virtres_handler:update_job([{state_details, "Uploading the worker"}], JobId, ErrMsg),
     case wm_virtres_handler:upload_swm_worker(PartMgrNodeId, get_ssh_user_dir()) of
@@ -243,7 +267,12 @@ creating(cast, ssh_prov_connected, #mstate{job_id = JobId, part_mgr_id = PartMgr
             ?LOG_ERROR("SWM worker uploading failed: ~p", [Error]),
             {stop, {shutdown, Error}, MState}
     end;
-creating(cast, ssh_swm_connected, #mstate{job_id = JobId, ssh_tunnel_client_pid = SshClientPid, err_msg = ErrMsg} = MState) ->
+creating(cast,
+         ssh_swm_connected,
+         #mstate{job_id = JobId,
+                 ssh_tunnel_client_pid = SshClientPid,
+                 err_msg = ErrMsg} =
+             MState) ->
     wm_virtres_handler:update_job([{state_details, "Sky Port connected"}], JobId, ErrMsg),
     {next_state,
      creating,
@@ -253,10 +282,14 @@ creating(cast, ssh_swm_connected, #mstate{job_id = JobId, ssh_tunnel_client_pid 
                    proxy_pids = start_proxies(JobId)}};
 creating(cast, {error, Ref, {Msg, {part_id, PartId}}}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ErrorMsg = "Partition creation error: " ++ binary_to_list(Msg),
-    wm_virtres_handler:update_job([{state, ?JOB_STATE_ERROR}, {state_details, ErrorMsg}], JobId, ""),
+    wm_virtres_handler:update_job([{state, ?JOB_STATE_ERROR}, {state_details, ErrorMsg}], JobId),
     ?LOG_ERROR("Partition cannot be created for job ~p (~p)", [JobId, ErrorMsg]),
     gen_statem:cast(self(), start_destroying),
-    {next_state, destroying, MState#mstate{download_ref = finished, part_id = PartId, err_msg = ErrorMsg}};
+    {next_state,
+     destroying,
+     MState#mstate{download_ref = finished,
+                   part_id = PartId,
+                   err_msg = ErrorMsg}};
 creating(cast, {error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     wm_virtres_handler:update_job([{state_details, "Partition has not been created yet"}], JobId),
     ?LOG_DEBUG("Partition has not been created yet for job ~p (~p)", [JobId, Error]),
