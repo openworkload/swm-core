@@ -96,6 +96,7 @@ get_images_info(Req) ->
            ImageJson =
                jsx:encode(#{id => list_to_binary(wm_entity:get(id, Image)),
                             name => list_to_binary(wm_entity:get(name, Image)),
+                            remote_id => list_to_binary(wm_entity:get(remote_id, Image)),
                             kind => atom_to_binary(wm_entity:get(kind, Image)),
                             comment => list_to_binary(wm_entity:get(comment, Image))}),
            [binary_to_list(ImageJson) | FullJson]

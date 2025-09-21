@@ -465,6 +465,9 @@ components:
         name:
           type: string
           description: Image name
+        remote_id:
+          type: string
+          description: Related remote object ID configured in swm-core
         kind:
           type: string
           description: Image kind
