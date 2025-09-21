@@ -52,9 +52,7 @@ windows:
         - jupyterlab:
           - clear
           - cd <%= ENV["SOURCES_PARENT_DIR"] %>/swm-jupyter-term
-          - conda activate swm-jupyter
-          - . .venv/bin/activate
-          - jupyterhub
+          - ./start.sh
   - shell:
       root: <%= ENV["SOURCES_PARENT_DIR"] %>
       panes:
