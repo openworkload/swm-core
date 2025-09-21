@@ -43,24 +43,40 @@ do_parse([Line | T], Job) ->
             do_parse(T, Job)
     end.
 
--spec add_requested_resource(string(), string(), #job{}) -> #job{}.
-add_requested_resource(Name, PropValue, Job) ->
+-spec add_requested_resource(string(), integer(), string() | integer(), #job{}) -> #job{}.
+add_requested_resource(Name, Count, PropValue, Job) ->
     ResourcesOld = wm_entity:get(request, Job),
-    ResourcesNew = add_resource_with_property(Name, PropValue, ResourcesOld, []),
+    ResourcesNew = add_resource_with_property(Name, Count, PropValue, ResourcesOld, []),
     wm_entity:set({request, ResourcesNew}, Job).
 
--spec add_resource_with_property(atom(), string(), [#resource{}], [#resource{}]) -> [#resource{}].
-add_resource_with_property(Name, PropValue, [], ResourcesNew) ->
-    NewResource = wm_entity:set([{name, Name}, {properties, [{value, PropValue}]}], wm_entity:new(resource)),
+-spec add_requested_resource(string(), string() | integer(), #job{}) -> #job{}.
+add_requested_resource(Name, PropValue, Job) ->
+    add_requested_resource(Name, 1, PropValue, Job).
+
+-spec add_resource_with_property(atom(), integer(), string() | integer(), [#resource{}], [#resource{}]) ->
+                                    [#resource{}].
+add_resource_with_property(Name, Count, [], [], ResourcesNew) ->
+    NewResource = wm_entity:set([{name, Name}, {count, Count}], wm_entity:new(resource)),
     [NewResource | ResourcesNew];
-add_resource_with_property(Name, PropValue, [#resource{name = Name} = OldResource | ResourcesOld], ResourcesNew) ->
+add_resource_with_property(Name, Count, PropValue, [], ResourcesNew) ->
+    NewResource =
+        wm_entity:set([{name, Name}, {count, Count}, {properties, [{value, PropValue}]}], wm_entity:new(resource)),
+    [NewResource | ResourcesNew];
+add_resource_with_property(Name, Count, [], [#resource{name = Name} = OldResource | ResourcesOld], ResourcesNew) ->
+    NewResource = wm_entity:set({count, Count}, OldResource),
+    add_resource_with_property(Name, Count, [], ResourcesOld, [NewResource | ResourcesNew]);
+add_resource_with_property(Name,
+                           Count,
+                           PropValue,
+                           [#resource{name = Name} = OldResource | ResourcesOld],
+                           ResourcesNew) ->
     Props1 = wm_entity:get(properties, OldResource),
     Props2 = proplists:delete(value, Props1),
     Props3 = [{value, PropValue} | Props2],
-    NewResource = wm_entity:set({properties, Props3}, OldResource),
-    add_resource_with_property(Name, PropValue, ResourcesOld, [NewResource | ResourcesNew]);
-add_resource_with_property(Name, PropValue, [#resource{} = OldResource | ResourcesOld], ResourcesNew) ->
-    add_resource_with_property(Name, PropValue, ResourcesOld, [OldResource | ResourcesNew]).
+    NewResource = wm_entity:set({count, Count}, {properties, Props3}, OldResource),
+    add_resource_with_property(Name, Count, PropValue, ResourcesOld, [NewResource | ResourcesNew]);
+add_resource_with_property(Name, Count, PropValue, [#resource{} = OldResource | ResourcesOld], ResourcesNew) ->
+    add_resource_with_property(Name, Count, PropValue, ResourcesOld, [OldResource | ResourcesNew]).
 
 -spec parse_line([string()], #job{}) -> #job{}.
 parse_line(Ws, Job) when hd(Ws) == "ports", length(Ws) > 1 ->
@@ -73,6 +89,8 @@ parse_line(Ws, Job) when hd(Ws) == "container-image", length(Ws) > 1 ->
     add_requested_resource("container-image", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "flavor", length(Ws) > 1 ->
     add_requested_resource("flavor", lists:flatten(tl(Ws)), Job);
+parse_line(Ws, Job) when hd(Ws) == "gpus", length(Ws) > 1 ->
+    add_requested_resource("gpus", list_to_integer(lists:flatten(tl(Ws))), [], Job);
 parse_line(Ws, Job) when hd(Ws) == "account", length(Ws) > 1 ->
     wm_entity:set({account_id, get_account_id(lists:flatten(tl(Ws)))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "name", length(Ws) > 1 ->

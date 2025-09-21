@@ -23,8 +23,10 @@ get_resources_json(Resources) ->
                        case find_value_property(Resource) of
                            "" ->
                                Map1;
+                           Value when is_list(Value) ->
+                               maps:put(value, list_to_binary(Value), Map1);
                            Value ->
-                               maps:put(value, list_to_binary(Value), Map1)
+                               maps:put(value, term_to_binary(Value), Map1)
                        end,
                    [Map2 | Acc]
                 end,
