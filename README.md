@@ -24,7 +24,7 @@ Sky Port
 
 Sky Port makes it easy to consume cloud resources by user software.
 
-[This repository](https://github.com/openworkload/swm-core) contains sources of the workload manager (core component of the Sky Port project). It supports a full workload lifecicle in cloud:
+[This repository](https://github.com/openworkload/swm-core) contains sources of the workload manager (core component of the Sky Port project). It supports a full workload lifecycle in cloud:
   * job submission,
   * job scheduling,
   * cloud cluster creation,
@@ -48,10 +48,10 @@ Terminology:
 
 Sky Port consists of 3 main components:
   * **[Core](https://github.com/openworkload/swm-core)** (this repository).
-  * **Gate*. See the [default cloud gate](https://github.com/openworkload/swm-cloud-gate) as a gate example.
+  * **Gate**. See the [default cloud gate](https://github.com/openworkload/swm-cloud-gate) as a gate example.
   * **Terminal**. See the [JupyterLab terminal](https://github.com/openworkload/swm-jupyter-term) as a terminal example.
 
-See [openworkload.org](https://openworkload.org) for details 
+See [openworkload.org](https://openworkload.org) for details.
 
 
 ## How to run
