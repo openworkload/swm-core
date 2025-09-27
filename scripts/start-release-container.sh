@@ -37,7 +37,7 @@ DOMAIN=openworkload.org
 NETWORK=skyportnet
 
 CONTAINER_NAME=skyport
-IMAGE_NAME=skyport:latest
+IMAGE_NAME=openworkload/skyport:latest
 DOCKER_SOCKET=/var/run/docker.sock  # for local jobs testing
 
 RUNNING=$(docker inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null)
@@ -49,6 +49,8 @@ else
     docker network create "${NETWORK}" >/dev/null
     echo "Created docker network '${NETWORK}'"
 fi
+
+mkdir $HOME/.swm
 
 if [ "$NOT_RUNNING" != "0" ]; then
     docker run\
