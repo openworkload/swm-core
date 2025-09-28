@@ -135,10 +135,13 @@ def warm_up_cache(username: str, home: str) -> bool:
     env["SWM_SPOOL"] =  "/opt/swm/spool" if username == "root" else f"{home}/.swm/spool"
 
     def run_cache_update_scripts():
-        print(f"Run gate cache update script: {script}")
+        print(f"Run gate cache update script as user {username}: {script}")
         try:
-            process = subprocess.Popen(["python3", script], env=env)
-            print("Gate cache update script process started")
+            if username == "root":
+                process = subprocess.Popen(["python3", script], env=env)
+            else:
+                process = subprocess.Popen(["sudo", "-u", username, "python3", script], env=env)
+            print(f"Gate cache update script process has been started")
             process.wait()
             result["exit_code"] = process.returncode
         except Exception as e:

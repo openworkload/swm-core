@@ -37,7 +37,8 @@ DOMAIN=openworkload.org
 NETWORK=skyportnet
 
 CONTAINER_NAME=skyport
-IMAGE_NAME=openworkload/skyport:latest
+#IMAGE_NAME=openworkload/skyport:latest
+IMAGE_NAME=skyport:latest
 DOCKER_SOCKET=/var/run/docker.sock  # for local jobs testing
 
 RUNNING=$(docker inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null)
@@ -50,7 +51,7 @@ else
     echo "Created docker network '${NETWORK}'"
 fi
 
-mkdir $HOME/.swm
+mkdir -p $HOME/.swm 2>/dev/null
 
 if [ "$NOT_RUNNING" != "0" ]; then
     docker run\
@@ -59,7 +60,7 @@ if [ "$NOT_RUNNING" != "0" ]; then
         --volume $HOME/.cache/swm:/root/.cache/swm\
         --volume ${DOCKER_SOCKET}:${DOCKER_SOCKET}\
         --name ${CONTAINER_NAME}\
-        --hostname $HOSTNAME.$DOMAIN\
+        --hostname $HOSTNAME\
         --domainname $DOMAIN\
         --network-alias $HOSTNAME.$DOMAIN\
         --workdir ${PWD}\

@@ -617,7 +617,7 @@ def apply_input_from_user(opts: dict[str, str]) -> None:
         opts["SWM_PARENT_HOST"] = default_parent_host
     userInput("SWM_PARENT_HOST", default_parent_host, "Parent host", opts)
 
-    hostname = socket.gethostname()
+    hostname = socket.getfqdn()
     userInput(
         "SWM_SNAME",
         "ghead" + "@" + hostname,

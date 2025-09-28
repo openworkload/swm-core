@@ -19,6 +19,8 @@ RUN apt-get install -y openssl openssh-client   # for certificate generation
 RUN apt-get install -y rlwrap                   # for swmctl during setup
 RUN apt-get install -y less mc                  # for debug
 RUN apt-get install -y supervisor               # run swm-core and swm-cloud-gate
+RUN apt-get install -y sudo
+
 
 # Install python version we currently require:
 RUN apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev
