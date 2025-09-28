@@ -77,6 +77,27 @@ This command starts swm-core and gate in background if the spool is (still) read
 
 If you prefer to build Sky Port container image from scratch, then [this instructions can be used](HOWTO/BUILD.md).
 
+## How to build
+
+### Build skyport container
+
+To build a new release container image run the following commands:
+```bash
+make
+make release
+make worker
+make build-release-container
+```
+
+The release container image will include swm-core and swm-cloud-gate, and ready to run. But during a development it is useful to have a container where Sky Port components are used from sources. To build such a development container image run this command:
+```bash
+make build-debug-container
+```
+
+The development container can be started with this command:
+```bash
+make cr
+```
 
 ## Contributing
 
