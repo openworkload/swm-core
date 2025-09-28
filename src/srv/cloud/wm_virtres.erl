@@ -26,7 +26,6 @@
          worker_reupload_timer = undefined :: reference(),
          ssh_tunnel_conn_timer = undefined :: reference(),
          ssh_tunnel_client_pid = undefined :: pid(),
-         forwarded_ports = [] :: [inet:port_number()],
          proxy_pids = [] :: [pid()],
          part_check_timer = undefined :: reference(),
          upload_ref = undefined :: reference(),
@@ -274,12 +273,12 @@ creating(cast,
                  err_msg = ErrMsg} =
              MState) ->
     wm_virtres_handler:update_job([{state_details, "Sky Port connected"}], JobId, ErrMsg),
+    ForwardedPortTuples = start_port_forwarding(SshClientPid, JobId),
     {next_state,
      creating,
      MState#mstate{wait_ref = undefined,
                    readiness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
-                   forwarded_ports = start_port_forwarding(SshClientPid, JobId),
-                   proxy_pids = start_proxies(JobId)}};
+                   proxy_pids = start_proxies(JobId, ForwardedPortTuples)}};
 creating(cast, {error, Ref, {Msg, {part_id, PartId}}}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     ErrorMsg = "Partition creation error: " ++ binary_to_list(Msg),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_ERROR}, {state_details, ErrorMsg}], JobId),
@@ -440,26 +439,27 @@ get_wm_api_port() ->
     ParentPort = wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer}),
     {"out", ParentPort, ApiPort}.
 
--spec start_port_forwarding(pid(), job_id()) -> [inet:port_number()].
+-spec start_port_forwarding(pid(), job_id()) -> [{string(), inet:port_number(), inet:port_number()}].
 start_port_forwarding(SshClientPid, JobId) ->
     ListenHost = "localhost",
     RemoteHost = "localhost",
-    PortsToForward = wm_resource_utils:get_job_networking_info(JobId, ports) ++ [get_wm_api_port()],
+    JobPorts = wm_resource_utils:get_job_networking_info(JobId, ports),
+    PortsToForward = JobPorts ++ [get_wm_api_port()],
 
-    lists:foldl(fun ({"out", ListenPort, PortToForward}, OpenedPorts) ->
+    lists:foldl(fun ({"out", ListenPort, PortToForward}, OpenPortTuples) ->
                         case wm_ssh_client:make_tunnel(SshClientPid, ListenHost, ListenPort, RemoteHost, PortToForward)
                         of
                             {ok, OpenedPort} ->
                                 ?LOG_INFO("Tunnel is opened successfully for ports: ~p -> ~p (job: ~p)",
                                           [OpenedPort, PortToForward, JobId]),
-                                [OpenedPort | OpenedPorts];
+                                [{"out", OpenedPort, PortToForward} | OpenPortTuples];
                             {error, Error} ->
                                 ?LOG_ERROR("Can't open ssh tunnel (~p:~p <=> ~p:~p), error: ~p",
                                            [ListenHost, ListenPort, RemoteHost, PortToForward, Error]),
-                                OpenedPorts
+                                OpenPortTuples
                         end;
-                    ({"in", RemotePortToOpen, _}, OpenedPorts) ->
-                        [RemotePortToOpen | OpenedPorts]
+                    ({"in", RemotePortToOpen, _}, OpenPortTuples) ->
+                        [{"in", RemotePortToOpen, RemotePortToOpen} | OpenPortTuples]
                 end,
                 [],
                 PortsToForward).
@@ -471,12 +471,12 @@ stop_port_forwarding(#mstate{job_id = JobId, proxy_pids = ProxyPids}) ->
     %TODO: stop port forwarding?
     ok.
 
--spec start_proxies(job_id()) -> [pid()].
-start_proxies(JobId) ->
-    PortsTuples = wm_resource_utils:get_job_networking_info(JobId, ports),
+-spec start_proxies(job_id(), [{string(), inet:port_number(), inet:port_number()}]) -> [pid()].
+start_proxies(JobId, ForwardedPortTuples) ->
     JobAddr = wm_resource_utils:get_job_networking_info(JobId, submission_address),
-    ?LOG_INFO("Start proxing ~p ports for job ~p to job submission address: ~p", [length(PortsTuples), JobId, JobAddr]),
-    lists:foldl(fun ({"out", PortSrc, PortDst}, ProxyPids) ->
+    ?LOG_INFO("Start proxing ~p ports for job ~p to job submission address: ~p",
+              [length(ForwardedPortTuples), JobId, JobAddr]),
+    lists:foldl(fun ({"out", PortDst, PortSrc}, ProxyPids) ->
                         case wm_tcp_proxy:start_link(PortSrc, JobAddr, PortDst) of
                             {ok, Pid} ->
                                 ?LOG_DEBUG("Started proxy ~p -> ~p:~p with pid=~p", [PortSrc, JobAddr, PortDst, Pid]),
@@ -486,11 +486,11 @@ start_proxies(JobId) ->
                                            [PortSrc, JobAddr, PortDst, Reason]),
                                 ProxyPids
                         end;
-                    (_, ProxyPids) ->
+                    ({"in", _, _}, ProxyPids) ->
                         ProxyPids
                 end,
                 [],
-                PortsTuples).
+                ForwardedPortTuples).
 
 -spec try_ssh_connection(pos_integer(), pid(), job_id(), atom(), node_id(), string(), string(), string()) ->
                             ok | not_ready.

@@ -1,6 +1,6 @@
 -module(wm_resource_utils).
 
--export([get_ingres_ports_map/2, get_ingres_ports_str/1, get_port_tuples/1, get_job_networking_info/2]).
+-export([get_ingres_ports_map/2, get_ingres_ports_str/1, get_job_networking_info/2, get_submission_address/1]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -49,13 +49,13 @@ get_ingres_ports_str(Resources) ->
     lists:flatten(
         string:join(Ports, ",")).
 
--spec get_port_tuples([#resource{}]) -> {[{string(), integer(), integer()}], []}.
+-spec get_port_tuples([#resource{}]) -> [{string(), integer(), integer()}].
 get_port_tuples([]) ->
     [];
 get_port_tuples([#resource{name = "ports", properties = Properties} | _]) ->
-    Value = proplists:get_value(value, Properties), % example of the Value: "8888/tcp,6001/udp"
+    Value = proplists:get_value(value, Properties), % example of Value: "8888/tcp,6001/udp"
     lists:foldl(fun(PortStr,
-                    List) ->  % Example: "8081/tcp/in" or "8888/tcp/out"
+                    List) ->  % Example of PortStr: "8081/tcp/in" or "8888/tcp/out"
                    Parts = string:split(PortStr, "/", all),
                    case length(Parts) of
                        3 ->
@@ -63,7 +63,8 @@ get_port_tuples([#resource{name = "ports", properties = Properties} | _]) ->
                            case lists:nth(2, Parts) of
                                "tcp" ->
                                    PortNumber = list_to_integer(lists:nth(1, Parts)),
-                                   [{PortDirection, PortNumber, PortNumber} | List];
+                                   {ok, EphemeralPort} = wm_port_finder:find_open_ephemeral_port(),
+                                   [{PortDirection, PortNumber, EphemeralPort} | List];
                                OtherType ->
                                    ?LOG_DEBUG("Requested port protocol is not supported: ~p", [OtherType]),
                                    List
@@ -78,9 +79,9 @@ get_port_tuples([#resource{name = "ports", properties = Properties} | _]) ->
 get_port_tuples([_ | T]) ->
     get_port_tuples(T).
 
--spec get_submission_address([#resource{}]) -> {[{string(), integer(), integer()}], []}.
+-spec get_submission_address([#resource{}]) -> string() | not_found.
 get_submission_address([]) ->
-    [];
+    not_found;
 get_submission_address([#resource{name = "submission-address", properties = Properties} | _]) ->
     proplists:get_value(value, Properties);
 get_submission_address([_ | T]) ->
@@ -91,7 +92,8 @@ get_job_resources(JobId) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     wm_entity:get(request, Job).
 
--spec get_job_networking_info(job_id(), atom()) -> [{inet:port_number(), inet:port_number()}] | node_address().
+-spec get_job_networking_info(job_id(), atom()) ->
+                                 [{string(), inet:port_number(), inet:port_number()}] | node_address().
 get_job_networking_info(JobId, ports) ->
     get_port_tuples(get_job_resources(JobId));
 get_job_networking_info(JobId, submission_address) ->

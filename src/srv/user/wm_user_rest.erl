@@ -309,6 +309,8 @@ update_job(Req) ->
 submit_job(Req) ->
     ?LOG_DEBUG("Handle job submission HTTP request"),
     CertBin = maps:get(cert, Req, undefined),
+    {Ip, _} = cowboy_req:peer(Req),
+    IpStr = inet:ntoa(Ip),
     case cowboy_req:match_qs([{path, [], undefined}], Req) of
         #{path := undefined} ->
             case cowboy_req:has_body(Req) of
@@ -317,17 +319,17 @@ submit_job(Req) ->
                         cowboy_req:read_body(Req,
                                              #{length => ?JOB_SUBMISSION_SCRIPT_SIZE_MAX,
                                                period => ?JOB_SUBMISSION_SCRIPT_WAIT_TIME}),
-                    do_submit_jobscript("", Data, CertBin);
+                    do_submit_jobscript("", Data, CertBin, IpStr);
                 false ->
                     ?LOG_DEBUG("No job script passed to the job submission HTTP request"),
                     {error, ?HTTP_CODE_BAD_REQUEST}
             end;
         #{path := Path} ->
-            do_submit_jobscript_path(binary_to_list(Path), CertBin)
+            do_submit_jobscript_path(binary_to_list(Path), CertBin, IpStr)
     end.
 
--spec do_submit_jobscript(string(), binary(), binary()) -> {string(), pos_integer()} | {error, pos_integer()}.
-do_submit_jobscript(JobScriptPath, <<"--", Boundary:32/binary, ?SUBMISSION_HEADER, Tail/bitstring>>, CertBin) ->
+-spec do_submit_jobscript(string(), binary(), binary(), string()) -> {string(), pos_integer()} | {error, pos_integer()}.
+do_submit_jobscript(JobScriptPath, <<"--", Boundary:32/binary, ?SUBMISSION_HEADER, Tail/bitstring>>, CertBin, IpStr) ->
     % Parse multipart request body, see https://swagger.io/docs/specification/describing-request-body/file-upload
     TailStr = binary_to_list(Tail),
     BoundaryStr = binary_to_list(Boundary),
@@ -337,23 +339,23 @@ do_submit_jobscript(JobScriptPath, <<"--", Boundary:32/binary, ?SUBMISSION_HEADE
             {error, ?HTTP_CODE_BAD_REQUEST};
         JobScriptContentEndPosition ->
             NewJobScriptContent = string:substr(TailStr, 1, JobScriptContentEndPosition - 1),
-            do_submit_jobscript(JobScriptPath, NewJobScriptContent, CertBin)
+            do_submit_jobscript(JobScriptPath, NewJobScriptContent, CertBin, IpStr)
     end;
-do_submit_jobscript(JobScriptPath, JobScriptContent, CertBin) ->
+do_submit_jobscript(JobScriptPath, JobScriptContent, CertBin, IpStr) ->
     case get_username_from_cert(CertBin) of
         {error, Error} ->
             {Error, ?HTTP_CODE_BAD_REQUEST};
         {ok, Username} ->
-            Args = {submit, JobScriptContent, JobScriptPath, Username},
+            Args = {submit, JobScriptContent, JobScriptPath, Username, IpStr},
             {string, Result} = gen_server:call(wm_user, Args),
             {Result, ?HTTP_CODE_OK}
     end.
 
--spec do_submit_jobscript_path(string(), binary()) -> {string(), pos_integer()} | {error, pos_integer()}.
-do_submit_jobscript_path(Path, CertBin) ->
+-spec do_submit_jobscript_path(string(), binary(), string()) -> {string(), pos_integer()} | {error, pos_integer()}.
+do_submit_jobscript_path(Path, CertBin, IpStr) ->
     case wm_utils:read_file(Path, [binary]) of
         {ok, JobScriptContent} ->
-            do_submit_jobscript(filename:absname(Path), JobScriptContent, CertBin);
+            do_submit_jobscript(filename:absname(Path), JobScriptContent, CertBin, IpStr);
         {error, noent} ->
             ?LOG_ERROR("No such jobscript local file: ~p", [Path]),
             {error, ?HTTP_CODE_NOT_FOUND}

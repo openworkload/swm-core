@@ -55,8 +55,8 @@ handle_call({requeue, JIDs}, _From, MState) ->
     {reply, handle_request(requeue, JIDs, MState), MState};
 handle_call({cancel, JIDs}, _From, MState) ->
     {reply, handle_request(cancel, JIDs, MState), MState};
-handle_call({submit, JobScriptContent, Filename, Username}, _From, MState) ->
-    {reply, handle_request(submit, {JobScriptContent, Filename, Username}, MState), MState};
+handle_call({submit, JobScriptContent, Filename, Username, IpStr}, _From, MState) ->
+    {reply, handle_request(submit, {JobScriptContent, Filename, Username, IpStr}, MState), MState};
 handle_call({list, TabList}, _From, MState) ->
     {reply, handle_request(list, TabList, MState), MState};
 handle_call({list, TabList, Limit}, _From, MState) ->
@@ -122,7 +122,7 @@ handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
     end;
 handle_request(submit, Args, #mstate{spool = Spool}) ->
     ?LOG_DEBUG("Job submission has been requested: ~n~p", [Args]),
-    {JobScriptContent, Filename, Username} = Args,
+    {JobScriptContent, Filename, Username, IpStr} = Args,
     case wm_conf:select(user, {name, Username}) of
         {error, not_found} ->
             ?LOG_ERROR("User ~p not found, job submission failed", [Username]),
@@ -133,7 +133,8 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
             JobId = wm_utils:uuid(v4),
             Cluster = wm_topology:get_subdiv(cluster),
             Job1 = wm_jobscript:parse(JobScriptContent),
-            Job2 =
+            Job2 = wm_jobscript:ensure_submission_address(IpStr, Job1),
+            Job3 =
                 wm_entity:set([{cluster_id, wm_entity:get(id, Cluster)},
                                {state, ?JOB_STATE_QUEUED},
                                {state_details, "Submitted"},
@@ -145,10 +146,10 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
                                {job_stderr, "stderr.log"},
                                {submit_time, wm_utils:now_iso8601(without_ms)},
                                {duration, 3600}],
-                              Job1),
-            Job3 = set_defaults(Job2, Spool),
-            Job4 = ensure_request_is_full(Job3),
-            1 = wm_conf:update(Job4),
+                              Job2),
+            Job4 = set_defaults(Job3, Spool),
+            Job5 = ensure_request_is_full(Job4),
+            1 = wm_conf:update(Job5),
             {string, JobId}
     end;
 handle_request(requeue, Args, _) ->

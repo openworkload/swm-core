@@ -1,6 +1,6 @@
 -module(wm_jobscript).
 
--export([parse/1]).
+-export([parse/1, ensure_submission_address/2]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
@@ -9,7 +9,7 @@
 %% API
 %% ============================================================================
 
--spec parse(string()) -> tuple().
+-spec parse(string()) -> #job{}.
 parse(JobScriptContent) when is_binary(JobScriptContent) ->
     parse(binary_to_list(JobScriptContent));
 parse(JobScriptContent) when is_list(JobScriptContent) ->
@@ -18,6 +18,17 @@ parse(JobScriptContent) when is_list(JobScriptContent) ->
     Job2 = do_parse(Lines, Job1),
     ?LOG_DEBUG("Parsed job: ~p", [Job2]),
     Job2.
+
+-spec ensure_submission_address(string(), #job{}) -> #job{}.
+ensure_submission_address(DefaultSubmissionAddress, Job) ->
+    case wm_resource_utils:get_submission_address(
+             wm_entity:get(request, Job))
+    of
+        not_found ->
+            add_requested_resource("submission-address", DefaultSubmissionAddress, Job);
+        _ ->
+            Job
+    end.
 
 %% ============================================================================
 %% Implementation functions
