@@ -44,9 +44,18 @@ main(_) ->
     usage().
 
 do_ping(Hostname, Port) ->
-    CaFile = "/opt/swm/spool/secure/cluster/cert.pem",
-    CertFile = "/opt/swm/spool/secure/node/cert.pem",
-    KeyFile = "/opt/swm/spool/secure/node/key.pem",
+    Spool =
+        case os:getenv("SWM_SPOOL") of
+            false ->
+                "/opt/swm/spool";
+            "" ->
+                "/opt/swm/spool";
+            S ->
+                S
+        end,
+    CaFile = filename:join([Spool, "secure/cluster/cert.pem"]),
+    CertFile = filename:join([Spool, "secure/node/cert.pem"]),
+    KeyFile = filename:join([Spool, "secure/node/key.pem"]),
     Opts = [binary,
              {header, 0},
              {packet, 4},

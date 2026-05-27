@@ -38,7 +38,6 @@ RUN apt-get upgrade -y
 RUN apt-get install apt-utils -y
 RUN apt-get install aptitude -y
 RUN apt-get install git -y
-RUN apt-get install rlwrap -y
 RUN apt-get install vim -y
 RUN apt-get install tmuxinator -y
 RUN apt-get install sudo -y

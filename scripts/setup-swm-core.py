@@ -371,11 +371,14 @@ def generate_certificates(opts: dict[str, str]) -> None:
 
 
 def create_chain_cert(opts: dict[str, str]) -> None:
+    spool = "/opt/swm/spool"
     filenames = [
-        "/opt/swm/spool/secure/cluster/cert.pem",
-        "/opt/swm/spool/secure/grid/cert.pem",
+        os.path.join(spool, "secure/cluster/cert.pem"),
+        os.path.join(spool, "secure/grid/cert.pem"),
     ]
-    with open("/opt/swm/spool/secure/cluster/ca-chain-cert.pem", "w") as outfile:
+    out_path = os.path.join(spool, "secure/cluster/ca-chain-cert.pem")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w") as outfile:
         for fname in filenames:
             with open(fname) as infile:
                 outfile.write(infile.read())

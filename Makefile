@@ -84,7 +84,7 @@ run-chead: gen compile porter	##@RUN Run cluster head node (2nd hier level)
 run-skyport:	##@RUN Run Sky Port core in foreground
 			scripts/run-in-shell.sh -x
 
-test:		##@TESTS Run unit and functional erlang tests
+test:		##@TESTS Run unit and common erlang tests
 			scripts/swm.env
 			$(REBAR) eunit skip_deps=true
 			$(REBAR) ct -v

@@ -1,6 +1,3 @@
-## Name of the node
--name ${SWM_SNAME}
-
 ## Cookie for distributed erlang
 -setcookie ${SWM_COOKIE}
 
@@ -37,7 +34,7 @@
 ##-ssl_dist_opt server_verify               verify_peer
 ##-ssl_dist_opt server_fail_if_no_peer_cert true
 
--ssl_dist_opt client_cacertfile             /opt/swm/spool/secure/cluster/ca-chain-cert.pem
+-ssl_dist_opt client_cacertfile             ${SWM_SPOOL}/secure/cluster/ca-chain-cert.pem
 -ssl_dist_opt client_certfile               ${SWM_SPOOL}/secure/node/cert.pem
 -ssl_dist_opt client_keyfile                ${SWM_SPOOL}/secure/node/key.pem
 ##-ssl_dist_opt client_depth                1

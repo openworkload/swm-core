@@ -16,7 +16,6 @@ RUN apt-get clean
 RUN apt-get update
 RUN apt-get update --fix-missing
 RUN apt-get install -y openssl openssh-client   # for certificate generation
-RUN apt-get install -y rlwrap                   # for swmctl during setup
 RUN apt-get install -y less mc                  # for debug
 RUN apt-get install -y supervisor               # run swm-core and swm-cloud-gate
 RUN apt-get install -y sudo

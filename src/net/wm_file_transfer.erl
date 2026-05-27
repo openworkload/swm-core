@@ -1224,11 +1224,13 @@ with_ssh_connection(Port, Node, Username, Password, UserDir, Fun) ->
 -spec preserve_connectivity_state(node(), fun((...) -> term())) -> {error, node(), nonempty_string()} | term().
 preserve_connectivity_state(Node, Fun) ->
     IsConnected = lists:member(Node, nodes(connected)),
-    case net_kernel:connect(Node) of
+    case net_kernel:connect_node(Node) of
         true ->
             Result = Fun(_ServerRef = {?MODULE, Node}),
             IsConnected andalso net_kernel:disconnect(Node),
             Result;
+        ignored ->
+            Fun(_ServerRef = {?MODULE, Node});
         false ->
             {error, Node, io_lib:format("Connection to remote node ~p failed", [Node])}
     end.

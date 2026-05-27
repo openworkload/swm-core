@@ -90,14 +90,24 @@ ROOT_DIR=$( dirname "$( dirname "$ME" )" )
 ## Export variables
 source ${ROOT_DIR}/scripts/swm.env
 
-## Use paths in source directory
-export SWM_SCHED_EXEC=${ROOT_DIR}/../swm-sched/bin/swm-sched
-export SWM_SCHED_LIB=${ROOT_DIR}/../swm-sched/bin
+## Scheduler: CI/act containers often only have swm-core (no sibling ../swm-sched).
+## After `make release`, binaries are under _build/default/rel/swm/.
+REL_SWM="${ROOT_DIR}/_build/default/rel/swm"
+if [ -x "${REL_SWM}/bin/swm-sched" ]; then
+  export SWM_SCHED_EXEC="${REL_SWM}/bin/swm-sched"
+  export SWM_SCHED_LIB="${REL_SWM}/lib64"
+else
+  export SWM_SCHED_EXEC=${ROOT_DIR}/../swm-sched/bin/swm-sched
+  export SWM_SCHED_LIB=${ROOT_DIR}/../swm-sched/bin
+fi
 export SWM_DOCKER_VOLUMES_FROM=swm-dev:ro
 export SWM_FINALIZE_IN_CONTAINER=${ROOT_DIR}/scripts/swm-docker-finalize.sh
 export SWM_PORTER_IN_CONTAINER=${ROOT_DIR}/c_src/porter/swm-porter
 export SWM_WORKER_LOCAL_PATH="${ROOT_DIR}/_build/packages/swm-worker.tar.gz"
 
+## VM args for short-lived remsh-style invocations (etop/observer/stop/ping).
+## They set their own -name/-sname on the command line, so any -name/-sname/
+## -args_file in vm.args is filtered out to avoid duplicate-flag conflicts.
 VM_ARGS=$(grep -v -E '^#|^-name|^-sname|^-args_file' "${SWM_VM_ARGS}" | xargs | sed -e 's/ / /g')
 
 HOSTNAME=$(hostname -f)
@@ -106,6 +116,12 @@ if [[ $HOSTNAME == *.* ]]; then
 else
   ERL_NAME_ARG=-sname
 fi
+
+## Log destination for the detached daemon (BACKGROUND mode). The Erlang
+## logger handler in sys.config writes to ${SWM_LOG_DIR}/erlang.log only
+## after the VM has booted far enough; anything earlier (boot errors, dist
+## TLS misconfiguration, etc.) goes to stderr and must be captured here.
+SWM_BG_LOG="${SWM_LOG_DIR}/run-in-shell.log"
 
 if [ $ETOP ]; then
   erl $ERL_NAME_ARG etop-`date +%s` ${VM_ARGS} -boot start_clean -remsh \'${SWM_SNAME}@$HOSTNAME\' \
@@ -131,8 +147,17 @@ elif [ $PING ]; then
                  halt(1)
              end"
 elif [ $BACKGROUND ]; then
-  erl $ERL_NAME_ARG $SWM_SNAME -pa ${ROOT_DIR}/_build/default/lib/*/ebin -config ${SWM_SYS_CONFIG} -args_file ${SWM_VM_ARGS} -boot start_sasl -detached \
-    -s swm -s sync
+  mkdir -p "$(dirname "${SWM_BG_LOG}")"
+  : > "${SWM_BG_LOG}"
+  ## Use nohup + redirected stdio instead of -detached so that boot-time
+  ## errors (bad cert paths, dist TLS failures, port conflicts) land in
+  ## ${SWM_BG_LOG} where wait_swm/CI can find them.
+  nohup erl $ERL_NAME_ARG $SWM_SNAME -pa ${ROOT_DIR}/_build/default/lib/*/ebin \
+    -config ${SWM_SYS_CONFIG} -args_file ${SWM_VM_ARGS} -boot start_sasl -noinput \
+    -s swm -s sync \
+    >> "${SWM_BG_LOG}" 2>&1 &
+  disown $! 2>/dev/null || true
+  echo "swm daemon backgrounded (pid=$!, log=${SWM_BG_LOG})"
 else
   erl $ERL_NAME_ARG $SWM_SNAME -pa ${ROOT_DIR}/_build/default/lib/*/ebin -config ${SWM_SYS_CONFIG} -args_file ${SWM_VM_ARGS} -boot start_clean \
     -s swm -s sync

@@ -92,6 +92,7 @@ init_test_group(Action, Config) ->
     meck:expect(wm_virtres_handler, wait_for_ssh_connection, fun(_) -> erlang:make_ref() end),
     meck:expect(wm_virtres_handler, delete_partition, fun(_, _) -> {ok, WaitRef} end),
     meck:expect(wm_virtres_handler, start_job_data_uploading, fun(_, _, _) -> {ok, WaitRef} end),
+    meck:expect(wm_virtres_handler, update_job, fun(_, _, _) -> 1 end),
     meck:expect(wm_virtres_handler, update_job, fun(_, _) -> 1 end),
     meck:expect(wm_conf, select, SelectById),
     meck:expect(wm_conf, g, fun(_, {X, _}) -> X end),
@@ -213,6 +214,7 @@ uploading_started(Config) ->
     PartMgrNodeId = proplists:get_value(part_mgr_node_id, Config),
 
     meck:expect(wm_virtres_handler, is_job_partition_ready, fun(X) when X == JobId -> true end),
+    meck:expect(wm_virtres_handler, update_job, fun(_, X, _) when X == JobId -> 1 end),
     meck:expect(wm_virtres_handler, update_job, fun(_, X) when X == JobId -> 1 end),
 
     erlang:send(Pid, part_check),
@@ -228,6 +230,7 @@ uploading_done(Config) ->
     JobId = proplists:get_value(job_id, Config),
     WaitRef = proplists:get_value(wait_ref, Config),
 
+    meck:expect(wm_virtres_handler, update_job, fun(_, X, _) when X == JobId -> 1 end),
     meck:expect(wm_virtres_handler, update_job, fun(_, X) when X == JobId -> 1 end),
 
     ok = gen_statem:cast(Pid, {WaitRef, ok}),

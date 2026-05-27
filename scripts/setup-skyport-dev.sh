@@ -46,6 +46,17 @@ ${ROOT_DIR}/scripts/setup-swm-core.py -x -t -v $SWM_VERSION -p $SWM_ROOT -s $SWM
 EXIT_CODE=$?
 if [ "$EXIT_CODE" != "0" ]; then
     echo "Cluster setup command failed with code $EXIT_CODE"
+    ## Dump the backgrounded daemon's stdio + erlang.log so the boot failure
+    ## (bad cert path, port in use, dist TLS error) is visible in the CI log.
+    NODE_LOG_DIR="${SWM_SPOOL}/${SWM_SNAME}@$(hostname -f)/log"
+    for f in run-in-shell.log erlang.log; do
+      LOGFILE="${NODE_LOG_DIR}/${f}"
+      if [ -f "${LOGFILE}" ]; then
+        echo "===== ${LOGFILE} ====="
+        tail -n 200 "${LOGFILE}"
+        echo "===== end of ${LOGFILE} ====="
+      fi
+    done
     exit $EXIT_CODE
 fi
 

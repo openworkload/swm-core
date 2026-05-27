@@ -16,56 +16,23 @@ Guidance for coding agents working on this repository. The codebase is primarily
 
 Prefer existing Makefile and rebar3 targets over ad hoc commands.
 
-## Tests (Makefile)
+## Tests
 
-| Target        | What it runs                                      |
-|---------------|---------------------------------------------------|
-| `make test_unit` | `./rebar3 eunit skip_deps=true`                |
-| `make test_ct`   | `./rebar3 ct --dir test --verbose`             |
-| `make test`      | sources `scripts/swm.env`, then eunit then CT  |
-| `make ftest`     | shell-based functional tests (`test/test-all.sh`) |
+* Run Erlang unit tests:
+act --job unit_tests
 
-Run tests **inside the OTP 27 dev environment** (see below). Host OTP versions older than the bundled rebar3 BEAMs will fail to start rebar3.
+* Run Erlang common tests:
+act --job common_tests
 
 ## Dev container (`make cr`)
+
+To get Erlang environment for the project use `make cr` command to spawn an interactive session in the container, then inside the shell `cd` to this repository if needed.
 
 - Image: `swm-build:27.3` (see `priv/container/debug/Dockerfile` and `scripts/build-debug-container.sh`).
 - Container name: **`skyport-dev`**.
 - `make cr` runs `scripts/start-debug-container.sh`: attaches with  
   `docker exec -ti skyport-dev runuser -u <host-user> /bin/bash`  
   (same `$HOME` mount as on the host, workdir is usually the directory from which the container was first created).
-
-For **manual** work: from the repo root, run `make cr`, then inside the shell `cd` to this repository if needed and run `make test_ct` (or `make test_unit`).
-
-## Running CT tests from an agent (non-interactive)
-
-`make cr` is interactive (`-ti`). To run **the same shell environment** without a human TTY, use **`docker exec`** with the same user the script uses:
-
-```bash
-docker exec skyport-dev runuser -u "$(id -un)" -- bash -lc 'cd /absolute/path/to/swm-core && make test_ct'
-```
-
-Replace `/absolute/path/to/swm-core` with the real checkout path (must match the bind-mounted tree, e.g. under your home directory).
-
-If you must drive **`make cr` itself** (pseudo-TTY for `docker exec -ti`), you can wrap it:
-
-```bash
-cd /absolute/path/to/swm-core
-script -qec 'make cr' /dev/null <<'EOF'
-cd /absolute/path/to/swm-core
-make test_ct
-exit
-EOF
-```
-
-The `docker exec … bash -lc '… make test_ct'` form is simpler for automation and matches how the dev container is entered in practice.
-
-## CT expectations (environment)
-
-Common Test suites talk to **swm-cloud-gate** (mock) and TLS material. If CT fails with missing files (`enoent` in PEM paths) or gate errors:
-
-- Align with **`.github/workflows/ci.yml`**: optional Python build, `make compile` / `make release`, clone and venv **`swm-cloud-gate`**, **`SWM_GATE_DIR`** pointing at that checkout, and **`./scripts/setup-skyport-dev.sh`** for dev keys where applicable.
-- `test/wm_ct_helpers.erl` resolves the gate directory from **`SWM_GATE_DIR`** or a default path relative to the test build.
 
 ## Erlang + C++ conventions for agents
 

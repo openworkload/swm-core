@@ -77,10 +77,6 @@ get_remote() ->
                    {account_id, "accid123"}],
                   wm_entity:new(remote)).
 
--spec get_creds() -> [{binary(), binary()}].
-get_creds() ->
-    [{<<"username">>, <<"demo1">>}, {<<"tenantname">>, <<"demo1">>}, {<<"password">>, <<"demo1">>}].
-
 %% ============================================================================
 %% Tests
 %% ============================================================================
@@ -88,7 +84,7 @@ get_creds() ->
 -spec list_images(list()) -> atom().
 list_images(_Config) ->
     Remote = get_remote(),
-    {ok, Ref} = wm_gate:list_images(self(), Remote, get_creds()),
+    {ok, Ref} = wm_gate:list_images(self(), Remote),
     ExpectedImages =
         [wm_entity:set([{id, "i1"},
                         {name, "image1"},
@@ -108,18 +104,18 @@ list_images(_Config) ->
 
 -spec get_image(list()) -> atom().
 get_image(_Config) ->
-    {ok, Ref1} = wm_gate:get_image(self(), get_remote(), get_creds(), "i2"),
+    {ok, Ref1} = wm_gate:get_image(self(), get_remote(), "i2"),
     ExpectedImage =
         wm_entity:set([{id, "i2"}, {name, "cirros"}, {status, "created"}, {kind, cloud}], wm_entity:new(image)),
     ?assertEqual({get_image, Ref1, ExpectedImage}, wm_utils:await(get_image, Ref1, 2000)),
-    {ok, Ref2} = wm_gate:get_image(self(), get_remote(), get_creds(), "foo"),
+    {ok, Ref2} = wm_gate:get_image(self(), get_remote(), "foo"),
     ?assertMatch({error, Ref2, _}, wm_utils:await(get_image, Ref2, 2000)),
-    {ok, Ref3} = wm_gate:get_image(self(), get_remote(), get_creds(), ""),
+    {ok, Ref3} = wm_gate:get_image(self(), get_remote(), ""),
     ?assertMatch({error, Ref3, _}, wm_utils:await(get_image, Ref3, 2000)).
 
 -spec list_flavors(list()) -> atom().
 list_flavors(_Config) ->
-    {ok, Ref} = wm_gate:list_flavors(self(), get_remote(), get_creds()),
+    {ok, Ref} = wm_gate:list_flavors(self(), get_remote()),
     Result = wm_utils:await(list_flavors, Ref, 2000),
     ?assertMatch({list_flavors, Ref, _}, Result),
     {_, _, FlavorNodes} = Result,
@@ -135,7 +131,7 @@ list_flavors(_Config) ->
 
 -spec list_partitions(list()) -> atom().
 list_partitions(_Config) ->
-    {ok, Ref} = wm_gate:list_partitions(self(), get_remote(), get_creds()),
+    {ok, Ref} = wm_gate:list_partitions(self(), get_remote()),
     Result = wm_utils:await(list_partitions, Ref, 2000),
     ?assertMatch({list_partitions, Ref, _}, Result),
     {_, _, Partitions} = Result,
@@ -150,7 +146,7 @@ list_partitions(_Config) ->
 
 -spec get_partition(list()) -> atom().
 get_partition(_Config) ->
-    {ok, Ref1} = wm_gate:get_partition(self(), get_remote(), get_creds(), "s2"),
+    {ok, Ref1} = wm_gate:get_partition(self(), get_remote(), "s2"),
     ExpectedPartition =
         wm_entity:set([{name, "stack2"},
                        {state, up},
@@ -172,10 +168,10 @@ get_partition(_Config) ->
     ExpectedPartitionWithId = ExpectedPartition#partition{id = RetrievedPartition#partition.id},
     ?assertEqual(ExpectedPartitionWithId, RetrievedPartition),
 
-    {ok, Ref2} = wm_gate:get_partition(self(), get_remote(), get_creds(), "foo"),
+    {ok, Ref2} = wm_gate:get_partition(self(), get_remote(), "foo"),
     ?assertMatch({error, Ref2, _}, wm_utils:await(partition_fetched, Ref2, 2000)),
 
-    {ok, Ref3} = wm_gate:get_partition(self(), get_remote(), get_creds(), ""),
+    {ok, Ref3} = wm_gate:get_partition(self(), get_remote(), ""),
     ?assertMatch({error, Ref3, _}, wm_utils:await(partition_fetched, Ref3, 2000)).
 
 -spec create_partition(list()) -> atom().
@@ -185,23 +181,24 @@ create_partition(_Config) ->
           flavor_name => "flavor1",
           image_name => "ubuntu22.04",
           tenant_name => "dude",
+          user_name => "dude",
           container_image => "ubuntu22.04",
           key_name => "key1",
           job_id => "40565124-9c03-11ee-8ca4-633064256ed4",
           runtime => "http://10.0.2.15/swm-worker.tar.gz",
-          ingres_ports => "8888,10022,12345",
-          count => 1},
-    {ok, Ref1} = wm_gate:create_partition(self(), get_remote(), get_creds(), Options),
+          ports => "8888,10022,12345",
+          node_count => 1},
+    {ok, Ref1} = wm_gate:create_partition(self(), get_remote(), Options),
     ?assertMatch({partition_spawned, Ref1, _}, wm_utils:await(partition_spawned, Ref1, 2000)).
 
 -spec delete_partition(list()) -> atom().
 delete_partition(_Config) ->
-    {ok, Ref1} = wm_gate:delete_partition(self(), get_remote(), get_creds(), "s2"),
+    {ok, Ref1} = wm_gate:delete_partition(self(), get_remote(), "s2"),
     ?assertMatch({partition_deleted, Ref1, "Deletion started"}, wm_utils:await(partition_deleted, Ref1, 2000)).
 
 -spec partition_exists(list()) -> atom().
 partition_exists(_Config) ->
-    {ok, Ref1} = wm_gate:partition_exists(self(), get_remote(), get_creds(), "s1"),
+    {ok, Ref1} = wm_gate:partition_exists(self(), get_remote(), "s1"),
     ?assertMatch({partition_exists, Ref1, true}, wm_utils:await(partition_exists, Ref1, 2000)),
-    {ok, Ref2} = wm_gate:partition_exists(self(), get_remote(), get_creds(), "foo"),
+    {ok, Ref2} = wm_gate:partition_exists(self(), get_remote(), "foo"),
     ?assertMatch({partition_exists, Ref2, false}, wm_utils:await(partition_exists, Ref2, 2000)).
