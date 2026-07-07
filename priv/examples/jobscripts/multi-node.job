@@ -1,0 +1,21 @@
+#!/bin/bash
+
+#SWM name Multi-Node Job Example
+#SWM nodes 3
+#SWM relocatable
+#SWM comment Example job script demonstrating multi-node job submission
+
+# This job requests 3 nodes from the cloud provider
+# The nodes will be named: swm-<jobid>-node0, swm-<jobid>-node1, swm-<jobid>-node2
+# where swm-<jobid>-node0 is the main/master node
+
+echo "Hello from multi-node job $SWM_JOBID"
+echo "Running on node: $(hostname)"
+date
+
+# Your multi-node application code here
+# For example, MPI applications, distributed computing tasks, etc.
+
+sleep 60
+
+echo "Multi-node job completed"
