@@ -102,6 +102,8 @@ parse_line(Ws, Job) when hd(Ws) == "flavor", length(Ws) > 1 ->
     add_requested_resource("flavor", lists:flatten(tl(Ws)), Job);
 parse_line(Ws, Job) when hd(Ws) == "gpus", length(Ws) > 1 ->
     add_requested_resource("gpus", list_to_integer(lists:flatten(tl(Ws))), [], Job);
+parse_line(Ws, Job) when hd(Ws) == "nodes", length(Ws) > 1 ->
+    add_requested_resource("node", list_to_integer(lists:flatten(tl(Ws))), [], Job);
 parse_line(Ws, Job) when hd(Ws) == "account", length(Ws) > 1 ->
     wm_entity:set({account_id, get_account_id(lists:flatten(tl(Ws)))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "name", length(Ws) > 1 ->
@@ -135,3 +137,31 @@ parse_line(Ws, Job) ->
 get_account_id(AccountName) ->
     {ok, Account} = wm_conf:select(account, {name, AccountName}),
     wm_entity:get(id, Account).
+
+%% ============================================================================
+%% Tests
+%% ============================================================================
+
+-ifdef(EUNIT).
+
+-include_lib("eunit/include/eunit.hrl").
+
+% ./rebar3 eunit --module=wm_jobscript
+-spec parse_nodes_directive_test() -> ok.
+parse_nodes_directive_test() ->
+    JobScript = "#!/bin/bash\n#SWM nodes 3\necho hello",
+    Job = parse(JobScript),
+    Resources = wm_entity:get(request, Job),
+    NodeResource = lists:keyfind("node", 2, Resources),
+    ?assertMatch(#resource{name = "node", count = 3}, NodeResource).
+
+-spec parse_single_node_default_test() -> ok.
+parse_single_node_default_test() ->
+    JobScript = "#!/bin/bash\necho hello",
+    Job = parse(JobScript),
+    Resources = wm_entity:get(request, Job),
+    % When no nodes directive is present, default should be added elsewhere
+    % This test just ensures parsing doesn't crash
+    ?assertEqual([], Resources).
+
+-endif.
