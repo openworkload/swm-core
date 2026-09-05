@@ -35,22 +35,60 @@ $ /opt/swm/$SWM_VERSION/scripts/setup-swm-core.py -v $SWM_VERSION -p /opt/swm -s
 Install Sky Port in development environment
 --------------------------------------------
 
-1. Run container (using "make cr") and make sure /opt/swm
-   exists and owned by the contanier user. All commands are
-   executed by the regular user who owns the sources.
-
-2. Go to swm-core directory and compile the project:
+1. Build the development container image (once) and start a shell in it:
 
 ```bash
-$ make compile
+make build-debug-container
+make cr
 ```
 
-3. Setup:
+2. Ensure `/opt/swm` exists and is owned by your user. The debug container
+   mounts the host `/opt` directory, and `scripts/swm.env` requires
+   `/opt/swm` to exist before any swm command runs. All following commands
+   are executed by the regular user who owns the sources.
+
 ```bash
-$ ./scripts/setup-skyport-dev.linux
+sudo mkdir -p /opt/swm
+sudo chown $USER:$USER /opt/swm
 ```
-4. Test the setup (in the container):
+
+3. From the swm-core directory, build the project:
+
 ```bash
-$ scripts/run-in-shell.sh -c
-[...]
+make gen
+make format
+make compile porter
+make release
+```
+
+`make release` is required before the first bootstrap (step 4) so
+`scripts/setup-skyport-dev.sh` can create the worker distribution archive.
+
+4. Bootstrap spool, certificates, and base configuration (first time only):
+
+```bash
+./scripts/setup-skyport-dev.sh
+```
+
+This creates `/opt/swm/spool` with node certificates, Mnesia data, and
+imported base config. Re-run it only when you need to reset the dev
+environment.
+
+5. Run swm-core:
+
+```bash
+make run-skyport                  # foreground
+# or: scripts/run-in-shell.sh -x -b   # background
+```
+
+6. Verify the API is up:
+
+```bash
+scripts/swm-ping localhost 10001  # expect: Pong: idle
+```
+
+To run a cluster management node instead of the default Sky Port node:
+
+```bash
+scripts/run-in-shell.sh -c
 ```

@@ -11,12 +11,17 @@ Guidance for coding agents working on this repository. The codebase is primarily
 ## Build (typical)
 
 - `make gen` — regenerate cog outputs where applicable.
+- `make format` — format generated and source files after `make gen`.
 - `make porter` — build C++ Porter.
 - `make compile` — `./rebar3 compile`.
 
 Prefer existing Makefile and rebar3 targets over ad hoc commands.
 
 ## Tests
+
+Local CI via [nektos/act](https://github.com/nektos/act) (installed in the debug
+container). Repo `.actrc` sets `--network bridge` so the job does not share the
+host port namespace with `skyport-dev`'s published `10001` mapping.
 
 * Run Erlang unit tests:
 act --job unit_tests

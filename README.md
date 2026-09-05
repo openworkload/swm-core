@@ -77,6 +77,48 @@ This command starts swm-core and gate in background if the spool is (still) read
 
 If you prefer to build Sky Port container image from scratch, then [this instructions can be used](HOWTO/BUILD.md).
 
+### Run from sources (development)
+
+For day-to-day development, use the debug container and run swm-core from the
+repository checkout. See [HOWTO/INSTALL.md](HOWTO/INSTALL.md) for details.
+
+1. Build the development container image (once) and start a shell in it:
+
+```bash
+make build-debug-container
+make cr
+```
+
+2. Ensure `/opt/swm` exists and is owned by your user (required by
+`scripts/swm.env`; the host `/opt` directory is mounted into the container):
+
+```bash
+sudo mkdir -p /opt/swm
+sudo chown $USER:$USER /opt/swm
+```
+
+3. From the swm-core directory inside the container, build and bootstrap:
+
+```bash
+make gen
+make format
+make compile porter
+make release
+./scripts/setup-skyport-dev.sh
+```
+
+`make release` is required before the first `./scripts/setup-skyport-dev.sh`
+run so the setup script can assemble the worker distribution archive.
+
+4. Run and verify:
+
+```bash
+make run-skyport                  # foreground
+# or: scripts/run-in-shell.sh -x -b   # background
+
+scripts/swm-ping localhost 10001  # expect: Pong: idle
+```
+
 ## How to build
 
 ### Build skyport container
