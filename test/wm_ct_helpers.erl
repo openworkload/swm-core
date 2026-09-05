@@ -3,28 +3,53 @@
 -compile(export_all).
 
 %% @doc start external gate program as a separate erlang process
--spec run_gate_system_process() -> pid().
+-spec run_gate_system_process() -> {ok, pid()}.
 run_gate_system_process() ->
     Pid = proc_lib:spawn(fun() ->
                             Output = lists:flatten(run_command()),
                             ct:print("Gate runner final output: ~p", [Output])
                          end),
     ct:print("Gate pid: ~p", [Pid]),
-    ok = wait_gate_port(8444, 30),
-    {ok, Pid}.
+    %% swm-cloud-gate/run.py binds uvicorn to socket.getfqdn(). On Ubuntu that
+    %% often resolves to 127.0.1.1 (see /etc/hosts), not 127.0.0.1. Probe the
+    %% same names clients use (inet:gethostname/0 in wm_gate_SUITE) plus the
+    %% common loopback aliases so CI and local docker both succeed.
+    Hosts = gate_listen_hosts(),
+    case wait_gate_port(Hosts, 8444, 60) of
+        ok ->
+            {ok, Pid};
+        {error, timeout} ->
+            ct:fail({gate_not_ready, Hosts, 8444})
+    end.
 
-%% @doc Wait until the mocked cloud-gate listens on Port (or give up after N tries).
--spec wait_gate_port(inet:port_number(), non_neg_integer()) -> ok | {error, timeout}.
-wait_gate_port(_Port, 0) ->
+-spec gate_listen_hosts() -> [string()].
+gate_listen_hosts() ->
+    {ok, Hostname} = inet:gethostname(),
+    lists:usort([Hostname, "localhost", "127.0.0.1", "127.0.1.1"]).
+
+%% @doc Wait until the mocked cloud-gate accepts TCP on any of Hosts:Port.
+-spec wait_gate_port([string()], inet:port_number(), non_neg_integer()) -> ok | {error, timeout}.
+wait_gate_port(_Hosts, _Port, 0) ->
     {error, timeout};
-wait_gate_port(Port, TriesLeft) ->
-    case gen_tcp:connect("127.0.0.1", Port, [], 500) of
+wait_gate_port(Hosts, Port, TriesLeft) ->
+    case try_connect_any(Hosts, Port) of
+        ok ->
+            ok;
+        {error, _} ->
+            timer:sleep(500),
+            wait_gate_port(Hosts, Port, TriesLeft - 1)
+    end.
+
+-spec try_connect_any([string()], inet:port_number()) -> ok | {error, term()}.
+try_connect_any([], _Port) ->
+    {error, econnrefused};
+try_connect_any([Host | Rest], Port) ->
+    case gen_tcp:connect(Host, Port, [binary, {active, false}], 500) of
         {ok, Sock} ->
             gen_tcp:close(Sock),
             ok;
         {error, _} ->
-            timer:sleep(500),
-            wait_gate_port(Port, TriesLeft - 1)
+            try_connect_any(Rest, Port)
     end.
 
 run_command() ->
