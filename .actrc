@@ -1,0 +1,5 @@
+# act defaults to --network host, which shares the host port namespace with
+# skyport-dev's published 10001 mapping and makes Generate keys fail with
+# eaddrinuse / swm-ping "Connection error: closed". Use bridge isolation so
+# the CI job container can bind SWM_API_PORT (10001) cleanly.
+--network bridge

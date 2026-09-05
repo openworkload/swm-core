@@ -10,8 +10,22 @@ run_gate_system_process() ->
                             ct:print("Gate runner final output: ~p", [Output])
                          end),
     ct:print("Gate pid: ~p", [Pid]),
-    timer:sleep(2000),  % allow the gate process to initialize
+    ok = wait_gate_port(8444, 30),
     {ok, Pid}.
+
+%% @doc Wait until the mocked cloud-gate listens on Port (or give up after N tries).
+-spec wait_gate_port(inet:port_number(), non_neg_integer()) -> ok | {error, timeout}.
+wait_gate_port(_Port, 0) ->
+    {error, timeout};
+wait_gate_port(Port, TriesLeft) ->
+    case gen_tcp:connect("127.0.0.1", Port, [], 500) of
+        {ok, Sock} ->
+            gen_tcp:close(Sock),
+            ok;
+        {error, _} ->
+            timer:sleep(500),
+            wait_gate_port(Port, TriesLeft - 1)
+    end.
 
 run_command() ->
     Command = "./run-mocked.sh",

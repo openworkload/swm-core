@@ -46,14 +46,25 @@ ${ROOT_DIR}/scripts/setup-swm-core.py -x -t -v $SWM_VERSION -p $SWM_ROOT -s $SWM
 EXIT_CODE=$?
 if [ "$EXIT_CODE" != "0" ]; then
     echo "Cluster setup command failed with code $EXIT_CODE"
-    ## Dump the backgrounded daemon's stdio + erlang.log so the boot failure
-    ## (bad cert path, port in use, dist TLS error) is visible in the CI log.
+    ## Dump daemon stdio, erlang.log, and the dated app log so boot failures
+    ## (eaddrinuse, bad cert path, dist TLS error) are visible in the CI log.
     NODE_LOG_DIR="${SWM_SPOOL}/${SWM_SNAME}@$(hostname -f)/log"
-    for f in run-in-shell.log erlang.log; do
+    YEAR_LOG="$(date +%Y)"
+    for f in run-in-shell.log erlang.log "${YEAR_LOG}"; do
       LOGFILE="${NODE_LOG_DIR}/${f}"
       if [ -f "${LOGFILE}" ]; then
         echo "===== ${LOGFILE} ====="
-        tail -n 200 "${LOGFILE}"
+        if [ "${f}" = "${YEAR_LOG}" ]; then
+          ## App log can be huge; prefer listen/bind failures, else last lines.
+          LISTEN_ERRS=$(grep -E 'eaddrinuse|Could not start listening' "${LOGFILE}" || true)
+          if [ -n "${LISTEN_ERRS}" ]; then
+            echo "${LISTEN_ERRS}"
+          else
+            tail -n 200 "${LOGFILE}"
+          fi
+        else
+          tail -n 200 "${LOGFILE}"
+        fi
         echo "===== end of ${LOGFILE} ====="
       fi
     done
@@ -121,8 +132,9 @@ function import_config() {
 }
 
 echo "Ensure symlink ~/.swm/spool --> /opt/swm/spool"
-if [ ! -L "~/.swm/spool" ]; then
-  ln -s /opt/swm/spool ~/.swm/spool
+mkdir -p "${HOME}/.swm"
+if [ ! -L "${HOME}/.swm/spool" ]; then
+  ln -sfn /opt/swm/spool "${HOME}/.swm/spool"
 fi
 
 echo

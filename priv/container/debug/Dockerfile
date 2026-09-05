@@ -20,6 +20,8 @@ ARG LIBCLOUD_VER=3.1.0
 ARG ERL_VER=27.3.3
 ARG ERL_TAG=27_3_SSL
 
+ARG ACT_VER=v0.2.89
+
 ENV KERL_VER=4.3.1
 ENV KERL_CONFIGURE_OPTIONS="--without-odbc\
                             --disable-hipe\
@@ -123,6 +125,18 @@ RUN pip3 install openapi-python-client
 
 # For using docker inside docker container
 RUN apt-get install docker.io -y
+
+# GitHub Actions runner (act) for local CI jobs
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "${arch}" in \
+      x86_64) act_arch=x86_64 ;; \
+      aarch64) act_arch=arm64 ;; \
+      *) echo "unsupported architecture: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/nektos/act/releases/download/${ACT_VER}/act_Linux_${act_arch}.tar.gz" \
+      | tar -xz -C /usr/local/bin act; \
+    act --version
 
 # Build and install Erlang/OTP
 WORKDIR /tmp/kerl/
