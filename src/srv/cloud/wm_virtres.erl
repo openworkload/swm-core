@@ -382,6 +382,9 @@ destroying(cast,
             {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
         {error, not_found} ->
             ?LOG_INFO("Partition was not destroyed (was not found) for job ~p: ~p", [JobId, PartId]),
+            %% Still drop job node entities / pinger addresses even if the
+            %% remote partition is already gone.
+            ok = wm_virtres_handler:remove_relocation_entities(JobId),
             {stop, normal, MState}
     end;
 destroying(cast, {delete_in_progress, Ref, Reply}, #mstate{job_id = JobId, err_msg = ErrMsg} = MState) ->
@@ -516,8 +519,9 @@ get_ssh_swm_dir(Spool) ->
 
 -spec handle_event(term(), term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 handle_event(job_canceled, _, #mstate{job_id = JobId, task_id = TaskId} = MState) ->
-    ?LOG_DEBUG("Job ~p was canceled, it's resources will be destroyed (task_id: ~p)", [JobId, TaskId]),
-    ok = wm_virtres_handler:cancel_relocation(JobId),  %FIXME call does not exist and not used
+    ?LOG_DEBUG("Job ~p was canceled, its resources will be destroyed (task_id: ~p)", [JobId, TaskId]),
+    %% Relocator also handles job_canceled (pinger + entity cleanup). Here we
+    %% only tear down the remote partition for this virtres task.
     gen_statem:cast(self(), start_destroying),
     {next_state, destroying, MState};
 handle_event(job_finished,
@@ -546,8 +550,13 @@ handle_event(destroy,
                  MState) ->
     ?LOG_DEBUG("Destroy remote partition for job ~p (task_id: ~p)", [JobId, TaskId]),
     wm_virtres_handler:update_job([{state_details, "Destroying partition resources"}], JobId),
-    {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
-    {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
+    case wm_virtres_handler:delete_partition(PartId, Remote) of
+        {ok, WaitRef} ->
+            {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
+        {error, not_found} ->
+            ?LOG_INFO("Partition already absent while destroying job ~p: ~p", [JobId, PartId]),
+            {stop, normal, MState}
+    end;
 handle_event({error, PartId, not_found}, StateName, MState) ->
     ?LOG_DEBUG("Partition ~p  not found", [PartId]),
     {next_state, StateName, MState};

@@ -71,6 +71,8 @@ init_per_testcase(_, Config) ->
 end_per_testcase(_, Config) ->
     case proplists:get_value(wm_gate_pid, Config) of
         Pid when is_pid(Pid) ->
+            %% Unlink so gen_server:stop's shutdown EXIT does not fail end_per_testcase.
+            catch unlink(Pid),
             catch gen_server:stop(Pid, shutdown, 5000);
         _ ->
             ok
