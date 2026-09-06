@@ -67,6 +67,7 @@ init(_) ->
     ?LOG_INFO("Relocator module has been started"),
     MState = #mstate{},
     wm_event:subscribe(job_finished, node(), ?MODULE),
+    wm_event:subscribe(job_canceled, node(), ?MODULE),
     restart_stopped_virtres_processes(),
     {ok, MState}.
 
@@ -75,17 +76,37 @@ handle_call({relocate, JobId}, _, #mstate{} = MState) ->
 handle_call({cancel_relocation, Job}, _, MState = #mstate{}) ->
     {reply, do_cancel_relocation(Job), MState}.
 
+handle_cast({event, job_canceled, {JobId, _, _, _}}, #mstate{} = MState) ->
+    ?LOG_DEBUG("Job canceled => cancel relocation / drop pinger addresses: ~p", [JobId]),
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, #job{relocatable = true} = Job} ->
+            do_cancel_relocation(Job);
+        {ok, Job} ->
+            %% Local/non-cloud jobs may still have node addrs in the pinger.
+            remove_relocation_entities(Job);
+        _ ->
+            ok
+    end,
+    {noreply, MState};
 handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job finished: ~p", [JobId]),
-    case wm_conf:select(relocation, {job_id, JobId}) of
-        {ok, Relocation} ->
-            RelocationId = wm_entity:get(id, Relocation),
-            ?LOG_DEBUG("Remove relocation information (id: ~p)", [RelocationId]),
-            wm_conf:delete(Relocation),
-            wm_compute:set_nodes_alloc_state(remote, offline, JobId),
-            ok = wm_factory:send_event_locally(job_finished, virtres, RelocationId);
-        _ ->  % no relocation was created for the job
-            ok
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, #job{state = ?JOB_STATE_CANCELED}} ->
+            %% Cancel already destroyed relocation entities and stopped virtres;
+            %% do not start the normal finish/download path.
+            ?LOG_DEBUG("Skip job_finished handling for canceled job: ~p", [JobId]),
+            ok;
+        _ ->
+            case wm_conf:select(relocation, {job_id, JobId}) of
+                {ok, Relocation} ->
+                    RelocationId = wm_entity:get(id, Relocation),
+                    ?LOG_DEBUG("Remove relocation information (id: ~p)", [RelocationId]),
+                    wm_conf:delete(Relocation),
+                    wm_compute:set_nodes_alloc_state(remote, offline, JobId),
+                    ok = wm_factory:send_event_locally(job_finished, virtres, RelocationId);
+                _ ->  % no relocation was created for the job
+                    ok
+            end
     end,
     {noreply, MState};
 handle_cast(_, #mstate{} = MState) ->
@@ -277,16 +298,22 @@ delete_resources([#resource{name = "node", properties = Props} | T], Job, Cnt) -
     case lists:keyfind(id, 1, Props) of
         false ->
             ?LOG_DEBUG("Node resource does not have id property: ~p [job=~p]", [Props, JobId]),
-            Cnt;
+            delete_resources(T, Job, Cnt);
         {id, NodeId} ->
-            {ok, SelfNode} = wm_self:get_node(),
-            {ok, JobNode} = wm_conf:select(node, {id, NodeId}),
-            JobNodeAddress = wm_conf:get_relative_address(JobNode, SelfNode),
-            ?LOG_DEBUG("Delete node entity from config and address from pinger: ~p, ~p [job=~p]",
-                       [NodeId, JobNodeAddress, JobId]),
-            ok = wm_pinger:delete(JobNodeAddress),
-            ok = wm_conf:delete(node, NodeId),
-            delete_resources(T, Job, Cnt + 1)
+            case {wm_self:get_node(), wm_conf:select(node, {id, NodeId})} of
+                {{ok, SelfNode}, {ok, JobNode}} ->
+                    JobNodeAddress = wm_conf:get_relative_address(JobNode, SelfNode),
+                    ?LOG_DEBUG("Delete node entity from config and address from pinger: ~p, ~p [job=~p]",
+                               [NodeId, JobNodeAddress, JobId]),
+                    ok = wm_pinger:delete(JobNodeAddress),
+                    ok = wm_conf:delete(node, NodeId),
+                    delete_resources(T, Job, Cnt + 1);
+                {_, _} ->
+                    ?LOG_DEBUG("Node entity already absent, still drop from pinger if known: ~p [job=~p]",
+                               [NodeId, JobId]),
+                    ok = wm_conf:delete(node, NodeId),
+                    delete_resources(T, Job, Cnt)
+            end
     end.
 
 -spec get_base_partition(#job{}) -> {ok, #partition{}} | {error, term()}.
