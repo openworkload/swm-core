@@ -15,14 +15,14 @@ Specify the number of nodes to allocate for the job.
 ```bash
 #SWM nodes 3
 ```
-This will request a partition with 3 compute nodes. The nodes will be named:
-- `swm-<jobid>-main` (primary/manager node)
-- `swm-<jobid>-node0` (first extra compute node)
-- `swm-<jobid>-node1` (second extra compute node)
+This requests a partition with 3 compute nodes. Names use the first 8 characters of the job id:
+- `swm-<jobid8>-main` — primary/manager node (runs the job script)
+- `swm-<jobid8>-node0` — first extra compute node
+- `swm-<jobid8>-node1` — second extra compute node
 
 **Default:** 1 node
 
-**Note:** Multi-node job support requires the gate to support the multi-node partition feature (available in swm-cloud-gate branch `feature/multi-node-jobs`).
+**Note:** Multi-node partitions require a cloud gate that supports the `count` / multi-node feature (for example [swm-cloud-gate](https://github.com/openworkload/swm-cloud-gate) branch `feature/multi-node-jobs`).
 
 #### flavor
 Specify the cloud instance flavor/size.
@@ -132,22 +132,33 @@ Mark the job as relocatable (can be migrated between nodes).
 
 ## Complete Multi-Node Example
 
+See also `priv/examples/jobscripts/multi-node.job` for a full OpenMPI hello-world script.
+
+For MPI (and similar), build a hostfile from the partition host names. The job container runs on **main** with host networking; multi-host `mpirun` needs passwordless SSH (or an equivalent PMI launcher) between the partition hosts. Porter sets `SWM_JOB_ID` in the job environment.
+
 ```bash
 #!/bin/bash
+set -euo pipefail
 
-#SWM name Multi-Node MPI Job
-#SWM nodes 4
-#SWM flavor Standard_D4s_v3
-#SWM cloud-image ubuntu22.04
-#SWM container-image mpi/ubuntu:latest
+#SWM name Multi-node MPI example
+#SWM nodes 3
 #SWM relocatable
-#SWM comment Distributed MPI computation across 4 nodes
+#SWM comment OpenMPI hello across the allocated partition nodes
+#SWM flavor Standard_D4s_v3
+#SWM cloud-image ubuntu-22.04
+#SWM container-image ubuntu:22.04
 
-echo "Starting multi-node job on $(hostname)"
-echo "Job ID: $SWM_JOBID"
+NODES=3
+JOB_PREFIX="swm-${SWM_JOB_ID:0:8}"
+HOSTFILE="${PWD}/hostfile"
 
-# Your MPI or distributed application code here
-mpirun -n 16 ./my_parallel_app
+{
+    echo "${JOB_PREFIX}-main slots=1"
+    for i in $(seq 0 $((NODES - 2))); do
+        echo "${JOB_PREFIX}-node${i} slots=1"
+    done
+} >"${HOSTFILE}"
 
-echo "Job completed"
+# Install / compile OpenMPI app, then:
+mpirun --hostfile "${HOSTFILE}" -np "${NODES}" ./mpi_hello
 ```

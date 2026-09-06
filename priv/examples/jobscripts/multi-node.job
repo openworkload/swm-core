@@ -1,21 +1,70 @@
 #!/bin/bash
+set -euo pipefail
 
-#SWM name Multi-Node Job Example
+#SWM name Multi-Node MPI Example
 #SWM nodes 3
 #SWM relocatable
-#SWM comment Example job script demonstrating multi-node job submission
+#SWM comment OpenMPI hello across the allocated partition nodes
+#SWM account openstack
+#SWM flavor m1.medium
+#SWM cloud-image ubuntu-22.04
+#SWM container-image ubuntu:22.04
 
-# This job requests 3 nodes from the cloud provider
-# The nodes will be named: swm-<jobid>-node0, swm-<jobid>-node1, swm-<jobid>-node2
-# where swm-<jobid>-node0 is the main/master node
+# Keep in sync with "#SWM nodes" above.
+# Partition layout for N nodes: 1x swm-<jobid8>-main + (N-1)x swm-<jobid8>-node0..
+NODES=3
 
-echo "Hello from multi-node job $SWM_JOBID"
-echo "Running on node: $(hostname)"
+echo "Hello from multi-node MPI job ${SWM_JOB_ID}"
+echo "Launcher hostname: $(hostname)"
 date
 
-# Your multi-node application code here
-# For example, MPI applications, distributed computing tasks, etc.
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq --no-install-recommends \
+    openmpi-bin libopenmpi-dev g++ openssh-client >/dev/null
 
-sleep 60
+JOB_PREFIX="swm-${SWM_JOB_ID:0:8}"
+HOSTFILE="${PWD}/hostfile.${JOB_PREFIX}"
 
-echo "Multi-node job completed"
+{
+    echo "${JOB_PREFIX}-main slots=1"
+    for i in $(seq 0 $((NODES - 2))); do
+        echo "${JOB_PREFIX}-node${i} slots=1"
+    done
+} >"${HOSTFILE}"
+
+echo "MPI hostfile (${HOSTFILE}):"
+cat "${HOSTFILE}"
+
+cat >mpi_hello.c <<'EOF'
+#include <mpi.h>
+#include <stdio.h>
+
+int main(int argc, char **argv) {
+    MPI_Init(&argc, &argv);
+
+    int rank = 0;
+    int size = 0;
+    int name_len = 0;
+    char name[MPI_MAX_PROCESSOR_NAME];
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Get_processor_name(name, &name_len);
+
+    printf("Hello from MPI rank %d/%d on %s\n", rank, size, name);
+    fflush(stdout);
+
+    MPI_Finalize();
+    return 0;
+}
+EOF
+
+mpicc -o mpi_hello mpi_hello.c
+
+# Job script runs on the main node (host network). OpenMPI launches
+# ranks on each host in the hostfile (passwordless SSH between partition
+# hosts is required for multi-host launch).
+mpirun --hostfile "${HOSTFILE}" -np "${NODES}" ./mpi_hello
+
+echo "Multi-node MPI job completed"
