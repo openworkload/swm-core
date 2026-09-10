@@ -1,3 +1,8 @@
+## Name of the node (required by the release start script / systemd).
+## Dev shell (run-in-shell.sh) uses config/vm.args without -name and passes
+## -name/-sname on the erl command line instead.
+-name ${SWM_SNAME}
+
 ## Cookie for distributed erlang
 -setcookie ${SWM_COOKIE}
 
