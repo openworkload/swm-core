@@ -238,10 +238,29 @@ wait_response_boby(ConnPid, StreamRef) ->
         {response, nofin, 404, Headers} ->
             ?LOG_WARN("Gate response (404), headers: ~p", [Headers]),
             {error, not_found};
+        {response, nofin, 400, Headers} ->
+            {ok, Body} = gun:await_body(ConnPid, StreamRef),
+            ?LOG_WARN("Gate response (400), headers: ~p, body=~p", [Headers, Body]),
+            {error, Body};
         {response, nofin, 500, _} ->
             {ok, Body} = gun:await_body(ConnPid, StreamRef),
             ?LOG_WARN("Gate internal error (500): ~p", [Body]),
             {error, "Gate error"};
+        {response, IsFin, Code, Headers} ->
+            Body =
+                case IsFin of
+                    fin ->
+                        <<>>;
+                    nofin ->
+                        case gun:await_body(ConnPid, StreamRef) of
+                            {ok, B} ->
+                                B;
+                            _ ->
+                                <<>>
+                        end
+                end,
+            ?LOG_WARN("Unexpected gate response (~p), headers: ~p, body=~p", [Code, Headers, Body]),
+            {error, {http_error, Code, Body}};
         {error, Error} ->
             ?LOG_WARN("Gate response error: ~p", [Error]),
             {error, Error}
@@ -269,13 +288,14 @@ do_partition_create(Remote, Options, #mstate{spool = Spool, pem_data = PemData})
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = get_auth_body(PemData),
-            ExtraNodesCount = maps:get(node_count, Options, 1) - 1,  % minus one becuase main node is always created
+            %% Gate expects total VM count (>= 1); it adds compute VMs for count > 1.
+            NodeCount = maps:get(node_count, Options, 1),
             ExtraHeaders =
                 [{<<"osversion">>, list_to_binary(maps:get(image_name, Options, ""))},
                  {<<"containerimage">>, list_to_binary(maps:get(container_image, Options))},
                  {<<"flavorname">>, list_to_binary(maps:get(flavor_name, Options, ""))},
                  {<<"username">>, list_to_binary(maps:get(user_name, Options, ""))},
-                 {<<"count">>, integer_to_binary(ExtraNodesCount)},
+                 {<<"count">>, integer_to_binary(NodeCount)},
                  {<<"jobid">>, list_to_binary(maps:get(job_id, Options))},
                  {<<"partname">>, list_to_binary(maps:get(part_name, Options, ""))},
                  {<<"runtime">>, list_to_binary(get_runtime_parameters_string(Remote))},

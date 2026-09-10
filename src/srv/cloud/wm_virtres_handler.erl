@@ -165,7 +165,15 @@ spawn_partition(Job, Remote) ->
     ApiPort = integer_to_list(wm_entity:get(api_port, SelfNode)),
     SshPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
     DataTransferPort = integer_to_list(wm_file_transfer:get_port()),
-    Ports = JobIngresPorts ++ "," ++ ApiPort ++ "," ++ integer_to_list(SshPort) ++ "," ++ DataTransferPort,
+    SystemPorts = [ApiPort, integer_to_list(SshPort), DataTransferPort],
+    Ports =
+        string:join(case JobIngresPorts of
+                        "" ->
+                            SystemPorts;
+                        _ ->
+                            [JobIngresPorts | SystemPorts]
+                    end,
+                    ","),
     {ok, ContImage} = wm_utils:find_property_in_resource("container-image", value, wm_entity:get(request, Job)),
     CloudImage = get_resource_value_property(image, "cloud-image", Job, Remote, fun get_default_image_name/1),
     FlavorName = get_resource_value_property(node, "flavor", Job, Remote, fun get_default_flavor_name/1),

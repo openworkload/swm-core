@@ -25,7 +25,7 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
--spec cancel_relocation(#job{}) -> pos_integer().
+-spec cancel_relocation(#job{}) -> ok.
 cancel_relocation(Job) ->
     gen_server:call(?MODULE, {cancel_relocation, Job}).
 
@@ -92,10 +92,16 @@ handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job finished: ~p", [JobId]),
     case wm_conf:select(job, {id, JobId}) of
         {ok, #job{state = ?JOB_STATE_CANCELED}} ->
-            %% Cancel already destroyed relocation entities and stopped virtres;
-            %% do not start the normal finish/download path.
-            ?LOG_DEBUG("Skip job_finished handling for canceled job: ~p", [JobId]),
-            ok;
+            %% Cancel already destroyed remote resources and stopped virtres;
+            %% do not start the normal finish/download path, but still drop any
+            %% leftover #relocation row so it cannot block MAX_RELOCATIONS.
+            case wm_conf:select(relocation, {job_id, JobId}) of
+                {ok, Leftover} ->
+                    ?LOG_DEBUG("Remove leftover relocation for canceled job: ~p", [JobId]),
+                    wm_conf:delete(Leftover);
+                _ ->
+                    ok
+            end;
         _ ->
             case wm_conf:select(relocation, {job_id, JobId}) of
                 {ok, Relocation} ->
@@ -253,17 +259,14 @@ predict_job_node_names(Job) ->
     JobId = wm_entity:get(id, Job),
     [wm_utils:get_cloud_node_name(JobId, SeqNum) || SeqNum <- Seq].
 
--spec do_cancel_relocation(#job{}) -> atom().
+-spec do_cancel_relocation(#job{}) -> ok.
 do_cancel_relocation(Job) ->
     JobId = wm_entity:get(id, Job),
     case wm_conf:select(relocation, {job_id, JobId}) of
         {error, not_found} ->
             ?LOG_DEBUG("No relocation is running => destroy related resources: ~p", [JobId]),
-            {ok, TaskId} = wm_factory:new(virtres, {destroy, JobId, undefined}, []),
-            RelocationDestraction =
-                wm_entity:set([{id, TaskId}, {job_id, JobId}, {canceled, true}], wm_entity:new(relocation)),
-            remove_relocation_entities(Job),
-            wm_conf:update(RelocationDestraction);
+            {ok, _TaskId} = wm_factory:new(virtres, {destroy, JobId, undefined}, []),
+            remove_relocation_entities(Job);
         {ok, Relocation} ->
             ?LOG_DEBUG("Relocation is running => destroy its resources (job: ~p)", [JobId]),
             RelocationId = wm_entity:get(id, Relocation),

@@ -211,7 +211,8 @@ create_partition(_Config) ->
 -spec delete_partition(list()) -> atom().
 delete_partition(_Config) ->
     {ok, Ref1} = wm_gate:delete_partition(self(), get_remote(), "s2"),
-    ?assertMatch({partition_deleted, Ref1, "Deletion started"}, wm_utils:await(partition_deleted, Ref1, ?GATE_AWAIT_MS)).
+    ?assertMatch({partition_deleted, Ref1, "Deletion started"},
+                 wm_utils:await(partition_deleted, Ref1, ?GATE_AWAIT_MS)).
 
 -spec partition_exists(list()) -> atom().
 partition_exists(_Config) ->
