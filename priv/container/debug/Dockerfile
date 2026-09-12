@@ -43,6 +43,9 @@ RUN apt-get install git -y
 RUN apt-get install vim -y
 RUN apt-get install tmuxinator -y
 RUN apt-get install sudo -y
+# Passwordless sudo for the host user (passwd/group are bind-mounted at runtime)
+RUN echo 'ALL ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/nopasswd && \
+    chmod 0440 /etc/sudoers.d/nopasswd
 RUN apt-get install mc -y
 RUN apt-get install gcc -y
 RUN apt-get install build-essential -y
