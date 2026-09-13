@@ -1,7 +1,7 @@
 -module(wm_docker).
 
--export([get_unregistered_images/0, get_unregistered_image/1, create/5, start/2, attach/3, attach_ws/3, delete/2,
-         send/3, create_exec/2, start_exec/4]).
+-export([get_unregistered_images/0, get_unregistered_image/1, ensure_create_ready/1, create/5, start/2, attach/3,
+         attach_ws/3, delete/2, send/3, create_exec/2, start_exec/4]).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -25,6 +25,11 @@ get_unregistered_images() ->
 -spec get_unregistered_image(string()) -> tuple().
 get_unregistered_image(ID) ->
     do_get_unregistered_image(ID).
+
+%% @doc Verify Docker image (and VolumesFrom containers) exist before create
+-spec ensure_create_ready(#job{}) -> ok | {error, string()}.
+ensure_create_ready(Job) ->
+    do_ensure_create_ready(Job).
 
 %% @doc Create container for specified job
 -spec create(tuple(), string(), map(), pid(), list()) -> {string(), pid()}.
@@ -77,6 +82,76 @@ start_http_client(Owner, ReqID, Reason) ->
     {ok, Pid} = wm_docker_client:start_link(Host, Port, Owner, ReqID, Reason),
     ?LOG_DEBUG("HTTP client Pid=~p", [Pid]),
     Pid.
+
+-spec do_ensure_create_ready(#job{}) -> ok | {error, string()}.
+do_ensure_create_ready(#job{request = Request} = Job) ->
+    JobId = wm_entity:get(id, Job),
+    case binary_to_list(get_container_image(Request)) of
+        "" ->
+            Msg = "Docker image not specified",
+            ?LOG_ERROR("~s (job ~p)", [Msg, JobId]),
+            {error, Msg};
+        Image ->
+            case docker_resource_exists(image, Image) of
+                true ->
+                    ensure_volumes_from_ready(JobId);
+                false ->
+                    Msg = "Docker image not found: " ++ Image,
+                    ?LOG_ERROR("~s (job ~p)", [Msg, JobId]),
+                    {error, Msg}
+            end
+    end.
+
+-spec ensure_volumes_from_ready(string()) -> ok | {error, string()}.
+ensure_volumes_from_ready(JobId) ->
+    lists:foldl(fun (VolFrom, ok) ->
+                        ContName = volumes_from_name(VolFrom),
+                        case docker_resource_exists(container, ContName) of
+                            true ->
+                                ok;
+                            false ->
+                                Msg = "Docker container not found: " ++ ContName,
+                                ?LOG_ERROR("~s (job ~p, VolumesFrom)", [Msg, JobId]),
+                                {error, Msg}
+                        end;
+                    (_, Error) ->
+                        Error
+                end,
+                ok,
+                get_volumes_from()).
+
+-spec volumes_from_name(binary()) -> string().
+volumes_from_name(VolFrom) when is_binary(VolFrom) ->
+    %% "swm-core:ro" -> "swm-core"
+    Name = hd(binary:split(VolFrom, <<":">>)),
+    binary_to_list(Name).
+
+-spec docker_resource_exists(image | container, string()) -> boolean().
+docker_resource_exists(Kind, Name) ->
+    Path =
+        case Kind of
+            image ->
+                "/images/" ++ Name ++ "/json";
+            container ->
+                "/containers/" ++ Name ++ "/json"
+        end,
+    HttpProcPid = start_http_client(self(), Name, "inspect " ++ atom_to_list(Kind) ++ " " ++ Name),
+    case wm_docker_client:get_status(Path, [], HttpProcPid) of
+        {404, _} ->
+            %% Client already stopped itself on 404
+            false;
+        {error, Reason} ->
+            ?LOG_ERROR("Docker inspect failed for ~p ~p: ~p", [Kind, Name, Reason]),
+            catch wm_docker_client:stop(HttpProcPid),
+            false;
+        {_Status, Data} when is_binary(Data), Data =/= <<>> ->
+            wm_docker_client:stop(HttpProcPid),
+            true;
+        {Status, Data} ->
+            ?LOG_ERROR("Unexpected Docker inspect result for ~p ~p: status=~p data=~p", [Kind, Name, Status, Data]),
+            catch wm_docker_client:stop(HttpProcPid),
+            false
+    end.
 
 -spec get_connection_host() -> string().
 get_connection_host() ->
@@ -171,7 +246,13 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term8 = jwalk:set({"Volumes"}, Term7, get_volumes()),
     Term9 = jwalk:set({"HostConfig"}, Term8, get_host_config(Request)),
     Term10 = jwalk:set({"StdinOnce"}, Term9, false),
-    Term11 = jwalk:set({"VolumesFrom"}, Term10, get_volumes_from()),
+    Term11 =
+        case get_volumes_from() of
+            [] ->
+                Term10;
+            VolsFrom ->
+                jwalk:set({"VolumesFrom"}, Term10, VolsFrom)
+        end,
     Term12 = jwalk:set({"ExposedPorts"}, Term11, wm_resource_utils:get_ingres_ports_map(Request, binaries)),
     Term13 = jwalk:set({"WorkingDir"}, Term12, <<"/tmp">>),
     Term14 = jwalk:set({"AutoRemove"}, Term13, true),
@@ -214,9 +295,16 @@ get_devices_requests() ->
 get_cmd(Porter) ->
     [list_to_binary(wm_utils:unroll_symlink(Porter)), <<"-d">>].
 
--spec get_volumes_from() -> binary().
+-spec get_volumes_from() -> [binary()].
 get_volumes_from() ->
-    [list_to_binary(os:getenv("SWM_DOCKER_VOLUMES_FROM", "swm-core:ro"))].
+    case os:getenv("SWM_DOCKER_VOLUMES_FROM") of
+        false ->
+            [];
+        "" ->
+            [];
+        Value ->
+            [list_to_binary(Value)]
+    end.
 
 -spec get_gpus([#resource{}]) -> binary().
 get_gpus([]) ->

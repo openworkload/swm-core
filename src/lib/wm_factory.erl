@@ -132,8 +132,15 @@ handle_cast({task_nodes, ModuleTaskId, Nodes}, MState) ->
     {ModuleTaskId, MState2} = start_module(ModuleTaskId, [], Nodes, MState),
     {noreply, MState2};
 handle_cast({send_confirm, ModuleTaskId, Msg, Nodes}, MState) ->
-    Result = do_send_confirm(ModuleTaskId, Msg, Nodes),
-    ?LOG_DEBUG("Send-confirm result: ~p (task: ~p, nodes = ~p)", [Result, ModuleTaskId, Nodes]),
+    %% Run the SSL wait off the gen_server so {new,...} is not starved.
+    %% Parallelism is intentional: serializing lets new transactions jump
+    %% ahead of an in-flight commit's pre_commit and breaks worker boot.
+    RegName = MState#mstate.regname,
+    Self = self(),
+    spawn(fun() ->
+             Result = do_send_confirm(ModuleTaskId, Msg, Nodes, RegName),
+             Self ! {send_confirm_done, ModuleTaskId, Result, Nodes}
+          end),
     {noreply, MState};
 handle_cast({subscribe, ModuleTaskId, EventType}, MState) ->
     wm_event:subscribe_async(EventType, node(), MState#mstate.regname),
@@ -185,6 +192,10 @@ handle_cast(Msg, MState) ->
 handle_info({send_event, From, ModuleTaskId, Msg}, MState) ->
     ?LOG_DEBUG("Received send event info from ~p, task=~p, msg=~P", [From, ModuleTaskId, Msg, 10]),
     handle_send_event(From, ModuleTaskId, Msg, MState);
+handle_info({send_confirm_done, ModuleTaskId, Result, Nodes}, MState) ->
+    ?LOG_DEBUG("Send-confirm result: ~p (task: ~p, nodes = ~p)", [Result, ModuleTaskId, Nodes]),
+    MState2 = send_event_to_module(ModuleTaskId, {send_confirmed, Result}, MState),
+    {noreply, MState2};
 handle_info(Info, MState) ->
     ?LOG_WARN("Unknown info message received: ~p", [Info]),
     {noreply, MState}.
@@ -285,12 +296,14 @@ start_module(ModuleTaskId, ExtraData, Nodes, MState) ->
             {ModuleTaskId, MState}
     end.
 
--spec do_send_confirm(integer(), term(), [node_address()]) -> ok.
-do_send_confirm(ModuleTaskId, Msg, Nodes) ->
+-spec do_send_confirm(integer(), term(), [node_address()], atom()) -> boolean().
+do_send_confirm(ModuleTaskId, Msg, Nodes, RegName) ->
     ?LOG_DEBUG("Send ~P to ~p (~p)", [Msg, 10, Nodes, ModuleTaskId]),
     MyAddr = wm_conf:get_my_relative_address(hd(Nodes)),
     NewMsg = {send_event, MyAddr, ModuleTaskId, Msg},
-    wm_api:cast_self_confirm(NewMsg, Nodes).
+    %% Pass RegName explicitly: cast_self_confirm uses the caller's registered
+    %% name, which a spawned worker does not have.
+    wm_api:cast_confirm(RegName, NewMsg, Nodes).
 
 -spec get_status(integer(), #mstate{}) -> ready | not_ready.
 get_status(ModuleTaskId, MState) ->

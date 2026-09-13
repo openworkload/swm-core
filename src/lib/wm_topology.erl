@@ -11,8 +11,6 @@
 -include("wm_log.hrl").
 -include("wm_entity.hrl").
 
--include_lib("eunit/include/eunit.hrl").
-
 -record(mstate,
         {rh :: map(),            %% Resource Hierarchy: {{DevisionAtom, DevisionId} => Resouce sub hierarchy}
          nl :: binary(),         %% Neighbour List (binary vector)
@@ -81,9 +79,9 @@ get_tree(Type) ->
     wm_utils:protected_call(?MODULE, {get_tree, Type}, #{}).
 
 %% @doc Get direct (lowest) subdivision
--spec get_subdiv() -> [term()].
+-spec get_subdiv() -> term() | not_found.
 get_subdiv() ->
-    wm_utils:protected_call(?MODULE, {get_subdiv, direct}, #{}).
+    wm_utils:protected_call(?MODULE, {get_subdiv, direct}, not_found).
 
 %% @doc Get subdivision of the specified type
 -spec get_subdiv(atom()) -> [term()].

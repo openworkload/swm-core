@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/5, get/3, post/5, ws_upgrade/4, delete/4, send/3, stop/1]).
+-export([start_link/5, get/3, get_status/3, post/5, ws_upgrade/4, delete/4, send/3, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../../lib/wm_log.hrl").
@@ -21,6 +21,8 @@
          data_type = -1 :: integer(),
          data_size = 0 :: integer(),
          hdrs = [] :: list(),
+         %% HTTP status from gun_response (plain JSON GET/DELETE); not used for attach mux streams.
+         http_status = undefined :: term(),
          reqid = "" :: list(),
          steps = [] :: list(),
          command = undefined :: term(),
@@ -40,16 +42,23 @@ start_link(Addr, Port, Owner, ReqID, Reason) ->
 
 -spec get(string(), list(), term()) -> binary().
 get(Path, Hdr, HttpProcPid) ->
+    {_, Data} = get_status(Path, Hdr, HttpProcPid),
+    Data.
+
+-spec get_status(string(), list(), term()) -> {term(), binary()} | {error, term()}.
+get_status(Path, Hdr, HttpProcPid) ->
     wm_utils:protected_call(HttpProcPid, {get_start, Path, Hdr}, []),
     Timeout = wm_conf:g(cont_timeout, {?HTTP_TIMEOUT, integer}),
     receive
         {'$gen_cast', {_, Status, Data, _, _}} ->
             ?LOG_DEBUG("GET: reply: ~p (status=~p)", [Data, Status]),
-            Data;
+            {Status, Data};
         Other ->
-            ?LOG_ERROR("GET: unhandled reply: ~p", [Other])
+            ?LOG_ERROR("GET: unhandled reply: ~p", [Other]),
+            {error, Other}
     after Timeout ->
-        ?LOG_DEBUG("HTTP response timeout")
+        ?LOG_DEBUG("HTTP response timeout"),
+        {error, timeout}
     end.
 
 -spec post(string(), list(), list(), term(), list()) -> binary().
@@ -158,16 +167,38 @@ handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState)
 handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) ->
     ?LOG_DEBUG("[HTTP] NOFIN RESPONSE: ~p ~p [~p]", [Status, Hdrs, ConnPid]),
     NewHdrs = MState#mstate.hdrs ++ Hdrs,
-    {noreply, MState#mstate{hdrs = NewHdrs}};
+    {noreply, MState#mstate{hdrs = NewHdrs, http_status = Status}};
 handle_info({gun_data, ConnPid, _, nofin, FrameData}, #mstate{} = MState) ->
     ?LOG_DEBUG("[HTTP] NOFIN DATA: size=~p [~p]", [byte_size(FrameData), ConnPid]),
-    {noreply, handle_docker_output(FrameData, MState)};
+    case use_attach_demux(MState) of
+        true ->
+            {noreply, handle_docker_output(FrameData, MState)};
+        false ->
+            Old = MState#mstate.data,
+            {noreply, MState#mstate{data = <<Old/binary, FrameData/binary>>}}
+    end;
 handle_info({gun_data, ConnPid, _, fin, Data}, #mstate{} = MState) ->
     ?LOG_DEBUG("[HTTP] FIN: frame_size=~p [~p] => notify requestor", [byte_size(Data), ConnPid]),
     OldData = MState#mstate.data,
     Bin = <<OldData/binary, Data/binary>>,
-    notify_requestor(Bin, [], [], MState),
-    {noreply, MState#mstate{data = Bin}};
+    case use_attach_demux(MState) of
+        true ->
+            notify_requestor(Bin, [], [], MState),
+            {noreply, MState#mstate{data = Bin}};
+        false ->
+            Status =
+                case MState#mstate.http_status of
+                    undefined ->
+                        [];
+                    S ->
+                        S
+                end,
+            notify_requestor(Bin, MState#mstate.hdrs, Status, MState),
+            {noreply,
+             MState#mstate{data = Bin,
+                           hdrs = [],
+                           http_status = undefined}}
+    end;
 handle_info({gun_upgrade, ConnPid, _, _, Headers}, #mstate{} = MState) ->
     ?LOG_DEBUG("[WS] UPGRADE OK [~p]", [ConnPid]),
     notify_requestor(Headers, [], ok, MState),
@@ -284,6 +315,16 @@ retry_command(MState = #mstate{command = Command, retries = RemainedRetries}) ->
 notify_requestor(Data, Hdrs, Meta, MState) ->
     Msg = {MState#mstate.steps, Meta, Data, Hdrs, MState#mstate.reqid},
     gen_server:cast(MState#mstate.owner, Msg).
+
+%% Attach/log endpoints use Docker's multiplexed stream framing; plain JSON
+%% GET/DELETE (e.g. image inspect) must buffer the HTTP body instead.
+-spec use_attach_demux(#mstate{}) -> boolean().
+use_attach_demux(#mstate{command = {get_start, _, _}}) ->
+    false;
+use_attach_demux(#mstate{command = {delete_start, _, _, _}}) ->
+    false;
+use_attach_demux(#mstate{}) ->
+    true.
 
 handle_full_frame(Type, Frame, MState) ->
     notify_requestor(Frame, [], {stream, Type}, MState).

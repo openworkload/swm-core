@@ -14,7 +14,9 @@
 -include("../../include/wm_general.hrl").
 
 -define(DEFAULT_SYCN_INTERVAL, 60000).
--define(DEFAULT_PULL_TIMEOUT, 10000).
+%% Cloud workers often sync over an SSH tunnel; 10s was too short and caused
+%% late sync_schema_reply casts to arrive after sync was cleared.
+-define(DEFAULT_PULL_TIMEOUT, 120000).
 
 -record(mstate, {default_port = unknown :: integer() | atom(), sync = false :: atom()}).
 
@@ -365,6 +367,9 @@ handle_cast({pull_config, Node}, MState) when MState#mstate.sync == false ->
             wm_api:cast_self({sync_schema_request, Hashes, MyAddr}, [Node]),
             {noreply, MState#mstate{sync = NewSyncId}}
     end;
+handle_cast({pull_config, Node}, MState) ->
+    ?LOG_DEBUG("Ignore pull_config from ~p (sync already in progress: ~p)", [Node, MState#mstate.sync]),
+    {noreply, MState};
 handle_cast({sync_schema_request, TabHashes, From}, MState) ->
     ?LOG_DEBUG("Request to sync schema received from ~p", [From]),
     MyAddr = get_my_relative_address(From),
@@ -380,13 +385,24 @@ handle_cast({sync_schema_request, TabHashes, From}, MState) ->
 handle_cast({sync_schema_reply, not_ready, Parent}, MState) ->
     ?LOG_DEBUG("Reply on sync schema request received (~p not ready)", [Parent]),
     {noreply, MState#mstate{sync = false}};
-handle_cast({sync_schema_reply, Meta, Parent}, MState) when MState#mstate.sync =/= false ->
-    ?LOG_DEBUG("Reply on sync schema request received (N=~p, parent=~p)", [length(Meta), Parent]),
+handle_cast({sync_schema_reply, Meta, Parent}, #mstate{sync = Sync} = MState) when Sync =/= done, is_list(Meta) ->
+    %% Accept replies even after sync_timeout cleared sync=false (slow tunnels).
+    SyncId =
+        case Sync of
+            false ->
+                wm_utils:uuid(v4);
+            Id ->
+                Id
+        end,
+    ?LOG_DEBUG("Reply on sync schema request received (N=~p, parent=~p, sync=~p)", [length(Meta), Parent, Sync]),
     wm_db:upgrade_schema(Meta),
     Hashes = wm_db:get_hashes(tables),
     ?LOG_DEBUG("Pull configuration data from ~p", [Parent]),
     MyAddr = get_my_relative_address(Parent),
     wm_api:cast_self({sync_config_request, Hashes, MyAddr, Parent}, [Parent]),
+    {noreply, MState#mstate{sync = SyncId}};
+handle_cast({sync_schema_reply, Meta, Parent}, MState) ->
+    ?LOG_DEBUG("Ignore sync_schema_reply (sync=~p, parent=~p, meta=~P)", [MState#mstate.sync, Parent, Meta, 5]),
     {noreply, MState};
 handle_cast({sync_config_request, TabHashes, From, Me}, MState) ->
     DifferentTabs =
@@ -401,12 +417,15 @@ handle_cast({sync_config_request, TabHashes, From, Me}, MState) ->
 handle_cast({sync_config_reply, not_ready, Parent}, MState) ->
     ?LOG_DEBUG("Reply on sync config update request received (~p not ready)", [Parent]),
     {noreply, MState#mstate{sync = false}};
-handle_cast({sync_config_reply, DifferentTabs, Parent}, MState) when MState#mstate.sync =/= false ->
-    ?LOG_DEBUG("Reply on sync config request received (diff=~p, parent=~p)", [length(DifferentTabs), Parent]),
+handle_cast({sync_config_reply, DifferentTabs, Parent}, #mstate{sync = Sync} = MState)
+    when Sync =/= done, is_list(DifferentTabs) ->
+    %% Same as schema: keep late replies after timeout so sync can finish.
+    ?LOG_DEBUG("Reply on sync config request received (diff=~p, parent=~p, sync=~p)",
+               [length(DifferentTabs), Parent, Sync]),
     case DifferentTabs of
         [] ->
             ?LOG_DEBUG("No tabs to update (sync_config_request returned [])");
-        DifferentTabs when is_list(DifferentTabs) ->
+        DifferentTabs ->
             ?LOG_INFO("The local and parent's tabs differ: ~p", [DifferentTabs]),
             wm_state:enter(maint),
             % Special case of event sending. When a new node starts,
@@ -419,6 +438,10 @@ handle_cast({sync_config_reply, DifferentTabs, Parent}, MState) when MState#msta
             wm_api:cast_self({event, need_tabs_update, EventData}, [Parent])
     end,
     {noreply, MState#mstate{sync = done}};
+handle_cast({sync_config_reply, DifferentTabs, Parent}, MState) ->
+    ?LOG_DEBUG("Ignore sync_config_reply (sync=~p, parent=~p, tabs=~P)",
+               [MState#mstate.sync, Parent, DifferentTabs, 5]),
+    {noreply, MState};
 handle_cast({event, need_tabs_update, Data}, MState) ->
     wm_event:announce(need_tabs_update, Data),
     {noreply, MState};

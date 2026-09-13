@@ -60,8 +60,14 @@ terminate(Status, State, #mstate{task_id = TaskId}) ->
 -spec sleeping({call, pid()} | cast | info, term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
 sleeping(cast, activate, #mstate{task_id = TaskId} = MState) ->
     ?LOG_DEBUG("Received 'activate' [sleeping] (~p)", [TaskId]),
-    execute(MState),
-    {next_state, running, MState};
+    case execute(MState) of
+        ok ->
+            {next_state, running, MState};
+        {error, Reason} ->
+            ?LOG_ERROR("Process ~p failed to start: ~p", [TaskId, Reason]),
+            fail_job(Reason, MState),
+            {stop, normal, MState}
+    end;
 sleeping(info, Msg, MState) ->
     handle_info(Msg, ?FUNCTION_NAME, MState);
 sleeping(cast, Msg, MState) ->
@@ -123,12 +129,12 @@ parse_args([{task_id, TaskId} | T], MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
--spec execute(#mstate{}) -> ok.
+-spec execute(#mstate{}) -> ok | {error, term()}.
 execute(#mstate{job_id = JobId}) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     case wm_utils:get_job_user(Job) of
         {error, not_found} ->
-            ok;
+            {error, user_not_found};
         {ok, User} ->
             Path = wm_entity:get(execution_path, Job),
             ProcEnvs =
@@ -143,13 +149,16 @@ execute(#mstate{job_id = JobId}) ->
             Porter = get_porter_path(),
             case wm_conf:g(execution_method, {?SWM_EXEC_METHOD, string}) of
                 "native" ->
-                    run_native_process(Job, Porter, ProcEnvs, User),
-                    ok;
+                    run_native_process(Job, Porter, ProcEnvs, User);
                 "docker" ->
                     ok = ensure_workdir_exists(Job),
-                    {ok, NewJob} = wm_container:run(Job, Porter, ProcEnvs, self()),
-                    1 = wm_conf:update([NewJob]),
-                    ok
+                    case wm_container:run(Job, Porter, ProcEnvs, self()) of
+                        {ok, NewJob} ->
+                            1 = wm_conf:update([NewJob]),
+                            ok;
+                        {error, Msg} ->
+                            {error, Msg}
+                    end
             end
     end.
 
@@ -170,7 +179,7 @@ get_porter_path() ->
     Porter2 = wm_conf:g(porter_path, {Porter1, string}),
     wm_utils:unroll_symlink(Porter2).
 
--spec run_native_process(#job{}, string(), list(), #user{}) -> ok.
+-spec run_native_process(#job{}, string(), list(), #user{}) -> ok | {error, string()}.
 run_native_process(#job{id = JobId} = Job, Porter, ProcEnvs, User) ->
     WmPortArgs = [{exec, Porter ++ " -d"}],
     case wm_port:start_link(WmPortArgs) of
@@ -184,13 +193,19 @@ run_native_process(#job{id = JobId} = Job, Porter, ProcEnvs, User) ->
                     BinIn = prepare_porter_input(Job, User),
                     wm_port:cast(Pid, BinIn),
                     ?LOG_DEBUG("Job ~p has been started for user ~p", [JobId, User]),
-                    wm_event:announce(proc_started, {JobId, node()});
+                    wm_event:announce(proc_started, {JobId, node()}),
+                    ok;
                 Error ->
                     ?LOG_ERROR("Could not start ~p: ~p", [Porter, Error]),
-                    wm_event:announce(proc_failed, {JobId, node()})
+                    {error,
+                     lists:flatten(
+                         io_lib:format("Could not start porter: ~p", [Error]))}
             end;
         {error, ErrorMsg} ->
-            ?LOG_ERROR("Cannot start wm_port with args ~p: ~p", [WmPortArgs, ErrorMsg])
+            ?LOG_ERROR("Cannot start wm_port with args ~p: ~p", [WmPortArgs, ErrorMsg]),
+            {error,
+             lists:flatten(
+                 io_lib:format("Cannot start wm_port: ~p", [ErrorMsg]))}
     end.
 
 -spec prepare_porter_input(#job{}, #user{}) -> binary().
@@ -256,11 +271,34 @@ do_complete(Process, #mstate{job_id = JobId} = MState) ->
 do_announce_completed(Process, #mstate{job_id = JobId} = MState) ->
     EndTime = wm_utils:now_iso8601(without_ms),
     case wm_entity:get(state, Process) of
-        X when X == ?JOB_STATE_FINISHED orelse X == ?JOB_STATE_CANCELED ->
+        X when X == ?JOB_STATE_FINISHED orelse X == ?JOB_STATE_CANCELED orelse X == ?JOB_STATE_ERROR ->
             EventData = {MState#mstate.task_id, {JobId, Process, EndTime, node()}},
             wm_event:announce(wm_proc_done, EventData);
         _ ->
             ok
+    end.
+
+%% Mark job failed and notify compute so the parent (skyport) gets job_finished
+%% with ERROR + comment. Do not announce job_canceled: that triggers relocation
+%% destroy on this node and is for user cancel, not runtime failure.
+-spec fail_job(term(), #mstate{}) -> ok.
+fail_job(Reason, #mstate{job_id = JobId} = MState) ->
+    Msg = case Reason of
+              S when is_list(S) ->
+                  lists:flatten(S);
+              Other ->
+                  lists:flatten(
+                      io_lib:format("~p", [Other]))
+          end,
+    ?LOG_ERROR("Fail job ~p: ~s", [JobId, Msg]),
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, Job} ->
+            Job2 = wm_entity:set([{state, ?JOB_STATE_ERROR}, {state_details, Msg}, {comment, Msg}], Job),
+            1 = wm_conf:update([Job2]),
+            Process = wm_entity:set([{state, ?JOB_STATE_ERROR}, {comment, Msg}], wm_entity:new(process)),
+            do_announce_completed(Process, MState);
+        _ ->
+            ?LOG_ERROR("Cannot fail unknown job ~p", [JobId])
     end.
 
 -spec handle_event(term(), term(), #mstate{}) -> {atom(), atom(), #mstate{}}.

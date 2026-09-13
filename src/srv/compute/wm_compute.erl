@@ -241,7 +241,14 @@ add_proc(JobID, ProcID, JobNodes, MState) ->
 update_job(JobID, process, Process) ->
     update_job(JobID, state, wm_entity:get(state, Process)),
     update_job(JobID, exitcode, wm_entity:get(exitcode, Process)),
-    update_job(JobID, signal, wm_entity:get(signal, Process));
+    update_job(JobID, signal, wm_entity:get(signal, Process)),
+    case wm_entity:get(comment, Process) of
+        Comment when is_list(Comment), Comment =/= "" ->
+            update_job(JobID, comment, Comment),
+            update_job(JobID, state_details, Comment);
+        _ ->
+            ok
+    end;
 update_job(JobID, Attr, NewValue) ->
     case wm_conf:select(job, {id, JobID}) of
         {ok, Job1} ->

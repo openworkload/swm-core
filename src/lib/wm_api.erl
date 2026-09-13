@@ -2,7 +2,8 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, call_self/2, cast_self/2, call_self_process/5, cast_all_nodes_process/4, cast_self_confirm/2]).
+-export([start_link/1, call_self/2, cast_self/2, call_self_process/5, cast_all_nodes_process/4, cast_self_confirm/2,
+         cast_confirm/3]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("wm_log.hrl").
@@ -45,9 +46,15 @@ cast_self(Msg, Node) when is_atom(Node) ->
     cast_self(Msg, [Node]).
 
 %% @doc Cast message to gen_server module and wait for delivery confirmation
--spec cast_self_confirm(term(), [atom()]) -> ok.
+-spec cast_self_confirm(term(), [atom()]) -> boolean().
 cast_self_confirm(Msg, Nodes) when is_list(Nodes) ->
     Mod = wm_utils:get_calling_module_name(),
+    cast_confirm(Mod, Msg, Nodes).
+
+%% @doc Like cast_self_confirm/2 but with an explicit target module name
+%% (needed when the wait runs outside the registered gen_server process).
+-spec cast_confirm(atom(), term(), [atom()]) -> boolean().
+cast_confirm(Mod, Msg, Nodes) when is_atom(Mod), is_list(Nodes) ->
     %TODO: return on some timeout
     cast_all_nodes_process(Mod, Msg, Nodes, wait).
 

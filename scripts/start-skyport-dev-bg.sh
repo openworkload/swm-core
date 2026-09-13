@@ -29,8 +29,8 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # Ensure the skyport-dev container (same as `make cr`) is running, then start
-# swm-core and swm-cloud-gate inside it in the background. The script exits
-# after launch; services keep running in the container.
+# (or restart) swm-core and swm-cloud-gate inside it in the background. The
+# script exits after launch; services keep running in the container.
 #
 
 set -euo pipefail
@@ -113,10 +113,57 @@ gate_running() {
     in_container 'ss -lntp 2>/dev/null | grep -q ":8444 "'
 }
 
+stop_swm() {
+    if ! swm_running; then
+        return 0
+    fi
+    echo "Stopping swm-core in ${CONTAINER_NAME}..."
+    in_container "
+        set -e
+        source /usr/erlang/activate
+        cd '${ROOT_DIR}'
+        scripts/run-in-shell.sh -x -s || true
+    "
+    local i
+    for i in $(seq 1 30); do
+        if ! swm_running; then
+            echo "swm-core stopped"
+            return 0
+        fi
+        sleep 1
+    done
+    echo "WARN: swm-core still running after stop; killing beam.smp" >&2
+    in_container 'pkill -x beam.smp || true'
+    sleep 1
+}
+
+stop_gate() {
+    if ! gate_running; then
+        return 0
+    fi
+    echo "Stopping swm-cloud-gate in ${CONTAINER_NAME}..."
+    in_container "
+        pkill -f '${GATE_DIR}/run.py' 2>/dev/null || true
+        pkill -f '${GATE_DIR}/run.sh' 2>/dev/null || true
+        if ss -lntp 2>/dev/null | grep -q ':8444 '; then
+            pid=\$(ss -lntp 2>/dev/null | awk '/:8444 / {match(\$0, /pid=[0-9]+/); if (RSTART) print substr(\$0, RSTART+4, RLENGTH-4)}' | head -1)
+            if [ -n \"\$pid\" ]; then kill \"\$pid\" 2>/dev/null || true; fi
+        fi
+    "
+    local i
+    for i in $(seq 1 15); do
+        if ! gate_running; then
+            echo "swm-cloud-gate stopped"
+            return 0
+        fi
+        sleep 1
+    done
+    echo "WARN: swm-cloud-gate still listening on :8444 after stop" >&2
+}
+
 start_swm() {
     if swm_running; then
-        echo "swm-core already running in ${CONTAINER_NAME}"
-        return 0
+        stop_swm
     fi
     echo "Starting swm-core in background..."
     in_container "
@@ -157,8 +204,7 @@ check_gate_venv() {
 
 start_gate() {
     if gate_running; then
-        echo "swm-cloud-gate already listening on :8444"
-        return 0
+        stop_gate
     fi
     echo "Starting swm-cloud-gate in background..."
     # Detached exec so the gate keeps running after this script exits.
@@ -187,7 +233,7 @@ main() {
     start_swm
     start_gate
     echo
-    echo "Sky Port dev stack is running in ${CONTAINER_NAME}."
+    echo "Sky Port dev stack is running in ${CONTAINER_NAME} (services restarted if they were already up)."
     echo "  Attach shell:  make cr"
     echo "  swm log:       /opt/swm/spool/node@skyport.openworkload.org/log/"
     echo "  gate logs:     ${GATE_LOG} and /tmp/swm-cloud-gate.log (in container)"

@@ -4,14 +4,21 @@ After=network.target remote-fs.target
 Requires=network.target remote-fs.target
 
 [Service]
-Type=forking
-TimeoutStartSec=0
+# Use simple+foreground. Type=forking with `daemon` hangs in "activating":
+# `swm daemon` waits forever on `erl_rpc erlang is_alive`, which fails under
+# -proto_dist inet_tls (nodetool cannot complete dist handshake).
+Type=simple
+TimeoutStartSec=120
+TimeoutStopSec=60
 Restart=always
 RestartSec=5
 EnvironmentFile=/etc/swm.conf
 Environment=HOME=/root
-ExecStart=/bin/bash -c 'source {ENV} && {SCRIPT} daemon'
-ExecStop={SCRIPT} stop
+ExecStart=/bin/bash -c 'source {ENV} && exec {SCRIPT} foreground'
+# Prefer SIGTERM to the beam (Type=simple). `swm stop` uses the same
+# inet_tls RPC path and can hang the same way as daemon startup.
+KillMode=mixed
+KillSignal=SIGTERM
 
 [Install]
 WantedBy=multi-user.target

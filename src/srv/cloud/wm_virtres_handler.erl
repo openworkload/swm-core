@@ -2,7 +2,7 @@
 
 -export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/3,
          update_job/2, upload_swm_worker/2, start_job_data_uploading/3, start_job_data_downloading/3,
-         delete_partition/2, spawn_partition/2, wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0,
+         delete_partition/4, spawn_partition/2, wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0,
          wait_for_ssh_connection/1, remove_relocation_entities/1, ensure_entities_created/3,
          try_upload_worker_later/0]).
 
@@ -93,14 +93,20 @@ update_job(Params, JobId, ErrMsg) ->
 
 -spec upload_swm_worker(node_id(), string()) -> ok | {error, term()}.
 upload_swm_worker(RemoteNodeId, SshUserDir) ->
-    {ok, ToNode} = wm_conf:select(node, {id, RemoteNodeId}),
-    {ok, MyNode} = wm_self:get_node(),
-    {ToAddr, _} = wm_conf:get_relative_address(ToNode, MyNode),
     RemoteFile = "/opt/swm/swm-worker.tar.gz",
     DefaultWorkerPath = "/opt/swm/swm-worker.tar.gz",
-    DefaultWorkerPathFromEnv = os:getenv("SWM_WORKER_LOCAL_PATH", DefaultWorkerPath),
-    Port = wm_conf:g(ssh_prov_listen_port, {?DEFAULT_SSH_PROVISION_PORT, integer}),
-    wm_file_transfer:upload_file_sftp_sync(ToAddr, Port, DefaultWorkerPathFromEnv, RemoteFile, SshUserDir).
+    LocalWorkerPath = os:getenv("SWM_WORKER_LOCAL_PATH", DefaultWorkerPath),
+    case filelib:is_regular(LocalWorkerPath) of
+        false ->
+            ?LOG_ERROR("SWM worker package not found: ~p", [LocalWorkerPath]),
+            {error, {worker_not_found, LocalWorkerPath}};
+        true ->
+            {ok, ToNode} = wm_conf:select(node, {id, RemoteNodeId}),
+            {ok, MyNode} = wm_self:get_node(),
+            {ToAddr, _} = wm_conf:get_relative_address(ToNode, MyNode),
+            Port = wm_conf:g(ssh_prov_listen_port, {?DEFAULT_SSH_PROVISION_PORT, integer}),
+            wm_file_transfer:upload_file_sftp_sync(ToAddr, Port, LocalWorkerPath, RemoteFile, SshUserDir)
+    end.
 
 -spec start_job_data_uploading(node_id(), job_id(), string()) -> {ok, string()}.
 start_job_data_uploading(PartMgrNodeID, JobId, SshUserDir) ->
@@ -143,16 +149,29 @@ start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
             {error, Error}
     end.
 
--spec delete_partition(partition_id(), #remote{}) -> {ok, string()} | {error, atom()}.
-delete_partition(PartId, Remote) ->
+-spec delete_partition(partition_id() | undefined, string() | undefined, job_id(), #remote{}) ->
+                          {ok, string()} | {error, atom()}.
+delete_partition(_PartId, PartExtId, _JobId, Remote) when is_list(PartExtId), PartExtId =/= "" ->
+    %% Prefer the gate/Azure id cached by virtres: relocator may already have
+    %% deleted the local partition row on cancel.
+    wm_gate:delete_partition(self(), Remote, PartExtId);
+delete_partition(PartId, _PartExtId, JobId, Remote) when is_list(PartId), PartId =/= "" ->
     case wm_conf:select(partition, {id, PartId}) of
         {ok, Partition} ->
-            ExternalId = wm_entity:get(external_id, Partition),
-            wm_gate:delete_partition(self(), Remote, ExternalId);
+            case wm_entity:get(external_id, Partition) of
+                ExtId when is_list(ExtId), ExtId =/= "" ->
+                    wm_gate:delete_partition(self(), Remote, ExtId);
+                _ ->
+                    ?LOG_INFO("Partition ~p has no external_id => delete by name for job ~p", [PartId, JobId]),
+                    wm_gate:delete_partition(self(), Remote, get_partition_name(JobId))
+            end;
         {error, _} ->
-            ?LOG_INFO("Unknown partition, try to delete by id=~p", [PartId]),
-            wm_gate:delete_partition(self(), Remote, PartId)
-    end.
+            ?LOG_INFO("Unknown partition id=~p => delete by name for job ~p", [PartId, JobId]),
+            wm_gate:delete_partition(self(), Remote, get_partition_name(JobId))
+    end;
+delete_partition(_PartId, _PartExtId, JobId, Remote) ->
+    ?LOG_INFO("No partition id/ext_id => delete by name for job ~p", [JobId]),
+    wm_gate:delete_partition(self(), Remote, get_partition_name(JobId)).
 
 -spec spawn_partition(#job{}, #remote{}) -> {ok, string()} | {error, any()}.
 spawn_partition(Job, Remote) ->

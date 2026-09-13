@@ -18,6 +18,7 @@
 -export([find_property_in_resource/3]).
 -export([get_division_manager/3]).
 -export([is_cloud_node/1]).
+-export([is_local_submission_address/1]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -759,5 +760,24 @@ is_cloud_node(#node{remote_id = RemoteId}) ->
                       end,
                       [openstack, azure, aws, oci, gcp]);
         {error, not_found} ->
+            false
+    end.
+
+-spec is_local_submission_address(string() | not_found) -> boolean().
+is_local_submission_address(not_found) ->
+    false;
+is_local_submission_address("localhost") ->
+    true;
+is_local_submission_address("127.0.0.1") ->
+    true;
+is_local_submission_address("::1") ->
+    true;
+is_local_submission_address(Addr) when is_list(Addr) ->
+    case inet:parse_address(Addr) of
+        {ok, IP} ->
+            {ok, IfAddrs} = inet:getifaddrs(),
+            LocalIPs = [A || {_If, Opts} <- IfAddrs, {addr, A} <- Opts],
+            lists:member(IP, LocalIPs);
+        {error, _} ->
             false
     end.

@@ -164,7 +164,7 @@ get_scheduler() ->
         [] ->
             ?LOG_ERROR("Subdivision not found"),
             {error, not_found};
-        SubDiv ->
+        SubDiv when is_tuple(SubDiv), tuple_size(SubDiv) > 0 ->
             SchedID = wm_entity:get(scheduler, SubDiv),
             case wm_conf:select(scheduler, {id, SchedID}) of
                 {ok, Scheduler} ->
@@ -172,7 +172,10 @@ get_scheduler() ->
                     {SubDivType, Scheduler};
                 _ ->
                     {error, not_found}
-            end
+            end;
+        Other ->
+            ?LOG_ERROR("Unexpected subdivision value: ~p", [Other]),
+            {error, not_found}
     end.
 
 run_mock_scheduler(grid, #mstate{} = MState) ->

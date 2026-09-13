@@ -1274,9 +1274,12 @@ do_upload_file_sftp(RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir)
                         ?LOG_ERROR("Failed to upload file: ~p", [Reason]),
                         {error, Reason}
                 end;
-            {error, noent} ->
+            {error, enoent} ->
                 ?LOG_ERROR("No such local file: ~p", [LocalFilePath]),
-                {error, not_found}
+                {error, {worker_not_found, LocalFilePath}};
+            {error, Reason} ->
+                ?LOG_ERROR("Cannot read local file ~p: ~p", [LocalFilePath, Reason]),
+                {error, Reason}
         end,
     ssh_sftp:stop_channel(Channel),
     ssh:close(ConnRef),

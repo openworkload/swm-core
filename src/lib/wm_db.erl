@@ -20,9 +20,14 @@
 
 -define(MNESIA_DEFAULT_TIMEOUT, 15000).
 -define(MNESIA_DEFAULT_SAVE_PERIOD, 30000).
--define(DEFAULT_PROPAGATION_TIMEOUT, 60000).
+%% Must cover slow tunnel E3PC (large table dumps); clearing too early
+%% lets another reset_tabs wipe the worker before commit finishes.
+-define(DEFAULT_PROPAGATION_TIMEOUT, 600000).
 
--record(mstate, {propagations = maps:new() :: map()}).
+-record(mstate,
+        {propagations = maps:new() :: map(),
+         %% Nodes with reset_tabs/reset_db in flight before COMMIT_ID exists.
+         pending_nodes = sets:new() :: sets:set()}).
 
 %% ============================================================================
 %% API
@@ -138,11 +143,13 @@ ensure_tables_exist(Records) ->
 -spec propagate_tables([atom()], node_address()) -> ok.
 propagate_tables(Nodes, MyAddr) ->
     wm_event:subscribe(wm_commit_done, node(), ?MODULE),
+    wm_event:subscribe(wm_commit_failed, node(), ?MODULE),
     gen_server:cast(?MODULE, {propagate, Nodes, MyAddr}).
 
 -spec propagate_tables([atom()], atom(), node_address()) -> ok.
 propagate_tables(TabNames, Node, MyAddr) ->
     wm_event:subscribe(wm_commit_done, node(), ?MODULE),
+    wm_event:subscribe(wm_commit_failed, node(), ?MODULE),
     gen_server:cast(?MODULE, {propagate, TabNames, Node, MyAddr}).
 
 -spec delete(term()) -> {atomic, term()} | {aborted, term()}.
@@ -254,8 +261,14 @@ handle_call(Msg, From, MState) ->
     {reply, error, MState}.
 
 handle_cast({propagate, Node, MyAddr}, MState) ->
-    wm_api:cast_self({reset_db_request, MyAddr}, [Node]),
-    {noreply, MState};
+    case is_propagating_to(Node, MState) of
+        true ->
+            ?LOG_INFO("Skip reset_db/propagate to ~p: already in progress", [Node]),
+            {noreply, MState};
+        false ->
+            wm_api:cast_self({reset_db_request, MyAddr}, [Node]),
+            {noreply, mark_pending(Node, MState)}
+    end;
 handle_cast({reset_db_request, From, MyAddr}, MState) ->
     ?LOG_INFO("Recevied reset_db request from ~p", [From]),
     case do_ensure_running() of
@@ -286,18 +299,24 @@ handle_cast({reset_db_reply, Result, From}, MState) ->
     case Result of
         {error, Error} ->
             ?LOG_DEBUG("Cannot reset db on node ~p: ~p", [From, Error]),
-            {noreply, MState};
+            {noreply, clear_pending(From, MState)};
         ok ->
             ?LOG_DEBUG("Function reset_db() on node ~p has finished", [From]),
             All = wm_entity:get_names(all),
             NonReplTabs = wm_entity:get_names(non_replicable),
             ReplTabs = lists:subtract(All, NonReplTabs),
             MState2 = do_propagate_tables(ReplTabs, [From], MState),
-            {noreply, MState2}
+            {noreply, clear_pending(From, MState2)}
     end;
 handle_cast({propagate, TabNames, Node, MyAddr}, MState) ->
-    wm_api:cast_self({reset_tabs_request, TabNames, MyAddr}, [Node]),
-    {noreply, MState};
+    case is_propagating_to(Node, MState) of
+        true ->
+            ?LOG_INFO("Skip reset_tabs/propagate to ~p: already in progress", [Node]),
+            {noreply, MState};
+        false ->
+            wm_api:cast_self({reset_tabs_request, TabNames, MyAddr}, [Node]),
+            {noreply, mark_pending(Node, MState)}
+    end;
 handle_cast({reset_tabs_request, TabNames, From}, MState) ->
     MyAddr = wm_conf:get_my_relative_address(From),
     ?LOG_INFO("Received reset_tabs request from ~p: ~p", [From, TabNames]),
@@ -326,11 +345,11 @@ handle_cast({reset_tabs_reply, Result, From}, MState) ->
     case Result of
         {error, Error} ->
             ?LOG_DEBUG("Couldn't reset tables on ~p: ~p", [From, Error]),
-            {noreply, MState};
+            {noreply, clear_pending(From, MState)};
         {ok, TabNames} ->
             ?LOG_DEBUG("reset_tabs call to node ~p has finished", [From]),
             MState2 = do_propagate_tables(TabNames, [From], MState),
-            {noreply, MState2}
+            {noreply, clear_pending(From, MState2)}
     end;
 handle_cast({event, EventType, EventData}, MState) ->
     {noreply, handle_event(EventType, EventData, MState)};
@@ -341,9 +360,11 @@ handle_cast(Msg, MState) ->
 handle_info({check_propagation, COMMIT_ID}, MState) ->
     case maps:is_key(COMMIT_ID, MState#mstate.propagations) of
         true ->
-            ?LOG_DEBUG("Propagation ~p timeout detected", [COMMIT_ID]),
-            Map = maps:remove(COMMIT_ID, MState#mstate.propagations),
-            {noreply, MState#mstate{propagations = Map}};
+            %% Do not drop tracking: another reset_tabs would wipe the worker
+            %% while E3PC may still be finishing over a slow tunnel.
+            ?LOG_WARN("Propagation ~p still running after ~p ms", [COMMIT_ID, ?DEFAULT_PROPAGATION_TIMEOUT]),
+            wm_utils:wake_up_after(?DEFAULT_PROPAGATION_TIMEOUT, {check_propagation, COMMIT_ID}),
+            {noreply, MState};
         false ->
             ?LOG_DEBUG("Propagation ~p has already finished", [COMMIT_ID]),
             {noreply, MState}
@@ -377,7 +398,23 @@ handle_event(wm_commit_done, {COMMIT_ID, _}, MState) ->
             wm_event:announce(reconfigured_node, Nodes),
             Map = maps:remove(COMMIT_ID, MState#mstate.propagations),
             MState#mstate{propagations = Map}
-    end.
+    end;
+handle_event(wm_commit_failed, {COMMIT_ID, _}, MState) ->
+    ?LOG_DEBUG("Commit ~p failed; clear propagation tracking", [COMMIT_ID]),
+    Map = maps:remove(COMMIT_ID, MState#mstate.propagations),
+    MState#mstate{propagations = Map}.
+
+-spec is_propagating_to(node_address(), #mstate{}) -> boolean().
+is_propagating_to(Node, #mstate{propagations = Map, pending_nodes = Pending}) ->
+    sets:is_element(Node, Pending) orelse lists:any(fun(Nodes) -> lists:member(Node, Nodes) end, maps:values(Map)).
+
+-spec mark_pending(node_address(), #mstate{}) -> #mstate{}.
+mark_pending(Node, #mstate{pending_nodes = Pending} = MState) ->
+    MState#mstate{pending_nodes = sets:add_element(Node, Pending)}.
+
+-spec clear_pending(node_address(), #mstate{}) -> #mstate{}.
+clear_pending(Node, #mstate{pending_nodes = Pending} = MState) ->
+    MState#mstate{pending_nodes = sets:del_element(Node, Pending)}.
 
 -spec start_db() -> ok | {error, term()}.
 start_db() ->

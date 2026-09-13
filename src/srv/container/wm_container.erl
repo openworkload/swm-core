@@ -24,7 +24,7 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
--spec run(tuple(), string(), map(), pid()) -> term().
+-spec run(tuple(), string(), map(), pid()) -> {ok, #job{}} | {error, string()}.
 run(Job, Cmd, Envs, Owner) ->
     Steps = [create, attach, start, create_exec, start_exec, return_started],
     gen_server:call(?MODULE, {run, Job, Cmd, Envs, Owner, Steps}).
@@ -96,13 +96,19 @@ handle_call({list_images, unregistered}, _, #mstate{} = MState) ->
     {reply, Images, MState};
 handle_call({run, Job, Cmd, Envs, Owner, [create | Steps]}, _, #mstate{spool = Spool} = MState) ->
     Module = get_conteinerizer(),
-    {ContID, HttpProcPid} = Module:create(Job, Cmd, Envs, self(), Steps),
-    NewJob = wm_entity:set({container, ContID}, Job),
-    wm_conf:update([NewJob]),
-    JobID = wm_entity:get(id, Job),
-    {ok, LoggerPid} = wm_container_log:start_link([{spool, Spool}, {job_id, JobID}]),
-    Map = maps:put(ContID, {Owner, NewJob, HttpProcPid, LoggerPid}, MState#mstate.containers),
-    {reply, {ok, NewJob}, MState#mstate{containers = Map}};
+    case Module:ensure_create_ready(Job) of
+        {error, Msg} ->
+            ?LOG_ERROR("Container create pre-check failed for job ~p: ~s", [wm_entity:get(id, Job), Msg]),
+            {reply, {error, Msg}, MState};
+        ok ->
+            {ContID, HttpProcPid} = Module:create(Job, Cmd, Envs, self(), Steps),
+            NewJob = wm_entity:set({container, ContID}, Job),
+            wm_conf:update([NewJob]),
+            JobID = wm_entity:get(id, Job),
+            {ok, LoggerPid} = wm_container_log:start_link([{spool, Spool}, {job_id, JobID}]),
+            Map = maps:put(ContID, {Owner, NewJob, HttpProcPid, LoggerPid}, MState#mstate.containers),
+            {reply, {ok, NewJob}, MState#mstate{containers = Map}}
+    end;
 handle_call({communicate, Job, Owner, [attach_ws | Steps]}, _, #mstate{spool = Spool} = MState) ->
     Module = get_conteinerizer(),
     {ContID, HttpProcPid} = Module:attach_ws(Job, self(), Steps),

@@ -15,6 +15,8 @@
         {spool = "" :: string(),
          wait_ref = undefined :: string(),
          part_id = undefined :: string(),
+         %% Azure/gate id; keep even if relocator deletes the local partition row.
+         part_ext_id = undefined :: string() | undefined,
          template_node = undefined :: #node{},
          remote = undefined :: #remote{},
          job_id = undefined :: string(),
@@ -156,12 +158,13 @@ validating(cast,
                    wait_ref = Ref,
                    job_id = JobId,
                    part_id = PartId,
+                   part_ext_id = PartExtId,
                    remote = Remote,
                    err_msg = ErrMsg} =
                MState) ->
     ?LOG_DEBUG("Destroy remote partition while validating for job ~p", [JobId]),
     wm_virtres_handler:update_job([{state_details, "Destroying remote resources"}], JobId, ErrMsg),
-    {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, Remote),
+    {ok, WaitRef} = wm_virtres_handler:delete_partition(PartId, PartExtId, JobId, Remote),
     {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
 validating(cast,
            {error, Ref, Msg},
@@ -200,7 +203,7 @@ creating(cast,
     ?LOG_INFO("Partition spawned => check status: ~p, job ~p", [NewPartExtId, JobId]),
     wm_virtres_handler:update_job([{state_details, "Partition spawned"}], JobId, ErrMsg),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
-    {next_state, creating, MState#mstate{part_check_timer = Timer}};
+    {next_state, creating, MState#mstate{part_check_timer = Timer, part_ext_id = NewPartExtId}};
 creating(cast,
          {partition_fetched, Ref, Partition},
          #mstate{job_id = JobId,
@@ -209,7 +212,8 @@ creating(cast,
                  err_msg = ErrMsg} =
              MState) ->
     PartId = wm_entity:get(id, Partition),
-    ?LOG_DEBUG("Partition fetched for job ~p, partition id: ~p", [JobId, PartId]),
+    PartExtId = wm_entity:get(external_id, Partition),
+    ?LOG_DEBUG("Partition fetched for job ~p, partition id: ~p, external_id: ~p", [JobId, PartId, PartExtId]),
     case wm_entity:get(state, Partition) of
         up ->
             wm_virtres_handler:update_job([{state_details, "Waiting for ssh provisioning port"}], JobId, ErrMsg),
@@ -222,6 +226,7 @@ creating(cast,
                      creating,
                      MState#mstate{wait_ref = Ref,
                                    part_id = PartId,
+                                   part_ext_id = PartExtId,
                                    ssh_prov_conn_timer = Timer,
                                    ssh_prov_client_pid = SshProvClientPid,
                                    part_mgr_id = PartMgrNodeId}};
@@ -233,7 +238,11 @@ creating(cast,
             ?LOG_DEBUG("Partition fetched, but it is not fully created: ~p, job: ~p", [Other, JobId]),
             wm_virtres_handler:update_job([{state_details, "Waiting for partition readiness"}], JobId, ErrMsg),
             Timer = wm_virtres_handler:wait_for_partition_fetch(),
-            {next_state, creating, MState#mstate{part_check_timer = Timer}}
+            {next_state,
+             creating,
+             MState#mstate{part_check_timer = Timer,
+                           part_id = PartId,
+                           part_ext_id = PartExtId}}
     end;
 creating(cast,
          ssh_prov_connected,
@@ -262,9 +271,20 @@ creating(cast,
             ?LOG_DEBUG("New node is not ready to accept the worker file fia sftp => try again later"),
             Timer = wm_virtres_handler:try_upload_worker_later(),
             {next_state, creating, MState#mstate{worker_reupload_timer = Timer}};
+        {error, {worker_not_found, Path}} ->
+            ErrorMsg = "Worker package not found: " ++ Path,
+            ?LOG_ERROR("SWM worker uploading failed for job ~p: ~s", [JobId, ErrorMsg]),
+            wm_virtres_handler:update_job([{state, ?JOB_STATE_ERROR}, {state_details, ErrorMsg}], JobId),
+            gen_statem:cast(self(), start_destroying),
+            {next_state, destroying, MState#mstate{download_ref = finished, err_msg = ErrorMsg}};
         {error, Error} ->
-            ?LOG_ERROR("SWM worker uploading failed: ~p", [Error]),
-            {stop, {shutdown, Error}, MState}
+            ErrorMsg =
+                lists:flatten(
+                    io_lib:format("SWM worker uploading failed: ~p", [Error])),
+            ?LOG_ERROR("SWM worker uploading failed for job ~p: ~p", [JobId, Error]),
+            wm_virtres_handler:update_job([{state, ?JOB_STATE_ERROR}, {state_details, ErrorMsg}], JobId),
+            gen_statem:cast(self(), start_destroying),
+            {next_state, destroying, MState#mstate{download_ref = finished, err_msg = ErrorMsg}}
     end;
 creating(cast,
          ssh_swm_connected,
@@ -371,12 +391,13 @@ destroying(cast,
            #mstate{task_id = TaskId,
                    job_id = JobId,
                    part_id = PartId,
+                   part_ext_id = PartExtId,
                    remote = Remote,
                    err_msg = ErrMsg} =
                MState) ->
-    ?LOG_DEBUG("Destroy remote partition ~p for job ~p (task_id: ~p)", [PartId, JobId, TaskId]),
+    ?LOG_DEBUG("Destroy remote partition ~p (ext=~p) for job ~p (task_id: ~p)", [PartId, PartExtId, JobId, TaskId]),
     wm_virtres_handler:update_job([{state_details, "Start the partition resources destroying"}], JobId, ErrMsg),
-    case wm_virtres_handler:delete_partition(PartId, Remote) of
+    case wm_virtres_handler:delete_partition(PartId, PartExtId, JobId, Remote) of
         {ok, WaitRef} ->
             ok = wm_virtres_handler:remove_relocation_entities(JobId),
             {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
@@ -477,23 +498,33 @@ stop_port_forwarding(#mstate{job_id = JobId, proxy_pids = ProxyPids}) ->
 -spec start_proxies(job_id(), [{string(), inet:port_number(), inet:port_number()}]) -> [pid()].
 start_proxies(JobId, ForwardedPortTuples) ->
     JobAddr = wm_resource_utils:get_job_networking_info(JobId, submission_address),
-    ?LOG_INFO("Start proxing ~p ports for job ~p to job submission address: ~p",
-              [length(ForwardedPortTuples), JobId, JobAddr]),
-    lists:foldl(fun ({"out", PortDst, PortSrc}, ProxyPids) ->
-                        case wm_tcp_proxy:start_link(PortSrc, JobAddr, PortDst) of
-                            {ok, Pid} ->
-                                ?LOG_DEBUG("Started proxy ~p -> ~p:~p with pid=~p", [PortSrc, JobAddr, PortDst, Pid]),
-                                [Pid | ProxyPids];
-                            {error, Reason} ->
-                                ?LOG_ERROR("Failed to start proxy ~p -> ~p:~p: ~p",
-                                           [PortSrc, JobAddr, PortDst, Reason]),
+    JobOutPorts = [P || {"out", _, _} = P <- wm_resource_utils:get_job_networking_info(JobId, ports)],
+    case {wm_utils:is_local_submission_address(JobAddr), JobOutPorts} of
+        {true, []} ->
+            ?LOG_INFO("Skip TCP proxies for job ~p: client is on the same machine and no "
+                      "proxy ports were requested",
+                      [JobId]),
+            [];
+        _ ->
+            ?LOG_INFO("Start proxing ~p ports for job ~p to job submission address: ~p",
+                      [length(ForwardedPortTuples), JobId, JobAddr]),
+            lists:foldl(fun ({"out", PortDst, PortSrc}, ProxyPids) ->
+                                case wm_tcp_proxy:start_link(PortSrc, JobAddr, PortDst) of
+                                    {ok, Pid} ->
+                                        ?LOG_DEBUG("Started proxy ~p -> ~p:~p with pid=~p",
+                                                   [PortSrc, JobAddr, PortDst, Pid]),
+                                        [Pid | ProxyPids];
+                                    {error, Reason} ->
+                                        ?LOG_ERROR("Failed to start proxy ~p -> ~p:~p: ~p",
+                                                   [PortSrc, JobAddr, PortDst, Reason]),
+                                        ProxyPids
+                                end;
+                            ({"in", _, _}, ProxyPids) ->
                                 ProxyPids
-                        end;
-                    ({"in", _, _}, ProxyPids) ->
-                        ProxyPids
-                end,
-                [],
-                ForwardedPortTuples).
+                        end,
+                        [],
+                        ForwardedPortTuples)
+    end.
 
 -spec try_ssh_connection(pos_integer(), pid(), job_id(), atom(), node_id(), string(), string(), string()) ->
                             ok | not_ready.
@@ -546,11 +577,13 @@ handle_event(destroy,
              #mstate{task_id = TaskId,
                      job_id = JobId,
                      part_id = PartId,
+                     part_ext_id = PartExtId,
                      remote = Remote} =
                  MState) ->
-    ?LOG_DEBUG("Destroy remote partition for job ~p (task_id: ~p)", [JobId, TaskId]),
+    ?LOG_DEBUG("Destroy remote partition for job ~p (part=~p, ext=~p, task_id: ~p)",
+               [JobId, PartId, PartExtId, TaskId]),
     wm_virtres_handler:update_job([{state_details, "Destroying partition resources"}], JobId),
-    case wm_virtres_handler:delete_partition(PartId, Remote) of
+    case wm_virtres_handler:delete_partition(PartId, PartExtId, JobId, Remote) of
         {ok, WaitRef} ->
             {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
         {error, not_found} ->
