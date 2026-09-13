@@ -8,6 +8,10 @@
 -export([get_base_partition/1]).
 -export([relocate_job/1]).
 
+-ifdef(EUNIT).
+-export([select_jobs_waiting_for_relocation/1]).
+-endif.
+
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
 -include("../../../include/wm_scheduler.hrl").
@@ -69,12 +73,15 @@ init(_) ->
     wm_event:subscribe(job_finished, node(), ?MODULE),
     wm_event:subscribe(job_canceled, node(), ?MODULE),
     restart_stopped_virtres_processes(),
+    schedule_new_relocations(),
     {ok, MState}.
 
 handle_call({relocate, JobId}, _, #mstate{} = MState) ->
     {reply, start_new_virtres_processes(JobId), MState};
 handle_call({cancel_relocation, Job}, _, MState = #mstate{}) ->
-    {reply, do_cancel_relocation(Job), MState}.
+    Reply = do_cancel_relocation(Job),
+    start_waiting_relocations(),
+    {reply, Reply, MState}.
 
 handle_cast({event, job_canceled, {JobId, _, _, _}}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job canceled => cancel relocation / drop pinger addresses: ~p", [JobId]),
@@ -87,6 +94,7 @@ handle_cast({event, job_canceled, {JobId, _, _, _}}, #mstate{} = MState) ->
         _ ->
             ok
     end,
+    start_waiting_relocations(),
     {noreply, MState};
 handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job finished: ~p", [JobId]),
@@ -114,10 +122,15 @@ handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
                     ok
             end
     end,
+    start_waiting_relocations(),
     {noreply, MState};
 handle_cast(_, #mstate{} = MState) ->
     {noreply, MState}.
 
+handle_info(relocate_jobs, #mstate{} = MState) ->
+    start_waiting_relocations(),
+    schedule_new_relocations(),
+    {noreply, MState};
 handle_info(_, #mstate{} = MState) ->
     {noreply, MState}.
 
@@ -192,6 +205,11 @@ restart_stopped_virtres_processes() ->
             end
     end.
 
+-spec schedule_new_relocations() -> reference().
+schedule_new_relocations() ->
+    Ms = wm_conf:g(relocation_interval, {?DEFAULT_RELOCATION_INTERVAL, integer}),
+    wm_utils:wake_up_after(Ms, relocate_jobs).
+
 -spec start_new_virtres_processes(job_id()) -> ok | {error, term()}.
 start_new_virtres_processes(JobId) ->
     case wm_conf:select(job, {id, JobId}) of
@@ -201,16 +219,97 @@ start_new_virtres_processes(JobId) ->
             Max = wm_conf:g(max_relocations, {?MAX_RELOCATIONS, integer}),
             case RelocationsNum < Max of
                 true ->
-                    [NewRelocation] = spawn_virtres_if_needed(Job, []),
-                    wm_conf:update(NewRelocation),
-                    ok;
+                    case spawn_virtres_if_needed(Job, []) of
+                        [NewRelocation] ->
+                            wm_conf:update(NewRelocation),
+                            ok;
+                        [] ->
+                            ?LOG_ERROR("Failed to spawn virtres for job ~p", [JobId]),
+                            {error, "Failed to spawn virtres"}
+                    end;
                 false ->
-                    %TODO: restart job relocation eventually
-                    ?LOG_DEBUG("Too many relocations (~p), job will wait: ~p", [RelocationsNum, JobId])
+                    %% Job already has a template node from the scheduler; it will
+                    %% be picked up by start_waiting_relocations/0 when a slot frees
+                    %% or on the next relocation_interval tick.
+                    ?LOG_DEBUG("Too many relocations (~p), job will wait: ~p", [RelocationsNum, JobId]),
+                    ok
             end;
         {error, not_found} ->
             ?LOG_ERROR("Relocatable job not found: ~p", [JobId]),
             {error, "Relocatable job not found"}
+    end.
+
+%% @doc Start relocations for jobs that were deferred because MAX_RELOCATIONS was reached.
+-spec start_waiting_relocations() -> ok.
+start_waiting_relocations() ->
+    RelocationsNum = wm_conf:get_size(relocation),
+    Max = wm_conf:g(max_relocations, {?MAX_RELOCATIONS, integer}),
+    case RelocationsNum < Max of
+        false ->
+            ?LOG_DEBUG("Too many relocations (~p) when max=~p", [RelocationsNum, Max]),
+            ok;
+        true ->
+            AllowToRelocate = Max - RelocationsNum,
+            case select_jobs_waiting_for_relocation(AllowToRelocate) of
+                [] ->
+                    ok;
+                Jobs ->
+                    ?LOG_INFO("Start waiting relocation(s) for ~p job(s) (slots=~p)",
+                              [length(Jobs), AllowToRelocate]),
+                    lists:foreach(fun(Job) ->
+                                     JobId = wm_entity:get(id, Job),
+                                     case spawn_virtres_if_needed(Job, []) of
+                                         [NewRelocation] ->
+                                             wm_conf:update(NewRelocation);
+                                         [] ->
+                                             ?LOG_DEBUG("Could not start waiting relocation for job ~p", [JobId])
+                                     end
+                                  end,
+                                  Jobs)
+            end
+    end.
+
+-spec select_jobs_waiting_for_relocation(non_neg_integer()) -> [#job{}].
+select_jobs_waiting_for_relocation(Limit) when Limit =< 0 ->
+    [];
+select_jobs_waiting_for_relocation(Limit) ->
+    Filter =
+        fun (#job{state = S,
+                  relocatable = true,
+                  revision = R,
+                  nodes = Nodes})
+                when R > 0, Nodes =/= [] ->
+                lists:member(S, [?JOB_STATE_QUEUED, ?JOB_STATE_WAITING]);
+            (_) ->
+                false
+        end,
+    case wm_conf:select(job, Filter) of
+        {error, not_found} ->
+            [];
+        {ok, Jobs} when is_list(Jobs) ->
+            Waiting =
+                lists:filter(fun(Job) ->
+                                JobId = wm_entity:get(id, Job),
+                                case wm_conf:select(relocation, {job_id, JobId}) of
+                                    {error, not_found} ->
+                                        true;
+                                    {ok, _} ->
+                                        false
+                                end
+                             end,
+                             Jobs),
+            Sorted =
+                lists:sort(fun(A, B) ->
+                              wm_entity:get(submit_time, A) =< wm_entity:get(submit_time, B)
+                           end,
+                           Waiting),
+            case length(Sorted) > Limit of
+                true ->
+                    {Selected, _} = lists:split(Limit, Sorted),
+                    Selected;
+                false ->
+                    Sorted
+            end
     end.
 
 % @doc Restart job relocation process that was started in the past but stopped by some reason
@@ -346,3 +445,62 @@ delete_partition_entity(Job, PartID) ->
         {error, not_found} ->
             {error, not_found}
     end.
+
+-ifdef(EUNIT).
+
+-include_lib("eunit/include/eunit.hrl").
+
+% ./rebar3 eunit --module=wm_relocator
+
+-spec make_job(string(), string(), [node_id()], string()) -> #job{}.
+make_job(Id, State, Nodes, SubmitTime) ->
+    wm_entity:set([{id, Id},
+                   {state, State},
+                   {nodes, Nodes},
+                   {submit_time, SubmitTime},
+                   {relocatable, true},
+                   {revision, 1}],
+                  wm_entity:new(job)).
+
+-spec select_jobs_waiting_for_relocation_test_() -> term().
+select_jobs_waiting_for_relocation_test_() ->
+    {setup,
+     fun() ->
+        meck:new(wm_conf, [passthrough]),
+        JobActive = make_job("active", ?JOB_STATE_WAITING, ["tpl1"], "2020-01-01T00:00:00"),
+        JobWait1 = make_job("wait-1", ?JOB_STATE_QUEUED, ["tpl1"], "2020-01-01T00:00:02"),
+        JobWait2 = make_job("wait-2", ?JOB_STATE_WAITING, ["tpl1"], "2020-01-01T00:00:01"),
+        JobNoNodes = make_job("no-nodes", ?JOB_STATE_QUEUED, [], "2020-01-01T00:00:00"),
+        JobRunning = make_job("running", ?JOB_STATE_RUNNING, ["tpl1"], "2020-01-01T00:00:00"),
+        AllJobs = [JobActive, JobWait1, JobWait2, JobNoNodes, JobRunning],
+        meck:expect(wm_conf,
+                    select,
+                    fun (job, Filter) when is_function(Filter) ->
+                            {ok, lists:filter(Filter, AllJobs)};
+                        (relocation, {job_id, "active"}) ->
+                            {ok, wm_entity:set([{id, 1}, {job_id, "active"}], wm_entity:new(relocation))};
+                        (relocation, {job_id, _}) ->
+                            {error, not_found};
+                        (Tab, Key) ->
+                            meck:passthrough([Tab, Key])
+                    end),
+        ok
+     end,
+     fun(_) ->
+        meck:unload(wm_conf)
+     end,
+     fun(_) ->
+        [{"empty limit", ?_assertEqual([], select_jobs_waiting_for_relocation(0))},
+         {"oldest waiting job first",
+          fun() ->
+             Selected = select_jobs_waiting_for_relocation(1),
+             ?assertEqual(["wait-2"], [wm_entity:get(id, J) || J <- Selected])
+          end},
+         {"respects limit and skips active relocation",
+          fun() ->
+             Selected = select_jobs_waiting_for_relocation(10),
+             ?assertEqual(["wait-2", "wait-1"], [wm_entity:get(id, J) || J <- Selected])
+          end}]
+     end}.
+
+-endif.
