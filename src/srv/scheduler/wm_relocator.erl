@@ -4,7 +4,7 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([cancel_relocation/1, remove_relocation_entities/1]).
+-export([cancel_relocation/1, remove_relocation_entities/1, remove_relocation_entities/2]).
 -export([get_base_partition/1]).
 -export([relocate_job/1]).
 
@@ -37,9 +37,18 @@ cancel_relocation(Job) ->
 
 -spec remove_relocation_entities(#job{}) -> ok.
 remove_relocation_entities(Job) ->
+    remove_relocation_entities(Job, true).
+
+-spec remove_relocation_entities(#job{}, boolean()) -> ok.
+remove_relocation_entities(Job, ReloadTopology) ->
     JobRss = wm_entity:get(resources, Job),
     Count = delete_resources(JobRss, Job, 0),
-    wm_topology:reload(),
+    case ReloadTopology of
+        true ->
+            wm_topology:reload();
+        false ->
+            ok
+    end,
     ?LOG_DEBUG("Deleted ~p entities for job ~p", [Count, wm_entity:get(id, Job)]).
 
 -spec relocate_job(job_id()) -> ok | {error, term()}.

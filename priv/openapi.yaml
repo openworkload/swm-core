@@ -111,6 +111,23 @@ paths:
                 items:
                   $ref: '#/components/schemas/Job'
 
+    delete:
+      summary: Purge all jobs for the authenticated user
+      description: >-
+        Permanently removes all jobs belonging to the authenticated user from
+        the configuration database, including related timetable and relocation
+        (allocation) records. Remote cloud resources are cancelled when possible.
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: User not found or certificate missing
+
   '/user/job/{jobId}':
     get:
       summary: Find job by ID

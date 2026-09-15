@@ -279,13 +279,27 @@ get_job_list() ->
 
 -spec delete_job(map()) -> {string(), pos_integer()}.
 delete_job(Req) ->
-    ?LOG_DEBUG("Handle job cancellation HTTP request with url=~p", [maps:get(path, Req, undefined)]),
+    ?LOG_DEBUG("Handle job deletion HTTP request with url=~p", [maps:get(path, Req, undefined)]),
     case Req of
+        #{path := <<"/user/job">>} ->
+            purge_jobs(Req);
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
             {string, Msg} = gen_server:call(wm_user, {cancel, [binary_to_list(JobId)]}),
             {Msg, ?HTTP_CODE_OK};
         _ ->
             {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
+    end.
+
+-spec purge_jobs(map()) -> {string(), pos_integer()}.
+purge_jobs(Req) ->
+    CertBin = maps:get(cert, Req, undefined),
+    case get_username_from_cert(CertBin) of
+        {error, Error} ->
+            {Error, ?HTTP_CODE_BAD_REQUEST};
+        {ok, Username} ->
+            %% Purge can touch many jobs; allow longer than the default 5s call.
+            {string, Msg} = gen_server:call(wm_user, {purge, Username}, 120000),
+            {Msg, ?HTTP_CODE_OK}
     end.
 
 -spec update_job(map()) -> {string(), pos_integer()}.
@@ -361,7 +375,9 @@ do_submit_jobscript_path(Path, CertBin, IpStr) ->
             {error, ?HTTP_CODE_NOT_FOUND}
     end.
 
--spec get_username_from_cert(binary()) -> {ok, string()} | {error, string()}.
+-spec get_username_from_cert(binary() | undefined) -> {ok, string()} | {error, string()}.
+get_username_from_cert(undefined) ->
+    {error, "Client certificate is required"};
 get_username_from_cert(CertBin) ->
     Cert = public_key:pkix_decode_cert(CertBin, otp),
     UserID = wm_cert:get_uid(Cert),

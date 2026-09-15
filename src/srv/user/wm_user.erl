@@ -55,6 +55,8 @@ handle_call({requeue, JIDs}, _From, MState) ->
     {reply, handle_request(requeue, JIDs, MState), MState};
 handle_call({cancel, JIDs}, _From, MState) ->
     {reply, handle_request(cancel, JIDs, MState), MState};
+handle_call({purge, Username}, _From, MState) ->
+    {reply, handle_request(purge, Username, MState), MState};
 handle_call({submit, JobScriptContent, Filename, Username, IpStr}, _From, MState) ->
     {reply, handle_request(submit, {JobScriptContent, Filename, Username, IpStr}, MState), MState};
 handle_call({list, TabList}, _From, MState) ->
@@ -194,6 +196,43 @@ handle_request(cancel, Args, _) ->
     NotFoundIds = lists:map(fun({_, ID}) -> ID end, NotFoundFiltered),
     Msg = "Canceled: " ++ lists:join(", ", CanceledIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
     {string, Msg};
+handle_request(purge, Username, _) ->
+    ?LOG_INFO("Jobs purge has been requested by user ~p", [Username]),
+    case wm_conf:select(user, {name, Username}) of
+        {error, not_found} ->
+            {string, io_lib:format("User ~s is not registered", [Username])};
+        {ok, User} ->
+            UserId = wm_entity:get(id, User),
+            Filter =
+                fun (#job{user_id = Uid}) when Uid == UserId ->
+                        true;
+                    (_) ->
+                        false
+                end,
+            Jobs =
+                case wm_conf:select(job, Filter) of
+                    {ok, List} when is_list(List) ->
+                        List;
+                    {error, not_found} ->
+                        [];
+                    Other when is_list(Other) ->
+                        Other;
+                    _ ->
+                        []
+                end,
+            Results = lists:map(fun purge_one_job/1, Jobs),
+            PurgedIds = [Id || {purged, Id} <- Results],
+            case PurgedIds of
+                [] ->
+                    ok;
+                _ ->
+                    catch wm_topology:reload()
+            end,
+            Msg =
+                io_lib:format("Purged ~p job(s): ~s",
+                              [length(PurgedIds), string:join(PurgedIds, ", ")]),
+            {string, lists:flatten(Msg)}
+    end;
 handle_request(list, {[flavor], Limit}, _) ->
     Nodes = wm_conf:select(node, {all, Limit}),
     lists:filter(fun(X) -> wm_entity:get(is_template, X) == true end, Nodes);
@@ -279,6 +318,49 @@ cancel_jobs([JobId | T], Results) ->
                 {not_found, JobId}
         end,
     cancel_jobs(T, [Result | Results]).
+
+-spec purge_one_job(#job{}) -> {purged, job_id()}.
+purge_one_job(#job{} = Job) ->
+    JobId = wm_entity:get(id, Job),
+    ?LOG_DEBUG("Purge job ~p from configuration database", [JobId]),
+    %% Kick off remote destroy without waiting (gate RPC must not block purge).
+    case {wm_entity:get(relocatable, Job), wm_entity:get(state, Job)} of
+        {true, State}
+            when State =/= ?JOB_STATE_FINISHED,
+                 State =/= ?JOB_STATE_ERROR,
+                 State =/= ?JOB_STATE_CANCELED ->
+            catch wm_factory:new(virtres, {destroy, JobId, undefined}, []);
+        _ ->
+            ok
+    end,
+    delete_job_timetable(JobId),
+    case wm_conf:select(relocation, {job_id, JobId}) of
+        {ok, Relocation} ->
+            wm_conf:delete(Relocation);
+        _ ->
+            ok
+    end,
+    %% Skip per-job topology reload (~15s+ each); caller reloads once.
+    catch wm_relocator:remove_relocation_entities(Job, false),
+    wm_conf:delete(Job),
+    {purged, JobId}.
+
+-spec delete_job_timetable(job_id()) -> ok.
+delete_job_timetable(JobId) ->
+    Filter =
+        fun (#timetable{job_id = Jid}) when Jid == JobId ->
+                true;
+            (_) ->
+                false
+        end,
+    case wm_conf:select(timetable, Filter) of
+        {ok, Rows} when is_list(Rows) ->
+            lists:foreach(fun(Row) -> wm_conf:delete(Row) end, Rows);
+        List when is_list(List) ->
+            lists:foreach(fun(Row) -> wm_conf:delete(Row) end, List);
+        _ ->
+            ok
+    end.
 
 -spec set_defaults(#job{}, string()) -> #job{}.
 set_defaults(#job{workdir = [], id = JobId} = Job, Spool) ->
