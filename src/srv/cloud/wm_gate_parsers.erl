@@ -137,10 +137,33 @@ fill_flavor_node_params([_ | T], Node, AccountId) ->
 parse_partition_created(Bin) ->
     JsonStr = binary_to_list(Bin),
     case wm_json:decode(JsonStr) of
-        {struct, [{<<"partition">>, {struct, [{<<"id">>, PartIdBin} | _]}}]} ->
-            {ok, binary_to_list(PartIdBin)};
-        {struct, [{<<"error">>, Msg}, {<<"partition">>, {struct, [{<<"id">>, PartIdBin} | _]}}]} ->
-            {error, {Msg, {part_id, binary_to_list(PartIdBin)}}};
+        {struct, Fields} when is_list(Fields) ->
+            Error = proplists:get_value(<<"error">>, Fields),
+            Partition = proplists:get_value(<<"partition">>, Fields),
+            case {Partition, Error} of
+                {{struct, PartFields}, undefined} ->
+                    case proplists:get_value(<<"id">>, PartFields) of
+                        PartIdBin when is_binary(PartIdBin) ->
+                            {ok, binary_to_list(PartIdBin)};
+                        _ ->
+                            {error, {invalid_partition, Fields}}
+                    end;
+                {{struct, PartFields}, Msg} when Msg =/= undefined ->
+                    PartId =
+                        case proplists:get_value(<<"id">>, PartFields) of
+                            PartIdBin when is_binary(PartIdBin) ->
+                                binary_to_list(PartIdBin);
+                            _ ->
+                                undefined
+                        end,
+                    {error, {Msg, {part_id, PartId}}};
+                {_, Msg} when Msg =/= undefined, Msg =/= null ->
+                    %% Gate returns HTTP 200 with {"error": "...", "partition": null}
+                    %% for permanent Azure failures (e.g. QuotaExceeded).
+                    {error, Msg};
+                _ ->
+                    {error, Fields}
+            end;
         Error ->
             {error, Error}
     end.
@@ -354,5 +377,16 @@ parse_partitions_test() ->
     ?assertMatch({ok, []}, parse_partitions(<<"{\"partitions\":[]}">>)),
     ?assertMatch({error, _}, parse_partitions(<<"foo">>)),
     ?assertMatch({error, _}, parse_partitions(<<"">>)).
+
+-spec parse_partition_created_test() -> ok.
+parse_partition_created_test() ->
+    ?assertEqual({ok, "part-1"}, parse_partition_created(<<"{\"partition\":{\"id\":\"part-1\",\"name\":\"n1\"}}">>)),
+    ?assertMatch({error, {<<"boom">>, {part_id, "part-2"}}},
+                 parse_partition_created(<<"{\"error\":\"boom\",\"partition\":{\"id\":\"part-2\"}}">>)),
+    ?assertEqual({error, <<"Error from Azure: QuotaExceeded">>},
+                 parse_partition_created(<<"{\"error\":\"Error from Azure: QuotaExceeded\",\"partition\":null}">>)),
+    ?assertEqual({error, <<"Cannot create Azure deployment">>},
+                 parse_partition_created(<<"{\"error\":\"Cannot create Azure deployment\"}">>)),
+    ?assertMatch({error, _}, parse_partition_created(<<"foo">>)).
 
 -endif.

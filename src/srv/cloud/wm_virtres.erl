@@ -300,16 +300,13 @@ creating(cast,
                    readiness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
                    proxy_pids = start_proxies(JobId, ForwardedPortTuples)}};
 creating(cast, {error, Ref, {Msg, {part_id, PartId}}}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
-    ErrorMsg = "Partition creation error: " ++ binary_to_list(Msg),
-    wm_virtres_handler:update_job([{state, ?JOB_STATE_ERROR}, {state_details, ErrorMsg}], JobId),
-    ?LOG_ERROR("Partition cannot be created for job ~p (~p)", [JobId, ErrorMsg]),
-    gen_statem:cast(self(), start_destroying),
-    {next_state,
-     destroying,
-     MState#mstate{download_ref = finished,
-                   part_id = PartId,
-                   err_msg = ErrorMsg}};
+    fail_partition_creation(JobId, Msg, MState#mstate{part_id = PartId});
+creating(cast, {error, Ref, Msg}, #mstate{wait_ref = Ref, job_id = JobId} = MState)
+    when is_binary(Msg); is_list(Msg) andalso Msg =/= [] andalso is_integer(hd(Msg)) ->
+    %% Permanent gate/cloud creation failure (e.g. Azure QuotaExceeded).
+    fail_partition_creation(JobId, Msg, MState);
 creating(cast, {error, Ref, Error}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
+    %% Transient fetch errors (e.g. not_found while Azure is still provisioning).
     wm_virtres_handler:update_job([{state_details, "Partition has not been created yet"}], JobId),
     ?LOG_DEBUG("Partition has not been created yet for job ~p (~p)", [JobId, Error]),
     Timer = wm_virtres_handler:wait_for_partition_fetch(),
@@ -427,6 +424,50 @@ destroying(cast, Msg, MState) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
+
+-spec fail_partition_creation(job_id(), term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+fail_partition_creation(JobId, Reason, #mstate{} = MState) ->
+    ErrorMsg = "Partition creation error: " ++ format_creation_error(Reason),
+    ?LOG_ERROR("Partition cannot be created for job ~p (~s)", [JobId, ErrorMsg]),
+    wm_virtres_handler:update_job([{state, ?JOB_STATE_ERROR}, {state_details, ErrorMsg}, {comment, ErrorMsg}], JobId),
+    %% Drop relocation row so MAX_RELOCATIONS is not blocked; do not announce
+    %% job_finished here (that would start the download path in virtres).
+    case wm_conf:select(relocation, {job_id, JobId}) of
+        {ok, Relocation} ->
+            wm_conf:delete(Relocation);
+        _ ->
+            ok
+    end,
+    gen_statem:cast(self(), start_destroying),
+    {next_state,
+     destroying,
+     MState#mstate{download_ref = finished,
+                   wait_ref = undefined,
+                   err_msg = ErrorMsg}}.
+
+-spec format_creation_error(term()) -> string().
+format_creation_error(Msg) when is_binary(Msg) ->
+    truncate_error(binary_to_list(Msg));
+format_creation_error(Msg) when is_list(Msg) ->
+    case Msg of
+        [C | _] when is_integer(C) ->
+            truncate_error(lists:flatten(Msg));
+        _ ->
+            truncate_error(lists:flatten(
+                               io_lib:format("~p", [Msg])))
+    end;
+format_creation_error(Other) ->
+    truncate_error(lists:flatten(
+                       io_lib:format("~p", [Other]))).
+
+-spec truncate_error(string()) -> string().
+truncate_error(Str) ->
+    case length(Str) > 500 of
+        true ->
+            lists:sublist(Str, 500) ++ "...";
+        false ->
+            Str
+    end.
 
 -spec handle_remote_failure(#mstate{}) -> {atom(), atom(), #mstate{}}.
 handle_remote_failure(#mstate{job_id = JobId, task_id = TaskId} = MState) ->

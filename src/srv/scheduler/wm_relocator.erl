@@ -9,7 +9,9 @@
 -export([relocate_job/1]).
 
 -ifdef(EUNIT).
+
 -export([select_jobs_waiting_for_relocation/1]).
+
 -endif.
 
 -include("../../lib/wm_log.hrl").
@@ -254,8 +256,7 @@ start_waiting_relocations() ->
                 [] ->
                     ok;
                 Jobs ->
-                    ?LOG_INFO("Start waiting relocation(s) for ~p job(s) (slots=~p)",
-                              [length(Jobs), AllowToRelocate]),
+                    ?LOG_INFO("Start waiting relocation(s) for ~p job(s) (slots=~p)", [length(Jobs), AllowToRelocate]),
                     lists:foreach(fun(Job) ->
                                      JobId = wm_entity:get(id, Job),
                                      case spawn_virtres_if_needed(Job, []) of
@@ -299,10 +300,7 @@ select_jobs_waiting_for_relocation(Limit) ->
                              end,
                              Jobs),
             Sorted =
-                lists:sort(fun(A, B) ->
-                              wm_entity:get(submit_time, A) =< wm_entity:get(submit_time, B)
-                           end,
-                           Waiting),
+                lists:sort(fun(A, B) -> wm_entity:get(submit_time, A) =< wm_entity:get(submit_time, B) end, Waiting),
             case length(Sorted) > Limit of
                 true ->
                     {Selected, _} = lists:split(Limit, Sorted),
@@ -486,9 +484,7 @@ select_jobs_waiting_for_relocation_test_() ->
                     end),
         ok
      end,
-     fun(_) ->
-        meck:unload(wm_conf)
-     end,
+     fun(_) -> meck:unload(wm_conf) end,
      fun(_) ->
         [{"empty limit", ?_assertEqual([], select_jobs_waiting_for_relocation(0))},
          {"oldest waiting job first",
