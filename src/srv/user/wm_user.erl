@@ -228,9 +228,7 @@ handle_request(purge, Username, _) ->
                 _ ->
                     catch wm_topology:reload()
             end,
-            Msg =
-                io_lib:format("Purged ~p job(s): ~s",
-                              [length(PurgedIds), string:join(PurgedIds, ", ")]),
+            Msg = io_lib:format("Purged ~p job(s): ~s", [length(PurgedIds), string:join(PurgedIds, ", ")]),
             {string, lists:flatten(Msg)}
     end;
 handle_request(list, {[flavor], Limit}, _) ->
@@ -325,10 +323,7 @@ purge_one_job(#job{} = Job) ->
     ?LOG_DEBUG("Purge job ~p from configuration database", [JobId]),
     %% Kick off remote destroy without waiting (gate RPC must not block purge).
     case {wm_entity:get(relocatable, Job), wm_entity:get(state, Job)} of
-        {true, State}
-            when State =/= ?JOB_STATE_FINISHED,
-                 State =/= ?JOB_STATE_ERROR,
-                 State =/= ?JOB_STATE_CANCELED ->
+        {true, State} when State =/= ?JOB_STATE_FINISHED, State =/= ?JOB_STATE_ERROR, State =/= ?JOB_STATE_CANCELED ->
             catch wm_factory:new(virtres, {destroy, JobId, undefined}, []);
         _ ->
             ok
