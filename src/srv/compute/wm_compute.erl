@@ -191,35 +191,58 @@ handle_timetable([X | T], MState) ->
                             handle_timetable(T, MState);
                         false ->
                             Nodes = wm_conf:select_many(node, id, JobNodeIds),
-                            ?LOG_INFO("Job will be started remotely (main node: ~p)", [wm_entity:get(name, hd(Nodes))]),
+                            MainNode = select_job_main_node(Nodes),
+                            ?LOG_INFO("Job will be started remotely (main node: ~p)", [wm_entity:get(name, MainNode)]),
                             MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
                             handle_timetable(T, MState2)
                     end;
-                [FirstNode | _] ->
-                    ?LOG_DEBUG("Job will be started on remote node ~p", [wm_entity:get(name, FirstNode)]),
-                    MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
-                    handle_timetable(T, MState2)
+                [FirstNodeId | _] ->
+                    Nodes = wm_conf:select_many(node, id, JobNodeIds),
+                    case Nodes of
+                        [] ->
+                            ?LOG_ERROR("No nodes found for job ~p (ids=~p)", [JobID, JobNodeIds]),
+                            handle_timetable(T, MState);
+                        _ ->
+                            MainNode = select_job_main_node(Nodes),
+                            ?LOG_INFO("Job will be started remotely (main node: ~p)", [wm_entity:get(name, MainNode)]),
+                            MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
+                            handle_timetable(T, MState2)
+                    end
             end
+    end.
+
+%% Job main = cloud partition manager (gateway set). Fall back to first node
+%% for on-prem. Do not assume job.nodes[0] is main: timetable rewrite can
+%% reverse the order at start time.
+-spec select_job_main_node([#node{}]) -> #node{} | not_found.
+select_job_main_node([]) ->
+    not_found;
+select_job_main_node(Nodes) ->
+    case lists:filter(fun(#node{gateway = Gw}) -> Gw =/= [] end, Nodes) of
+        [Main | _] ->
+            Main;
+        [] ->
+            hd(Nodes)
     end.
 
 -spec propagate_job_to_nodes(job_id(), [node_id()], #mstate{}) -> #mstate{}.
 propagate_job_to_nodes(JobID, JobNodeIds, MState) ->
     ?LOG_DEBUG("Job will be propagated to its main compute node, job id: ~p", [JobID]),
     {ok, MyNode} = wm_self:get_node(),
-    F = fun(Z) -> wm_conf:get_relative_address(Z, MyNode) end,
     Nodes = wm_conf:select_many(node, id, JobNodeIds),
+    %% All allocated nodes become busy; only main receives the job record.
     wm_conf:set_nodes_state(state_alloc, busy, Nodes),
     update_job(JobID, nodes, JobNodeIds),
-    NodeAddrs = [F(Z) || Z <- Nodes],
-    case NodeAddrs of
-        [] ->
+    case select_job_main_node(Nodes) of
+        not_found ->
             ?LOG_ERROR("No job nodes found in configuration: ~p", [JobNodeIds]),
             MState;
-        _ ->
-            ?LOG_DEBUG("Propagate job ~p to nodes: ~10000p", [JobID, NodeAddrs]),
+        MainNode ->
+            MainAddr = wm_conf:get_relative_address(MainNode, MyNode),
+            ?LOG_DEBUG("Propagate job ~p to main node only: ~p (~p)", [JobID, wm_entity:get(name, MainNode), MainAddr]),
             Records = wm_db:get_one(job, id, JobID),
-            {ok, COMMIT_ID} = wm_factory:new(commit, Records, NodeAddrs),
-            Map = maps:put(COMMIT_ID, {NodeAddrs, JobID}, MState#mstate.transfers),
+            {ok, COMMIT_ID} = wm_factory:new(commit, Records, [MainAddr]),
+            Map = maps:put(COMMIT_ID, {[MainAddr], JobID}, MState#mstate.transfers),
             MState#mstate{transfers = Map}
     end.
 

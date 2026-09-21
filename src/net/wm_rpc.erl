@@ -51,20 +51,29 @@ call(Module, Function, Args, Node) ->
 cast(Module, Function, Args) ->
     cast(Module, Function, Args, {localhost}).
 
--spec cast(atom(), fun(), list(), node_address()) -> {ok, any()} | {error, term()}.
+-spec cast(atom(), fun(), list(), node_address()) -> ok | {error, term()}.
 cast(Module, Function, Args, FinalAddr = {_, _}) ->
     ?LOG_DEBUG("m=~p f=~p, a=~P, n=~1000p", [Module, Function, Args, 3, FinalAddr]),
-    NextAddr = get_next_destination(FinalAddr),
-    ?LOG_DEBUG("Next destination address: ~p", [NextAddr]),
-    ConnArgs = get_connection_args(NextAddr),
-    case wm_tcp_client:connect(ConnArgs) of
-        {ok, Socket} ->
-            Tag = wm_utils:uuid(v4),
-            RPC = {cast, Module, Function, Args, Tag, FinalAddr},
-            send_metrics_to_mon(NextAddr),
-            wm_tcp_client:rpc(RPC, Socket),
-            wm_tcp_client:disconnect(Socket);
-        Error ->
+    case get_next_destination(FinalAddr) of
+        NextAddr = {_, _} ->
+            ?LOG_DEBUG("Next destination address: ~p", [NextAddr]),
+            ConnArgs = get_connection_args(NextAddr),
+            case wm_tcp_client:connect(ConnArgs) of
+                {ok, Socket} ->
+                    Tag = wm_utils:uuid(v4),
+                    RPC = {cast, Module, Function, Args, Tag, FinalAddr},
+                    send_metrics_to_mon(NextAddr),
+                    wm_tcp_client:rpc(RPC, Socket),
+                    ok = wm_tcp_client:disconnect(Socket),
+                    ok;
+                Error ->
+                    Error
+            end;
+        not_found ->
+            ?LOG_ERROR("Cannot cast ~p:~p, no route to ~p (parent unknown)", [Module, Function, FinalAddr]),
+            {error, not_found};
+        {error, Reason} = Error ->
+            ?LOG_ERROR("Cannot cast ~p:~p to ~p: ~p", [Module, Function, FinalAddr, Reason]),
             Error
     end.
 
@@ -120,8 +129,104 @@ is_local_address({"localhost", _}) ->
 is_local_address(_) ->
     false.
 
--spec get_next_destination(node_address()) -> node_address() | {error, not_found}.
+%% True when this node has the SSH reverse tunnel to SkyPort on
+%% localhost:parent_api_port (cloud job main). Cloud computes do not.
+-spec has_reverse_tunnel_to_parent() -> boolean().
+has_reverse_tunnel_to_parent() ->
+    case wm_self:get_node() of
+        {ok, #node{gateway = Gw} = Node} ->
+            case wm_utils:is_cloud_node(Node) of
+                true ->
+                    Gw =/= [];
+                false ->
+                    false
+            end;
+        _ ->
+            %% Early boot on job main: parent is the tunnel endpoint.
+            case wm_core:get_parent() of
+                {"localhost", _} ->
+                    true;
+                _ ->
+                    false
+            end
+    end.
+
+%% Resolve parent to a reachable VNet address (prefer host IP over sname).
+-spec parent_hop_for_tunnel() -> node_address() | not_found.
+parent_hop_for_tunnel() ->
+    case wm_core:get_parent() of
+        not_found ->
+            not_found;
+        ParentAddr = {Host, Port} ->
+            case wm_conf:select_node(ParentAddr) of
+                {ok, ParentNode} ->
+                    {wm_entity:get(host, ParentNode), wm_entity:get(api_port, ParentNode)};
+                _ ->
+                    case wm_conf:select_node(Host) of
+                        {ok, ParentNode} ->
+                            {wm_entity:get(host, ParentNode), wm_entity:get(api_port, ParentNode)};
+                        _ ->
+                            ParentAddr
+                    end
+            end
+    end.
+
+%% SkyPort (non-cloud) must not TCP-connect to a cloud node's private host.
+%% Direct connect is allowed only to that node's public gateway (or when the
+%% sender is also a cloud node on the same VNet).
+-spec direct_connect_ok(node_address()) -> boolean().
+direct_connect_ok(FinalAddr) ->
+    case {wm_self:get_node(), wm_conf:select_node(FinalAddr)} of
+        {{ok, Me}, {ok, Dest}} ->
+            case {wm_utils:is_cloud_node(Me), wm_utils:is_cloud_node(Dest)} of
+                {false, true} ->
+                    case wm_entity:get(gateway, Dest) of
+                        [] ->
+                            false;
+                        Gw ->
+                            FinalAddr =:= {Gw, wm_entity:get(api_port, Dest)}
+                    end;
+                _ ->
+                    true
+            end;
+        _ ->
+            true
+    end.
+
+-spec route_toward(node_address()) -> node_address() | not_found | {error, not_found}.
+route_toward(FinalAddr) ->
+    case wm_self:get_node() of
+        {ok, MyNode} ->
+            route_toward_from(FinalAddr, wm_entity:get(id, MyNode));
+        _ ->
+            wm_core:get_parent()
+    end.
+
+-spec get_next_destination(node_address()) -> node_address() | not_found | {error, not_found}.
+get_next_destination(FinalAddr = {"localhost", Port}) ->
+    ParentPort = wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer}),
+    case Port == ParentPort of
+        true ->
+            case has_reverse_tunnel_to_parent() of
+                true ->
+                    %% Job main: connect to the local reverse-tunnel endpoint.
+                    FinalAddr;
+                false ->
+                    %% Cloud compute: no local tunnel — hop via job main, which
+                    %% forwards into its tunnel. FinalAddr stays localhost so
+                    %% main's session continues toward SkyPort.
+                    Next = parent_hop_for_tunnel(),
+                    ?LOG_DEBUG("No local parent tunnel; hop via ~p toward ~p", [Next, FinalAddr]),
+                    Next
+            end;
+        false ->
+            get_next_destination_general(FinalAddr)
+    end;
 get_next_destination(FinalAddr = {_, _}) ->
+    get_next_destination_general(FinalAddr).
+
+-spec get_next_destination_general(node_address()) -> node_address() | not_found | {error, not_found}.
+get_next_destination_general(FinalAddr = {_, _}) ->
     ?LOG_DEBUG("Find next node when forwarding to ~p", [FinalAddr]),
     case wm_conf:is_my_address(FinalAddr) of
         true ->
@@ -130,12 +235,12 @@ get_next_destination(FinalAddr = {_, _}) ->
             ?LOG_DEBUG("Address is not mine: ~p", [FinalAddr]),
             MyAddr = wm_conf:get_my_relative_address(FinalAddr),
             Neighbours = wm_topology:get_my_neighbour_addresses(),
-            case lists:any(fun(X) -> X =:= FinalAddr end, Neighbours) of
+            case lists:any(fun(X) -> X =:= FinalAddr end, Neighbours) andalso direct_connect_ok(FinalAddr) of
                 true ->
                     FinalAddr;
                 false ->
                     Children = wm_topology:get_children(),
-                    case lists:any(fun(Y) -> Y =:= FinalAddr end, Children) of
+                    case lists:any(fun(Y) -> Y =:= FinalAddr end, Children) andalso direct_connect_ok(FinalAddr) of
                         true ->
                             FinalAddr;
                         false ->
@@ -144,30 +249,19 @@ get_next_destination(FinalAddr = {_, _}) ->
                             % source node, then we just send the message along the path
                             % (to the node next in the path toward the destination node).
                             % Otherwise we send the message up to the parent.
+                            %
+                            % When MyAddr is localhost, that is SkyPort's reverse-tunnel
+                            % identity toward cloud nodes — not proof that FinalAddr is
+                            % locally reachable (cloud compute hosts are private).
                             case is_local_address(MyAddr) of
                                 true ->
-                                    FinalAddr;
+                                    Next = route_toward(FinalAddr),
+                                    ?LOG_DEBUG("Tunnel-relative self; next hop toward ~p: ~p", [FinalAddr, Next]),
+                                    Next;
                                 false ->
                                     case wm_conf:select_node(MyAddr) of
                                         {ok, MyNode} ->
-                                            MyNodeId = wm_entity:get(id, MyNode),
-                                            case wm_conf:select_node(FinalAddr) of
-                                                {ok, FinalNode} ->
-                                                    get_next_relative_destination(FinalNode, MyNodeId);
-                                                {error, found_multiple, Nodes} ->
-                                                    % This scenario happens when partitions work on separate networks
-                                                    % with the same network address range. In this case we have more
-                                                    % than one compute nodes on different networks with same address.
-                                                    GetMyNode = fun(X) -> wm_entity:get(id, X) == MyNodeId end,
-                                                    case lists:filter(GetMyNode, Nodes) of
-                                                        [MyNode] when is_tuple(MyNode) ->
-                                                            wm_conf:get_my_relative_address(FinalAddr);
-                                                        _ ->
-                                                            wm_core:get_parent()
-                                                    end;
-                                                _ ->
-                                                    wm_core:get_parent()
-                                            end;
+                                            route_toward_from(FinalAddr, wm_entity:get(id, MyNode));
                                         {error, not_found} ->
                                             wm_core:get_parent()
                                     end
@@ -176,7 +270,25 @@ get_next_destination(FinalAddr = {_, _}) ->
             end
     end.
 
--spec get_next_relative_destination(#node{}, node_id()) -> node_address() | not_found.
+-spec route_toward_from(node_address(), string()) -> node_address() | not_found | {error, not_found}.
+route_toward_from(FinalAddr, MyNodeId) ->
+    case wm_conf:select_node(FinalAddr) of
+        {ok, FinalNode} ->
+            get_next_relative_destination(FinalNode, MyNodeId);
+        {error, found_multiple, Nodes} ->
+            % Partitions on separate networks can share the same private address range.
+            GetMyNode = fun(X) -> wm_entity:get(id, X) == MyNodeId end,
+            case lists:filter(GetMyNode, Nodes) of
+                [MyNode] when is_tuple(MyNode) ->
+                    wm_conf:get_my_relative_address(FinalAddr);
+                _ ->
+                    wm_core:get_parent()
+            end;
+        _ ->
+            wm_core:get_parent()
+    end.
+
+-spec get_next_relative_destination(#node{}, string()) -> node_address() | not_found.
 get_next_relative_destination(FinalNode, MyNodeId) ->
     FinalNodeId = wm_entity:get(id, FinalNode),
     case wm_topology:on_path(MyNodeId, FinalNodeId) of

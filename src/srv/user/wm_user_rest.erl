@@ -106,7 +106,7 @@ get_images_info(Req) ->
 
 -spec get_nodes_info(map()) -> {[string()], pos_integer()}.
 get_nodes_info(Req) ->
-    #{limit := Limit} = cowboy_req:match_qs([{limit, int, 1000}], Req),
+    #{limit := Limit} = cowboy_req:match_qs([{limit, int, 3000}], Req),
     ?LOG_DEBUG("Handle nodes info HTTP request"),
     Xs = gen_server:call(wm_user, {list, [node], Limit}),
     F = fun(Node, FullJson) ->
@@ -209,11 +209,14 @@ job_to_json(Job, FullJson) ->
             [] ->
                 [];
             NodeIds ->
-                wm_conf:select_many(node, id, NodeIds)
+                %% Preserve job.nodes order: partition manager (main) is first.
+                %% select_many/qlc does not keep that order.
+                select_nodes_in_order(NodeIds)
         end,
     JobHosts = [wm_entity:get(host, X) || X <- JobNodes],
     JobNodeHostnames = [list_to_binary(X) || X <- JobHosts, is_list(X)],
     JobNodeIps = nodes_to_ips(JobNodes),
+    MainIp = main_node_public_ip(JobNodes),
     {FlavorId, RemoteId} = wm_user_json:find_flavor_and_remote_ids(Job),
     JobJson =
         jsx:encode(#{id => list_to_binary(wm_entity:get(id, Job)),
@@ -228,6 +231,7 @@ job_to_json(Job, FullJson) ->
                      signal => wm_entity:get(signal, Job),
                      node_names => JobNodeHostnames,
                      node_ips => JobNodeIps,
+                     main_ip => MainIp,
                      remote_id => list_to_binary(RemoteId),
                      flavor_id => list_to_binary(FlavorId),
                      request =>
@@ -239,7 +243,41 @@ job_to_json(Job, FullJson) ->
                      comment => list_to_binary(wm_entity:get(comment, Job))}),
     [binary_to_list(JobJson) | FullJson].
 
--spec nodes_to_ips([#node{}]) -> [string()].
+%% @doc Select nodes by id, keeping the caller's order (main / partmgr first).
+-spec select_nodes_in_order([node_id()]) -> [#node{}].
+select_nodes_in_order(NodeIds) ->
+    lists:filtermap(fun(Id) ->
+                       case wm_conf:select(node, {id, Id}) of
+                           {ok, Node} ->
+                               {true, Node};
+                           _ ->
+                               false
+                       end
+                    end,
+                    NodeIds).
+
+%% @doc Public IP of the job main (partition manager) node.
+%% Prefers a node with gateway set (cloud public IP). Do not assume job.nodes[0]
+%% is main: the scheduler timetable rewrite reverses node order at start time.
+-spec main_node_public_ip([#node{}]) -> binary().
+main_node_public_ip([]) ->
+    <<>>;
+main_node_public_ip(Nodes) ->
+    Main =
+        case lists:filter(fun(#node{gateway = Gw}) -> Gw =/= [] end, Nodes) of
+            [WithGw | _] ->
+                WithGw;
+            [] ->
+                hd(Nodes)
+        end,
+    case nodes_to_ips([Main]) of
+        [Ip | _] ->
+            Ip;
+        [] ->
+            <<>>
+    end.
+
+-spec nodes_to_ips([#node{}]) -> [binary()].
 nodes_to_ips([]) ->
     [];
 nodes_to_ips(Nodes) ->
@@ -248,6 +286,7 @@ nodes_to_ips(Nodes) ->
         lists:map(fun (#node{gateway = [], host = Hostname}) ->
                           Hostname;
                       (#node{gateway = Gateway}) ->
+                          %% Prefer gateway: public address of cloud main node
                           Gateway
                   end,
                   Nodes),

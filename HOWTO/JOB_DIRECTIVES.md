@@ -15,10 +15,11 @@ Specify the number of nodes to allocate for the job.
 ```bash
 #SWM nodes 3
 ```
-This requests a partition with 3 compute nodes. Names use the first 8 characters of the job id:
+This requests a partition with 3 compute nodes. Names use the first 8 characters of the job id
+(aligned with Azure VM names):
 - `swm-<jobid8>-main` — primary/manager node (runs the job script)
-- `swm-<jobid8>-node0` — first extra compute node
-- `swm-<jobid8>-node1` — second extra compute node
+- `swm-<jobid8>-compute1` — first extra compute node
+- `swm-<jobid8>-compute2` — second extra compute node
 
 **Default:** 1 node
 
@@ -154,8 +155,8 @@ HOSTFILE="${PWD}/hostfile"
 
 {
     echo "${JOB_PREFIX}-main slots=1"
-    for i in $(seq 0 $((NODES - 2))); do
-        echo "${JOB_PREFIX}-node${i} slots=1"
+    for i in $(seq 1 $((NODES - 1))); do
+        echo "${JOB_PREFIX}-compute${i} slots=1"
     done
 } >"${HOSTFILE}"
 

@@ -143,8 +143,17 @@ get_my_address() ->
     end.
 
 -spec is_my_address(string() | {string(), integer()}) -> true | false.
-is_my_address({"localhost", Port}) ->
-    Port == wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer});
+is_my_address({"localhost", _}) ->
+    %% localhost:parent_api_port is the reverse-tunnel endpoint.
+    %% - SkyPort (no parent): inbound casts on that port are local — deliver.
+    %% - Cloud job main/compute (have a parent): same address is a hop toward
+    %%   SkyPort; keep forwarding (wm_session -> wm_rpc:get_next_destination/1).
+    case wm_core:get_parent() of
+        not_found ->
+            true;
+        _ ->
+            false
+    end;
 is_my_address(Addr) ->
     case get_my_address() of
         not_found ->
@@ -188,8 +197,7 @@ select_my_relative_address(DestAddr = {_, _}) ->
         {ok, Node} ->
             case wm_utils:is_cloud_node(Node) of
                 true ->
-                    % On cloud nodes swm connects to its parent directly via a tunnel:
-                    {"localhost", wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer})};
+                    my_address_for_cloud_destination(Node);
                 false ->
                     NodeId = wm_entity:get(id, Node),
                     case wm_topology:is_my_direct_child(NodeId) of
@@ -217,6 +225,29 @@ select_my_relative_address(DestAddr = {_, _}) ->
             end;
         _ ->
             do_get_my_address()
+    end.
+
+%% Sky Port → cloud job main: child reaches us via the SSH reverse tunnel
+%% (localhost:parent_api_port). Cloud job main → cloud compute: both are on
+%% the job VNet; publish our LAN API address so boot_info does not overwrite
+%% the compute node's parent with localhost:10002.
+-spec my_address_for_cloud_destination(#node{}) -> node_address().
+my_address_for_cloud_destination(DestNode) ->
+    TunnelAddr = {"localhost", wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer})},
+    case select_my_node() of
+        {ok, MyNode} ->
+            case wm_utils:is_cloud_node(MyNode) of
+                true ->
+                    MyHost = wm_entity:get(host, MyNode),
+                    MyPort = wm_entity:get(api_port, MyNode),
+                    ?LOG_DEBUG("Cloud-to-cloud relative address for ~p: ~p:~p (not tunnel)",
+                               [wm_entity:get(name, DestNode), MyHost, MyPort]),
+                    {MyHost, MyPort};
+                false ->
+                    TunnelAddr
+            end;
+        {error, not_found} ->
+            TunnelAddr
     end.
 
 -spec select_my_node() -> {ok, #node{}} | {error, not_found}.
@@ -314,10 +345,22 @@ init(Args) ->
     DBDir = wm_utils:get_env("SWM_MNESIA_DIR"),
     filelib:ensure_dir([DBDir]),
     file:make_dir(DBDir),
-    wm_db:ensure_running(),
-    wm_db:force_load_tables(),
-    schedule_sync_check(),
-    {ok, MState}.
+    ?LOG_DEBUG("Ensure Mnesia running (dir=~p)", [DBDir]),
+    case wm_db:ensure_running() of
+        {error, Reason} ->
+            ?LOG_ERROR("Could not start Mnesia: ~p", [Reason]),
+            {stop, {mnesia_start_failed, Reason}};
+        _ ->
+            ?LOG_DEBUG("Force-load / wait for Mnesia tables"),
+            case lists:filter(fun(R) -> R =/= yes end, wm_db:force_load_tables()) of
+                [] ->
+                    schedule_sync_check(),
+                    {ok, MState};
+                Errors ->
+                    ?LOG_ERROR("Mnesia table load incomplete: ~p", [Errors]),
+                    {stop, {mnesia_tables_failed, Errors}}
+            end
+    end.
 
 handle_call(get_my_address, _From, MState) ->
     {reply, do_get_my_address(), MState};

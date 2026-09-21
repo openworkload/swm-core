@@ -193,7 +193,16 @@ handle_info({send_event, From, ModuleTaskId, Msg}, MState) ->
     ?LOG_DEBUG("Received send event info from ~p, task=~p, msg=~P", [From, ModuleTaskId, Msg, 10]),
     handle_send_event(From, ModuleTaskId, Msg, MState);
 handle_info({send_confirm_done, ModuleTaskId, Result, Nodes}, MState) ->
-    ?LOG_DEBUG("Send-confirm result: ~p (task: ~p, nodes = ~p)", [Result, ModuleTaskId, Nodes]),
+    case Result of
+        true ->
+            ?LOG_DEBUG("Send-confirm result: true (task: ~p, nodes = ~P)", [ModuleTaskId, Nodes, 8]);
+        false ->
+            %% Keep this ASCII-only: wm_log pipes the formatted iolist through ~s,
+            %% which rejects unicode codepoints (e.g. em-dash) and crashes the factory.
+            ?LOG_WARN("Send-confirm FAILED: false (module=~p task=~p nodes=~P) -- "
+                      "peer may miss this message (check parent tunnel / localhost cast)",
+                      [MState#mstate.module, ModuleTaskId, Nodes, 8])
+    end,
     MState2 = send_event_to_module(ModuleTaskId, {send_confirmed, Result}, MState),
     {noreply, MState2};
 handle_info(Info, MState) ->

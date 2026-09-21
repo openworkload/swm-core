@@ -120,9 +120,54 @@ upgrade_schema(Json) ->
             Results
     end.
 
--spec force_load_tables() -> [yes | {error, term()}].
+-spec force_load_tables() -> [yes | {error, term()} | {timeout, atom()}].
 force_load_tables() ->
-    [mnesia:force_load_table(Tab) || Tab <- mnesia:system_info(tables)].
+    Tabs = [T || T <- mnesia:system_info(tables), T =/= schema],
+    Timeout = get_global("db_timeout", integer, ?MNESIA_DEFAULT_TIMEOUT),
+    ?LOG_DEBUG("Loading ~p Mnesia tables (timeout=~p ms)", [length(Tabs), Timeout]),
+    case mnesia:wait_for_tables(Tabs, Timeout) of
+        ok ->
+            ?LOG_DEBUG("All Mnesia tables ready"),
+            [yes || _ <- Tabs];
+        {timeout, BadTabs} ->
+            ?LOG_WARN("Tables not ready after ~p ms: ~p; force-loading", [Timeout, BadTabs]),
+            [force_load_one_table(Tab, Timeout) || Tab <- BadTabs];
+        {error, Reason} = Error ->
+            ?LOG_ERROR("wait_for_tables failed: ~p", [Reason]),
+            [Error]
+    end.
+
+%% mnesia:force_load_table/1 waits with infinity; bound it so NFS/corrupt schema
+%% cannot block wm_conf:init (and thus the whole supervisor) forever.
+-spec force_load_one_table(atom(), timeout()) -> yes | {error, term()} | {timeout, atom()}.
+force_load_one_table(Tab, Timeout) ->
+    Parent = self(),
+    {Pid, MRef} = spawn_monitor(fun() -> Parent ! {self(), mnesia:force_load_table(Tab)} end),
+    receive
+        {Pid, Result} ->
+            demonitor(MRef, [flush]),
+            Result;
+        {'DOWN', MRef, process, Pid, Reason} ->
+            ?LOG_ERROR("force_load_table(~p) crashed: ~p", [Tab, Reason]),
+            {error, Reason}
+    after Timeout ->
+        exit(Pid, kill),
+        demonitor(MRef, [flush]),
+        receive
+            {Pid, _} ->
+                ok
+        after 0 ->
+            ok
+        end,
+        receive
+            {'DOWN', MRef, _, _, _} ->
+                ok
+        after 0 ->
+            ok
+        end,
+        ?LOG_ERROR("force_load_table(~p) timed out after ~p ms", [Tab, Timeout]),
+        {timeout, Tab}
+    end.
 
 -spec table_exists(atom()) -> boolean().
 table_exists(TabName) ->
@@ -420,15 +465,42 @@ clear_pending(Node, #mstate{pending_nodes = Pending} = MState) ->
 start_db() ->
     case mnesia:system_info(is_running) of
         no ->
+            ?LOG_DEBUG("Starting Mnesia (dir=~p)", [mnesia:system_info(directory)]),
             case mnesia:start() of
                 {error, Reason} ->
-                    ?LOG_DEBUG("Mnesia could not be started: ~p", [Reason]),
+                    ?LOG_ERROR("Mnesia could not be started: ~p", [Reason]),
                     {error, Reason};
                 ok ->
+                    ?LOG_DEBUG("Mnesia started"),
                     ok
             end;
         yes ->
-            ok
+            ok;
+        starting ->
+            ?LOG_DEBUG("Mnesia already starting; waiting"),
+            wait_db_running(?MNESIA_DEFAULT_TIMEOUT);
+        stopping ->
+            ?LOG_WARN("Mnesia is stopping; waiting then restart"),
+            timer:sleep(500),
+            start_db()
+    end.
+
+-spec wait_db_running(non_neg_integer()) -> ok | {error, term()}.
+wait_db_running(TimeoutMs) when TimeoutMs =< 0 ->
+    ?LOG_ERROR("Timed out waiting for Mnesia to finish starting"),
+    {error, timeout};
+wait_db_running(TimeoutMs) ->
+    case mnesia:system_info(is_running) of
+        yes ->
+            ok;
+        no ->
+            start_db();
+        starting ->
+            timer:sleep(100),
+            wait_db_running(TimeoutMs - 100);
+        stopping ->
+            timer:sleep(100),
+            wait_db_running(TimeoutMs - 100)
     end.
 
 -spec do_ensure_running() -> ok | {error, term()}.

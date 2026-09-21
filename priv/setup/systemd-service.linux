@@ -13,7 +13,7 @@ TimeoutStopSec=60
 Restart=always
 RestartSec=5
 EnvironmentFile=/etc/swm.conf
-Environment=HOME=/root
+{PARENT_ENV}Environment=HOME=/root
 ExecStart=/bin/bash -c 'source {ENV} && exec {SCRIPT} foreground'
 # Prefer SIGTERM to the beam (Type=simple). `swm stop` uses the same
 # inet_tls RPC path and can hang the same way as daemon startup.

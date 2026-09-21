@@ -12,6 +12,11 @@
 -record(mstate, {parent :: string(), sname :: string(), parent_port = unknown :: integer()}).
 
 -define(DEFAULT_CONN_TIMEOUT, 60000).
+%% Parent is reached via the SSH tunnel (localhost:parent_api_port). Tunnel
+%% connect timeouts used to be ignored: the localhost branch always returned
+%% true, so E3PC treated a lost pre_committed as "send confirmed".
+-define(PARENT_CAST_RETRIES, 3).
+-define(PARENT_CAST_RETRY_MS, 1000).
 
 %% ============================================================================
 %% API
@@ -185,18 +190,46 @@ cast_all_nodes_process(Mod, Msg, [Addr = {"localhost", Port} | Nodes], Wait) whe
     case wm_conf:g(parent_api_port, {?DEFAULT_PARENT_API_PORT, integer}) of
         Port ->
             {Arg0, Args} = split_rpc_msg(Msg),
-            ?LOG_DEBUG("no_wait-cast of parent: ~p, ~p --> ~p", [Mod, Arg0, Addr]),
-            wm_rpc:cast(Mod, Arg0, Args, Addr);
-        _ ->
-            case wm_entity:get(api_port, wm_self:get_node()) of
-                Port ->
-                    gen_server:cast(?MODULE, {recv, Mod, Msg}),
+            case cast_parent_with_retry(Mod, Arg0, Args, Addr, Wait) of
+                ok ->
                     cast_all_nodes_process(Mod, Msg, Nodes, Wait);
-                _ ->
-                    ?LOG_ERROR("API: destination address is not recognized: ~p", [Addr])
+                Error ->
+                    case Wait of
+                        wait ->
+                            ?LOG_ERROR("wait-cast to parent ~p failed: ~p (mod=~p arg=~p)", [Addr, Error, Mod, Arg0]),
+                            false;
+                        no_wait ->
+                            ?LOG_ERROR("no_wait-cast to parent ~p failed: ~p (mod=~p arg=~p)",
+                                       [Addr, Error, Mod, Arg0]),
+                            cast_all_nodes_process(Mod, Msg, Nodes, Wait)
+                    end
+            end;
+        _ ->
+            case wm_self:get_node() of
+                {ok, SelfNode} ->
+                    case wm_entity:get(api_port, SelfNode) of
+                        Port ->
+                            gen_server:cast(?MODULE, {recv, Mod, Msg}),
+                            cast_all_nodes_process(Mod, Msg, Nodes, Wait);
+                        _ ->
+                            ?LOG_ERROR("API: destination address is not recognized: ~p", [Addr]),
+                            case Wait of
+                                wait ->
+                                    false;
+                                no_wait ->
+                                    cast_all_nodes_process(Mod, Msg, Nodes, Wait)
+                            end
+                    end;
+                {error, _} ->
+                    ?LOG_ERROR("API: destination address is not recognized (no self node): ~p", [Addr]),
+                    case Wait of
+                        wait ->
+                            false;
+                        no_wait ->
+                            cast_all_nodes_process(Mod, Msg, Nodes, Wait)
+                    end
             end
-    end,
-    cast_all_nodes_process(Mod, Msg, Nodes, Wait);
+    end;
 cast_all_nodes_process(Mod, Msg, [Node | Nodes], Wait) when Node =:= node() ->
     gen_server:cast(?MODULE, {recv, Mod, Msg}),
     cast_all_nodes_process(Mod, Msg, Nodes, Wait);
@@ -215,7 +248,8 @@ cast_all_nodes_process(Mod, Msg, Nodes, wait) ->
            {Arg0, Args} = split_rpc_msg(Msg),
            case wm_utils:get_address(Node) of
                not_found ->
-                   ?LOG_DEBUG("The wait-cast to ~p will not be performed now", [Node]);
+                   ?LOG_DEBUG("The wait-cast to ~p will not be performed now", [Node]),
+                   {error, not_found};
                Addr ->
                    ?LOG_DEBUG("wait-cast: ~p, ~p --> ~p", [Mod, Arg0, Addr]),
                    wm_rpc:cast(Mod, Arg0, Args, Addr)
@@ -228,6 +262,33 @@ cast_all_nodes_process(Mod, Msg, Nodes, wait) ->
                       false
               end,
               Results1).
+
+-spec cast_parent_with_retry(atom(), term(), term(), {string(), integer()}, wait | no_wait) -> ok | {error, term()}.
+cast_parent_with_retry(Mod, Arg0, Args, Addr, no_wait) ->
+    ?LOG_DEBUG("no_wait-cast of parent: ~p, ~p --> ~p", [Mod, Arg0, Addr]),
+    case wm_rpc:cast(Mod, Arg0, Args, Addr) of
+        ok ->
+            ok;
+        Error ->
+            Error
+    end;
+cast_parent_with_retry(Mod, Arg0, Args, Addr, wait) ->
+    cast_parent_with_retry(Mod, Arg0, Args, Addr, wait, ?PARENT_CAST_RETRIES).
+
+-spec cast_parent_with_retry(atom(), term(), term(), {string(), integer()}, wait, pos_integer()) ->
+                                ok | {error, term()}.
+cast_parent_with_retry(Mod, Arg0, Args, Addr, wait, RetriesLeft) ->
+    ?LOG_DEBUG("wait-cast of parent: ~p, ~p --> ~p (retries_left=~p)", [Mod, Arg0, Addr, RetriesLeft]),
+    case wm_rpc:cast(Mod, Arg0, Args, Addr) of
+        ok ->
+            ok;
+        Error when RetriesLeft > 1 ->
+            ?LOG_WARN("wait-cast to parent ~p failed: ~p; retrying (~p left)", [Addr, Error, RetriesLeft - 1]),
+            timer:sleep(?PARENT_CAST_RETRY_MS),
+            cast_parent_with_retry(Mod, Arg0, Args, Addr, wait, RetriesLeft - 1);
+        Error ->
+            Error
+    end.
 
 do_send_event(Mod, Event) ->
     try

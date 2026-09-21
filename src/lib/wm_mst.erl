@@ -445,7 +445,8 @@ init_edge_states(Edges, MState) ->
 
 -spec send(term(), atom(), #mstate{}) -> {term(), atom()}.
 send(Msg, Edge, MState) ->
-    Result = wm_factory:send_confirm(mst, one_state, MState#mstate.mst_id, Msg, [Edge]),
+    %% send_confirm/4 (AllState/one_state was dropped from the factory API).
+    Result = wm_factory:send_confirm(mst, MState#mstate.mst_id, Msg, [Edge]),
     {Result, Edge}.
 
 -spec send_to_min_weight_edge(term(), [atom()], #mstate{}) -> {boolean(), #mstate{}}.

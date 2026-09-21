@@ -315,6 +315,10 @@ components:
             type: string
             format: ipv4
           description: List of node IP addresses allocated for job
+        main_ip:
+          type: string
+          format: ipv4
+          description: Public IP of the job main (partition manager) node
         remote_id:
           type: string
           format: uuid

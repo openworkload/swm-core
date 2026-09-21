@@ -170,10 +170,31 @@ def make_dirs(dir: str) -> None:
 
 def ensure_dirs(opts: dict[str, str]) -> None:
     make_dirs(opts["SWM_SPOOL"])
+    if opts.get("SWM_MNESIA_DIR"):
+        make_dirs(opts["SWM_MNESIA_DIR"])
 
 
 def generate_configs(opts: dict[str, str]) -> None:
+    write_swm_conf(opts)
     generate_service_file(opts)
+
+
+def write_swm_conf(opts: dict[str, str]) -> None:
+    """Persist runtime env for systemd EnvironmentFile=/etc/swm.conf."""
+    if opts.get("TESTING", False):
+        LOG.info("Skip writing /etc/swm.conf (testing mode)")
+        return
+    lines = [f"SWM_SNAME={opts.get('SWM_SNAME', 'node')}\n"]
+    parent_host = opts.get("SWM_PARENT_HOST")
+    parent_port = opts.get("SWM_PARENT_PORT")
+    if parent_host:
+        lines.append(f"SWM_PARENT_HOST={parent_host}\n")
+    if parent_port:
+        lines.append(f"SWM_PARENT_PORT={parent_port}\n")
+    mnesia_dir = opts.get("SWM_MNESIA_DIR")
+    if mnesia_dir:
+        lines.append(f"SWM_MNESIA_DIR={mnesia_dir}\n")
+    write_file("/etc/swm.conf", "".join(lines))
 
 
 def generate_service_file(opts: dict[str, str]) -> None:
@@ -196,6 +217,19 @@ def generate_service_file(opts: dict[str, str]) -> None:
     LOG.info("init script path: %s" % script)
     template = template.replace("{SCRIPT}", script)
     template = template.replace("{ENV}", env)
+    # Bake parent (and local confdb for compute) into the unit so swm.env
+    # defaults cannot win if /etc/swm.conf is later rewritten.
+    parent_host = opts.get("SWM_PARENT_HOST")
+    parent_port = opts.get("SWM_PARENT_PORT")
+    env_lines = []
+    if parent_host and parent_port:
+        env_lines.append(f"Environment=SWM_PARENT_HOST={parent_host}")
+        env_lines.append(f"Environment=SWM_PARENT_PORT={parent_port}")
+    mnesia_dir = opts.get("SWM_MNESIA_DIR")
+    if mnesia_dir:
+        env_lines.append(f"Environment=SWM_MNESIA_DIR={mnesia_dir}")
+    parent_env = ("\n".join(env_lines) + "\n") if env_lines else ""
+    template = template.replace("{PARENT_ENV}", parent_env)
     service_fp = os.path.join(SERVICES_DIR, PRODUCT + ".service")
     write_file(service_fp, template)
 
@@ -245,9 +279,11 @@ def spawn_vnode(opts: dict[str, str]) -> Popen:
         opts["SWM_LOG_DIR"] = os.path.join(
             opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "log"
         )
-        opts["SWM_MNESIA_DIR"] = os.path.join(
-            opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb"
-        )
+        # Keep compute's local confdb if apply_job_node_defaults already set it.
+        if not opts.get("SWM_MNESIA_DIR"):
+            opts["SWM_MNESIA_DIR"] = os.path.join(
+                opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "confdb"
+            )
 
     os.environ["SWM_MODE"] = "MAINT"
     env = os.environ
@@ -354,6 +390,9 @@ def run_create_cert(args: list[str], opts: dict[str, str]) -> None:
 
 
 def generate_certificates(opts: dict[str, str]) -> None:
+    if opts.get("SKIP_CERTIFICATES", False):
+        LOG.info("Skip certificates generation (provided with worker archive)")
+        return
     if opts["DIVISION"] != "grid" and not opts["SWM_SKY_PORT"]:
         LOG.info("Skip certificates generation")
         return
@@ -444,6 +483,10 @@ def get_setup_options() -> None:
         opts["DEBUG"] = True
     if args.archive:
         opts["ARCHIVE"] = True
+    if args.job_node:
+        opts["JOB_NODE_ROLE"] = args.job_node
+    if args.parent_host:
+        opts["SWM_PARENT_HOST"] = args.parent_host
     if args.extra:
         opts["EXTRA_CONFIG"] = args.extra
     if args.location:
@@ -477,6 +520,9 @@ def get_setup_options() -> None:
                 key = pp[0].strip().replace('"', "").replace("'", "")
                 val = pp[1].strip().replace('"', "").replace("'", "")
                 if len(key) and len(val):
+                    # CLI/job-node parent settings take precedence over setup.config.
+                    if key in opts and key in ("SWM_PARENT_HOST", "SWM_PARENT_PORT"):
+                        continue
                     opts[key] = val
         except IOError as e:
             LOG.error("Cannot read %s: %s" % (args.config, e))
@@ -544,6 +590,24 @@ def get_args() -> argparse.Namespace:
         "-a", "--archive", action="store_true", help="Generate final worker SWM archive"
     )
 
+    parser.add_argument(
+        "--job-node",
+        choices=["main", "compute"],
+        help=(
+            "Setup a cloud job node: 'main' parents via localhost and the local "
+            "parent port; 'compute' parents via --parent-host on API port 10001. "
+            "Skips certificate generation (certs ship in the worker archive)."
+        ),
+    )
+
+    parser.add_argument(
+        "--parent-host",
+        help=(
+            "Parent hostname for --job-node compute (the job main node). "
+            "Ignored for --job-node main (always localhost)."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -595,6 +659,50 @@ def get_defaults(opts: dict[str, str]) -> None:
             opts["SWM_SNAME"] = "node" if opts["SWM_SKY_PORT"] else "chead1"
         else:
             opts["SWM_SNAME"] = division
+
+
+def apply_job_node_defaults(opts: dict[str, str]) -> None:
+    """Parent reachability and skip flags for cloud job main/compute nodes."""
+    role = opts.get("JOB_NODE_ROLE")
+    if not role:
+        return
+
+    # Job VMs ship certificates inside the worker archive.
+    opts["SKIP_CERTIFICATES"] = True
+    # Do not rebuild the worker archive on a live job node.
+    opts["SKIP_ARCHIVE"] = True
+
+    if role == "main":
+        # Sky Port is reached through the local tunnel parent port.
+        opts["SWM_PARENT_HOST"] = "localhost"
+        opts["SWM_PARENT_PORT"] = "10002"
+        LOG.info(
+            "Job main node: parent %s:%s (skip certificates)",
+            opts["SWM_PARENT_HOST"],
+            opts["SWM_PARENT_PORT"],
+        )
+    elif role == "compute":
+        # Parent is the job main node API.
+        parent_host = opts.get("SWM_PARENT_HOST") or os.getenv("SWM_PARENT_HOST")
+        if not parent_host:
+            LOG.error(
+                "--job-node compute requires --parent-host (or SWM_PARENT_HOST)"
+            )
+            sys.exit(1)
+        opts["SWM_PARENT_HOST"] = parent_host
+        opts["SWM_PARENT_PORT"] = "10001"
+        opts["SKIP_SYMLINK_CURRENT"] = True
+        # Mnesia must not live under NFS-shared /opt/swm/spool (force_load hangs).
+        local_mnesia = os.path.join("/var/lib/swm", opts.get("SWM_SNAME", "node"), "confdb")
+        opts["SWM_MNESIA_DIR"] = local_mnesia
+        make_dirs(local_mnesia)
+        LOG.info(
+            "Job compute node: parent %s:%s, local confdb %s "
+            "(skip certificates and current symlink)",
+            opts["SWM_PARENT_HOST"],
+            opts["SWM_PARENT_PORT"],
+            local_mnesia,
+        )
 
 
 def apply_input_from_user(opts: dict[str, str]) -> None:
@@ -726,6 +834,9 @@ def symlink_to_current(opts: dict[str, str]) -> None:
     if opts.get("TESTING", False):
         LOG.info("Do not create a symlink 'current'")
         return
+    if opts.get("SKIP_SYMLINK_CURRENT", False):
+        LOG.info("Do not create a symlink 'current' (shared /opt/swm from main)")
+        return
 
     root_dir = opts["SWM_ROOT"]
 
@@ -745,6 +856,7 @@ def main() -> None:
 
     env(opts)
     get_defaults(opts)
+    apply_job_node_defaults(opts)
 
     if opts.get("ARCHIVE", False):
         create_archive(opts)
@@ -758,7 +870,10 @@ def main() -> None:
         wait_vnode(opts)
         load_db_configs(opts)
         stop_vnode(process, opts)
-        create_archive(opts)
+        if not opts.get("SKIP_ARCHIVE", False):
+            create_archive(opts)
+        else:
+            LOG.info("Skip worker archive creation (job node)")
         symlink_to_current(opts)
 
     print("Sky Port configuration initialized")

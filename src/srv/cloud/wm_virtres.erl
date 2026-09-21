@@ -716,7 +716,7 @@ handle_info(part_check,
         false ->
             ?LOG_DEBUG("Not all nodes are UP (job ~p)", [JobId]),
             Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
-            wm_virtres_handler:update_job([{state_details, "Waiting  for Sky Port port readiness"}], JobId),
+            wm_virtres_handler:update_job([{state_details, "Waiting for all nodes to come up"}], JobId),
             {next_state, StateName, MState#mstate{readiness_timer = Timer}};
         true ->
             ?LOG_DEBUG("All nodes are UP (job ~p) => upload data", [JobId]),

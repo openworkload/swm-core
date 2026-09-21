@@ -662,7 +662,8 @@ await(Ref, Ms) ->
 
 -spec get_cloud_node_name(job_id(), integer()) -> string().
 get_cloud_node_name(JobId, Index) ->
-    "swm-" ++ string:slice(JobId, 0, 8) ++ "-node" ++ integer_to_list(Index).
+    %% Match Azure VM names: {partition}-compute{N} with N starting at 1.
+    "swm-" ++ string:slice(JobId, 0, 8) ++ "-compute" ++ integer_to_list(Index).
 
 -spec get_partition_manager_name(job_id()) -> string().
 get_partition_manager_name(JobId) ->

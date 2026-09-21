@@ -389,7 +389,7 @@ clone_extra_nodes(PartID, ParentName, NodeIps, JobId, TplNode) when TplNode =/= 
         end,
     ListOfPairs =
         lists:zip(
-            lists:seq(0, length(NodeIps) - 1), NodeIps),
+            lists:seq(1, length(NodeIps)), NodeIps),
     [NewNode(P) || P <- ListOfPairs].
 
 get_cloud_node_api_port() ->

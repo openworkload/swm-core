@@ -223,7 +223,12 @@ start_scheduler(Scheduler, #mstate{} = MState) ->
     DefaultPluginsDir = filename:join([MState#mstate.root, "current", "lib64"]),
     PluginsDir = os:getenv("SWM_SCHED_LIB", DefaultPluginsDir),
     SchedExec = os:getenv("SWM_SCHED_EXEC", DefaultSched),
-    SchedCommand = filename:absname(SchedExec) ++ " -d" ++ " -p " ++ PluginsDir ++ " 2>>" ++ LogFile,
+    SchedBin = filename:absname(SchedExec),
+    %% Always start swm-sched with --debug so action logs are available in scheduler.log.
+    SchedCommand =
+        lists:flatten(
+            io_lib:format("~ts --debug -p ~ts 2>>~ts", [SchedBin, PluginsDir, LogFile])),
+    ?LOG_INFO("Starting scheduler: ~s", [SchedCommand]),
     WmPortArgs = [{exec, SchedCommand}],
     case wm_port:start_link(WmPortArgs) of
         {ok, WmPortPid} ->

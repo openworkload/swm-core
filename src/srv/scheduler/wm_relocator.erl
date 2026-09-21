@@ -83,6 +83,7 @@ init(_) ->
     MState = #mstate{},
     wm_event:subscribe(job_finished, node(), ?MODULE),
     wm_event:subscribe(job_canceled, node(), ?MODULE),
+    cleanup_orphan_relocations(),
     restart_stopped_virtres_processes(),
     schedule_new_relocations(),
     {ok, MState}.
@@ -242,7 +243,7 @@ start_new_virtres_processes(JobId) ->
                     %% Job already has a template node from the scheduler; it will
                     %% be picked up by start_waiting_relocations/0 when a slot frees
                     %% or on the next relocation_interval tick.
-                    ?LOG_DEBUG("Too many relocations (~p), job will wait: ~p", [RelocationsNum, JobId]),
+                    ?LOG_DEBUG("Relocation slots full (~p/~p); defer job ~p", [RelocationsNum, Max, JobId]),
                     ok
             end;
         {error, not_found} ->
@@ -253,12 +254,26 @@ start_new_virtres_processes(JobId) ->
 %% @doc Start relocations for jobs that were deferred because MAX_RELOCATIONS was reached.
 -spec start_waiting_relocations() -> ok.
 start_waiting_relocations() ->
-    RelocationsNum = wm_conf:get_size(relocation),
+    RelocationsNum0 = wm_conf:get_size(relocation),
     Max = wm_conf:g(max_relocations, {?MAX_RELOCATIONS, integer}),
+    %% Orphans only matter when they consume scarce slots.
+    case RelocationsNum0 < Max of
+        true ->
+            ok;
+        false ->
+            cleanup_orphan_relocations()
+    end,
+    RelocationsNum = wm_conf:get_size(relocation),
     case RelocationsNum < Max of
         false ->
-            ?LOG_DEBUG("Too many relocations (~p) when max=~p", [RelocationsNum, Max]),
-            ok;
+            %% At capacity: only log if other jobs are blocked waiting for a slot.
+            case select_jobs_waiting_for_relocation(1000) of
+                [] ->
+                    ok;
+                Waiting ->
+                    ?LOG_DEBUG("Relocation slots full (~p/~p); ~p job(s) waiting for a free slot",
+                               [RelocationsNum, Max, length(Waiting)])
+            end;
         true ->
             AllowToRelocate = Max - RelocationsNum,
             case select_jobs_waiting_for_relocation(AllowToRelocate) of
@@ -361,9 +376,13 @@ spawn_virtres(Job) ->
 
 -spec predict_job_node_names(#job{}) -> [string()].
 predict_job_node_names(Job) ->
-    Seq = lists:seq(0, wm_utils:get_requested_nodes_number(Job) - 1),
+    %% Same layout as Azure / create_relocation_entities:
+    %% 1x swm-<jobid8>-main + (N-1)x swm-<jobid8>-compute1..
+    N = wm_utils:get_requested_nodes_number(Job),
     JobId = wm_entity:get(id, Job),
-    [wm_utils:get_cloud_node_name(JobId, SeqNum) || SeqNum <- Seq].
+    Main = wm_utils:get_partition_manager_name(JobId),
+    Extras = [wm_utils:get_cloud_node_name(JobId, I) || I <- lists:seq(1, max(0, N - 1))],
+    [Main | Extras].
 
 -spec do_cancel_relocation(#job{}) -> ok.
 do_cancel_relocation(Job) ->
@@ -376,9 +395,45 @@ do_cancel_relocation(Job) ->
         {ok, Relocation} ->
             ?LOG_DEBUG("Relocation is running => destroy its resources (job: ~p)", [JobId]),
             RelocationId = wm_entity:get(id, Relocation),
+            %% Free the MAX_RELOCATIONS slot before resource/topology cleanup.
+            %% remove_relocation_entities/1 may block on wm_topology:reload/0 for
+            %% a long time; if the node stops mid-reload the row would otherwise
+            %% survive and permanently stall later jobs when max_relocations=1.
+            wm_conf:delete(Relocation),
             ok = wm_factory:send_event_locally(destroy, virtres, RelocationId),
-            remove_relocation_entities(Job),
-            wm_conf:delete(Relocation)
+            remove_relocation_entities(Job)
+    end.
+
+%% @doc Drop #relocation rows whose jobs are gone or already terminal (C/F/E).
+%% Survives crashes/stops that interrupt cancel before delete runs.
+-spec cleanup_orphan_relocations() -> non_neg_integer().
+cleanup_orphan_relocations() ->
+    case wm_conf:select(relocation, all) of
+        Relocations when is_list(Relocations) ->
+            lists:foldl(fun(Relocation, Acc) ->
+                           JobId = wm_entity:get(job_id, Relocation),
+                           case wm_conf:select(job, {id, JobId}) of
+                               {ok, #job{state = State}}
+                                   when State == ?JOB_STATE_CANCELED;
+                                        State == ?JOB_STATE_FINISHED;
+                                        State == ?JOB_STATE_ERROR ->
+                                   ?LOG_INFO("Remove orphan relocation ~p for terminal job ~p (state=~p)",
+                                             [wm_entity:get(id, Relocation), JobId, State]),
+                                   wm_conf:delete(Relocation),
+                                   Acc + 1;
+                               {error, not_found} ->
+                                   ?LOG_INFO("Remove orphan relocation ~p for missing job ~p",
+                                             [wm_entity:get(id, Relocation), JobId]),
+                                   wm_conf:delete(Relocation),
+                                   Acc + 1;
+                               _ ->
+                                   Acc
+                           end
+                        end,
+                        0,
+                        Relocations);
+        _ ->
+            0
     end.
 
 -spec delete_resources([#resource{}], #job{}, pos_integer()) -> pos_integer().

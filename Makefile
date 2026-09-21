@@ -50,7 +50,7 @@ cr: 		##@CONTAINERS run or attach to running container
 			$(START_DEBUG_CONTAINER)
 
 build-all:		##@CONTAINERS Full build (make && format && worker) in skyport-dev as $$USER
-			scripts/run-in-dev-container.sh 'make && make worker'
+			scripts/run-in-dev-container.sh --stop-swm 'make && make worker'
 
 gen:		##@SKYPORT Generate entity files
 			$(COG) -U -z -d -e -c -o ./src/lib/wm_entity.hrl ./src/lib/wm_entity.hrl.cog

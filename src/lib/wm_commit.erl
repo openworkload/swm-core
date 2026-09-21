@@ -99,8 +99,13 @@ phase1(cast, activate, #mstate{my_addr = MyAddr} = MState) ->
     %% consume the wait window for participant replies.
     MState2 = MState#mstate{leader = MyAddr},
     {next_state, phase1, clean_replies(MState2)};
-phase1(cast, {send_confirmed, Result}, MState) ->
-    log_tx(MState, "Outbound send confirmed (~p) -> arm timeout ~pms", [Result, ?TRANSACTION_TIMEOUT]),
+phase1(cast, {send_confirmed, true}, MState) ->
+    log_tx(MState, "Outbound send confirmed (true) -> arm timeout ~pms", [?TRANSACTION_TIMEOUT]),
+    {next_state, phase1, arm_timeout(MState)};
+phase1(cast, {send_confirmed, false}, MState) ->
+    log_tx_warn(MState,
+                "Outbound send FAILED (false) in phase1; peer may not have the transaction -> arm timeout ~pms",
+                [?TRANSACTION_TIMEOUT]),
     {next_state, phase1, arm_timeout(MState)};
 phase1(cast, {transaction, Data, LastElected, LastAttempt}, #mstate{my_addr = MyAddr} = MState) ->
     {Leader, Nodes, Records} = Data,
@@ -148,8 +153,15 @@ phase2(cast, {pre_commit, LastElected, LastAttempt, From}, #mstate{my_addr = MyA
             recover(),
             {next_state, recovering, MState}
     end;
-phase2(cast, {send_confirmed, Result}, MState) ->
-    log_tx(MState, "Outbound send confirmed (~p) -> arm timeout ~pms", [Result, ?TRANSACTION_TIMEOUT]),
+phase2(cast, {send_confirmed, true}, MState) ->
+    log_tx(MState, "Outbound send confirmed (true) -> arm timeout ~pms", [?TRANSACTION_TIMEOUT]),
+    {next_state, phase2, arm_timeout(MState)};
+phase2(cast, {send_confirmed, false}, MState) ->
+    %% Typically a lost tunnel cast to localhost:parent_api_port. Without a
+    %% successful pre_committed the leader never advances to commit.
+    log_tx_warn(MState,
+                "Outbound send FAILED (false) in phase2; leader may not get this ack -> arm timeout ~pms",
+                [?TRANSACTION_TIMEOUT]),
     {next_state, phase2, arm_timeout(MState)};
 phase2(cast, {pre_committed, From}, #mstate{my_addr = MyAddr} = MState) ->
     log_phase(phase2, {pre_committed, From}, MState),
@@ -208,8 +220,13 @@ phase3(cast, {commit, LastElected, LastAttempt, From}, #mstate{my_addr = MyAddr}
             recover(),
             {next_state, recovering, MState}
     end;
-phase3(cast, {send_confirmed, Result}, MState) ->
-    log_tx(MState, "Outbound send confirmed (~p) -> arm timeout ~pms", [Result, ?TRANSACTION_TIMEOUT]),
+phase3(cast, {send_confirmed, true}, MState) ->
+    log_tx(MState, "Outbound send confirmed (true) -> arm timeout ~pms", [?TRANSACTION_TIMEOUT]),
+    {next_state, phase3, arm_timeout(MState)};
+phase3(cast, {send_confirmed, false}, MState) ->
+    log_tx_warn(MState,
+                "Outbound send FAILED (false) in phase3 (pre_committed/commit ack may be lost) -> arm timeout ~pms",
+                [?TRANSACTION_TIMEOUT]),
     {next_state, phase3, arm_timeout(MState)};
 phase3(cast, {commited, From}, MState) ->
     log_phase(phase3, {commited, From}, MState),
@@ -270,8 +287,13 @@ recovering(cast, collect_lasts, #mstate{my_addr = MyAddr} = MState) ->
     log_tx(MState, "Collect lasts from nodes=~p", [MState#mstate.nodes]),
     send_all({request_lasts, MyAddr}, MState),
     {next_state, recovering, clean_replies(MState)};
-recovering(cast, {send_confirmed, Result}, MState) ->
-    log_tx(MState, "Outbound send confirmed (~p) -> arm timeout ~pms", [Result, ?TRANSACTION_TIMEOUT]),
+recovering(cast, {send_confirmed, true}, MState) ->
+    log_tx(MState, "Outbound send confirmed (true) -> arm timeout ~pms", [?TRANSACTION_TIMEOUT]),
+    {next_state, recovering, arm_timeout(MState)};
+recovering(cast, {send_confirmed, false}, MState) ->
+    log_tx_warn(MState,
+                "Outbound send FAILED (false) in recovering; recovery message may be lost -> arm timeout ~pms",
+                [?TRANSACTION_TIMEOUT]),
     {next_state, recovering, arm_timeout(MState)};
 recovering(cast, {lasts, LE, LA, From}, #mstate{my_addr = MyAddr} = MState) ->
     MState2 = add_reply(replied, From, MState),
@@ -410,8 +432,13 @@ add_reply(Reply, From, MState) ->
     MState#mstate{replies = Replies}.
 
 -spec all_replied(#mstate{}) -> boolean().
-all_replied(MState) ->
-    error == maps:find(no, MState#mstate.replies).
+all_replied(#mstate{replies = Replies}) ->
+    %% Replies are #{NodeAddr => yes|no|...}; "no" is a value, not a key.
+    not has_reply_value(no, Replies).
+
+-spec has_reply_value(atom(), map()) -> boolean().
+has_reply_value(Value, Replies) ->
+    lists:member(Value, maps:values(Replies)).
 
 -spec quorum_of(atom(), #mstate{}) -> boolean().
 quorum_of(Element, #mstate{replies = Replies}) ->
@@ -447,7 +474,7 @@ do_halt(committed, #mstate{my_addr = MyAddr} = MState) ->
     wm_event:announce(wm_commit_done, {MState#mstate.tid, {node, MyAddr}}).
 
 -spec make_decision(#mstate{}) -> #mstate{}.
-make_decision(MState) ->
+make_decision(#mstate{replies = Replies} = MState) ->
     Q1 = fun() -> quorum_of(pre_committed, MState) end,
     Q2 = fun() -> quorum_of(pre_aborted, MState) end,
     Q3 = fun() ->
@@ -457,11 +484,11 @@ make_decision(MState) ->
                         Acc
                 end,
             B1 = maps:fold(F, 0, MState#mstate.last_attempts) == 0,
-            B2 = error == maps:find(committed, MState#mstate.replies),
+            B2 = not has_reply_value(committed, Replies),
             B1 and B2
          end,
-    C1 = fun() -> error == maps:find(aborted, MState#mstate.replies) end,
-    C2 = fun() -> error == maps:find(committed, MState#mstate.replies) end,
+    C1 = fun() -> not has_reply_value(aborted, Replies) end,
+    C2 = fun() -> not has_reply_value(committed, Replies) end,
     C3 = fun() -> Q1() and Q3() end,
     C4 = fun() -> Q2() and not Q3() end,
     case C1() of

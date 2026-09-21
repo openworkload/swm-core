@@ -12,12 +12,15 @@
 -include("wm_entity.hrl").
 
 -record(mstate,
-        {rh :: map(),            %% Resource Hierarchy: {{DevisionAtom, DevisionId} => Resouce sub hierarchy}
-         nl :: binary(),         %% Neighbour List (binary vector)
-         ct :: binary(),         %% Connection Tolopogy (binary matrix)
-         ct_map :: map(),        %% NodeId --> Position in CT
-         mrole :: atom(),        %% Management role name
-         sname :: string()}).    %% Short node name
+        {rh :: map(),                 %% Resource Hierarchy
+         rh_index = #{} :: map(),     %% NodeId => path from RH root (root-first)
+         rh_children = #{} :: map(),  %% MgrNodeId => [#node{}] (children_only)
+         rh_neighbours = #{} :: map(),%% NodeId => [#node{}] (neighbours_only)
+         nl :: binary(),              %% Neighbour List (binary vector)
+         ct :: binary(),              %% Connection Topology (binary matrix)
+         ct_map :: map(),             %% NodeId --> Position in CT
+         mrole :: atom(),             %% Management role name
+         sname :: string()}).         %% Short node name
 
 -define(DEFAULT_TRIALS, 8).
 -define(BINARY_ID_BITS, 64).
@@ -132,23 +135,19 @@ init(Args) ->
     wm_works:call_asap(?MODULE, construct_data_types),
     {ok, MState}.
 
-handle_call({get_path, FromNodeId, ToNodeId}, _, #mstate{rh = RH} = MState) ->
+handle_call({get_path, FromNodeId, ToNodeId}, _, #mstate{rh_index = Index} = MState) ->
     NextNodeId =
-        case find_rh_path(FromNodeId, ToNodeId, RH) of
+        case find_rh_path_from_index(FromNodeId, ToNodeId, Index) of
             [] ->
                 not_found;
             List when is_list(List) ->
                 {ok, hd(List)}
         end,
     {reply, NextNodeId, MState};
-handle_call({is_my_direct_child, NodeId}, _, #mstate{rh = RH} = MState) ->
-    F = fun (#node{id = Id}) when Id == NodeId ->
-                true;
-            (_) ->
-                false
-        end,
+handle_call({is_my_direct_child, NodeId}, _, #mstate{rh_children = Children} = MState) ->
     MyNodeId = wm_self:get_node_id(),
-    Result = lists:any(F, find_close_nodes(MyNodeId, RH, children_only)),
+    MyChildren = maps:get(MyNodeId, Children, []),
+    Result = lists:any(fun(#node{id = Id}) -> Id =:= NodeId end, MyChildren),
     {reply, Result, MState};
 handle_call({get_tree_nodes, WithTemplates}, _, #mstate{} = MState) ->
     {reply, do_get_tree_nodes(WithTemplates, MState), MState};
@@ -174,23 +173,33 @@ handle_call({get_min_latency_to, NodeNames}, _, #mstate{} = MState) ->
     {reply, do_get_min_latency(SelfNode, NodeNames, {}, MState), MState};
 handle_call({get_latency, SrcNode, DstNode}, _, #mstate{} = MState) ->
     {reply, do_get_latency(SrcNode, DstNode, MState), MState};
-handle_call(get_my_neighbour_addresses, _, #mstate{rh = RH} = MState) ->
-    Nodes = find_close_nodes(wm_self:get_node_id(), RH, children_and_neighbours),
+handle_call(get_my_neighbour_addresses, _, #mstate{rh_children = Ch, rh_neighbours = Nb} = MState) ->
+    MyId = wm_self:get_node_id(),
+    Nodes = maps:get(MyId, Ch, []) ++ maps:get(MyId, Nb, []),
     Addresses = [wm_utils:get_address(Node) || Node <- Nodes],
     {reply, Addresses, MState};
-handle_call(get_my_neighbour_nodes, _, #mstate{rh = RH} = MState) ->
-    {reply, find_close_nodes(wm_self:get_node_id(), RH, children_and_neighbours), MState};
+handle_call(get_my_neighbour_nodes, _, #mstate{rh_children = Ch, rh_neighbours = Nb} = MState) ->
+    MyId = wm_self:get_node_id(),
+    {reply, maps:get(MyId, Ch, []) ++ maps:get(MyId, Nb, []), MState};
 handle_call(get_children, _, #mstate{} = MState) ->
     {reply, get_my_children([cluster, partition, node], MState), MState};
-handle_call({get_children_nodes, NodeId}, _, #mstate{rh = RH} = MState) ->
-    {reply, find_close_nodes(NodeId, RH, children_only), MState};
+handle_call({get_children_nodes, NodeId}, _, #mstate{rh_children = Ch, rh = RH} = MState) ->
+    Nodes =
+        case maps:find(NodeId, Ch) of
+            {ok, Cached} ->
+                Cached;
+            error ->
+                find_close_nodes(NodeId, RH, children_only)
+        end,
+    {reply, Nodes, MState};
 handle_call(construct_data_types, _, #mstate{} = MState) ->
     ?LOG_INFO("Construct topology"),
     MState1 = set_management_role(MState),
     MState2 = do_make_rh_main(MState1),
     MState3 = do_make_nl(MState2#mstate.mrole, MState2),
     MState4 = init_ct(MState3),
-    ?LOG_DEBUG("New MState: ~p", [MState4]),
+    ?LOG_DEBUG("Topology ready: role=~p rh_nodes=~p children_cached=~p",
+               [MState4#mstate.mrole, maps:size(MState4#mstate.rh_index), maps:size(MState4#mstate.rh_children)]),
     wm_event:announce(topology_constructed),
     {reply, ok, MState4};
 handle_call(_Msg, _, #mstate{} = MState) ->
@@ -293,7 +302,14 @@ do_make_rh_main(#mstate{mrole = Role} = MState) when Role =/= none ->
                  ?LOG_DEBUG("My subdivision: ~p", [Subdiv]),
                  do_make_rh(element(1, Subdiv), [Subdiv], maps:new(), node, MState)
          end,
-    MState#mstate{rh = RH};
+    Index = build_rh_index(RH),
+    {Children, Neighbours} = build_rh_close_caches(RH),
+    ?LOG_DEBUG("RH index built for ~p nodes (children=~p neighbours=~p)",
+               [maps:size(Index), maps:size(Children), maps:size(Neighbours)]),
+    MState#mstate{rh = RH,
+                  rh_index = Index,
+                  rh_children = Children,
+                  rh_neighbours = Neighbours};
 do_make_rh_main(#mstate{} = MState) ->
     ?LOG_INFO("Not ready to make RH"),
     MState.
@@ -735,40 +751,230 @@ find_rh_path(_, ToNodeId, _RH = undefined) ->
     [ToNodeId];
 find_rh_path(FromNodeId, ToNodeId, RH) ->
     ?LOG_DEBUG("Try to find the RH path: ~p --> ~p", [FromNodeId, ToNodeId]),
-    case get_parent_id(FromNodeId) of
-        {error, not_found} ->
-            [];
-        {ok, no_parent} ->  % cluster manager node without a parent
-            Path1 = find_child_rh_path(ToNodeId, RH, []),
-            Path2 = lists:filter(fun(X) -> X =/= FromNodeId end, Path1),
-            Path3 = lists:reverse(Path2),
-            Path3;
-        {ok, ToNodeId} ->
-            [ToNodeId];
+    find_rh_path_from_index(FromNodeId, ToNodeId, build_rh_index(RH)).
+
+%% @doc Path from From toward To using a precomputed NodeId => root-first path index.
+%% Returns [] when no forward path exists (same semantics as the former tree walk).
+-spec find_rh_path_from_index(string(), string(), map()) -> [string()].
+find_rh_path_from_index(FromNodeId, ToNodeId, _Index) when FromNodeId =:= ToNodeId ->
+    [];
+find_rh_path_from_index(FromNodeId, ToNodeId, Index) ->
+    case {maps:find(FromNodeId, Index), maps:find(ToNodeId, Index)} of
+        {{ok, FromPath}, {ok, ToPath}} ->
+            path_from_indexed_routes(FromNodeId, FromPath, ToPath);
         _ ->
-            NodeRH = get_node_rh(FromNodeId, RH, children_and_neighbours),
-            Neighbours = lists:map(fun({X, _}) -> X end, maps:to_list(NodeRH)),
-            CheckNeightbours =
-                fun ({node, Id}) ->
-                        {ok, Node} = wm_conf:select(node, {id, Id}),
-                        wm_entity:get(id, Node) == ToNodeId;
-                    ({SubDiv, Id}) ->
-                        {ok, X} = wm_conf:select(SubDiv, {id, Id}),
-                        case is_subdiv_manager(ToNodeId, X) of
-                            {false, _} ->
-                                false;
-                            true ->
-                                true
-                        end
-                end,
-            case lists:any(CheckNeightbours, Neighbours) of
+            []
+    end.
+
+-spec path_from_indexed_routes(string(), [string()], [string()]) -> [string()].
+path_from_indexed_routes(FromNodeId, FromPath, ToPath) ->
+    ToId = lists:last(ToPath),
+    case parent_id_from_path(FromPath) of
+        {ok, ToId} ->
+            [ToId];
+        Parent ->
+            case lists:prefix(ToPath, FromPath) of
                 true ->
-                    [ToNodeId];
+                    %% To is a strict ancestor beyond the immediate parent — no upward route.
+                    [];
                 false ->
-                    Path1 = find_child_rh_path(ToNodeId, NodeRH, []),
-                    Path2 = lists:filter(fun(X) -> X =/= FromNodeId end, Path1),
-                    Path3 = lists:reverse(Path2),
-                    Path3
+                    Common = common_prefix(FromPath, ToPath),
+                    Rest = lists:nthtail(length(Common), ToPath),
+                    case Rest of
+                        [] ->
+                            [];
+                        _ ->
+                            case Parent of
+                                no_parent ->
+                                    lists:filter(fun(X) -> X =/= FromNodeId end, ToPath);
+                                {ok, ParentId} ->
+                                    case lists:prefix(FromPath, ToPath) of
+                                        true ->
+                                            %% Straight down from From toward To.
+                                            Rest;
+                                        false ->
+                                            %% Sideways via a sibling under From's parent.
+                                            case length(Common) =:= length(FromPath) - 1
+                                                 andalso lists:last(Common) =:= ParentId
+                                            of
+                                                true ->
+                                                    Rest;
+                                                false ->
+                                                    []
+                                            end
+                                    end
+                            end
+                    end
+            end
+    end.
+
+-spec parent_id_from_path([string()]) -> {ok, string()} | no_parent.
+parent_id_from_path([_]) ->
+    no_parent;
+parent_id_from_path(Path) ->
+    {ok, lists:nth(length(Path) - 1, Path)}.
+
+-spec common_prefix([string()], [string()]) -> [string()].
+common_prefix([A | T1], [A | T2]) ->
+    [A | common_prefix(T1, T2)];
+common_prefix(_, _) ->
+    [].
+
+%% @doc Build NodeId => root-first path index for O(depth) get_path lookups.
+-spec build_rh_index(map() | undefined) -> map().
+build_rh_index(undefined) ->
+    #{};
+build_rh_index(RH) when map_size(RH) == 0 ->
+    #{};
+build_rh_index(RH) ->
+    build_rh_index_tree(maps:to_list(RH), [], #{}).
+
+-spec build_rh_index_tree([{{atom(), string()}, map()}], [string()], map()) -> map().
+build_rh_index_tree([], _PathPrefix, Acc) ->
+    Acc;
+build_rh_index_tree([{{node, Id}, _Sub} | T], PathPrefix, Acc) ->
+    Acc2 = maps:put(Id, PathPrefix ++ [Id], Acc),
+    build_rh_index_tree(T, PathPrefix, Acc2);
+build_rh_index_tree([{{Division, Id}, SubRH} | T], PathPrefix, Acc) when Division =/= node ->
+    Acc2 =
+        case division_manager_id(Division, Id) of
+            {ok, MgrId} ->
+                NewPrefix = PathPrefix ++ [MgrId],
+                AccMgr = maps:put(MgrId, NewPrefix, Acc),
+                build_rh_index_tree(maps:to_list(SubRH), NewPrefix, AccMgr);
+            _ ->
+                build_rh_index_tree(maps:to_list(SubRH), PathPrefix, Acc)
+        end,
+    build_rh_index_tree(T, PathPrefix, Acc2);
+build_rh_index_tree([_ | T], PathPrefix, Acc) ->
+    build_rh_index_tree(T, PathPrefix, Acc).
+
+-spec division_manager_id(atom(), string()) -> {ok, string()} | {error, not_found}.
+division_manager_id(Division, Id) ->
+    case wm_conf:select(Division, {id, Id}) of
+        {ok, Entity} ->
+            MgrName = wm_entity:get(manager, Entity),
+            case wm_conf:select_node(MgrName) of
+                {ok, #node{id = MgrId}} ->
+                    {ok, MgrId};
+                _ ->
+                    {error, not_found}
+            end;
+        _ ->
+            {error, not_found}
+    end.
+
+%% @doc Build children/neighbours caches in one RH walk (avoids per-call DB scans).
+-spec build_rh_close_caches(map() | undefined) -> {map(), map()}.
+build_rh_close_caches(undefined) ->
+    {#{}, #{}};
+build_rh_close_caches(RH) when map_size(RH) == 0 ->
+    {#{}, #{}};
+build_rh_close_caches(RH) ->
+    Cache0 = #{},
+    {Children, Neighbours, _} = index_close_entries(maps:to_list(RH), #{}, #{}, Cache0),
+    {Children, Neighbours}.
+
+-spec index_close_entries([{{atom(), string()}, map()}], map(), map(), map()) -> {map(), map(), map()}.
+index_close_entries([], Children, Neighbours, Cache) ->
+    {Children, Neighbours, Cache};
+index_close_entries([{{node, _}, _} | T], Children, Neighbours, Cache) ->
+    index_close_entries(T, Children, Neighbours, Cache);
+index_close_entries([{{Division, Id}, SubRH} | T], Children, Neighbours, Cache) when Division =/= node ->
+    Entries = maps:to_list(SubRH),
+    {Children1, Neighbours1, Cache1} = index_close_entries(Entries, Children, Neighbours, Cache),
+    {Children2, Neighbours2, Cache2} =
+        case division_manager_id(Division, Id) of
+            {ok, MgrId} ->
+                {DirectNodes, CacheD} = direct_member_nodes(Entries, Cache1),
+                ChildNodes = collect_mgr_children(MgrId, Entries, CacheD),
+                %% Flat list kept without the cache tuple from collect
+                {ChildList, CacheC} = ChildNodes,
+                Neighbours3 =
+                    lists:foldl(fun(#node{id = Nid}, AccNb) ->
+                                   Others = [N || #node{id = Oid} = N <- DirectNodes, Oid =/= Nid],
+                                   maps:put(Nid, Others, AccNb)
+                                end,
+                                Neighbours1,
+                                DirectNodes),
+                {maps:put(MgrId, ChildList, Children1), Neighbours3, CacheC};
+            _ ->
+                {Children1, Neighbours1, Cache1}
+        end,
+    index_close_entries(T, Children2, Neighbours2, Cache2);
+index_close_entries([_ | T], Children, Neighbours, Cache) ->
+    index_close_entries(T, Children, Neighbours, Cache).
+
+%% Direct members of a division: leaf nodes + managers of immediate child divisions (not flattened).
+-spec direct_member_nodes([{{atom(), string()}, map()}], map()) -> {[#node{}], map()}.
+direct_member_nodes(Entries, Cache) ->
+    lists:foldl(fun ({{node, Id}, _}, {Acc, CacheIn}) ->
+                        case fetch_node_cached(Id, CacheIn) of
+                            {ok, #node{is_template = false} = Node, CacheOut} ->
+                                {[Node | Acc], CacheOut};
+                            {_, _, CacheOut} ->
+                                {Acc, CacheOut}
+                        end;
+                    ({{Division, Id}, _}, {Acc, CacheIn}) when Division =/= node ->
+                        case division_manager_id(Division, Id) of
+                            {ok, MgrId} ->
+                                case fetch_node_cached(MgrId, CacheIn) of
+                                    {ok, Node, CacheOut} ->
+                                        {[Node | Acc], CacheOut};
+                                    {_, _, CacheOut} ->
+                                        {Acc, CacheOut}
+                                end;
+                            _ ->
+                                {Acc, CacheIn}
+                        end;
+                    (_, AccCache) ->
+                        AccCache
+                end,
+                {[], Cache},
+                Entries).
+
+%% children_only semantics for a division manager (flatten self-managed nested partitions).
+-spec collect_mgr_children(string(), [{{atom(), string()}, map()}], map()) -> {[#node{}], map()}.
+collect_mgr_children(MgrId, Entries, Cache) ->
+    lists:foldl(fun ({{node, Id}, _}, {Acc, CacheIn}) ->
+                        case fetch_node_cached(Id, CacheIn) of
+                            {ok, #node{is_template = false, id = Id} = Node, CacheOut} when Id =/= MgrId ->
+                                {[Node | Acc], CacheOut};
+                            {_, _, CacheOut} ->
+                                {Acc, CacheOut}
+                        end;
+                    ({{Division, Id}, SubRH}, {Acc, CacheIn}) when Division =/= node ->
+                        case division_manager_id(Division, Id) of
+                            {ok, MgrId} ->
+                                {Nested, CacheOut} = collect_mgr_children(MgrId, maps:to_list(SubRH), CacheIn),
+                                {Nested ++ Acc, CacheOut};
+                            {ok, OtherMgrId} ->
+                                case fetch_node_cached(OtherMgrId, CacheIn) of
+                                    {ok, Node, CacheOut} ->
+                                        {[Node | Acc], CacheOut};
+                                    {_, _, CacheOut} ->
+                                        {Acc, CacheOut}
+                                end;
+                            _ ->
+                                {Acc, CacheIn}
+                        end;
+                    (_, AccCache) ->
+                        AccCache
+                end,
+                {[], Cache},
+                Entries).
+
+-spec fetch_node_cached(string(), map()) -> {ok, #node{}, map()} | {error, not_found, map()}.
+fetch_node_cached(Id, Cache) ->
+    case maps:find(Id, Cache) of
+        {ok, Node} ->
+            {ok, Node, Cache};
+        error ->
+            case wm_conf:select(node, {id, Id}) of
+                {ok, #node{} = Node} ->
+                    {ok, Node, maps:put(Id, Node, Cache)};
+                _ ->
+                    {error, not_found, Cache}
             end
     end.
 
@@ -805,79 +1011,25 @@ get_node_surrounding_rh({{Division, Id}, SubRH}, NodeId, {false, FoundKey, LastS
         NodeId ->
             {true, {Division, Id}, LastSubRH};
         _ ->
-            F = fun(P) -> get_node_surrounding_rh(P, NodeId, {false, FoundKey, SubRH}) end,
-            case lists:flatten(
-                     lists:map(F, maps:to_list(SubRH)))
-            of
-                [] ->
-                    {false, {}, #{}};
-                List ->
-                    UniqueList = lists:usort(List), % remove duplicates
-                    case lists:filter(fun({B, _, _}) -> B =:= true end, UniqueList) of
-                        [] ->
-                            {false, {}, #{}};
-                        [Found] ->
-                            Found
-                    end
-            end
+            search_surrounding_children(maps:to_list(SubRH), NodeId, FoundKey, SubRH)
     end;
 get_node_surrounding_rh({{_, Id}, _}, NodeId, {false, FoundKey, LastSubRH}) when Id == NodeId ->
     {true, FoundKey, LastSubRH};
 get_node_surrounding_rh({{_, _}, SubRH}, NodeId, {false, FoundKey, LastSubRH}) ->
-    F = fun(P, Acc) -> get_node_surrounding_rh(P, NodeId, Acc) end,
-    lists:foldl(F, {false, FoundKey, LastSubRH}, maps:to_list(SubRH));
+    search_surrounding_children(maps:to_list(SubRH), NodeId, FoundKey, LastSubRH);
 get_node_surrounding_rh({{_, _}, _}, _, {true, FoundKey, LastSubRH}) ->
     {true, FoundKey, LastSubRH}.
 
--spec find_child_rh_path(node_id(), map(), [node_id()]) -> [node_id()].
-find_child_rh_path(_, RH, _) when map_size(RH) == 0 ->
-    [];
-find_child_rh_path(NodeId, RH, Path) ->
-    F = fun ({{node, Id}, _})
-                when Id =:= NodeId ->                              % searched node is found
-                [NodeId | Path];
-            ({{node, _}, _}) ->                                    % node does not have children
-                [];
-            ({{Division, Id}, SubRH}) ->                           % check cluster or partition
-                {ok, X} = wm_conf:select(Division, {id, Id}),
-                case is_subdiv_manager(NodeId, X) of
-                    true ->                                        % searched node (manager) is found
-                        [NodeId | Path];
-                    {false, MgrId} ->                              % not found yet => search in depth
-                        find_child_rh_path(NodeId, SubRH, [MgrId | Path])
-                end
-        end,
-    Paths = lists:map(F, maps:to_list(RH)),
-    case lists:filter(fun(X) -> X =/= [] end, Paths) of
-        [] ->
-            [];
-        [OnlyOneCorrectPath] ->
-            OnlyOneCorrectPath
-    end.
-
--spec is_subdiv_manager(node_id(), tuple()) -> true | {false, node_id()}.
-is_subdiv_manager(NodeId, Entity) ->
-    MgrName = wm_entity:get(manager, Entity),
-    {ok, Node} = wm_conf:select_node(MgrName),
-    case wm_entity:get(id, Node) of
-        NodeId ->
-            true;
-        OtherId ->
-            {false, OtherId}
-    end.
-
--spec get_parent_id(node_id()) -> {ok, node_id()} | {error, not_found}.
-get_parent_id(NodeId) ->
-    case wm_conf:select(node, {id, NodeId}) of
-        {ok, #node{parent = ParentName}} ->
-            case wm_conf:select_node(ParentName) of
-                {ok, #node{id = ParentId}} ->
-                    {ok, ParentId};
-                {error, not_found} ->
-                    {ok, no_parent}
-            end;
+-spec search_surrounding_children([{{atom(), string()}, map()}], node_id(), {atom(), string()} | {}, map()) ->
+                                     {boolean(), {atom(), string()} | {}, map()}.
+search_surrounding_children([], _NodeId, _FoundKey, _SubRH) ->
+    {false, {}, #{}};
+search_surrounding_children([P | T], NodeId, FoundKey, SubRH) ->
+    case get_node_surrounding_rh(P, NodeId, {false, FoundKey, SubRH}) of
+        {true, _, _} = Found ->
+            Found;
         _ ->
-            {error, not_found}
+            search_surrounding_children(T, NodeId, FoundKey, SubRH)
     end.
 
 -spec find_close_nodes(node_id(), map(), atom()) -> [#node{}].

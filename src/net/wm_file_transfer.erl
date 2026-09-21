@@ -40,6 +40,8 @@
 -define(DATA_TRANSFER_PARALLEL, 2).
 -define(BUF_SIZE, 65536).
 -define(DEFAULT_WORKER_UPLOAD_TIMEOUT, 20 * 60000).
+-define(SSH_DAEMON_RETRIES, 5).
+-define(SSH_DAEMON_RETRY_MS, 500).
 
 %% ============================================================================
 %% Module API
@@ -390,6 +392,7 @@ init(Args) ->
                 {ok, Pid} ->
                     {ok, MState#mstate{ssh_daemon_pid = Pid}};
                 {error, Reason} ->
+                    ?LOG_ERROR("Cannot start file-transfer SSH daemon on port ~p: ~p", [?MODULE:get_port(), Reason]),
                     {stop, Reason}
             end
     end.
@@ -667,6 +670,11 @@ handle_info(Info, MState) ->
     ?LOG_INFO("Got not handled message ~p", [Info]),
     {noreply, MState}.
 
+terminate(Reason, #mstate{ssh_daemon_pid = Pid}) ->
+    %% Must release the data-transfer SSH port before supervisor restart
+    %% (reload_services), otherwise the next init hits eaddrinuse.
+    stop_ssh_daemon(Pid),
+    wm_utils:terminate_msg(?MODULE, Reason);
 terminate(Reason, _) ->
     wm_utils:terminate_msg(?MODULE, Reason).
 
@@ -689,14 +697,43 @@ parse_args([{_, _} | T], MState) ->
 %% After work is done, use spool from start_link arg for system_dir
 -spec ssh_daemon() -> {ok, pid()} | {error, term()}.
 ssh_daemon() ->
+    ssh_daemon(?SSH_DAEMON_RETRIES).
+
+-spec ssh_daemon(non_neg_integer()) -> {ok, pid()} | {error, term()}.
+ssh_daemon(RetriesLeft) ->
     % TODO: use ssh daemon started by wm_ssh_server
-    ssh:daemon(
-        ?MODULE:get_port(),
-        [{id_string, "SWM/" ++ wm_utils:get_env("SWM_VERSION")},
-         {system_dir, filename:join([wm_utils:get_env("SWM_SPOOL"), "secure/host"])},
-         {subsystems, [wm_ssh_sftp_ext:subsystem_spec(), ssh_sftpd:subsystem_spec([{cwd, _CWD = "/"}])]},
-         {preferred_algorithms, ssh:default_algorithms()},
-         {user_passwords, [{"swm", "swm"}]}]).  %TODO: consider a real password here
+    Port = ?MODULE:get_port(),
+    case ssh:daemon(Port,
+                    [{id_string, "SWM/" ++ wm_utils:get_env("SWM_VERSION")},
+                     {system_dir, filename:join([wm_utils:get_env("SWM_SPOOL"), "secure/host"])},
+                     {subsystems, [wm_ssh_sftp_ext:subsystem_spec(), ssh_sftpd:subsystem_spec([{cwd, _CWD = "/"}])]},
+                     {preferred_algorithms, ssh:default_algorithms()},
+                     {user_passwords, [{"swm", "swm"}]}])  %TODO: consider a real password here
+    of
+        {ok, Pid} ->
+            ?LOG_DEBUG("File-transfer SSH daemon started on port ~p (pid=~p)", [Port, Pid]),
+            {ok, Pid};
+        {error, eaddrinuse} when RetriesLeft > 1 ->
+            ?LOG_WARN("File-transfer SSH port ~p still in use; retrying (~p left)", [Port, RetriesLeft - 1]),
+            timer:sleep(?SSH_DAEMON_RETRY_MS),
+            ssh_daemon(RetriesLeft - 1);
+        {error, Reason} = Error ->
+            ?LOG_ERROR("ssh:daemon(~p) failed: ~p", [Port, Reason]),
+            Error
+    end.
+
+-spec stop_ssh_daemon(pid() | undefined) -> ok.
+stop_ssh_daemon(undefined) ->
+    ok;
+stop_ssh_daemon(Pid) when is_pid(Pid) ->
+    ?LOG_DEBUG("Stopping file-transfer SSH daemon ~p", [Pid]),
+    case ssh:stop_daemon(Pid) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ?LOG_WARN("Could not stop file-transfer SSH daemon ~p: ~p", [Pid, Reason]),
+            ok
+    end.
 
 %% TODO: Fix spec
 -spec parse_files(any(), file:filename() | [file:filename()]) -> [file:filename()].

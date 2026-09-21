@@ -11,6 +11,9 @@
 -define(MAXR, 1).
 -define(MAXT, 120).
 -define(EXIT_TIMEOUT, 30).
+%% ssh:stop_daemon needs more than the default 30ms shutdown window
+%% used for other workers during reload_services.
+-define(FILE_TRANSFER_EXIT_TIMEOUT, 5000).
 -define(STRATEGY, one_for_one).
 
 %% ============================================================================
@@ -106,6 +109,13 @@ get_worker_spec(wm_factory_virtres, Args) ->
     get_worker_spec({wm_factory_virtres, wm_factory}, Args3);
 get_worker_spec({RegName, Mod}, Args) ->
     {RegName, {Mod, start_link, Args}, permanent, ?EXIT_TIMEOUT, worker, [Mod]};
+get_worker_spec(wm_file_transfer, Args) ->
+    {wm_file_transfer,
+     {wm_file_transfer, start_link, Args},
+     permanent,
+     ?FILE_TRANSFER_EXIT_TIMEOUT,
+     worker,
+     [wm_file_transfer]};
 get_worker_spec(Mod, Args) ->
     {Mod, {Mod, start_link, Args}, permanent, ?EXIT_TIMEOUT, worker, [Mod]}.
 
