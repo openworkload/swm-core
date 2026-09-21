@@ -1,8 +1,8 @@
 #!/bin/sh
 
-#SWM name Quick Job
-#SWM comment This is a simplest example of a job script
-#SWM nodes 1
+#SWM name Simple multi-node job
+#SWM comment This is a simplest example of a job script that requests multiple nodes
+#SWM nodes 3
 #SWM relocatable
 
 #SWM account azure
@@ -13,4 +13,4 @@
 
 cat /etc/os-release
 sleep 120
-echo "Hello from simple job $SWM_JOBID"
+echo "Hello from simple job $SWM_JOB_ID"

@@ -131,11 +131,30 @@ Mark the job as relocatable (can be migrated between nodes).
 #SWM relocatable
 ```
 
+## Environment Variables
+
+Porter exports the following variables into the job script process. Values come from the job record (and related config) at start time.
+
+| Variable | Description |
+|---|---|
+| `SWM_JOB_ID` | Job UUID |
+| `SWM_JOB_NAME` | Job name (`#SWM name`) |
+| `SWM_JOB_ACCOUNT` | Account name used for the job (`#SWM account`) |
+| `SWM_JOB_NODES` | Comma-separated allocated node names; the partition manager (**main**) is always first |
+| `SWM_JOB_NODES_NUMBER` | Number of allocated nodes (including main) |
+| `SWM_JOB_COMMENT` | Job comment (`#SWM comment`) |
+| `SWM_JOB_INPUT_FILES` | Comma-separated input files uploaded by SWM (`#SWM input-files`) |
+| `SWM_JOB_OUTPUT_FILES` | Comma-separated output files downloaded when the job finishes (`#SWM output-files`) |
+| `SWM_JOB_PORTS` | Ports to forward from the remote side (`#SWM ports`), as requested |
+| `SWM_RELOCATABLE` | `YES` or `NO` — whether the job is relocatable (`#SWM relocatable`) |
+
+Empty lists/strings are exported as an empty value. User-defined pairs from the job `env` field are also applied; the `SWM_*` variables above always take precedence.
+
 ## Complete Multi-Node Example
 
 See also `priv/examples/jobscripts/multi-node.job` for a full OpenMPI hello-world script.
 
-For MPI (and similar), build a hostfile from the partition host names. The job container runs on **main** with host networking; multi-host `mpirun` needs passwordless SSH (or an equivalent PMI launcher) between the partition hosts. Porter sets `SWM_JOB_ID` in the job environment.
+For MPI (and similar), build a hostfile from the allocated node names. The job container runs on **main** with host networking; multi-host `mpirun` needs passwordless SSH (or an equivalent PMI launcher) between the partition hosts.
 
 ```bash
 #!/bin/bash
@@ -149,17 +168,15 @@ set -euo pipefail
 #SWM cloud-image ubuntu-22.04
 #SWM container-image ubuntu:22.04
 
-NODES=3
-JOB_PREFIX="swm-${SWM_JOB_ID:0:8}"
 HOSTFILE="${PWD}/hostfile"
+IFS=',' read -r -a NODES <<< "${SWM_JOB_NODES}"
 
 {
-    echo "${JOB_PREFIX}-main slots=1"
-    for i in $(seq 1 $((NODES - 1))); do
-        echo "${JOB_PREFIX}-compute${i} slots=1"
+    for host in "${NODES[@]}"; do
+        echo "${host} slots=1"
     done
 } >"${HOSTFILE}"
 
 # Install / compile OpenMPI app, then:
-mpirun --hostfile "${HOSTFILE}" -np "${NODES}" ./mpi_hello
+mpirun --hostfile "${HOSTFILE}" -np "${SWM_JOB_NODES_NUMBER}" ./mpi_hello
 ```

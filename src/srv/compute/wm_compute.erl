@@ -166,7 +166,9 @@ handle_timetable([], MState) ->
     MState;
 handle_timetable([X | T], MState) ->
     JobID = wm_entity:get(job_id, X),
-    JobNodeIds = wm_entity:get(job_nodes, X),
+    JobNodeIds =
+        wm_utils:order_node_ids_main_first(
+            wm_entity:get(job_nodes, X)),
     update_job(JobID, nodes, JobNodeIds),
     ?LOG_DEBUG("Handle job ~p, node IDs: ~p", [JobID, JobNodeIds]),
     SelfNodeId = wm_self:get_node_id(),
@@ -191,7 +193,7 @@ handle_timetable([X | T], MState) ->
                             handle_timetable(T, MState);
                         false ->
                             Nodes = wm_conf:select_many(node, id, JobNodeIds),
-                            MainNode = select_job_main_node(Nodes),
+                            MainNode = wm_utils:select_main_node(Nodes),
                             ?LOG_INFO("Job will be started remotely (main node: ~p)", [wm_entity:get(name, MainNode)]),
                             MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
                             handle_timetable(T, MState2)
@@ -203,7 +205,7 @@ handle_timetable([X | T], MState) ->
                             ?LOG_ERROR("No nodes found for job ~p (ids=~p)", [JobID, JobNodeIds]),
                             handle_timetable(T, MState);
                         _ ->
-                            MainNode = select_job_main_node(Nodes),
+                            MainNode = wm_utils:select_main_node(Nodes),
                             ?LOG_INFO("Job will be started remotely (main node: ~p)", [wm_entity:get(name, MainNode)]),
                             MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
                             handle_timetable(T, MState2)
@@ -211,24 +213,18 @@ handle_timetable([X | T], MState) ->
             end
     end.
 
-%% Job main = cloud partition manager (gateway set). Fall back to first node
-%% for on-prem. Do not assume job.nodes[0] is main: timetable rewrite can
-%% reverse the order at start time.
+%% Job main = cloud partition manager (gateway set / name ends with -main).
+%% Fall back to first node for on-prem. Do not assume timetable job_nodes[0]
+%% is main: the scheduler can reorder the list.
 -spec select_job_main_node([#node{}]) -> #node{} | not_found.
-select_job_main_node([]) ->
-    not_found;
 select_job_main_node(Nodes) ->
-    case lists:filter(fun(#node{gateway = Gw}) -> Gw =/= [] end, Nodes) of
-        [Main | _] ->
-            Main;
-        [] ->
-            hd(Nodes)
-    end.
+    wm_utils:select_main_node(Nodes).
 
 -spec propagate_job_to_nodes(job_id(), [node_id()], #mstate{}) -> #mstate{}.
-propagate_job_to_nodes(JobID, JobNodeIds, MState) ->
+propagate_job_to_nodes(JobID, JobNodeIds0, MState) ->
     ?LOG_DEBUG("Job will be propagated to its main compute node, job id: ~p", [JobID]),
     {ok, MyNode} = wm_self:get_node(),
+    JobNodeIds = wm_utils:order_node_ids_main_first(JobNodeIds0),
     Nodes = wm_conf:select_many(node, id, JobNodeIds),
     %% All allocated nodes become busy; only main receives the job record.
     wm_conf:set_nodes_state(state_alloc, busy, Nodes),

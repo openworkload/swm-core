@@ -210,9 +210,12 @@ run_native_process(#job{id = JobId} = Job, Porter, ProcEnvs, User) ->
 
 -spec prepare_porter_input(#job{}, #user{}) -> binary().
 prepare_porter_input(Job, User) ->
+    %% Porter only receives job+user binaries (docker ignores ProcEnvs), so resolve
+    %% node names and account name here before encoding.
+    JobForPorter = enrich_job_for_porter(Job),
     UserBin = erlang:term_to_binary(User),
     UserBinSize = byte_size(UserBin),
-    JobBin = erlang:term_to_binary(Job),
+    JobBin = erlang:term_to_binary(JobForPorter),
     JobBinSize = byte_size(JobBin),
     <<?PORTER_COMMAND_RUN/integer,
       ?PORTER_DATA_TYPES_COUNT/integer,
@@ -222,6 +225,45 @@ prepare_porter_input(Job, User) ->
       ?PORTER_DATA_TYPE_JOBS/integer,
       JobBinSize:4/big-integer-unit:8,
       JobBin/binary>>.
+
+%% @doc Replace node ids with names (main first) and account_id with account name
+%% so porter can export SWM_JOB_NODES / SWM_JOB_ACCOUNT without DB access.
+-spec enrich_job_for_porter(#job{}) -> #job{}.
+enrich_job_for_porter(Job) ->
+    NodeNames = node_ids_to_names(wm_entity:get(nodes, Job)),
+    AccountName = account_id_to_name(wm_entity:get(account_id, Job)),
+    wm_entity:set([{nodes, NodeNames}, {account_id, AccountName}], Job).
+
+-spec node_ids_to_names([node_id()]) -> [string()].
+node_ids_to_names(NodeIds) ->
+    OrderedIds = wm_utils:order_node_ids_main_first(NodeIds),
+    lists:map(fun(NodeId) ->
+                 case wm_conf:select(node, {id, NodeId}) of
+                     {ok, Node} ->
+                         wm_entity:get(name, Node);
+                     _ ->
+                         NodeId
+                 end
+              end,
+              OrderedIds).
+
+-spec account_id_to_name(account_id() | []) -> string().
+account_id_to_name([]) ->
+    "";
+account_id_to_name(AccountId) ->
+    case wm_conf:select(account, {id, AccountId}) of
+        {ok, Account} ->
+            case wm_entity:get(name, Account) of
+                Name when is_atom(Name) ->
+                    atom_to_list(Name);
+                Name when is_list(Name) ->
+                    Name;
+                _ ->
+                    ""
+            end;
+        _ ->
+            ""
+    end.
 
 -spec do_check(#process{}, #mstate{}) -> #mstate{}.
 do_check(Process, #mstate{task_id = TaskId} = MState) ->

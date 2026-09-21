@@ -148,17 +148,72 @@ void parse_opts(int argc, char* const argv[]) {
   swm_log_init(log_level, stderr);
 }
 
+std::string join_csv(const std::vector<std::string> &items) {
+  std::string out;
+  for (size_t i = 0; i < items.size(); ++i) {
+    if (i) {
+      out += ',';
+    }
+    out += items[i];
+  }
+  return out;
+}
+
+std::string ports_from_request(const SwmJob &job) {
+  for (const auto &resource : job.get_request()) {
+    if (resource.get_name() != "ports") {
+      continue;
+    }
+    for (const auto &prop : resource.get_properties()) {
+      if (prop.first != "value") {
+        continue;
+      }
+      std::string value;
+      int index = 0;
+      ei_x_buff buf = prop.second;
+      if (buf.buff && ei_buffer_to_str(buf.buff, index, value) == 0) {
+        return value;
+      }
+    }
+  }
+  return "";
+}
+
 void set_env(passwd *pw, const SwmJob &job) {
   const std::string cwd = job.get_workdir();
   setenv("HOME", pw->pw_dir, 1);
   setenv("USER", pw->pw_name, 1);
+
+  // User-defined job.env first; SWM_* exports below overwrite on conflict.
+  for (const auto &kv : job.get_env()) {
+    if (!kv.first.empty()) {
+      setenv(kv.first.c_str(), kv.second.c_str(), 1);
+    }
+  }
+
   setenv("SWM_JOB_ID", job.get_id().c_str(), 1);
+  setenv("SWM_JOB_NAME", job.get_name().c_str(), 1);
+  // Account name is resolved in Erlang (prepare_porter_input) into account_id for porter.
+  setenv("SWM_JOB_ACCOUNT", job.get_account_id().c_str(), 1);
+  const auto nodes = job.get_nodes();
+  const auto nodes_csv = join_csv(nodes);
+  const auto nodes_number = std::to_string(nodes.size());
+  setenv("SWM_JOB_NODES", nodes_csv.c_str(), 1);
+  setenv("SWM_JOB_NODES_NUMBER", nodes_number.c_str(), 1);
+  setenv("SWM_JOB_COMMENT", job.get_comment().c_str(), 1);
+  const auto input_files = join_csv(job.get_input_files());
+  const auto output_files = join_csv(job.get_output_files());
+  setenv("SWM_JOB_INPUT_FILES", input_files.c_str(), 1);
+  setenv("SWM_JOB_OUTPUT_FILES", output_files.c_str(), 1);
+  const auto ports = ports_from_request(job);
+  setenv("SWM_JOB_PORTS", ports.c_str(), 1);
+  setenv("SWM_RELOCATABLE", job.get_relocatable() == "true" ? "YES" : "NO", 1);
+
   if (cwd.size()) {
     const std::string path = job.get_workdir() + ":" + getenv("PATH");
-    const auto path_str = path.c_str();
-    setenv("PATH", path_str, 1);
-    setenv("PWD", path_str, 1);
-    swm_logi("Job PATH=%s", path_str);
+    setenv("PATH", path.c_str(), 1);
+    setenv("PWD", path.c_str(), 1);
+    swm_logi("Job PATH=%s", path.c_str());
   }
 }
 

@@ -10,11 +10,8 @@ set -euo pipefail
 #SWM cloud-image ubuntu-22.04
 #SWM container-image ubuntu:22.04
 
-# Keep in sync with "#SWM nodes" above.
-# Partition layout for N nodes: 1x swm-<jobid8>-main + (N-1)x swm-<jobid8>-compute1..
-NODES=3
-
-echo "Hello from multi-node MPI job ${SWM_JOB_ID}"
+echo "Hello from multi-node MPI job ${SWM_JOB_ID} (${SWM_JOB_NAME})"
+echo "Nodes (${SWM_JOB_NODES_NUMBER}): ${SWM_JOB_NODES}"
 echo "Launcher hostname: $(hostname)"
 date
 
@@ -23,13 +20,12 @@ apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
     openmpi-bin libopenmpi-dev g++ openssh-client >/dev/null
 
-JOB_PREFIX="swm-${SWM_JOB_ID:0:8}"
-HOSTFILE="${PWD}/hostfile.${JOB_PREFIX}"
+HOSTFILE="${PWD}/hostfile.${SWM_JOB_ID}"
+IFS=',' read -r -a NODES <<< "${SWM_JOB_NODES}"
 
 {
-    echo "${JOB_PREFIX}-main slots=1"
-    for i in $(seq 1 $((NODES - 1))); do
-        echo "${JOB_PREFIX}-compute${i} slots=1"
+    for host in "${NODES[@]}"; do
+        echo "${host} slots=1"
     done
 } >"${HOSTFILE}"
 
@@ -65,6 +61,6 @@ mpicc -o mpi_hello mpi_hello.c
 # Job script runs on the main node (host network). OpenMPI launches
 # ranks on each host in the hostfile (passwordless SSH between partition
 # hosts is required for multi-host launch).
-mpirun --hostfile "${HOSTFILE}" -np "${NODES}" ./mpi_hello
+mpirun --hostfile "${HOSTFILE}" -np "${SWM_JOB_NODES_NUMBER}" ./mpi_hello
 
 echo "Multi-node MPI job completed"

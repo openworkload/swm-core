@@ -12,7 +12,8 @@
 -export([priv/0, priv/1]).
 -export([to_float/1, to_string/1, to_binary/1, to_integer/1]).
 -export([localtime/0, now_iso8601/1, timestamp/0, timestamp/1]).
--export([get_partition_manager_name/1, get_cloud_node_name/2, get_requested_nodes_number/1]).
+-export([get_partition_manager_name/1, get_cloud_node_name/2, get_requested_nodes_number/1, order_node_ids_main_first/1,
+         select_main_node/1]).
 -export([get_cert_partial_chain_fun/1, get_node_cert_paths/1]).
 -export([update_map/3]).
 -export([find_property_in_resource/3]).
@@ -668,6 +669,51 @@ get_cloud_node_name(JobId, Index) ->
 -spec get_partition_manager_name(job_id()) -> string().
 get_partition_manager_name(JobId) ->
     "swm-" ++ string:slice(JobId, 0, 8) ++ "-main".
+
+%% @doc Cloud partition manager has gateway set; name ends with "-main".
+-spec is_main_node(#node{}) -> boolean().
+is_main_node(#node{gateway = Gw}) when Gw =/= [] ->
+    true;
+is_main_node(#node{name = Name}) when is_list(Name) ->
+    lists:suffix("-main", Name);
+is_main_node(_) ->
+    false.
+
+%% @doc Prefer gateway / "-main" name; otherwise keep the first node.
+-spec select_main_node([#node{}]) -> #node{} | not_found.
+select_main_node([]) ->
+    not_found;
+select_main_node(Nodes) ->
+    case lists:filter(fun is_main_node/1, Nodes) of
+        [Main | _] ->
+            Main;
+        [] ->
+            hd(Nodes)
+    end.
+
+%% @doc Put partition manager (main) first; preserve relative order of the rest.
+%% Scheduler timetable can reorder job_nodes; callers that care about main-first
+%% (porter SWM_JOB_NODES, job.nodes updates) should use this.
+-spec order_node_ids_main_first([node_id()]) -> [node_id()].
+order_node_ids_main_first([]) ->
+    [];
+order_node_ids_main_first(NodeIds) ->
+    Nodes =
+        lists:filtermap(fun(Id) ->
+                           case wm_conf:select(node, {id, Id}) of
+                               {ok, Node} ->
+                                   {true, Node};
+                               _ ->
+                                   false
+                           end
+                        end,
+                        NodeIds),
+    case select_main_node(Nodes) of
+        not_found ->
+            NodeIds;
+        #node{id = MainId} ->
+            [MainId | [Id || Id <- NodeIds, Id =/= MainId]]
+    end.
 
 -spec get_requested_nodes_number(#job{}) -> integer().
 get_requested_nodes_number(Job) ->
