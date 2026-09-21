@@ -14,6 +14,7 @@ Guidance for coding agents working on this repository. The codebase is primarily
 - `make format` — format generated and source files after `make gen`.
 - `make porter` — build C++ Porter.
 - `make compile` — `./rebar3 compile`.
+- `make build-all` — full build in `skyport-dev` as `$USER`; **stops SWM first** so sync cannot race `rebar3`/compile.
 
 Prefer existing Makefile and rebar3 targets over ad hoc commands.
 
@@ -39,9 +40,25 @@ To get Erlang environment for the project use `make cr` command to spawn an inte
   `docker exec -ti skyport-dev runuser -u <host-user> /bin/bash`  
   (same `$HOME` mount as on the host, workdir is usually the directory from which the container was first created).
 
+### Agents: never compile as root
+
+Plain `docker exec skyport-dev ...` runs as **root**. Always match `make cr` / `scripts/run-in-dev-container.sh` and run as the host user so build artifacts stay owned by that user:
+
+```bash
+docker exec skyport-dev runuser -u "$USER" -- bash -lc '
+  source /usr/erlang/activate
+  export REBAR_CACHE_DIR="${HOME}/.cache/rebar3"
+  mkdir -p "${REBAR_CACHE_DIR}"
+  cd /path/to/swm-core && make compile
+'
+```
+
+Use the host `$USER` (or the uid that owns the workspace). Do not use `docker exec` without `runuser` for `make compile`, `./rebar3`, `make gen`, `make format`, or `make porter`.
+
 ## Erlang + C++ conventions for agents
 
 - **Erlang**: follow existing module layout, types/specs where the file already uses them, rebar3 profiles, and `make format` / lint expectations already wired in the repo.
+- **No Unicode em-dash (`—`, U+2014) in source or log strings.** `wm_log` formats messages with `~s`, which rejects codepoints above 255 and can crash the caller (e.g. `wm_factory`). Use ASCII `--` (or plain hyphen) instead. Prefer ASCII-only in `?LOG_*` format strings generally.
 - **C++**: match style and patterns in `c_src/lib/` and `c_src/porter/`; build through **`make porter`** or the subdirectory Makefiles rather than inventing new build systems.
 - **Scope**: change only what the task requires; do not refactor unrelated Erlang or C++ without a clear need.
 
