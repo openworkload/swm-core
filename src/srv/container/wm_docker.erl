@@ -142,15 +142,24 @@ docker_resource_exists(Kind, Name) ->
             false;
         {error, Reason} ->
             ?LOG_ERROR("Docker inspect failed for ~p ~p: ~p", [Kind, Name, Reason]),
-            catch wm_docker_client:stop(HttpProcPid),
+            stop_http_client_ignore_error(HttpProcPid),
             false;
         {_Status, Data} when is_binary(Data), Data =/= <<>> ->
             wm_docker_client:stop(HttpProcPid),
             true;
         {Status, Data} ->
             ?LOG_ERROR("Unexpected Docker inspect result for ~p ~p: status=~p data=~p", [Kind, Name, Status, Data]),
-            catch wm_docker_client:stop(HttpProcPid),
+            stop_http_client_ignore_error(HttpProcPid),
             false
+    end.
+
+-spec stop_http_client_ignore_error(pid()) -> ok.
+stop_http_client_ignore_error(HttpProcPid) ->
+    try
+        wm_docker_client:stop(HttpProcPid)
+    catch
+        _:_ ->
+            ok
     end.
 
 -spec get_connection_host() -> string().

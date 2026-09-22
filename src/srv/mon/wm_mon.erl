@@ -68,8 +68,15 @@ init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     wm_event:subscribe(http_started, node(), ?MODULE),
+    MState2 =
+        case whereis(wm_http) of
+            undefined ->
+                MState;
+            _ ->
+                handle_event(http_started, [], MState)
+        end,
     wm_event:announce(mon_started),
-    {ok, MState}.
+    {ok, MState2}.
 
 handle_call({import_data, Meta, Data}, _, #mstate{} = MState) ->
     ?LOG_DEBUG("Import data (meta=~p)", [Meta]),

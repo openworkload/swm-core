@@ -18,7 +18,7 @@ jobs:
   unit_tests:
     runs-on: ubuntu-22.04
     container:
-      image: erlang:27.3.3
+      image: erlang:29.1
     steps:
       -
         name: Checkout
@@ -33,7 +33,7 @@ jobs:
   common_tests:
     runs-on: ubuntu-22.04
     container:
-      image: erlang:27.3.3
+      image: erlang:29.1
     steps:
       -
         name: Checkout
@@ -47,7 +47,7 @@ jobs:
       -
         name: Download Python sources
         run: |
-          # We cannot use actions/setup-python, because it cannot install new python in erlang:24.2.2 image
+          # We cannot use actions/setup-python, because it cannot install new python in the erlang image
           wget https://www.python.org/ftp/python/${{env.PYTHON_VERSION_FULL}}/Python-${{env.PYTHON_VERSION_FULL}}.tgz
           tar -xf Python-${{env.PYTHON_VERSION_FULL}}.tgz
       -

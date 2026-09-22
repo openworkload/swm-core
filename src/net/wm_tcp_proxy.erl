@@ -82,7 +82,7 @@ init({conn, CSock, UpHost, UpPort}) ->
 
 handle_call(stop, _From, {listener, L} = State) ->
     ?LOG_DEBUG("Stop proxy listener"),
-    catch gen_tcp:close(L#lstate.lsock),
+    close_maybe(L#lstate.lsock),
     {stop, normal, ok, State};
 handle_call(_Other, _From, State) ->
     {reply, {error, unsupported}, State}.
@@ -99,7 +99,7 @@ handle_cast(activate,
             ok = inet:setopts(USock, [{active, once}]),
             {noreply, {conn, C0#cstate{usock = USock}}};
         {error, Reason} ->
-            catch gen_tcp:close(CSock),
+            close_maybe(CSock),
             {stop, {upstream_connect_failed, Reason}, {conn, C0}}
     end;
 handle_cast(_Msg, State) ->
@@ -146,7 +146,7 @@ handle_info({'EXIT', _From, Why}, State) ->
 
 -spec terminate(term(), {listener, #lstate{}} | {conn, #cstate{}}) -> ok.
 terminate(_Reason, {listener, L}) ->
-    catch gen_tcp:close(L#lstate.lsock),
+    close_maybe(L#lstate.lsock),
     ok;
 terminate(_Reason, {conn, C}) ->
     close_maybe(C#cstate.csock),
@@ -174,7 +174,7 @@ acceptor(LSock, UpHost, UpPort) ->
                     gen_server:cast(Pid, activate),
                     acceptor(LSock, UpHost, UpPort);
                 {error, _} = Err ->
-                    catch gen_tcp:close(CSock),
+                    close_maybe(CSock),
                     exit(Err)
             end;
         {error, closed} ->
@@ -187,7 +187,12 @@ acceptor(LSock, UpHost, UpPort) ->
 shutdown_both(_From, undefined) ->
     ok;
 shutdown_both(FromSock, ToSock) ->
-    catch gen_tcp:shutdown(ToSock, write),
+    try
+        gen_tcp:shutdown(ToSock, write)
+    catch
+        _:_ ->
+            ok
+    end,
     close_maybe(ToSock),
     close_maybe(FromSock),
     ok.
@@ -202,5 +207,10 @@ close_both(A, B) ->
 close_maybe(undefined) ->
     ok;
 close_maybe(S) when is_port(S) ->
-    catch gen_tcp:close(S),
+    try
+        gen_tcp:close(S)
+    catch
+        _:_ ->
+            ok
+    end,
     ok.

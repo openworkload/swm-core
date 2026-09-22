@@ -98,7 +98,7 @@ handle_cast({error, Ref, Error}, MState = #mstate{refs_in_process = Refs}) ->
     end.
 
 handle_info(update, MState = #mstate{refs_in_process = Refs, timer = OldTRef}) ->
-    catch timer:cancel(OldTRef),
+    cancel_timer_ignore_error(OldTRef),
     NewRefs =
         case wm_conf:select([remote], all) of
             Remotes when is_list(Remotes) ->
@@ -313,6 +313,18 @@ select_template_nodes(RemoteId) ->
         {error, not_found} ->
             []
     end.
+
+-spec cancel_timer_ignore_error(reference() | undefined) -> ok.
+cancel_timer_ignore_error(undefined) ->
+    ok;
+cancel_timer_ignore_error(TRef) ->
+    try
+        timer:cancel(TRef)
+    catch
+        _:_ ->
+            ok
+    end,
+    ok.
 
 %% ============================================================================
 %% Tests

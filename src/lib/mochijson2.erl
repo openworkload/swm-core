@@ -572,6 +572,19 @@ tokenize(B, S = #decoder{offset = O}) ->
 
 -include_lib("eunit/include/eunit.hrl").
 
+%% Preserve old catch Expr semantics for tests that assert {'EXIT', Reason}.
+catch_exit(Fun) ->
+    try
+        Fun()
+    catch
+        error:Reason ->
+            {'EXIT', Reason};
+        exit:Reason ->
+            {'EXIT', Reason};
+        Reason ->
+            Reason
+    end.
+
 %% testing constructs borrowed from the Yaws JSON implementation.
 
 %% Create an object from a list of Key/Value pairs.
@@ -715,7 +728,7 @@ input_validation_test() ->
                          end,
                      %% could be {ucs,{bad_utf8_character_code}} or
                      %%          {json_encode,{bad_char,_}}
-                     {'EXIT', _} = (catch encode(X))
+                     {'EXIT', _} = catch_exit(fun() -> encode(X) end)
                   end,
                   Bad).
 
@@ -799,7 +812,7 @@ float_test() ->
     ok.
 
 handler_test() ->
-    ?assertEqual({'EXIT', {json_encode, {bad_term, {x, y}}}}, catch encode({x, y})),
+    ?assertEqual({'EXIT', {json_encode, {bad_term, {x, y}}}}, catch_exit(fun() -> encode({x, y}) end)),
     F = fun({x, y}) -> [] end,
     ?assertEqual(<<"[]">>, iolist_to_binary((encoder([{handler, F}]))({x, y}))),
     ok.

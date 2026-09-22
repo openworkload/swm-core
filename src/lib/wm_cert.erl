@@ -102,7 +102,7 @@ create_node_cert(NodeID, CommonName) ->
     create_rnd(SecureDir, "node"),
     file:write_file(CnfFile, Request),
     create_req(SecureDir, openssl_cmd(), CnfFile, KeyFile, ReqFile),
-    sign_req(SecureDir, openssl_cmd(), CADir, "user_cert", ReqFile, CertFile),
+    sign_req(SecureDir, openssl_cmd(), CADir, "user_cert", ReqFile, CertFile, dns_sans(CommonName)),
     remove_rnd(SecureDir, "node").
 
 -spec create_user_cert(string(), string()) -> atom().
@@ -150,7 +150,7 @@ create_cert(SpoolDir, Name, ID, DirName) ->
     create_rnd(ParentDir, Name),
     file:write_file(CnfFile, Request),
     create_req(SecureDir, openssl_cmd(), CnfFile, KeyFile, ReqFile),
-    sign_req(SecureDir, openssl_cmd(), CADir, "user_cert", ReqFile, CertFile),
+    sign_req(SecureDir, openssl_cmd(), CADir, "user_cert", ReqFile, CertFile, dns_sans(Name)),
     remove_rnd(ParentDir, KeysDir).
 
 -spec ask(string(), string()) -> string().
@@ -206,6 +206,7 @@ create_req(ReqDir, OpenSSLCmd, CnfFile, KeyFile, ReqFile) ->
 
 -spec sign_req(string(), string(), string(), string(), string(), string()) -> ok.
 sign_req(RootDir, OpenSSLCmd, CADir, Ext, ReqFile, CertFile) ->
+    %% CA certs: use extensions from ca.cnf (no host SAN required).
     CACnfFile = filename:join([CADir, "ca.cnf"]),
     Cmd = [OpenSSLCmd,
            " ca -batch -utf8 -config ",
@@ -218,6 +219,54 @@ sign_req(RootDir, OpenSSLCmd, CADir, Ext, ReqFile, CertFile) ->
            CertFile],
     Env = [{"ROOTDIR", RootDir}],
     cmd(Cmd, Env).
+
+%% OTP 29+ (RFC 9525): end-entity certs must carry a Subject Alternative Name
+%% extension. Erlang distribution verifies against atom_to_list(Node), e.g.
+%% "node@skyport.openworkload.org". Pass SAN via -extfile so existing CA configs
+%% (without copy_extensions) still emit a proper extension.
+-spec sign_req(string(), string(), string(), string(), string(), string(), [string()]) -> ok.
+sign_req(RootDir, OpenSSLCmd, CADir, Ext, ReqFile, CertFile, DnsNames) ->
+    CACnfFile = filename:join([CADir, "ca.cnf"]),
+    ExtFile = CertFile ++ ".ext.cnf",
+    ok = file:write_file(ExtFile, user_cert_ext_cnf(DnsNames)),
+    Cmd = [OpenSSLCmd,
+           " ca -batch -utf8 -config ",
+           CACnfFile,
+           " -extfile ",
+           ExtFile,
+           " -extensions ",
+           Ext,
+           " -in ",
+           ReqFile,
+           " -out ",
+           CertFile],
+    Env = [{"ROOTDIR", RootDir}],
+    cmd(Cmd, Env).
+
+-spec dns_sans(string()) -> [string()].
+dns_sans(CommonName) ->
+    SName =
+        case os:getenv("SWM_SNAME") of
+            false ->
+                "node";
+            "" ->
+                "node";
+            Name ->
+                Name
+        end,
+    NodeName = SName ++ "@" ++ CommonName,
+    lists:usort([CommonName, NodeName]).
+
+-spec user_cert_ext_cnf([string()]) -> list().
+user_cert_ext_cnf(DnsNames) ->
+    San = string:join(["DNS:" ++ N || N <- DnsNames], ","),
+    ["[user_cert]\n"
+     "basicConstraints       = CA:false\n"
+     "keyUsage               = nonRepudiation,digitalSignature,keyEncipherment\n"
+     "subjectKeyIdentifier   = hash\n"
+     "authorityKeyIdentifier = keyid,issuer:always\n"
+     "issuerAltName          = issuer:copy\n"
+     "subjectAltName         = ", San, "\n"].
 
 -spec generate_host_key(string(), string(), string(), string()) -> atom().
 generate_host_key(KeysDir, SSHKeygenCmd, Alg, KeyFile) ->
@@ -316,6 +365,12 @@ cacluster_dirname() ->
 %openssl x509 -in /opt/swm/spool/secure/users/taras/cert.pem -noout -text
 -spec req_cnf(string(), string()) -> list().
 req_cnf(DN, Dir) ->
+    SanNames = dns_sans(DN#dn.commonName),
+    SanLines =
+        lists:map(fun({I, Name}) ->
+                     ["DNS.", integer_to_list(I), " = ", Name, "\n"]
+                  end,
+                  lists:zip(lists:seq(1, length(SanNames)), SanNames)),
     ["# Purpose: Configuration for requests (end users and CAs).\n"
      "ROOTDIR                = ", Dir, "\n"
      "\n"
@@ -328,6 +383,7 @@ req_cnf(DN, Dir) ->
      "default_md             = sha256\n"
      "prompt                 = no\n"
      "distinguished_name     = name\n"
+     "req_extensions         = v3_req\n"
      "\n"
      "[name]\n"
      "commonName             = ", DN#dn.commonName, "\n"
@@ -336,8 +392,15 @@ req_cnf(DN, Dir) ->
      "localityName           = ", DN#dn.localityName, "\n"
      "countryName            = ", DN#dn.countryName, "\n"
      "emailAddress           = ", DN#dn.emailAddress, "\n"
+     %% Legacy: entity UUID stored as a DN attribute (read by get_uid/1).
      "subjectAltName         = ", DN#dn.id, "\n"
-    ].
+     "\n"
+     "[v3_req]\n"
+     %% Real X.509 SAN extension required by OTP 29+ hostname verification.
+     "subjectAltName         = @alt_names\n"
+     "\n"
+     "[alt_names]\n",
+     SanLines].
 
 -spec ca_cnf(string()) -> list().
 ca_cnf(CA) ->
@@ -357,6 +420,8 @@ ca_cnf(CA) ->
      "private_key            = $dir/private/key.pem\n"
      "RANDFILE               = $dir/private/RAND\n"
      "x509_extensions        = user_cert\n"
+     "copy_extensions        = copy\n"
+     "unique_subject         = no\n"
      "default_days           = 365\n"
      "default_md             = sha256\n"
      "preserve               = no\n"
@@ -392,18 +457,32 @@ do_get_altname(Cert) ->
          || [Attribute] <- Subject, Attribute#'AttributeTypeAndValue'.type == ?'id-ce-subjectAltName'],
     case V of
         [Att] ->
-            case Att of
-                {teletexString, Str} ->
-                    Str;
-                {printableString, Str} ->
-                    Str;
-                {utf8String, Bin} ->
-                    binary_to_list(Bin);
-                _ ->
-                    List = binary_to_list(Att),
-                    % subjectAltName prefixed with 2 additional bytes, skip them; Erlang OTP bug?
-                    lists:sublist(List, 3, length(List))
-            end;
+            decode_altname_value(Att);
         _ ->
             unknown
     end.
+
+%% OTP 29+ leaves undecoded DirectoryString as {asn1_OPENTYPE, Der};
+%% older OTP returned a bare DER binary or already-decoded string tuples.
+-spec decode_altname_value(term()) -> string() | atom().
+decode_altname_value({teletexString, Str}) when is_list(Str) ->
+    Str;
+decode_altname_value({printableString, Str}) when is_list(Str) ->
+    Str;
+decode_altname_value({utf8String, Bin}) when is_binary(Bin) ->
+    binary_to_list(Bin);
+decode_altname_value({asn1_OPENTYPE, Bin}) when is_binary(Bin) ->
+    decode_altname_value(Bin);
+decode_altname_value(Bin) when is_binary(Bin) ->
+    %% DER DirectoryString: Tag + short-form Length + Value
+    case Bin of
+        <<_Tag, Len, Rest/binary>> when Len < 128, byte_size(Rest) >= Len ->
+            binary_to_list(binary:part(Rest, 0, Len));
+        _ ->
+            List = binary_to_list(Bin),
+            lists:sublist(List, 3, length(List))
+    end;
+decode_altname_value(List) when is_list(List) ->
+    List;
+decode_altname_value(_) ->
+    unknown.

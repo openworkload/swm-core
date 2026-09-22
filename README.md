@@ -3,7 +3,7 @@
         <img src="https://img.shields.io/badge/Linux-%23.svg?logo=linux&color=FCC624&logoColor=black" />
     </a>
     <a href="https://www.erlang.org/" alt="Supported Erlang version">
-        <img src="https://img.shields.io/badge/Erlang-27-green.svg" />
+        <img src="https://img.shields.io/badge/Erlang-29-green.svg" />
     </a>
     <a href="LICENSE" alt="License">
         <img src="https://img.shields.io/github/license/openworkload/swm-core" />

@@ -646,7 +646,7 @@ handle_info(ssh_check_prov_port,
                         ssh_prov_client_pid = SshProvClientPid,
                         job_id = JobId,
                         part_mgr_id = PartMgrNodeId}) ->
-    catch timer:cancel(OldTRef),
+    cancel_timer_ignore_error(OldTRef),
     ConnectToPort = wm_conf:g(ssh_prov_listen_port, {?DEFAULT_SSH_PROVISION_PORT, integer}),
     Username = "root",
     Password = "",
@@ -671,7 +671,7 @@ handle_info(ssh_check_prov_port,
     end;
 handle_info(try_worker_upload, _, MState = #mstate{worker_reupload_timer = OldTRef}) ->
     ?LOG_DEBUG("Try to upload swm worker"),
-    catch timer:cancel(OldTRef),
+    cancel_timer_ignore_error(OldTRef),
     gen_statem:cast(self(), ssh_prov_connected),
     {next_state, creating, MState#mstate{worker_reupload_timer = undefined}};
 handle_info(ssh_check_swm_port,
@@ -682,7 +682,7 @@ handle_info(ssh_check_swm_port,
                         job_id = JobId,
                         spool = Spool,
                         part_mgr_id = PartMgrNodeId}) ->
-    catch timer:cancel(OldTRef),
+    cancel_timer_ignore_error(OldTRef),
     ConnectToPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
     Username = "swm",
     Password = "swm",
@@ -711,7 +711,7 @@ handle_info(part_check,
                         job_id = JobId,
                         spool = Spool}) ->
     ?LOG_DEBUG("Readiness check (job=~p, virtres state: ~p)", [JobId, StateName]),
-    catch timer:cancel(OldTRef),
+    cancel_timer_ignore_error(OldTRef),
     case wm_virtres_handler:is_job_partition_ready(JobId) of
         false ->
             ?LOG_DEBUG("Not all nodes are UP (job ~p)", [JobId]),
@@ -733,8 +733,20 @@ handle_info(part_fetch,
                         job_id = JobId,
                         remote = Remote}) ->
     ?LOG_DEBUG("Partition creation check (job ~p, virtres state: ~p)", [JobId, StateName]),
-    catch timer:cancel(OldTRef),
+    cancel_timer_ignore_error(OldTRef),
     {ok, WaitRef} = wm_virtres_handler:request_partition(JobId, Remote),
     {next_state, StateName, MState#mstate{wait_ref = WaitRef}};
 handle_info(_Info, StateName, MState) ->
     {next_state, StateName, MState}.
+
+-spec cancel_timer_ignore_error(reference() | undefined) -> ok.
+cancel_timer_ignore_error(undefined) ->
+    ok;
+cancel_timer_ignore_error(TRef) ->
+    try
+        timer:cancel(TRef)
+    catch
+        _:_ ->
+            ok
+    end,
+    ok.

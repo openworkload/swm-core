@@ -4,7 +4,7 @@ Guidance for coding agents working on this repository. The codebase is primarily
 
 ## Stack and layout
 
-- **Erlang**: application under `src/`, headers in `include/`, `rebar.config` defines OTP **27+** (`{minimum_otp_vsn, "27"}`).
+- **Erlang**: application under `src/`, headers in `include/`, `rebar.config` defines OTP **29+** (`{minimum_otp_vsn, "29"}`).
 - **C++**: `c_src/porter/` (Porter binary), `c_src/lib/` (shared code), built via nested Makefiles; `make porter` from the repo root.
 - **Tests**: EUnit and Common Test live under `test/` (`*_SUITE.erl` for CT). rebar3 is `./rebar3` at the repo root.
 
@@ -34,7 +34,7 @@ act --job common_tests
 
 To get Erlang environment for the project use `make cr` command to spawn an interactive session in the container, then inside the shell `cd` to this repository if needed.
 
-- Image: `swm-build:27.3` (see `priv/container/debug/Dockerfile` and `scripts/build-debug-container.sh`).
+- Image: `swm-build:29.1` (see `priv/container/debug/Dockerfile` and `scripts/build-debug-container.sh`).
 - Container name: **`skyport-dev`**.
 - `make cr` runs `scripts/start-debug-container.sh`: attaches with  
   `docker exec -ti skyport-dev runuser -u <host-user> /bin/bash`  

@@ -46,6 +46,14 @@ init(Args) ->
     ?LOG_INFO("Load user management service"),
     process_flag(trap_exit, true),
     wm_event:subscribe(http_started, node(), ?MODULE),
+    %% http_started may already have been announced while this service was
+    %% still starting (suspended) — register routes if the web server is up.
+    case whereis(wm_http) of
+        undefined ->
+            ok;
+        _ ->
+            handle_event(http_started, [])
+    end,
     MState = parse_args(Args, #mstate{}),
     {ok, MState}.
 
@@ -226,7 +234,12 @@ handle_request(purge, Username, _) ->
                 [] ->
                     ok;
                 _ ->
-                    catch wm_topology:reload()
+                    try
+                        wm_topology:reload()
+                    catch
+                        _:_ ->
+                            ok
+                    end
             end,
             Msg = io_lib:format("Purged ~p job(s): ~s", [length(PurgedIds), string:join(PurgedIds, ", ")]),
             {string, lists:flatten(Msg)}
@@ -324,7 +337,12 @@ purge_one_job(#job{} = Job) ->
     %% Kick off remote destroy without waiting (gate RPC must not block purge).
     case {wm_entity:get(relocatable, Job), wm_entity:get(state, Job)} of
         {true, State} when State =/= ?JOB_STATE_FINISHED, State =/= ?JOB_STATE_ERROR, State =/= ?JOB_STATE_CANCELED ->
-            catch wm_factory:new(virtres, {destroy, JobId, undefined}, []);
+            try
+                wm_factory:new(virtres, {destroy, JobId, undefined}, [])
+            catch
+                _:_ ->
+                    ok
+            end;
         _ ->
             ok
     end,
@@ -336,7 +354,12 @@ purge_one_job(#job{} = Job) ->
             ok
     end,
     %% Skip per-job topology reload (~15s+ each); caller reloads once.
-    catch wm_relocator:remove_relocation_entities(Job, false),
+    try
+        wm_relocator:remove_relocation_entities(Job, false)
+    catch
+        _:_ ->
+            ok
+    end,
     wm_conf:delete(Job),
     {purged, JobId}.
 

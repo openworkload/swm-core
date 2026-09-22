@@ -20,22 +20,31 @@ create_tar_gz(File, Files) ->
                 ok ->
                     ok;
                 {error, {Filename, Reason}} ->
-                    catch ok = file:delete(File),
+                    delete_file_ignore_error(File),
                     {error, Filename, wm_posix_utils:errno(Reason)}
             catch
                 C:R:Stacktrace ->
-                    catch ok = file:delete(File),
+                    delete_file_ignore_error(File),
                     erlang:raise(C, R, Stacktrace)
             after
                 erl_tar:close(Td)
             end;
         {error, {Filename, Reason}} ->
-            catch ok = file:delete(File),
+            delete_file_ignore_error(File),
             {error, Filename, wm_posix_utils:errno(Reason)}
     catch
         C:R:Stacktrace ->
-            catch ok = file:delete(File),
+            delete_file_ignore_error(File),
             erlang:raise(C, R, Stacktrace)
+    end.
+
+-spec delete_file_ignore_error(file:filename()) -> ok.
+delete_file_ignore_error(File) ->
+    try
+        ok = file:delete(File)
+    catch
+        _:_ ->
+            ok
     end.
 
 -spec create_tar_gz_ll(term(), [file:filename()]) -> ok | {error, {file:filename(), atom()}}.

@@ -727,12 +727,18 @@ stop_ssh_daemon(undefined) ->
     ok;
 stop_ssh_daemon(Pid) when is_pid(Pid) ->
     ?LOG_DEBUG("Stopping file-transfer SSH daemon ~p", [Pid]),
-    case ssh:stop_daemon(Pid) of
-        ok ->
+    %% OTP 29: ssh:stop_daemon/1 exits the caller if Pid is not alive.
+    case is_process_alive(Pid) of
+        false ->
             ok;
-        {error, Reason} ->
-            ?LOG_WARN("Could not stop file-transfer SSH daemon ~p: ~p", [Pid, Reason]),
-            ok
+        true ->
+            case ssh:stop_daemon(Pid) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    ?LOG_WARN("Could not stop file-transfer SSH daemon ~p: ~p", [Pid, Reason]),
+                    ok
+            end
     end.
 
 %% TODO: Fix spec

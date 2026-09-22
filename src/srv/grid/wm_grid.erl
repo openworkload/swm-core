@@ -49,7 +49,12 @@ init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     wm_event:subscribe(http_started, node(), ?MODULE),
-    {ok, MState}.
+    case whereis(wm_http) of
+        undefined ->
+            {ok, MState};
+        _ ->
+            {ok, handle_event(http_started, [], MState)}
+    end.
 
 handle_call({get_nodes, Limit}, _, MState) ->
     Nodes = wm_conf:select(node, {all, Limit}),

@@ -61,7 +61,12 @@ init_per_testcase(_, Config) ->
         undefined ->
             ok;
         OldPid ->
-            catch gen_server:stop(OldPid, shutdown, 5000)
+            try
+                gen_server:stop(OldPid, shutdown, 5000)
+            catch
+                _:_ ->
+                    ok
+            end
     end,
     {ok, Pid} = wm_gate:start_link([{spool, ?SWM_SPOOL}]),
     ct:print("Gate has been started: ~p", [Pid]),
@@ -72,8 +77,18 @@ end_per_testcase(_, Config) ->
     case proplists:get_value(wm_gate_pid, Config) of
         Pid when is_pid(Pid) ->
             %% Unlink so gen_server:stop's shutdown EXIT does not fail end_per_testcase.
-            catch unlink(Pid),
-            catch gen_server:stop(Pid, shutdown, 5000);
+            try
+                unlink(Pid)
+            catch
+                _:_ ->
+                    ok
+            end,
+            try
+                gen_server:stop(Pid, shutdown, 5000)
+            catch
+                _:_ ->
+                    ok
+            end;
         _ ->
             ok
     end,

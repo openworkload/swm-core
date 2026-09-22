@@ -29,7 +29,12 @@ subscribe(WmPortPid) ->
 %% @doc Send message to port and wait for a single answer
 -spec call(pid(), term(), number()) -> term().
 call(WmPortPid, Msg, Timeout) ->
-    catch gen_server:call(WmPortPid, {call_port, self(), Msg}, Timeout),
+    try
+        gen_server:call(WmPortPid, {call_port, self(), Msg}, Timeout)
+    catch
+        _:_ ->
+            ok
+    end,
     receive
         {output, PortOutput} ->
             {ok, PortOutput};
@@ -125,7 +130,12 @@ handle_info({Port, {data, Data}}, #mstate{port = Port} = MState) ->
 terminate(Reason, #mstate{port = Port} = _MState) ->
     Msg = io_lib:format("Port manager has been terminated (~w, ~p)", [Reason, Port]),
     wm_utils:terminate_msg(?MODULE, Msg),
-    catch port_close(Port).
+    try
+        port_close(Port)
+    catch
+        _:_ ->
+            ok
+    end.
 
 code_change(_OldVsn, MState, _Extra) ->
     {ok, MState}.

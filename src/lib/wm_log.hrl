@@ -21,7 +21,7 @@
 -define(LOG_FATAL(X, Y), wm_log:fatal("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 
 % TEST
-- else .
+-else.
 
 -ifndef(DISABLE_LOGGING_IN_TESTS).
 
@@ -41,7 +41,7 @@
 -define(LOG_FATAL(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 
 % !DISABLE_LOGGING_IN_TESTS
-- else .
+-else.
 
 -define(LOG_DEBUG(X), ok).
 -define(LOG_INFO(X), ok).
@@ -60,7 +60,7 @@
 -endif. %TEST
 
 %!DEBUG
-- else .
+-else.
 
 -ifndef(TEST).
 
@@ -77,7 +77,7 @@
 -define(LOG_FATAL(X, Y), wm_log:fatal(X, Y)).
 
 % TEST
-- else .
+-else.
 
 -ifndef(DISABLE_LOGGING_IN_TESTS).
 
@@ -96,7 +96,7 @@
 -define(LOG_FATAL(X, Y), ?debugFmt(X, Y)).
 
 % DISABLE_LOGGING_IN_TESTS
-- else .
+-else.
 
 -define(LOG_DEBUG(X), ok).
 -define(LOG_INFO(X), ok).

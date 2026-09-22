@@ -55,6 +55,12 @@ cast(Module, Function, Args) ->
 cast(Module, Function, Args, FinalAddr = {_, _}) ->
     ?LOG_DEBUG("m=~p f=~p, a=~P, n=~1000p", [Module, Function, Args, 3, FinalAddr]),
     case get_next_destination(FinalAddr) of
+        not_found ->
+            ?LOG_ERROR("Cannot cast ~p:~p, no route to ~p (parent unknown)", [Module, Function, FinalAddr]),
+            {error, not_found};
+        {error, Reason} = Error ->
+            ?LOG_ERROR("Cannot cast ~p:~p to ~p: ~p", [Module, Function, FinalAddr, Reason]),
+            Error;
         NextAddr = {_, _} ->
             ?LOG_DEBUG("Next destination address: ~p", [NextAddr]),
             ConnArgs = get_connection_args(NextAddr),
@@ -68,13 +74,7 @@ cast(Module, Function, Args, FinalAddr = {_, _}) ->
                     ok;
                 Error ->
                     Error
-            end;
-        not_found ->
-            ?LOG_ERROR("Cannot cast ~p:~p, no route to ~p (parent unknown)", [Module, Function, FinalAddr]),
-            {error, not_found};
-        {error, Reason} = Error ->
-            ?LOG_ERROR("Cannot cast ~p:~p to ~p: ~p", [Module, Function, FinalAddr, Reason]),
-            Error
+            end
     end.
 
 %% ============================================================================
@@ -157,7 +157,7 @@ parent_hop_for_tunnel() ->
     case wm_core:get_parent() of
         not_found ->
             not_found;
-        ParentAddr = {Host, Port} ->
+        ParentAddr = {Host, _Port} ->
             case wm_conf:select_node(ParentAddr) of
                 {ok, ParentNode} ->
                     {wm_entity:get(host, ParentNode), wm_entity:get(api_port, ParentNode)};

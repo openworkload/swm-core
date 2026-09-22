@@ -5,7 +5,7 @@ Steps to deploy a development environment from scratch
 Dependencies:
 ------------
 
-1. Erlang/OTP 24 (installed in the dev container automatically)
+1. Erlang/OTP 29 (installed in the dev container automatically)
 2. cog (https://pypi.python.org/pypi/cogapp) (installed in the dev container automatically)
 3. swm-sched (should be cloned to swm parent directory)
 
@@ -14,13 +14,13 @@ Dependencies installation example (for Ubuntu):
 
 ```console
 $ pip install cogapp
-$ install kerl from https://github.com/yrashk/kerl
+$ install kerl from https://github.com/kerl/kerl
 $ sudo apt-get install libgtk-3-dev build-essential libncurses5-dev openssl libssl-dev fop xsltproc unixodbc-dev # for erlang distribution build
 $ KERL_CONFIGURE_OPTIONS="--disable-hipe --enable-smp-support --enable-threads  --enable-kernel-poll --with-ssl"
 $ kerl update releases
-$ kerl build 24.3 24_3_SSL
+$ kerl build 29.1 29_1_SSL
 $ mkdir -p /usr/erlang
-$ kerl install 24_3_SSL /usr/erlang
+$ kerl install 29_1_SSL /usr/erlang
 $ . /usr/erlang/activate
 ```
 

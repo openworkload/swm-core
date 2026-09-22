@@ -745,13 +745,6 @@ do_get_tree_nodes(_, #mstate{rh = _RH}) ->
 %%       Eventually one of the parent finds correct path and
 %%       forward the message or the message comes to the grid
 %%       management node and will be logged as error.
--spec find_rh_path(string(), string(), map()) -> list().
-find_rh_path(_, ToNodeId, _RH = undefined) ->
-    ?LOG_DEBUG("RH has not been created yet: assume next node is ~p", [ToNodeId]),
-    [ToNodeId];
-find_rh_path(FromNodeId, ToNodeId, RH) ->
-    ?LOG_DEBUG("Try to find the RH path: ~p --> ~p", [FromNodeId, ToNodeId]),
-    find_rh_path_from_index(FromNodeId, ToNodeId, build_rh_index(RH)).
 
 %% @doc Path from From toward To using a precomputed NodeId => root-first path index.
 %% Returns [] when no forward path exists (same semantics as the former tree walk).
@@ -1290,23 +1283,25 @@ children_nodes_test() ->
 -spec search_path_in_rh_test() -> ok.
 search_path_in_rh_test() ->
     RH = prepare_test_rh1(),
+    Index = build_rh_index(RH),
     % From top to bottom:
-    ?assertEqual([], find_rh_path("c2_n0", "foo", RH)),
+    ?assertEqual([], find_rh_path_from_index("c2_n0", "foo", Index)),
     ?assertEqual(["c2_n0", "p22_n0", "p221_n0", "p2211_n0", "p22111_n0", "p22111_n1"],
-                 find_rh_path("c1_n0", "p22111_n1", RH)),
-    ?assertEqual(["p211_n3"], find_rh_path("p211_n0", "p211_n3", RH)),
-    ?assertEqual(["p211_n0"], find_rh_path("p21_n0", "p211_n0", RH)),
-    ?assertEqual(["c2_n0"], find_rh_path("c1_n0", "c2_n0", RH)),
-    ?assertEqual(["p21_n0", "p211_n0", "p211_n2"], find_rh_path("c2_n0", "p211_n2", RH)),
-    ?assertEqual(["p21_n0", "p211_n0", "p2111_n0"], find_rh_path("c2_n0", "p2111_n0", RH)),
-    ?assertEqual(["p22_n0", "p221_n0", "p2211_n0", "p22111_n0", "p22111_n1"], find_rh_path("c2_n0", "p22111_n1", RH)),
+                 find_rh_path_from_index("c1_n0", "p22111_n1", Index)),
+    ?assertEqual(["p211_n3"], find_rh_path_from_index("p211_n0", "p211_n3", Index)),
+    ?assertEqual(["p211_n0"], find_rh_path_from_index("p21_n0", "p211_n0", Index)),
+    ?assertEqual(["c2_n0"], find_rh_path_from_index("c1_n0", "c2_n0", Index)),
+    ?assertEqual(["p21_n0", "p211_n0", "p211_n2"], find_rh_path_from_index("c2_n0", "p211_n2", Index)),
+    ?assertEqual(["p21_n0", "p211_n0", "p2111_n0"], find_rh_path_from_index("c2_n0", "p2111_n0", Index)),
+    ?assertEqual(["p22_n0", "p221_n0", "p2211_n0", "p22111_n0", "p22111_n1"],
+                 find_rh_path_from_index("c2_n0", "p22111_n1", Index)),
     % From bottom to top:
-    ?assertEqual([], find_rh_path("foo", "c2_n0", RH)),
-    ?assertEqual(["p211_n0"], find_rh_path("p211_n3", "p211_n0", RH)),
-    ?assertEqual(["p21_n0"], find_rh_path("p211_n0", "p21_n0", RH)),
-    ?assertEqual([], find_rh_path("p2111_n0", "c2_n0", RH)),
-    ?assertEqual([], find_rh_path("p22111_n1", "c2_n0", RH)),
-    ?assertEqual([], find_rh_path("p211_n3", "c1_n0", RH)),
+    ?assertEqual([], find_rh_path_from_index("foo", "c2_n0", Index)),
+    ?assertEqual(["p211_n0"], find_rh_path_from_index("p211_n3", "p211_n0", Index)),
+    ?assertEqual(["p21_n0"], find_rh_path_from_index("p211_n0", "p21_n0", Index)),
+    ?assertEqual([], find_rh_path_from_index("p2111_n0", "c2_n0", Index)),
+    ?assertEqual([], find_rh_path_from_index("p22111_n1", "c2_n0", Index)),
+    ?assertEqual([], find_rh_path_from_index("p211_n3", "c1_n0", Index)),
     finalize().
 
 -spec children_duplicate_managers_test() -> ok.

@@ -198,7 +198,7 @@ handle_timetable([X | T], MState) ->
                             MState2 = propagate_job_to_nodes(JobID, JobNodeIds, MState),
                             handle_timetable(T, MState2)
                     end;
-                [FirstNodeId | _] ->
+                [_FirstNodeId | _] ->
                     Nodes = wm_conf:select_many(node, id, JobNodeIds),
                     case Nodes of
                         [] ->

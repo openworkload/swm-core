@@ -13,4 +13,5 @@
 
 cat /etc/os-release
 sleep 120
+env | grep SWM
 echo "Hello from simple job $SWM_JOB_ID"

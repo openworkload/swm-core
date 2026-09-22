@@ -3,9 +3,9 @@
 # everything required for Sky Port development (including Erlang).    #
 # Example:                                                            #
 # cd ~/projects/swm-core/priv/build                                   #
-# docker build -t skyport-dev:24.3 .                                  #
+# docker build -t skyport-dev:29.1 .                                  #
 # cd ~/projects/swm-core                                              #
-# docker run -v `pwd`:/tmp/swm -ti skyport-dev:27.3 \                 #
+# docker run -v `pwd`:/tmp/swm -ti skyport-dev:29.1 \                 #
 #  /bin/bash -c "make && make release"                                #
 #######################################################################
 
@@ -17,12 +17,12 @@ ARG PYTHON_VERSION_FULL=3.10.17
 ARG GTEST_VER=1.15.x
 ARG LIBCLOUD_VER=3.1.0
 
-ARG ERL_VER=27.3.3
-ARG ERL_TAG=27_3_SSL
+ARG ERL_VER=29.1
+ARG ERL_TAG=29_1_SSL
 
 ARG ACT_VER=v0.2.89
 
-ENV KERL_VER=4.3.1
+ENV KERL_VER=4.4.0
 ENV KERL_CONFIGURE_OPTIONS="--without-odbc\
                             --disable-hipe\
                             --enable-smp-support\
