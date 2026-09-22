@@ -323,6 +323,8 @@ do_announce_completed(Process, #mstate{job_id = JobId} = MState) ->
 %% Mark job failed and notify compute so the parent (skyport) gets job_finished
 %% with ERROR + comment. Do not announce job_canceled: that triggers relocation
 %% destroy on this node and is for user cancel, not runtime failure.
+%% Free the local node here: early execute failures never reach do_complete/1,
+%% which would otherwise leave the node busy and block later local scheduling.
 -spec fail_job(term(), #mstate{}) -> ok.
 fail_job(Reason, #mstate{job_id = JobId} = MState) ->
     Msg = case Reason of
@@ -337,6 +339,12 @@ fail_job(Reason, #mstate{job_id = JobId} = MState) ->
         {ok, Job} ->
             Job2 = wm_entity:set([{state, ?JOB_STATE_ERROR}, {state_details, Msg}, {comment, Msg}], Job),
             1 = wm_conf:update([Job2]),
+            case wm_self:get_node() of
+                {ok, Node} ->
+                    wm_conf:set_nodes_state(state_alloc, idle, [Node]);
+                _ ->
+                    ok
+            end,
             Process = wm_entity:set([{state, ?JOB_STATE_ERROR}, {comment, Msg}], wm_entity:new(process)),
             do_announce_completed(Process, MState);
         _ ->

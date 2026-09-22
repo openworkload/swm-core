@@ -101,9 +101,18 @@ sleeping(cast,
                  err_msg = ErrMsg} =
              MState) ->
     ?LOG_DEBUG("Received 'activate' [sleeping] (~p)", [ID]),
-    wm_virtres_handler:update_job([{state_details, "Preparing to start"}], JobId, ErrMsg),
-    {ok, WaitRef} = wm_virtres_handler:request_partition_existence(JobId, Remote),
-    {next_state, validating, MState#mstate{wait_ref = WaitRef}};
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    case is_local_job(Job) of
+        true ->
+            %% Job already runs on SkyPort itself -- no cloud gate / partition.
+            ?LOG_DEBUG("Skip gate for local job: ~p", [JobId]),
+            wm_virtres_handler:update_job([{state_details, "Local job, no remote partition"}], JobId, ErrMsg),
+            {next_state, running, MState#mstate{upload_ref = finished}};
+        false ->
+            wm_virtres_handler:update_job([{state_details, "Preparing to start"}], JobId, ErrMsg),
+            {ok, WaitRef} = wm_virtres_handler:request_partition_existence(JobId, Remote),
+            {next_state, validating, MState#mstate{wait_ref = WaitRef}}
+    end;
 sleeping(info, Msg, MState) ->
     handle_info(Msg, ?FUNCTION_NAME, MState);
 sleeping(cast, Msg, MState) ->

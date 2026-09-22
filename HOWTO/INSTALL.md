@@ -17,6 +17,17 @@ arguments in docker.service. This is a subject for improvement.
 Then do "systemctl daemon-reload" and "systemctl restart docker".
 This should be done on every compute node where the jobs are suppose to run.
 
+When SkyPort itself runs inside a Docker container (e.g. `skyport-dev`),
+it talks to the host Docker API as hostname `host` on port 6000. Ensure:
+
+1. The container is started with `--add-host=host:host-gateway`
+   (see `scripts/start-debug-container.sh`).
+2. If UFW (or another host firewall) is active with a default DROP policy,
+   allow Docker bridge traffic to port 6000, for example:
+   `ufw allow in on <skyportnet-bridge> to any port 6000 proto tcp`
+   Otherwise inspect/create calls fail and jobs report
+   "Docker image not found" even when `docker images` shows the image.
+
 
 Install Sky Port in production environment
 -------------------------------------------

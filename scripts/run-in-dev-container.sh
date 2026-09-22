@@ -140,6 +140,7 @@ ensure_container() {
             --hostname "${HOSTNAME}" \
             --domainname "${DOMAIN}" \
             --network-alias "${HOSTNAME}.${DOMAIN}" \
+            --add-host=host:host-gateway \
             --workdir "${ROOT_DIR}" \
             --network "${NETWORK}" \
             -p "${CORE_API_PORT}:${CORE_API_PORT}" \

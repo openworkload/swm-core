@@ -63,6 +63,7 @@ if [ "$NOT_RUNNING" != "0" ]; then
         --hostname $HOSTNAME\
         --domainname $DOMAIN\
         --network-alias $HOSTNAME.$DOMAIN\
+        --add-host=host:host-gateway\
         --workdir ${PWD}\
         --tty\
         --interactive\

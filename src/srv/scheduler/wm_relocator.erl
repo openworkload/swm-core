@@ -360,6 +360,12 @@ spawn_virtres(Job) ->
                 {error, not_found} ->
                     ?LOG_WARN("Job provided unknown template node id ~p (job id: ~p}", [TemplateNodeId, JobId]),
                     {error, not_found};
+                {ok, #node{is_template = false} = Node} ->
+                    %% Already allocated a real node (e.g. SkyPort localhost). wm_compute
+                    %% starts the job locally -- do not involve virtres / cloud gate.
+                    ?LOG_DEBUG("Skip virtres for local/on-prem node ~p (job ~p)",
+                               [wm_entity:get(name, Node), JobId]),
+                    {error, not_found};
                 {ok, TemplateNode} ->
                     TemplateName = wm_entity:get(name, TemplateNode),
                     ?LOG_INFO("Spawn virtres for job ~p and template node ~p", [JobId, TemplateName]),

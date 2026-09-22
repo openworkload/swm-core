@@ -38,7 +38,11 @@
 -spec start_link(string(), integer(), pid() | [], term(), string()) -> {ok, pid()}.
 start_link(Addr, Port, Owner, ReqID, Reason) ->
     Args = {Owner, Addr, Port, ReqID, Reason},
-    gen_server:start_link(?MODULE, Args, []).
+    %% Do not link to the caller: ensure_create_ready/1 opens sequential clients
+    %% (image then VolumesFrom). A linked client exiting after stop/1 delivers
+    %% {'EXIT', Pid, normal} into the caller's mailbox and get_status/3 can
+    %% mis-handle it as failure of the next inspect.
+    gen_server:start(?MODULE, Args, []).
 
 -spec get(string(), list(), term()) -> binary().
 get(Path, Hdr, HttpProcPid) ->
@@ -49,10 +53,17 @@ get(Path, Hdr, HttpProcPid) ->
 get_status(Path, Hdr, HttpProcPid) ->
     wm_utils:protected_call(HttpProcPid, {get_start, Path, Hdr}, []),
     Timeout = wm_conf:g(cont_timeout, {?HTTP_TIMEOUT, integer}),
+    wait_get_reply(Timeout).
+
+-spec wait_get_reply(non_neg_integer()) -> {term(), binary()} | {error, term()}.
+wait_get_reply(Timeout) ->
     receive
         {'$gen_cast', {_, Status, Data, _, _}} ->
             ?LOG_DEBUG("GET: reply: ~p (status=~p)", [Data, Status]),
             {Status, Data};
+        {'EXIT', _Pid, _Reason} ->
+            %% Stray exit from a previously stopped linked/client process.
+            wait_get_reply(Timeout);
         Other ->
             ?LOG_ERROR("GET: unhandled reply: ~p", [Other]),
             {error, Other}

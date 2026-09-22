@@ -266,12 +266,28 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term13 = jwalk:set({"WorkingDir"}, Term12, <<"/tmp">>),
     Term14 = jwalk:set({"AutoRemove"}, Term13, true),
     Term15 = jwalk:set({"User"}, Term14, <<"root">>),
-    Term16 = jwalk:set({"Entrypoint"}, Term15, get_entrypoint()),
+    Term16 =
+        case get_entrypoint() of
+            undefined ->
+                %% Keep image default entrypoint (needed for plain ubuntu: without tini).
+                Term15;
+            Entrypoint ->
+                jwalk:set({"Entrypoint"}, Term15, Entrypoint)
+        end,
     jsx:encode(Term16).
 
--spec get_entrypoint() -> [binary()].
+%% Default: tini (present in many HPC/notebook images). Override with
+%% SWM_DOCKER_ENTRYPOINT (space-separated). Set to empty to omit Entrypoint.
+-spec get_entrypoint() -> [binary()] | undefined.
 get_entrypoint() ->
-    [<<"tini">>, <<"-g">>, <<"--">>].
+    case os:getenv("SWM_DOCKER_ENTRYPOINT") of
+        false ->
+            [<<"tini">>, <<"-g">>, <<"--">>];
+        "" ->
+            undefined;
+        Value ->
+            [list_to_binary(Part) || Part <- string:tokens(Value, " ")]
+    end.
 
 -spec get_volumes() -> map().
 get_volumes() ->
