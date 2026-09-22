@@ -165,8 +165,8 @@ set -euo pipefail
 #SWM relocatable
 #SWM comment OpenMPI hello across the allocated partition nodes
 #SWM flavor Standard_D4s_v3
-#SWM cloud-image ubuntu-22.04
-#SWM container-image ubuntu:22.04
+#SWM cloud-image ubuntu-hpc/2404
+#SWM container-image ubuntu:24.04
 
 HOSTFILE="${PWD}/hostfile"
 IFS=',' read -r -a NODES <<< "${SWM_JOB_NODES}"

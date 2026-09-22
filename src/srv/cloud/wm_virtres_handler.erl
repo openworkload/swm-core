@@ -234,8 +234,19 @@ get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
                             EntityName;
                         {error, not_found} ->
                             JobId = wm_entity:get(id, Job),
-                            ?LOG_ERROR(io_lib:format("Entity ~p ~p (job ~p) is unknown", [Tab, EntityName, JobId])),
-                            FunGetDefault(Remote)
+                            Default = FunGetDefault(Remote),
+                            case Default of
+                                "" ->
+                                    %% Keep the explicitly requested name so Azure/OpenStack
+                                    %% can validate it; do not send an empty osVersion/flavor.
+                                    ?LOG_WARN("Entity ~p ~p (job ~p) is unknown and no default is set; using requested name",
+                                              [Tab, EntityName, JobId]),
+                                    EntityName;
+                                _ ->
+                                    ?LOG_ERROR("Entity ~p ~p (job ~p) is unknown; using default ~p",
+                                               [Tab, EntityName, JobId, Default]),
+                                    Default
+                            end
                     end
             end
     end.
@@ -244,7 +255,7 @@ get_resource_value_property(Tab, Name, Job, Remote, FunGetDefault) ->
 get_default_image_name(Remote) ->
     RemoteName = wm_entity:get(name, Remote),
     case wm_entity:get(default_image_id, Remote) of
-        undefined ->
+        DefaultImageId when DefaultImageId =:= undefined; DefaultImageId =:= "" ->
             ?LOG_ERROR("No default image id is set for the remote ~p", [RemoteName]),
             "";
         DefaultImageId ->
@@ -261,7 +272,7 @@ get_default_image_name(Remote) ->
 get_default_flavor_name(Remote) ->
     RemoteName = wm_entity:get(name, Remote),
     case wm_entity:get(default_flavor_id, Remote) of
-        undefined ->
+        DefaultFlavorId when DefaultFlavorId =:= undefined; DefaultFlavorId =:= "" ->
             ?LOG_ERROR("No default flavor node id is set for the remote ~p", [RemoteName]),
             "";
         DefaultFlavorId ->

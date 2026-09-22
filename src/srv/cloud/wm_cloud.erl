@@ -164,7 +164,7 @@ handle_retrieved_images(NewImages, RemoteId) ->
             case wm_entity:get(default_image_id, Remote) of
                 DefaultImageId ->
                     ok;
-                undefined ->
+                Empty when Empty =:= undefined; Empty =:= "" ->
                     ?LOG_INFO("Default image ID is updated for remote ~p: ~p", [RemoteId, DefaultImageId]),
                     1 =
                         wm_conf:update(
@@ -228,7 +228,7 @@ handle_retrieved_flavors(FlavorNodes, RemoteId) ->
                     case wm_entity:get(default_flavor_id, Remote) of
                         DefaultId ->
                             ok;
-                        undefined ->
+                        Empty when Empty =:= undefined; Empty =:= "" ->
                             ?LOG_INFO("Default flavor node ID is updated for remote ~p: ~p", [RemoteId, DefaultId]),
                             1 =
                                 wm_conf:update(

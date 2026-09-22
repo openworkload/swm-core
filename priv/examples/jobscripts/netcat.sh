@@ -6,7 +6,7 @@
 #SWM account openstack
 #SWM flavor m1.medium
 #SWM ports 1234/tcp
-#SWM cloud-image ubuntu-22.04
+#SWM cloud-image ubuntu-hpc/2404
 #SWM container-image subfuzion/netcat
 #SWM nodes 5
 

@@ -7,8 +7,8 @@ set -euo pipefail
 #SWM comment OpenMPI hello across the allocated partition nodes
 #SWM account openstack
 #SWM flavor m1.medium
-#SWM cloud-image ubuntu-22.04
-#SWM container-image ubuntu:22.04
+#SWM cloud-image ubuntu-hpc/2404
+#SWM container-image ubuntu:24.04
 
 echo "Hello from multi-node MPI job ${SWM_JOB_ID} (${SWM_JOB_NAME})"
 echo "Nodes (${SWM_JOB_NODES_NUMBER}): ${SWM_JOB_NODES}"

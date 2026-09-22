@@ -3,7 +3,7 @@
 # with cloud gate in a release mode on a production machine.               #
 ############################################################################
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ARG PYTHON_VERSION=3.10
 ARG PYTHON_VERSION_FULL=3.10.17
