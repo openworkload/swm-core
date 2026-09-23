@@ -98,19 +98,25 @@ New `scripts/swm-container-finalize.sh`:
 - No dependency on `adduser`
 - Works under rootless mapped root (Phase 0 spike)
 
-Product wiring of the new script happens in a later phase; Phase 0 proves it.
+Product wiring: Phase 1 uses `swm-container-finalize.sh` by default (see
+`wm_container_cfg:finalize_script/0`). Legacy `swm-docker-finalize.sh` remains
+in the tree for reference / rollback.
 
 ## Configuration (current + planned)
 
-| Knob | Today (Docker jobs) | Target (Podman jobs) |
-|------|---------------------|----------------------|
+| Knob | Today (Docker jobs, Phase 1) | Target (Podman jobs) |
+|------|------------------------------|----------------------|
 | Runtime API | Docker Engine HTTP (often `host:6000`) | Native Podman libpod on unix socket |
 | OCI runtime | Docker’s default (often runc) | **crun** |
-| Env prefix | `SWM_DOCKER_*` | Prefer `SWM_CONTAINER_*` (keep aliases during transition) |
-| Finalize | `SWM_FINALIZE_IN_CONTAINER` → `swm-docker-finalize.sh` | `swm-container-finalize.sh` |
-| Entrypoint | Often tini via `SWM_DOCKER_ENTRYPOINT` | Empty / image default; Porter is Cmd |
-| VolumesFrom | `SWM_DOCKER_VOLUMES_FROM` | Explicit binds only |
+| Env prefix | `SWM_CONTAINER_*` preferred; `SWM_DOCKER_*` / `SWM_FINALIZE_IN_CONTAINER` aliases | same |
+| Finalize | Default `swm-container-finalize.sh` (`SWM_CONTAINER_FINALIZE`) | same script / create-time equiv. |
+| Entrypoint | None by default — Porter is Cmd / PID 1 | same |
+| VolumesFrom | `SWM_CONTAINER_VOLUMES_FROM` (alias `SWM_DOCKER_*`) | Explicit binds only |
 | GPU | Docker `DeviceRequests` / nvidia | **NVIDIA CDI** only |
+
+Phase 1 introduced `wm_container_runtime`, `wm_container_cfg`, backend step lists
+(`wm_docker:run_steps/0`), minimal finalize wiring, and no-tini defaults while
+keeping the Docker backend.
 
 Debug container (`priv/container/debug/Dockerfile`) installs `podman` + `crun`
 for **local experiments only**. SkyPort product code must not use in-container

@@ -14,7 +14,8 @@
 # Usage:
 #   swm-container-finalize.sh <USER_NAME> <UID> <GID> <HOST_IP> <WORK_DIR>
 #
-# Phase 0 prototype — wire into wm_docker/wm_container in a later phase.
+# Phase 1: default finalize for Docker job path via wm_container_cfg.
+# Legacy scripts/swm-docker-finalize.sh remains for reference/rollback.
 
 set -eu
 

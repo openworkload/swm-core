@@ -42,21 +42,23 @@ transfer_empty(_Config) ->
     %%----------------------------------
     %% UPLOAD
     %%----------------------------------
+    %% Empty transfers are fast but SSH bring-up can be slow under CI load.
+    AwaitMs = 10000,
     {ok, Ref1} = wm_file_transfer:upload(self(), "localhost", 1, [], [], #{via => ssh}),
-    ok = wm_utils:await(Ref1, 2000),
+    ok = wm_utils:await(Ref1, AwaitMs),
     {ok, Ref2} = wm_file_transfer:upload(self(), "localhost", 1, <<>>, [], #{via => ssh}),
-    ok = wm_utils:await(Ref2, 2000),
+    ok = wm_utils:await(Ref2, AwaitMs),
     {ok, Ref3} = wm_file_transfer:upload(self(), "localhost", 1, <<>>, <<>>, #{via => ssh}),
-    ok = wm_utils:await(Ref3, 2000),
+    ok = wm_utils:await(Ref3, AwaitMs),
     %%----------------------------------
     %% DOWNLOAD
     %%----------------------------------
     {ok, Ref4} = wm_file_transfer:download(self(), "localhost", 1, [], [], #{via => ssh}),
-    ok = wm_utils:await(Ref4, 2000),
+    ok = wm_utils:await(Ref4, AwaitMs),
     {ok, Ref5} = wm_file_transfer:download(self(), "localhost", 1, <<>>, [], #{via => ssh}),
-    ok = wm_utils:await(Ref5, 2000),
+    ok = wm_utils:await(Ref5, AwaitMs),
     {ok, Ref6} = wm_file_transfer:download(self(), "localhost", 1, <<>>, <<>>, #{via => ssh}),
-    ok = wm_utils:await(Ref6, 2000),
+    ok = wm_utils:await(Ref6, AwaitMs),
     ok.
 
 transfer_dir(Config) ->

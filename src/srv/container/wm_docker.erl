@@ -1,7 +1,9 @@
 -module(wm_docker).
 
--export([get_unregistered_images/0, get_unregistered_image/1, ensure_create_ready/1, create/5, start/2, attach/3,
-         attach_ws/3, delete/2, send/3, create_exec/2, start_exec/4]).
+-behaviour(wm_container_runtime).
+
+-export([run_steps/0, communicate_steps/1, get_unregistered_images/0, get_unregistered_image/1, ensure_create_ready/1,
+         create/5, start/2, attach/3, attach_ws/3, delete/2, send/3, create_exec/2, start_exec/4, stop_client/1]).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -10,11 +12,20 @@
 
 -define(CONTAINER_ADDR, "localhost").
 -define(CONTAINER_PORT, 6000).
--define(SWM_FINALIZE_IN_CONTAINER, "/opt/swm/current/scripts/swm-docker-finalize.sh").
 
 %% ============================================================================
-%% API
+%% API (wm_container_runtime)
 %% ============================================================================
+
+%% @doc Docker job start pipeline (may be collapsed by other backends).
+-spec run_steps() -> [atom() | {atom(), term()}].
+run_steps() ->
+    [create, attach, start, create_exec, start_exec, return_started].
+
+%% @doc Docker Porter stdin send pipeline.
+-spec communicate_steps(binary()) -> [atom() | {atom(), term()}].
+communicate_steps(Bin) when is_binary(Bin) ->
+    [attach_ws, {send, Bin}, return_sent].
 
 %% @doc Get all container images that have not been registered in ther WM yet
 -spec get_unregistered_images() -> list().
@@ -47,7 +58,7 @@ attach(Job, Owner, Steps) ->
     do_attach_container(Job, Owner, Steps).
 
 %% @doc Attach to container for specified job using web sockets
--spec attach_ws(tuple(), pid(), list()) -> pid().
+-spec attach_ws(tuple(), pid(), list()) -> {string(), pid()}.
 attach_ws(Job, Owner, Steps) ->
     do_attach_ws_container(Job, Owner, Steps).
 
@@ -71,6 +82,17 @@ start_exec(Job, ExecId, HttpProcPid, Steps) ->
 delete(Job, Owner) ->
     do_delete_container(Job, Owner).
 
+%% @doc Stop a transport/HTTP client process owned by this backend.
+-spec stop_client(pid() | undefined) -> ok.
+stop_client(undefined) ->
+    ok;
+stop_client(Pid) when is_pid(Pid) ->
+    try
+        wm_docker_client:stop(Pid)
+    catch
+        _:_ ->
+            ok
+    end.
 %% ============================================================================
 %% IMPLEMENTATION
 %% ============================================================================
@@ -118,7 +140,7 @@ ensure_volumes_from_ready(JobId) ->
                         Error
                 end,
                 ok,
-                get_volumes_from()).
+                wm_container_cfg:volumes_from()).
 
 -spec volumes_from_name(binary()) -> string().
 volumes_from_name(VolFrom) when is_binary(VolFrom) ->
@@ -256,7 +278,7 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term9 = jwalk:set({"HostConfig"}, Term8, get_host_config(Request)),
     Term10 = jwalk:set({"StdinOnce"}, Term9, false),
     Term11 =
-        case get_volumes_from() of
+        case wm_container_cfg:volumes_from() of
             [] ->
                 Term10;
             VolsFrom ->
@@ -267,27 +289,14 @@ generate_container_json(#job{request = Request}, Porter) ->
     Term14 = jwalk:set({"AutoRemove"}, Term13, true),
     Term15 = jwalk:set({"User"}, Term14, <<"root">>),
     Term16 =
-        case get_entrypoint() of
+        case wm_container_cfg:entrypoint() of
             undefined ->
-                %% Keep image default entrypoint (needed for plain ubuntu: without tini).
+                %% Porter is Cmd / PID 1; do not inject tini (Phase 1 policy).
                 Term15;
             Entrypoint ->
                 jwalk:set({"Entrypoint"}, Term15, Entrypoint)
         end,
     jsx:encode(Term16).
-
-%% Default: tini (present in many HPC/notebook images). Override with
-%% SWM_DOCKER_ENTRYPOINT (space-separated). Set to empty to omit Entrypoint.
--spec get_entrypoint() -> [binary()] | undefined.
-get_entrypoint() ->
-    case os:getenv("SWM_DOCKER_ENTRYPOINT") of
-        false ->
-            [<<"tini">>, <<"-g">>, <<"--">>];
-        "" ->
-            undefined;
-        Value ->
-            [list_to_binary(Part) || Part <- string:tokens(Value, " ")]
-    end.
 
 -spec get_volumes() -> map().
 get_volumes() ->
@@ -319,17 +328,6 @@ get_devices_requests() ->
 -spec get_cmd(string()) -> [binary()].
 get_cmd(Porter) ->
     [list_to_binary(wm_utils:unroll_symlink(Porter)), <<"-d">>].
-
--spec get_volumes_from() -> [binary()].
-get_volumes_from() ->
-    case os:getenv("SWM_DOCKER_VOLUMES_FROM") of
-        false ->
-            [];
-        "" ->
-            [];
-        Value ->
-            [list_to_binary(Value)]
-    end.
 
 -spec get_gpus([#resource{}]) -> binary().
 get_gpus([]) ->
@@ -421,7 +419,7 @@ get_finalize_cmd(#job{workdir = WorkDir} = Job) ->
             not_found;
         {ok, User} ->
             Username = wm_entity:get(name, User),
-            FinScript = os:getenv("SWM_FINALIZE_IN_CONTAINER", ?SWM_FINALIZE_IN_CONTAINER),
+            FinScript = wm_container_cfg:finalize_script(),
             ContID = wm_entity:get(container, Job),
             HostIP = os:cmd("route -n | awk '/UG[ \t]/{print $2}' | tr -d '\n'"),  % docker host IP
             {UID, GID} =
@@ -432,8 +430,9 @@ get_finalize_cmd(#job{workdir = WorkDir} = Job) ->
                         {"1000", "1000"}
                 end,
             ?LOG_DEBUG("Finalize ~p: ~p ~p ~p ~p", [ContID, FinScript, UID, GID, HostIP]),
+            %% Prefer /bin/sh: minimal finalize is a POSIX script (no bashisms).
             Command = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID ++ " " ++ HostIP ++ " " ++ WorkDir,
-            [<<"/bin/bash">>, <<"-c">>, list_to_binary(Command)]
+            [<<"/bin/sh">>, <<"-c">>, list_to_binary(Command)]
     end.
 
 generate_finalize_json(Job, create) ->

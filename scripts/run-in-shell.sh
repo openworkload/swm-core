@@ -103,13 +103,16 @@ fi
 ## Job containers inherit mounts from the SkyPort container (porter, spool, etc.).
 ## Must match the docker container name (see scripts/start-debug-container.sh).
 if [ -f /.dockerenv ]; then
-  export SWM_DOCKER_VOLUMES_FROM="${SWM_DOCKER_VOLUMES_FROM:-skyport-dev:ro}"
-  ## Plain images (e.g. ubuntu:24.04) have no tini; omit Entrypoint override.
-  export SWM_DOCKER_ENTRYPOINT="${SWM_DOCKER_ENTRYPOINT:-}"
+  export SWM_CONTAINER_VOLUMES_FROM="${SWM_CONTAINER_VOLUMES_FROM:-${SWM_DOCKER_VOLUMES_FROM:-skyport-dev:ro}}"
+  export SWM_DOCKER_VOLUMES_FROM="${SWM_DOCKER_VOLUMES_FROM:-$SWM_CONTAINER_VOLUMES_FROM}"
+  ## Porter is PID 1: do not inject tini. Override with SWM_CONTAINER_ENTRYPOINT if needed.
+  export SWM_CONTAINER_ENTRYPOINT="${SWM_CONTAINER_ENTRYPOINT:-${SWM_DOCKER_ENTRYPOINT:-}}"
+  export SWM_DOCKER_ENTRYPOINT="${SWM_DOCKER_ENTRYPOINT:-$SWM_CONTAINER_ENTRYPOINT}"
 else
-  unset SWM_DOCKER_VOLUMES_FROM
+  unset SWM_CONTAINER_VOLUMES_FROM SWM_DOCKER_VOLUMES_FROM
 fi
-export SWM_FINALIZE_IN_CONTAINER=${ROOT_DIR}/scripts/swm-docker-finalize.sh
+export SWM_CONTAINER_FINALIZE="${SWM_CONTAINER_FINALIZE:-${ROOT_DIR}/scripts/swm-container-finalize.sh}"
+export SWM_FINALIZE_IN_CONTAINER="${SWM_FINALIZE_IN_CONTAINER:-$SWM_CONTAINER_FINALIZE}"
 export SWM_PORTER_IN_CONTAINER=${ROOT_DIR}/c_src/porter/swm-porter
 export SWM_WORKER_LOCAL_PATH="${ROOT_DIR}/_build/packages/swm-worker.tar.gz"
 
