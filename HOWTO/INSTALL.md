@@ -4,6 +4,10 @@ Installation
 Prepare Docker (for both dev and prod setups)
 ----------------------------------------------
 
+Job containerization (Docker today, rootless Podman + crun planned) is documented
+in HOWTO/CONTAINERS.md — see ticket #7 Phase 0 for the migration plan and latency
+baseline.
+
 In the current version of SWM jobs are started via docker.
 All the communications between SWM and docker daemon are performed
 via a TCP port. By default it is port 6000 (set as SWM global option,
