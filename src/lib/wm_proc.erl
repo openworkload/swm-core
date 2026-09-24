@@ -11,7 +11,7 @@
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
 
--define(SWM_EXEC_METHOD, "podman").
+-define(SWM_EXEC_METHOD, "container").
 -define(SWM_PORTER_IN_CONTAINER, "/opt/swm/current/bin/swm-porter").
 
 -record(mstate, {task_id :: string(), job_id :: job_id()}).
@@ -150,7 +150,7 @@ execute(#mstate{job_id = JobId}) ->
             case wm_conf:g(execution_method, {?SWM_EXEC_METHOD, string}) of
                 "native" ->
                     run_native_process(Job, Porter, ProcEnvs, User);
-                Method when Method =:= "podman"; Method =:= "container" ->
+                Method when Method =:= "container"; Method =:= "podman" ->
                     ok = ensure_workdir_exists(Job),
                     case wm_container:run(Job, Porter, ProcEnvs, self()) of
                         {ok, NewJob} ->
@@ -162,7 +162,7 @@ execute(#mstate{job_id = JobId}) ->
                 Other ->
                     {error,
                      lists:flatten(
-                         io_lib:format("Unsupported execution_method: ~s (use native or podman)", [Other]))}
+                         io_lib:format("Unsupported execution_method: ~s (use native or container)", [Other]))}
             end
     end.
 

@@ -21,11 +21,11 @@ On each compute node:
    systemctl --user enable --now podman.socket
    # typical path: $XDG_RUNTIME_DIR/podman/podman.sock
    ```
-4. Configure SkyPort globals (defaults are already `podman` in `base.config`):
-   - `execution_method` = `podman`
+4. Configure Sky Port globals (defaults are already `container` in `base.config`):
+   - `execution_method` = `container`
    - optional: `SWM_CONTAINER_PODMAN_SOCK` if the socket path is non-default
 
-Verify the stack (no SkyPort required):
+Verify the stack (no Sky Port required):
 
 ```bash
 ./scripts/ci-podman-smoke.sh
@@ -34,7 +34,7 @@ Verify the stack (no SkyPort required):
 Control plane vs jobs
 ---------------------
 
-Docker is still used to deploy the SkyPort control plane (e.g. `skyport-dev`
+Docker is still used to deploy the Sky Port control plane (e.g. `skyport-dev`
 via `make cr`). Job execution uses rootless Podman on the compute host, not
 Docker Engine.
 

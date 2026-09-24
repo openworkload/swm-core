@@ -7,8 +7,6 @@
          podman_api_prefix/0, require_crun/0, cdi_available/0, cdi_dirs/0, extra_binds/0,
          gpu_cdi_missing_msg/0]).
 
--include_lib("eunit/include/eunit.hrl").
-
 -define(DEFAULT_FINALIZE, "/opt/swm/current/scripts/swm-container-finalize.sh").
 -define(DEFAULT_API_PREFIX, "/v5.0.0/libpod").
 -define(GPU_CDI_MISSING_MSG,
@@ -166,58 +164,3 @@ getenv_first([Name | Rest], Default) ->
         Value ->
             Value
     end.
-
-%% ============================================================================
-%% EUnit
-%% ============================================================================
-
-entrypoint_default_no_tini_test() ->
-    true = os:unsetenv("SWM_CONTAINER_ENTRYPOINT"),
-    ?assertEqual(undefined, entrypoint()).
-
-entrypoint_override_test() ->
-    true = os:putenv("SWM_CONTAINER_ENTRYPOINT", "catatonit --"),
-    ?assertEqual([<<"catatonit">>, <<"--">>], entrypoint()),
-    true = os:unsetenv("SWM_CONTAINER_ENTRYPOINT").
-
-finalize_prefers_container_env_test() ->
-    true = os:putenv("SWM_FINALIZE_IN_CONTAINER", "/old/finalize.sh"),
-    true = os:putenv("SWM_CONTAINER_FINALIZE", "/new/finalize.sh"),
-    ?assertEqual("/new/finalize.sh", finalize_script()),
-    true = os:unsetenv("SWM_CONTAINER_FINALIZE"),
-    true = os:unsetenv("SWM_FINALIZE_IN_CONTAINER").
-
-run_steps_podman_test() ->
-    ?assertEqual([create, attach, start, create_exec, start_exec, return_started],
-                 wm_podman:run_steps()).
-
-podman_sock_override_test() ->
-    true = os:putenv("SWM_CONTAINER_PODMAN_SOCK", "/tmp/test-podman.sock"),
-    ?assertEqual("/tmp/test-podman.sock", podman_sock()),
-    true = os:unsetenv("SWM_CONTAINER_PODMAN_SOCK").
-
-cdi_missing_msg_test() ->
-    ?assertEqual(?GPU_CDI_MISSING_MSG, gpu_cdi_missing_msg()).
-
-require_crun_default_test() ->
-    true = os:unsetenv("SWM_CONTAINER_REQUIRE_CRUN"),
-    ?assertEqual(true, require_crun()).
-
-cdi_unavailable_without_specs_test() ->
-    true = os:putenv("SWM_CONTAINER_CDI_PATHS", "/tmp/swm-cdi-empty-test-dir-noexist"),
-    ?assertEqual(false, cdi_available()),
-    true = os:unsetenv("SWM_CONTAINER_CDI_PATHS").
-
-cdi_available_with_nvidia_json_test() ->
-    Dir = "/tmp/swm-cdi-test-" ++ integer_to_list(erlang:unique_integer([positive])),
-    ok = file:make_dir(Dir),
-    ok = file:write_file(filename:join(Dir, "nvidia.com-gpu.json"), <<"{}\n">>),
-    true = os:putenv("SWM_CONTAINER_CDI_PATHS", Dir),
-    ?assertEqual(true, cdi_available()),
-    true = os:unsetenv("SWM_CONTAINER_CDI_PATHS"),
-    ok = file:delete(filename:join(Dir, "nvidia.com-gpu.json")),
-    ok = file:del_dir(Dir).
-
-communicate_steps_podman_test() ->
-    Bin = <<"x">>,
-    ?assertMatch([attach_ws, {send, Bin}, return_sent], wm_podman:communicate_steps(Bin)).

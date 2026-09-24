@@ -311,9 +311,6 @@ void set_job_dir_ownership(const SwmJob &job, const uid_t uid, const gid_t gid) 
 }
 
 int main(int argc, char* const argv[]) {
-  // Wait for finalize/exec completion before proceeding (API exec is async)
-  // thus user creation and send to porter started at the same time.
-  sleep(2);
 
   swm_logd("Porter has started");
 
