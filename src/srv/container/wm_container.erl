@@ -238,9 +238,15 @@ parse_args([{_, _} | T], #mstate{} = MState) ->
     parse_args(T, MState).
 
 get_runtime() ->
-    S = wm_conf:g(cont_type, {?DEFAULT_CONTAINER_TYPE, string}),
-    ModNameStr = "wm_" ++ S,
-    ModNameAtom = list_to_atom(ModNameStr),
+    Method = wm_conf:g(execution_method, {"docker", string}),
+    Type =
+        case Method of
+            "podman" ->
+                "podman";
+            _ ->
+                wm_conf:g(cont_type, {?DEFAULT_CONTAINER_TYPE, string})
+        end,
+    ModNameAtom = list_to_atom("wm_" ++ Type),
     {module, Module} = code:ensure_loaded(ModNameAtom),
     Module.
 

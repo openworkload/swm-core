@@ -150,7 +150,7 @@ execute(#mstate{job_id = JobId}) ->
             case wm_conf:g(execution_method, {?SWM_EXEC_METHOD, string}) of
                 "native" ->
                     run_native_process(Job, Porter, ProcEnvs, User);
-                "docker" ->
+                Method when Method =:= "docker"; Method =:= "podman"; Method =:= "container" ->
                     ok = ensure_workdir_exists(Job),
                     case wm_container:run(Job, Porter, ProcEnvs, self()) of
                         {ok, NewJob} ->

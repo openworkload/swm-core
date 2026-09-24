@@ -104,19 +104,26 @@ in the tree for reference / rollback.
 
 ## Configuration (current + planned)
 
-| Knob | Today (Docker jobs, Phase 1) | Target (Podman jobs) |
-|------|------------------------------|----------------------|
-| Runtime API | Docker Engine HTTP (often `host:6000`) | Native Podman libpod on unix socket |
-| OCI runtime | Docker’s default (often runc) | **crun** |
-| Env prefix | `SWM_CONTAINER_*` preferred; `SWM_DOCKER_*` / `SWM_FINALIZE_IN_CONTAINER` aliases | same |
-| Finalize | Default `swm-container-finalize.sh` (`SWM_CONTAINER_FINALIZE`) | same script / create-time equiv. |
-| Entrypoint | None by default — Porter is Cmd / PID 1 | same |
-| VolumesFrom | `SWM_CONTAINER_VOLUMES_FROM` (alias `SWM_DOCKER_*`) | Explicit binds only |
-| GPU | Docker `DeviceRequests` / nvidia | **NVIDIA CDI** only |
+| Knob | Docker / Podman (Phase 2) | Notes |
+|------|---------------------------|-------|
+| Runtime API | Docker TCP (`cont_host`/`cont_port`) or Podman libpod unix socket | `SWM_CONTAINER_PODMAN_SOCK` |
+| OCI runtime | Docker default; Podman requires **crun** when `SWM_CONTAINER_REQUIRE_CRUN=1` | |
+| Env prefix | `SWM_CONTAINER_*` preferred; `SWM_DOCKER_*` / `SWM_FINALIZE_IN_CONTAINER` aliases | |
+| Finalize | Default `swm-container-finalize.sh` (`SWM_CONTAINER_FINALIZE`) | |
+| Entrypoint | None by default — Porter is Cmd / PID 1 | |
+| VolumesFrom | Docker only; Podman uses binds + `SWM_CONTAINER_EXTRA_BINDS` | No VolumesFrom on Podman |
+| GPU | Docker `DeviceRequests`; Podman **NVIDIA CDI** (hard error if missing) | Job details message on fail |
+| Select runtime | `execution_method` = `native` \| `docker` \| `podman` | `cont_type` = `docker` \| `podman` |
 
 Phase 1 introduced `wm_container_runtime`, `wm_container_cfg`, backend step lists
 (`wm_docker:run_steps/0`), minimal finalize wiring, and no-tini defaults while
 keeping the Docker backend.
+
+Phase 2 adds `wm_podman` / `wm_podman_client` (native libpod over unix socket).
+Select Podman with `execution_method=podman` (or `cont_type=podman` with
+`execution_method=docker|container`). Socket: `SWM_CONTAINER_PODMAN_SOCK`
+(default `$XDG_RUNTIME_DIR/podman/podman.sock`). GPU jobs hard-fail with a clear
+job details message when NVIDIA CDI is missing.
 
 Debug container (`priv/container/debug/Dockerfile`) installs `podman` + `crun`
 for **local experiments only**. SkyPort product code must not use in-container
