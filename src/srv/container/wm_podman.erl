@@ -308,6 +308,7 @@ generate_create_json(#job{request = Request} = Job, Porter, ContID) ->
           <<"image">> => Image,
           <<"command">> => Cmd,
           <<"entrypoint">> => entrypoint_or_empty(),
+          %% Host net: PMIx / multi-node wireup invariant (HOWTO/CONTAINERS.md).
           <<"netns">> => #{<<"nsmode">> => <<"host">>},
           <<"mounts">> => Mounts,
           <<"work_dir">> => <<"/tmp">>,

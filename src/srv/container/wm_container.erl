@@ -8,7 +8,7 @@
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
 
--define(DEFAULT_CONTAINER_TYPE, "docker").
+-define(DEFAULT_CONTAINER_TYPE, "podman").
 
 -record(mstate,
         {containers = #{} :: map(),              % ContID => {Owner, Job, HttpPid, LoggerPid}
@@ -238,7 +238,7 @@ parse_args([{_, _} | T], #mstate{} = MState) ->
     parse_args(T, MState).
 
 get_runtime() ->
-    Method = wm_conf:g(execution_method, {"docker", string}),
+    Method = wm_conf:g(execution_method, {"podman", string}),
     Type =
         case Method of
             "podman" ->

@@ -21,9 +21,10 @@ On each compute node:
    systemctl --user enable --now podman.socket
    # typical path: $XDG_RUNTIME_DIR/podman/podman.sock
    ```
-4. Configure SkyPort globals (or env):
+4. Configure SkyPort globals (defaults are already `podman` in `base.config`):
    - `execution_method` = `podman` (and/or `cont_type` = `podman`)
    - optional: `SWM_CONTAINER_PODMAN_SOCK` if the socket path is non-default
+   - to keep the legacy Docker job path: set `execution_method` = `docker`
 
 Verify the stack (no SkyPort required):
 

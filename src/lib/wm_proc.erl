@@ -11,7 +11,7 @@
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
 
--define(SWM_EXEC_METHOD, "docker").
+-define(SWM_EXEC_METHOD, "podman").
 -define(SWM_PORTER_IN_CONTAINER, "/opt/swm/current/bin/swm-porter").
 
 -record(mstate, {task_id :: string(), job_id :: job_id()}).

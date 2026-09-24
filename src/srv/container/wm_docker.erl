@@ -324,6 +324,7 @@ get_host_config(Request) ->
     Binds = [<<"/home:/home">>, <<"/tmp:/tmp">>, <<RootBin/binary, <<":">>/binary, RootBin/binary>>],
     HostConfig =
         #{<<"Binds">> => Binds,
+          %% Host net: PMIx / multi-node wireup invariant (HOWTO/CONTAINERS.md).
           <<"NetworkMode">> => <<"host">>,
           <<"PublishAllPorts">> => true},
     case get_gpus(Request) of
