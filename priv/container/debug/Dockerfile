@@ -159,7 +159,6 @@ RUN echo . /usr/erlang/activate >> /etc/bash.bashrc
 RUN mkdir /tmp/swm-sched
 RUN mkdir /var/run/swm
 COPY ./priv/container/debug/build-package.sh /var/run/swm/
-COPY ./scripts/swm-docker-finalize.sh /var/run/swm/
 COPY ./scripts/swm-container-finalize.sh /var/run/swm/
 
 # for development of the prompt script

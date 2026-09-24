@@ -46,7 +46,7 @@ Specify the cloud VM image to use.
 ```
 
 #### container-image
-OCI/Docker image to run the job in (Podman or legacy Docker backend).
+OCI/Docker image to run the job in (via rootless Podman).
 ```bash
 #SWM container-image <image:tag>
 ```

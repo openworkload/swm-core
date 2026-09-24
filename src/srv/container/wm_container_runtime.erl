@@ -1,11 +1,8 @@
-%%% @doc Behaviour for job-container runtime backends (Docker, Podman, ...).
+%%% @doc Behaviour for the job-container runtime backend (Podman / libpod).
 %%%
-%%% wm_container orchestrates a backend-provided step list. Backends may
-%%% collapse or reorder steps (e.g. Podman create+start) as long as
+%%% wm_container orchestrates a backend-provided step list. The Podman backend
+%%% may collapse or reorder steps (e.g. create+start) as long as
 %%% wm_container has matching handle_cast clauses for those step atoms.
-%%%
-%%% Phase 1 ships only the Docker backend (wm_docker). Phase 2 adds native
-%%% Podman (libpod) behind the same callbacks.
 -module(wm_container_runtime).
 
 -include("../../lib/wm_entity.hrl").

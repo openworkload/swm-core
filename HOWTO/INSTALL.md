@@ -22,9 +22,8 @@ On each compute node:
    # typical path: $XDG_RUNTIME_DIR/podman/podman.sock
    ```
 4. Configure SkyPort globals (defaults are already `podman` in `base.config`):
-   - `execution_method` = `podman` (and/or `cont_type` = `podman`)
+   - `execution_method` = `podman`
    - optional: `SWM_CONTAINER_PODMAN_SOCK` if the socket path is non-default
-   - to keep the legacy Docker job path: set `execution_method` = `docker`
 
 Verify the stack (no SkyPort required):
 
@@ -32,32 +31,12 @@ Verify the stack (no SkyPort required):
 ./scripts/ci-podman-smoke.sh
 ```
 
-Legacy: Docker Engine for jobs
-------------------------------
+Control plane vs jobs
+---------------------
 
-Docker Engine remains available as a **legacy** job backend (`execution_method=docker`
-/ `cont_type=docker`) and is still used to deploy the SkyPort control plane
-(e.g. `skyport-dev`). New deployments should prefer Podman for jobs.
-
-If you still run jobs via Docker, the daemon must listen on TCP (default port
-6000, global `cont_port`):
-
-```bash
-# add to docker.service: -H tcp://0.0.0.0:6000
-systemctl daemon-reload && systemctl restart docker
-```
-
-When SkyPort itself runs inside a Docker container (e.g. `skyport-dev`) and uses
-the **legacy Docker job path**, it talks to the host Docker API as hostname
-`host` on port 6000. Ensure:
-
-1. The container is started with `--add-host=host:host-gateway`
-   (see `scripts/start-debug-container.sh`).
-2. If UFW (or another host firewall) is active with a default DROP policy,
-   allow Docker bridge traffic to port 6000, for example:
-   `ufw allow in on <skyportnet-bridge> to any port 6000 proto tcp`
-   Otherwise inspect/create calls fail and jobs report
-   "Container image not found" even when `docker images` shows the image.
+Docker is still used to deploy the SkyPort control plane (e.g. `skyport-dev`
+via `make cr`). Job execution uses rootless Podman on the compute host, not
+Docker Engine.
 
 For Podman from `skyport-dev`, mount the host Podman socket and set
 `SWM_CONTAINER_PODMAN_SOCK` (in-container Podman packages are experiments only).

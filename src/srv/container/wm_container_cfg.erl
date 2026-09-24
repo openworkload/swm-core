@@ -1,9 +1,9 @@
-%%% @doc Container runtime configuration helpers.
-%%% Prefer SWM_CONTAINER_* env vars; fall back to legacy SWM_DOCKER_* /
-%%% SWM_FINALIZE_IN_CONTAINER names during the Docker -> Podman transition.
+%%% @doc Container runtime configuration helpers (Podman job path).
+%%% Prefer SWM_CONTAINER_* env vars; SWM_FINALIZE_IN_CONTAINER is still
+%%% accepted as an alias for SWM_CONTAINER_FINALIZE.
 -module(wm_container_cfg).
 
--export([finalize_script/0, entrypoint/0, volumes_from/0, getenv_first/2, podman_sock/0,
+-export([finalize_script/0, entrypoint/0, getenv_first/2, podman_sock/0,
          podman_api_prefix/0, require_crun/0, cdi_available/0, cdi_dirs/0, extra_binds/0,
          gpu_cdi_missing_msg/0]).
 
@@ -30,25 +30,13 @@ finalize_script() ->
 %% Default is `undefined` (Porter is Cmd / PID 1; no tini injection).
 -spec entrypoint() -> [binary()] | undefined.
 entrypoint() ->
-    case getenv_first(["SWM_CONTAINER_ENTRYPOINT", "SWM_DOCKER_ENTRYPOINT"], false) of
+    case getenv_first(["SWM_CONTAINER_ENTRYPOINT"], false) of
         false ->
             undefined;
         "" ->
             undefined;
         Value ->
             [list_to_binary(Part) || Part <- string:tokens(Value, " ")]
-    end.
-
-%% @doc Docker VolumesFrom-style list (ignored by Podman backend).
--spec volumes_from() -> [binary()].
-volumes_from() ->
-    case getenv_first(["SWM_CONTAINER_VOLUMES_FROM", "SWM_DOCKER_VOLUMES_FROM"], false) of
-        false ->
-            [];
-        "" ->
-            [];
-        Value ->
-            [list_to_binary(Value)]
     end.
 
 %% @doc Rootless Podman API unix socket path.
@@ -185,15 +173,12 @@ getenv_first([Name | Rest], Default) ->
 
 entrypoint_default_no_tini_test() ->
     true = os:unsetenv("SWM_CONTAINER_ENTRYPOINT"),
-    true = os:unsetenv("SWM_DOCKER_ENTRYPOINT"),
     ?assertEqual(undefined, entrypoint()).
 
-entrypoint_container_overrides_docker_test() ->
-    true = os:putenv("SWM_DOCKER_ENTRYPOINT", "tini -g --"),
+entrypoint_override_test() ->
     true = os:putenv("SWM_CONTAINER_ENTRYPOINT", "catatonit --"),
     ?assertEqual([<<"catatonit">>, <<"--">>], entrypoint()),
-    true = os:unsetenv("SWM_CONTAINER_ENTRYPOINT"),
-    true = os:unsetenv("SWM_DOCKER_ENTRYPOINT").
+    true = os:unsetenv("SWM_CONTAINER_ENTRYPOINT").
 
 finalize_prefers_container_env_test() ->
     true = os:putenv("SWM_FINALIZE_IN_CONTAINER", "/old/finalize.sh"),
@@ -202,18 +187,9 @@ finalize_prefers_container_env_test() ->
     true = os:unsetenv("SWM_CONTAINER_FINALIZE"),
     true = os:unsetenv("SWM_FINALIZE_IN_CONTAINER").
 
-volumes_from_legacy_alias_test() ->
-    true = os:unsetenv("SWM_CONTAINER_VOLUMES_FROM"),
-    true = os:putenv("SWM_DOCKER_VOLUMES_FROM", "skyport-dev:ro"),
-    ?assertEqual([<<"skyport-dev:ro">>], volumes_from()),
-    true = os:unsetenv("SWM_DOCKER_VOLUMES_FROM").
-
-run_steps_docker_test() ->
-    ?assertEqual([create, attach, start, create_exec, start_exec, return_started],
-                 wm_docker:run_steps()).
-
 run_steps_podman_test() ->
-    ?assertEqual(wm_docker:run_steps(), wm_podman:run_steps()).
+    ?assertEqual([create, attach, start, create_exec, start_exec, return_started],
+                 wm_podman:run_steps()).
 
 podman_sock_override_test() ->
     true = os:putenv("SWM_CONTAINER_PODMAN_SOCK", "/tmp/test-podman.sock"),

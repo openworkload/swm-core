@@ -8,8 +8,6 @@
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
 
--define(DEFAULT_CONTAINER_TYPE, "podman").
-
 -record(mstate,
         {containers = #{} :: map(),              % ContID => {Owner, Job, HttpPid, LoggerPid}
          execs = #{} :: map(),                   % ContID => ExecPid
@@ -238,16 +236,7 @@ parse_args([{_, _} | T], #mstate{} = MState) ->
     parse_args(T, MState).
 
 get_runtime() ->
-    Method = wm_conf:g(execution_method, {"podman", string}),
-    Type =
-        case Method of
-            "podman" ->
-                "podman";
-            _ ->
-                wm_conf:g(cont_type, {?DEFAULT_CONTAINER_TYPE, string})
-        end,
-    ModNameAtom = list_to_atom("wm_" ++ Type),
-    {module, Module} = code:ensure_loaded(ModNameAtom),
+    {module, Module} = code:ensure_loaded(wm_podman),
     Module.
 
 -spec clean_containers_map(string(), #mstate{}) -> #mstate{}.

@@ -98,9 +98,9 @@ jobs:
         run: |
           # GHA runners have sudo; plain ubuntu images used by act run as root without sudo.
           if command -v sudo >/dev/null 2>&1 && [[ "$(id -u)" -ne 0 ]]; then
-            SUDO=sudo
+              SUDO=sudo
           else
-            SUDO=
+              SUDO=
           fi
           $SUDO apt-get update
           $SUDO apt-get install -y podman crun uidmap slirp4netns fuse-overlayfs curl python3
@@ -108,14 +108,14 @@ jobs:
         name: Configure rootless Podman (crun)
         run: |
           if command -v sudo >/dev/null 2>&1 && [[ "$(id -u)" -ne 0 ]]; then
-            SUDO=sudo
+              SUDO=sudo
           else
-            SUDO=
+              SUDO=
           fi
           mkdir -p ~/.config/containers
           # Nested-friendly defaults (act runs inside Docker); GHA bare metal still works.
           printf '%s\n' '[engine]' 'runtime = "crun"' 'cgroup_manager = "cgroupfs"' 'events_logger = "file"' \
-            > ~/.config/containers/containers.conf
+              > ~/.config/containers/containers.conf
           printf '%s\n' '[storage]' 'driver = "vfs"' > ~/.config/containers/storage.conf
           # Ensure subuid/subgid for the runner user (Ubuntu images usually have them)
           grep -q "^$(id -un):" /etc/subuid || echo "$(id -un):100000:65536" | $SUDO tee -a /etc/subuid
@@ -124,13 +124,13 @@ jobs:
           mkdir -p "$XDG_RUNTIME_DIR/podman"
           # Prefer user socket; fall back to foreground service (act / no systemd user session)
           if systemctl --user enable --now podman.socket 2>/dev/null; then
-            sleep 2
+              sleep 2
           elif [[ ! -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]]; then
-            podman system service --time=0 "unix://$XDG_RUNTIME_DIR/podman/podman.sock" &
-            for _ in $(seq 1 30); do
-              [[ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]] && break
-              sleep 0.5
-            done
+              podman system service --time=0 "unix://$XDG_RUNTIME_DIR/podman/podman.sock" &
+              for _ in $(seq 1 30); do
+                  [[ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]] && break
+                  sleep 0.5
+              done
           fi
           test -S "$XDG_RUNTIME_DIR/podman/podman.sock"
       -

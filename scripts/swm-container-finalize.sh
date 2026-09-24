@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Fast rootless-oriented container finalize for SkyPort job containers.
-# Replaces the heavier useradd/addgroup/usermod flow in swm-docker-finalize.sh.
 #
 # Goals:
 #   - Work when the container "root" is a rootless mapped UID
@@ -13,9 +12,6 @@
 #
 # Usage:
 #   swm-container-finalize.sh <USER_NAME> <UID> <GID> <HOST_IP> <WORK_DIR>
-#
-# Phase 1: default finalize for Docker job path via wm_container_cfg.
-# Legacy scripts/swm-docker-finalize.sh remains for reference/rollback.
 
 set -eu
 

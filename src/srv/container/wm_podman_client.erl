@@ -1,5 +1,5 @@
 %%% @doc HTTP client for Podman native libpod API over a unix socket (gun).
-%%% Mirrors wm_docker_client flow so wm_container step orchestration stays shared.
+%%% HTTP/WS client for the Podman libpod API; drives wm_container step orchestration.
 -module(wm_podman_client).
 
 -behaviour(gen_server).

@@ -150,7 +150,7 @@ execute(#mstate{job_id = JobId}) ->
             case wm_conf:g(execution_method, {?SWM_EXEC_METHOD, string}) of
                 "native" ->
                     run_native_process(Job, Porter, ProcEnvs, User);
-                Method when Method =:= "docker"; Method =:= "podman"; Method =:= "container" ->
+                Method when Method =:= "podman"; Method =:= "container" ->
                     ok = ensure_workdir_exists(Job),
                     case wm_container:run(Job, Porter, ProcEnvs, self()) of
                         {ok, NewJob} ->
@@ -158,7 +158,11 @@ execute(#mstate{job_id = JobId}) ->
                             ok;
                         {error, Msg} ->
                             {error, Msg}
-                    end
+                    end;
+                Other ->
+                    {error,
+                     lists:flatten(
+                         io_lib:format("Unsupported execution_method: ~s (use native or podman)", [Other]))}
             end
     end.
 
@@ -210,7 +214,7 @@ run_native_process(#job{id = JobId} = Job, Porter, ProcEnvs, User) ->
 
 -spec prepare_porter_input(#job{}, #user{}) -> binary().
 prepare_porter_input(Job, User) ->
-    %% Porter only receives job+user binaries (docker ignores ProcEnvs), so resolve
+    %% Porter only receives job+user binaries (container path ignores ProcEnvs), so resolve
     %% node names and account name here before encoding.
     JobForPorter = enrich_job_for_porter(Job),
     UserBin = erlang:term_to_binary(User),
