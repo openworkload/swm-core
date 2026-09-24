@@ -98,6 +98,9 @@ test_unit:		##@TESTS Run unit erlang tests
 test_ct:		##@TESTS Run common erlang tests
 			$(REBAR) ct --dir test --verbose
 
+test_podman_smoke:	##@TESTS Rootless Podman + crun libpod smoke (no Erlang)
+			./scripts/ci-podman-smoke.sh
+
 ftest:		##@TESTS Run functional tests
 			scripts/swm.env
 			test/test-all.sh

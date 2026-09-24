@@ -37,9 +37,10 @@ get_unregistered_images() ->
 get_unregistered_image(ID) ->
     do_get_unregistered_image(ID).
 
-%% @doc Verify Docker image (and VolumesFrom containers) exist before create
+%% @doc Verify container image (and VolumesFrom containers) exist before create
 -spec ensure_create_ready(#job{}) -> ok | {error, string()}.
 ensure_create_ready(Job) ->
+    warn_docker_job_deprecated(),
     do_ensure_create_ready(Job).
 
 %% @doc Create container for specified job
@@ -93,6 +94,7 @@ stop_client(Pid) when is_pid(Pid) ->
         _:_ ->
             ok
     end.
+
 %% ============================================================================
 %% IMPLEMENTATION
 %% ============================================================================
@@ -105,12 +107,24 @@ start_http_client(Owner, ReqID, Reason) ->
     ?LOG_DEBUG("HTTP client Pid=~p", [Pid]),
     Pid.
 
+-spec warn_docker_job_deprecated() -> ok.
+warn_docker_job_deprecated() ->
+    case persistent_term:get({?MODULE, deprecated_warned}, false) of
+        true ->
+            ok;
+        false ->
+            persistent_term:put({?MODULE, deprecated_warned}, true),
+            ?LOG_WARN("Docker job backend is deprecated; prefer execution_method=podman "
+                      "(rootless Podman + crun). See HOWTO/CONTAINERS.md",
+                      [])
+    end.
+
 -spec do_ensure_create_ready(#job{}) -> ok | {error, string()}.
 do_ensure_create_ready(#job{request = Request} = Job) ->
     JobId = wm_entity:get(id, Job),
     case binary_to_list(get_container_image(Request)) of
         "" ->
-            Msg = "Docker image not specified",
+            Msg = "Container image not specified",
             ?LOG_ERROR("~s (job ~p)", [Msg, JobId]),
             {error, Msg};
         Image ->
@@ -118,7 +132,7 @@ do_ensure_create_ready(#job{request = Request} = Job) ->
                 true ->
                     ensure_volumes_from_ready(JobId);
                 false ->
-                    Msg = "Docker image not found: " ++ Image,
+                    Msg = "Container image not found: " ++ Image,
                     ?LOG_ERROR("~s (job ~p)", [Msg, JobId]),
                     {error, Msg}
             end
@@ -368,9 +382,9 @@ do_delete_container(Job, Owner) ->
     KillBeforeDeleteOption = "?force=1",
     Path = "/containers/" ++ ContID ++ KillBeforeDeleteOption,
     ?LOG_DEBUG("Delete docker container with path=~p [~p]", [Path, HttpProcPid]),
-    % FIXME: uncomment when debug is over:
-    %ok = wm_docker_client:delete(Path, [], HttpProcPid, []),
-    wm_docker_client:stop(HttpProcPid),
+    %% Best-effort delete; do not block cleanup on API errors.
+    catch wm_docker_client:delete(Path, [], HttpProcPid, []),
+    catch wm_docker_client:stop(HttpProcPid),
     ok.
 
 do_start_container(Job, Steps) ->

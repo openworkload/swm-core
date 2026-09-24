@@ -1,9 +1,9 @@
 # Job containerization (SkyPort)
 
-This document describes how SkyPort runs **job containers**, the planned move from
-Docker Engine to **rootless Podman + crun**, and the compatibility / latency
-baseline captured in ticket
-[#7](https://github.com/openworkload/swm-core/issues/7) Phase 0.
+This document describes how SkyPort runs **job containers** with **rootless
+Podman + crun** (supported path), and the **legacy Docker Engine** job backend.
+Migration context: ticket
+[#7](https://github.com/openworkload/swm-core/issues/7).
 
 > **Control plane vs jobs:** SkyPort itself may still be deployed with Docker
 > (for example `skyport-dev`). That is separate from the **job execution** path
@@ -11,7 +11,7 @@ baseline captured in ticket
 
 ## Overview
 
-Target job path:
+Supported job path:
 
 ```
 swm (compute node)
@@ -22,7 +22,7 @@ swm (compute node)
   -> user job script
 ```
 
-Historical job path (still current in product code until later phases):
+Legacy job path (still the default until sites flip `execution_method`):
 
 ```
 swm -> Docker Engine API (often TCP :6000) -> container -> Porter -> user script
@@ -35,7 +35,8 @@ Phase 0 spike scripts (not used by product code):
 
 - `scripts/phase0-podman-spike.sh` — native libpod create/start/exec + Porter PID1
 - `scripts/phase0-latency-baseline.sh` — Docker vs Podman timing
-- `scripts/swm-container-finalize.sh` — redesigned minimal finalize (prototype)
+- `scripts/swm-container-finalize.sh` — redesigned minimal finalize
+- `scripts/ci-podman-smoke.sh` — CI / local rootless Podman + crun smoke
 
 ## Ownership model
 
@@ -51,14 +52,14 @@ Phase 0 spike scripts (not used by product code):
    - Command = Porter (for example `swm-porter -d`)
    - **No** SWM-injected tini/catatonit — Porter is PID 1
    - Host networking (multi-node MPI / future PMIx wireup)
-   - Explicit bind mounts (`/home`, `/tmp`, `$SWM_ROOT`, workdir) — **no** `VolumesFrom`
+   - Explicit bind mounts (`/home`, `/tmp`, `$SWM_ROOT`, workdir) — **no** `VolumesFrom` on Podman
 2. **Finalize** (fast, rootless-oriented): at most one short exec of
-   `swm-container-finalize.sh` (or create-time equivalent later) so `/etc/passwd`
-   and `/etc/group` contain the job user Porter will `getpwnam`, workdir is
-   owned correctly, and a `swm_server_host` hosts entry exists.
+   `swm-container-finalize.sh` so `/etc/passwd` and `/etc/group` contain the job
+   user Porter will `getpwnam`, workdir is owned correctly, and a
+   `swm_server_host` hosts entry exists.
 3. **Attach / send** the Erlang job+user binary to Porter stdin.
 4. Porter forks the user script and streams process status.
-5. On finish / cancel / error: stop and delete the container; free node allocation.
+5. On finish / cancel / error: stop and **delete** the container; free node allocation.
 
 ## Compatibility matrix
 
@@ -75,8 +76,8 @@ Values below were validated on the Phase 0 spike host (2026-09-23). Marked
 | Rootless IDs | `/etc/subuid` + `/etc/subgid` for the swm compute user | `taras:100000:65536` |
 | API transport | Unix socket (typical `/run/user/$UID/podman/podman.sock`) | Enabled via `systemctl --user enable --now podman.socket` |
 | Job image format | OCI/Docker images from registries (unchanged) | `ubuntu:24.04` |
-| NVIDIA CDI | **Required** when `#SWM gpus` > 0 (see GPU section) | Not present on Phase 0 host (no GPU) — validate on GPU node in Phase 2 |
-| Docker Engine | Not required for the target job path | Still used for control plane / transitional job path |
+| NVIDIA CDI | **Required** when `#SWM gpus` > 0 (see GPU section) | Not present on Phase 0 host (no GPU) — validate on GPU node |
+| Docker Engine | **Legacy** job backend only; not required for supported job path | Still used for control plane / transitional jobs |
 
 ### Init process
 
@@ -91,39 +92,40 @@ Legacy `scripts/swm-docker-finalize.sh` uses `addgroup` / `useradd` / `usermod`
 and requires the `adduser` package on Debian/Ubuntu images. Stock
 `ubuntu:24.04` does **not** ship `addgroup` by default.
 
-New `scripts/swm-container-finalize.sh`:
+`scripts/swm-container-finalize.sh`:
 
 - Appends `/etc/passwd` and `/etc/group` lines when missing
 - `chown` workdir; appends hosts entry
 - No dependency on `adduser`
-- Works under rootless mapped root (Phase 0 spike)
+- Works under rootless mapped root
 
-Product wiring: Phase 1 uses `swm-container-finalize.sh` by default (see
-`wm_container_cfg:finalize_script/0`). Legacy `swm-docker-finalize.sh` remains
-in the tree for reference / rollback.
+Product wiring: `wm_container_cfg:finalize_script/0` defaults to
+`swm-container-finalize.sh`. Legacy `swm-docker-finalize.sh` remains in the tree
+for reference / rollback.
 
-## Configuration (current + planned)
+## Configuration
 
-| Knob | Docker / Podman (Phase 2) | Notes |
-|------|---------------------------|-------|
-| Runtime API | Docker TCP (`cont_host`/`cont_port`) or Podman libpod unix socket | `SWM_CONTAINER_PODMAN_SOCK` |
-| OCI runtime | Docker default; Podman requires **crun** when `SWM_CONTAINER_REQUIRE_CRUN=1` | |
+| Knob | Value | Notes |
+|------|-------|-------|
+| Select runtime | `execution_method` = `native` \| `podman` \| `docker` | Prefer **`podman`**. Default in `base.config` remains `docker` for existing installs; Docker path logs a deprecation warning. |
+| Alias | `cont_type` = `podman` \| `docker` | Used when `execution_method` is `docker` / `container` |
+| Podman socket | `SWM_CONTAINER_PODMAN_SOCK` | Default `$XDG_RUNTIME_DIR/podman/podman.sock` |
+| Docker API | `cont_host` / `cont_port` | Legacy TCP Engine API (default port 6000) |
+| OCI runtime | Podman requires **crun** when `SWM_CONTAINER_REQUIRE_CRUN=1` | |
 | Env prefix | `SWM_CONTAINER_*` preferred; `SWM_DOCKER_*` / `SWM_FINALIZE_IN_CONTAINER` aliases | |
 | Finalize | Default `swm-container-finalize.sh` (`SWM_CONTAINER_FINALIZE`) | |
 | Entrypoint | None by default — Porter is Cmd / PID 1 | |
 | VolumesFrom | Docker only; Podman uses binds + `SWM_CONTAINER_EXTRA_BINDS` | No VolumesFrom on Podman |
 | GPU | Docker `DeviceRequests`; Podman **NVIDIA CDI** (hard error if missing) | Job details message on fail |
-| Select runtime | `execution_method` = `native` \| `docker` \| `podman` | `cont_type` = `docker` \| `podman` |
 
-Phase 1 introduced `wm_container_runtime`, `wm_container_cfg`, backend step lists
-(`wm_docker:run_steps/0`), minimal finalize wiring, and no-tini defaults while
-keeping the Docker backend.
+Phase 1: `wm_container_runtime`, `wm_container_cfg`, Docker-backed steps, minimal
+finalize, no-tini defaults.
 
-Phase 2 adds `wm_podman` / `wm_podman_client` (native libpod over unix socket).
-Select Podman with `execution_method=podman` (or `cont_type=podman` with
-`execution_method=docker|container`). Socket: `SWM_CONTAINER_PODMAN_SOCK`
-(default `$XDG_RUNTIME_DIR/podman/podman.sock`). GPU jobs hard-fail with a clear
-job details message when NVIDIA CDI is missing.
+Phase 2: `wm_podman` / `wm_podman_client` (native libpod over unix socket).
+
+Phase 3: docs treat Podman as supported / Docker as legacy; container delete
+enabled on both backends; Docker deprecation warning; CI smoke
+(`scripts/ci-podman-smoke.sh`).
 
 Debug container (`priv/container/debug/Dockerfile`) installs `podman` + `crun`
 for **local experiments only**. SkyPort product code must not use in-container
@@ -187,14 +189,14 @@ Locked policy for the Podman job path:
 
   > GPU job requires NVIDIA CDI on the compute node, but CDI was not available
 
-Host expectations (to validate on a GPU node in Phase 2):
+Host expectations:
 
 - NVIDIA driver
 - `nvidia-container-toolkit` with CDI generation (for example `nvidia-cdi-refresh`)
 - cgroup v2 + rootless device access via CDI specs under `/etc/cdi` or `/var/run/cdi`
 
-Phase 0 host had **no** NVIDIA GPU / CDI — policy is documented; hardware
-sign-off is a Phase 2 gate.
+Sites without a GPU node should treat hardware CDI smoke as an ops gate before
+enabling GPU jobs on Podman. The hard-fail path is implemented in `wm_podman`.
 
 ## PMIx / future parallel launch (invariants only)
 
@@ -209,8 +211,9 @@ not a rewrite:
 
 ## Dev notes
 
-- Spike: `./scripts/phase0-podman-spike.sh` (needs `podman.socket`, crun, porter binary).
+- Smoke: `./scripts/ci-podman-smoke.sh` (needs `podman.socket`, crun).
+- Spike: `./scripts/phase0-podman-spike.sh` (needs porter binary for PID1 check).
 - `VolumesFrom` (for example `skyport-dev:ro`) must become explicit binds when
-  the product path moves to Podman.
+  using the Podman job path.
 - In-container podman in `skyport-dev` is experimental only after rebuilding the
   debug image.

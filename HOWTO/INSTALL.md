@@ -1,28 +1,54 @@
 Installation
 ============
 
-Prepare Docker (for both dev and prod setups)
-----------------------------------------------
+Job containers (recommended: rootless Podman + crun)
+----------------------------------------------------
 
-Job containerization (Docker today, rootless Podman + crun planned) is documented
-in HOWTO/CONTAINERS.md — see ticket #7 Phase 0 for the migration plan and latency
-baseline.
+Supported job execution uses **rootless Podman** with **crun** via the native
+libpod API (unix socket). See HOWTO/CONTAINERS.md for architecture, versions,
+GPU (NVIDIA CDI), and migration notes (ticket #7).
 
-In the current version of SWM jobs are started via docker.
-All the communications between SWM and docker daemon are performed
-via a TCP port. By default it is port 6000 (set as SWM global option,
-that can be changed). The developer or administrator should ensure
-that the docker daemon listens to this port on the compute nodes
-(usually by default it does not do that by default).
+On each compute node:
 
-For that purpose this "-H tcp://0.0.0.0:6000" can be added to start
-arguments in docker.service. This is a subject for improvement.
+1. Install Podman and crun; ensure cgroup v2 and subuid/subgid for the swm user.
+2. Pin the OCI runtime:
+   ```bash
+   mkdir -p ~/.config/containers
+   printf '[engine]\nruntime = "crun"\n' >> ~/.config/containers/containers.conf
+   ```
+3. Enable the API socket:
+   ```bash
+   systemctl --user enable --now podman.socket
+   # typical path: $XDG_RUNTIME_DIR/podman/podman.sock
+   ```
+4. Configure SkyPort globals (or env):
+   - `execution_method` = `podman` (and/or `cont_type` = `podman`)
+   - optional: `SWM_CONTAINER_PODMAN_SOCK` if the socket path is non-default
 
-Then do "systemctl daemon-reload" and "systemctl restart docker".
-This should be done on every compute node where the jobs are suppose to run.
+Verify the stack (no SkyPort required):
 
-When SkyPort itself runs inside a Docker container (e.g. `skyport-dev`),
-it talks to the host Docker API as hostname `host` on port 6000. Ensure:
+```bash
+./scripts/ci-podman-smoke.sh
+```
+
+Legacy: Docker Engine for jobs
+------------------------------
+
+Docker Engine remains available as a **legacy** job backend (`execution_method=docker`
+/ `cont_type=docker`) and is still used to deploy the SkyPort control plane
+(e.g. `skyport-dev`). New deployments should prefer Podman for jobs.
+
+If you still run jobs via Docker, the daemon must listen on TCP (default port
+6000, global `cont_port`):
+
+```bash
+# add to docker.service: -H tcp://0.0.0.0:6000
+systemctl daemon-reload && systemctl restart docker
+```
+
+When SkyPort itself runs inside a Docker container (e.g. `skyport-dev`) and uses
+the **legacy Docker job path**, it talks to the host Docker API as hostname
+`host` on port 6000. Ensure:
 
 1. The container is started with `--add-host=host:host-gateway`
    (see `scripts/start-debug-container.sh`).
@@ -30,7 +56,10 @@ it talks to the host Docker API as hostname `host` on port 6000. Ensure:
    allow Docker bridge traffic to port 6000, for example:
    `ufw allow in on <skyportnet-bridge> to any port 6000 proto tcp`
    Otherwise inspect/create calls fail and jobs report
-   "Docker image not found" even when `docker images` shows the image.
+   "Container image not found" even when `docker images` shows the image.
+
+For Podman from `skyport-dev`, mount the host Podman socket and set
+`SWM_CONTAINER_PODMAN_SOCK` (in-container Podman packages are experiments only).
 
 
 Install Sky Port in production environment
