@@ -42,6 +42,8 @@ GATE_DIR="${ROOT_DIR}/../swm-cloud-gate"
 HOSTNAME=skyport
 IMAGE_NAME=swm-build:29.1
 DOCKER_SOCKET=/var/run/docker.sock
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+PODMAN_SOCK="${SWM_CONTAINER_PODMAN_SOCK:-${XDG_RUNTIME_DIR}/podman/podman.sock}"
 X11_SOCKET=/tmp/.X11-unix
 CONTAINER_NAME=skyport-dev
 NETWORK=skyportnet-dev
@@ -55,6 +57,18 @@ CORE_API_PORT=10001
 
 GATE_LOG=/tmp/swm-cloud-gate-debug.log
 SWM_CLOUD_GATE_CONFIG="${HOME}/.swm/cloud-gate.yaml"
+
+PODMAN_MOUNT_ARGS=()
+PODMAN_ENV_ARGS=()
+if [ -S "${PODMAN_SOCK}" ]; then
+    PODMAN_MOUNT_ARGS=(-v "${PODMAN_SOCK}:${PODMAN_SOCK}")
+    PODMAN_ENV_ARGS=(
+        -e "SWM_CONTAINER_PODMAN_SOCK=${PODMAN_SOCK}"
+        -e "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
+    )
+else
+    echo "WARN: host Podman socket not found at ${PODMAN_SOCK}; local container jobs will fail until it is available" >&2
+fi
 
 in_container() {
     docker exec "${CONTAINER_NAME}" runuser -u "${HOST_USER}" -- bash -lc "$*"
@@ -83,8 +97,10 @@ ensure_container() {
             -v /etc/group:/etc/group \
             -v /opt:/opt \
             -v "${DOCKER_SOCKET}:${DOCKER_SOCKET}" \
+            "${PODMAN_MOUNT_ARGS[@]}" \
             -v "${X11_SOCKET}:${X11_SOCKET}" \
             -e "DISPLAY=${DISPLAY:-}" \
+            "${PODMAN_ENV_ARGS[@]}" \
             --name "${CONTAINER_NAME}" \
             --hostname "${HOSTNAME}" \
             --domainname "${DOMAIN}" \

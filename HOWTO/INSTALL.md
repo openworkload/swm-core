@@ -38,8 +38,15 @@ Docker is still used to deploy the Sky Port control plane (e.g. `skyport-dev`
 via `make cr`). Job execution uses rootless Podman on the compute host, not
 Docker Engine.
 
-For Podman from `skyport-dev`, mount the host Podman socket and set
-`SWM_CONTAINER_PODMAN_SOCK` (in-container Podman packages are experiments only).
+`make cr` / `scripts/start-debug-container.sh` mount the host Podman socket
+(`$XDG_RUNTIME_DIR/podman/podman.sock`) into `skyport-dev` and set
+`SWM_CONTAINER_PODMAN_SOCK`. Enable the socket on the host first:
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+In-container Podman packages remain experiments only; jobs talk to the host API.
 
 
 Install Sky Port in production environment

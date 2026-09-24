@@ -3,14 +3,12 @@
 %%% accepted as an alias for SWM_CONTAINER_FINALIZE.
 -module(wm_container_cfg).
 
--export([finalize_script/0, entrypoint/0, getenv_first/2, podman_sock/0,
-         podman_api_prefix/0, require_crun/0, cdi_available/0, cdi_dirs/0, extra_binds/0,
-         gpu_cdi_missing_msg/0]).
+-export([finalize_script/0, entrypoint/0, getenv_first/2, podman_sock/0, podman_api_prefix/0, require_crun/0,
+         cdi_available/0, cdi_dirs/0, extra_binds/0, gpu_cdi_missing_msg/0]).
 
 -define(DEFAULT_FINALIZE, "/opt/swm/current/scripts/swm-container-finalize.sh").
 -define(DEFAULT_API_PREFIX, "/v5.0.0/libpod").
--define(GPU_CDI_MISSING_MSG,
-        "GPU job requires NVIDIA CDI on the compute node, but CDI was not available").
+-define(GPU_CDI_MISSING_MSG, "GPU job requires NVIDIA CDI on the compute node, but CDI was not available").
 
 %% @doc Absolute path to the in-container finalize script.
 -spec finalize_script() -> string().
@@ -116,7 +114,7 @@ dir_has_nvidia_cdi(Dir) ->
 
 is_nvidia_cdi_name(Name) ->
     Low = string:lowercase(Name),
-    (string:str(Low, "nvidia") > 0)
+    string:str(Low, "nvidia") > 0
     andalso (lists:suffix(".json", Low) orelse lists:suffix(".yaml", Low) orelse lists:suffix(".yml", Low)).
 
 -spec gpu_cdi_missing_msg() -> string().

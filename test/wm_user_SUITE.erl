@@ -1,7 +1,6 @@
 -module(wm_user_SUITE).
 
--export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2,
-         end_per_testcase/2]).
+-export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
 -export([parse_local_jobscript/1, submit_local_job/1]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -16,7 +15,6 @@
 -define(ACCOUNT_ID, "acc-localhost").
 -define(CLUSTER_ID, "cluster-local").
 -define(SPOOL, "/tmp/swm-user-ct-spool").
-
 %% Minimal local job script (same directives as priv/examples/jobscripts/local.sh).
 -define(LOCAL_JOB_SCRIPT,
         "#!/bin/sh\n"
@@ -65,11 +63,13 @@ init_per_suite(Config) ->
 
     meck:new(wm_conf, [no_link]),
     meck:new(wm_topology, [no_link]),
-    meck:expect(wm_topology, get_subdiv, fun(cluster) ->
-                                            wm_entity:set([{id, ?CLUSTER_ID}], wm_entity:new(cluster))
-                                         end),
+    meck:expect(wm_topology,
+                get_subdiv,
+                fun(cluster) -> wm_entity:set([{id, ?CLUSTER_ID}], wm_entity:new(cluster)) end),
 
-    ok = filelib:ensure_dir(filename:join(?SPOOL, "dummy")),
+    ok =
+        filelib:ensure_dir(
+            filename:join(?SPOOL, "dummy")),
     Config.
 
 -spec end_per_suite(list()) -> list().
@@ -148,8 +148,7 @@ parse_local_jobscript(_Config) ->
     Request = wm_entity:get(request, Job),
     ?assertMatch(#resource{name = "node", count = 1}, lists:keyfind("node", 2, Request)),
     ?assertEqual({ok, "localhost"}, wm_utils:find_property_in_resource("flavor", value, Request)),
-    ?assertEqual({ok, "ubuntu:24.04"},
-                 wm_utils:find_property_in_resource("container-image", value, Request)),
+    ?assertEqual({ok, "ubuntu:24.04"}, wm_utils:find_property_in_resource("container-image", value, Request)),
     ?assertEqual(false, lists:keyfind("cloud-image", 2, Request)),
     ok.
 
@@ -165,17 +164,15 @@ submit_local_job(_Config) ->
                         ct:fail({unexpected_update, Other})
                 end),
 
-    {string, JobId} =
-        gen_server:call(wm_user, {submit, ?LOCAL_JOB_SCRIPT, "/tmp/local.sh", ?USER_NAME, "127.0.0.1"}),
+    {string, JobId} = gen_server:call(wm_user, {submit, ?LOCAL_JOB_SCRIPT, "/tmp/local.sh", ?USER_NAME, "127.0.0.1"}),
     ?assert(is_list(JobId) andalso length(JobId) > 0),
 
-    Job =
-        receive
-            {job_saved, Saved} ->
-                Saved
-        after 5000 ->
-            ct:fail(job_not_saved)
-        end,
+    Job = receive
+              {job_saved, Saved} ->
+                  Saved
+          after 5000 ->
+              ct:fail(job_not_saved)
+          end,
 
     ?assertEqual(JobId, wm_entity:get(id, Job)),
     ?assertEqual(?JOB_STATE_QUEUED, wm_entity:get(state, Job)),
@@ -189,10 +186,8 @@ submit_local_job(_Config) ->
     ?assertMatch(#resource{name = "node", count = 1}, lists:keyfind("node", 2, Request)),
     ?assertMatch(#resource{name = "cpus", count = 1}, lists:keyfind("cpus", 2, Request)),
     ?assertEqual({ok, "localhost"}, wm_utils:find_property_in_resource("flavor", value, Request)),
-    ?assertEqual({ok, "ubuntu:24.04"},
-                 wm_utils:find_property_in_resource("container-image", value, Request)),
-    ?assertEqual({ok, "127.0.0.1"},
-                 wm_utils:find_property_in_resource("submission-address", value, Request)),
+    ?assertEqual({ok, "ubuntu:24.04"}, wm_utils:find_property_in_resource("container-image", value, Request)),
+    ?assertEqual({ok, "127.0.0.1"}, wm_utils:find_property_in_resource("submission-address", value, Request)),
     %% Local jobs must not request a cloud VM image (that path uses the gate).
     ?assertEqual(false, lists:keyfind("cloud-image", 2, Request)),
     ok.

@@ -363,8 +363,7 @@ spawn_virtres(Job) ->
                 {ok, #node{is_template = false} = Node} ->
                     %% Already allocated a real node (e.g. SkyPort localhost). wm_compute
                     %% starts the job locally -- do not involve virtres / cloud gate.
-                    ?LOG_DEBUG("Skip virtres for local/on-prem node ~p (job ~p)",
-                               [wm_entity:get(name, Node), JobId]),
+                    ?LOG_DEBUG("Skip virtres for local/on-prem node ~p (job ~p)", [wm_entity:get(name, Node), JobId]),
                     {error, not_found};
                 {ok, TemplateNode} ->
                     TemplateName = wm_entity:get(name, TemplateNode),

@@ -10,8 +10,7 @@
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 
--define(GPU_CDI_MISSING_MSG,
-        "GPU job requires NVIDIA CDI on the compute node, but CDI was not available").
+-define(GPU_CDI_MISSING_MSG, "GPU job requires NVIDIA CDI on the compute node, but CDI was not available").
 
 %% ============================================================================
 %% wm_container_runtime
@@ -378,8 +377,7 @@ get_finalize_cmd(#job{workdir = WorkDir} = Job) ->
                     {error, not_found} ->
                         {"1000", "1000"}
                 end,
-            Command =
-                FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID ++ " " ++ HostIP ++ " " ++ WorkDir,
+            Command = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID ++ " " ++ HostIP ++ " " ++ WorkDir,
             [<<"/bin/sh">>, <<"-c">>, list_to_binary(Command)]
     end.
 

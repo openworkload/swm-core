@@ -140,8 +140,7 @@ handle_info({gun_response, _, _, nofin, 404, Hdrs}, #mstate{} = MState) ->
     notify_requestor(<<>>, Hdrs, 404, MState),
     shutdown(MState),
     {stop, normal, MState};
-handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState)
-    when Status =:= 304; Status =:= 101 ->
+handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) when Status =:= 304; Status =:= 101 ->
     %% 101 = hijacked attach ready for stdin / stream.
     notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, Status, MState),
     {noreply, MState#mstate{hdrs = []}};

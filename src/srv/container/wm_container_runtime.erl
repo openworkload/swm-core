@@ -14,7 +14,6 @@
 
 -callback run_steps() -> steps().
 -callback communicate_steps(binary()) -> steps().
-
 -callback ensure_create_ready(#job{}) -> ok | {error, string()}.
 -callback create(#job{}, string(), map(), pid(), steps()) -> {cont_id(), pid()}.
 -callback start(#job{}, steps()) -> term().
@@ -25,6 +24,5 @@
 -callback start_exec(#job{}, string(), pid(), steps()) -> term().
 -callback delete(#job{}, pid()) -> ok.
 -callback stop_client(pid() | undefined) -> ok.
-
 -callback get_unregistered_images() -> list().
 -callback get_unregistered_image(string()) -> term().

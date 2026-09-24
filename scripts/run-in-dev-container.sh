@@ -19,6 +19,8 @@ ROOT_DIR=$(dirname "$(dirname "$ME")")
 HOSTNAME=skyport
 IMAGE_NAME=swm-build:29.1
 DOCKER_SOCKET=/var/run/docker.sock
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+PODMAN_SOCK="${SWM_CONTAINER_PODMAN_SOCK:-${XDG_RUNTIME_DIR}/podman/podman.sock}"
 X11_SOCKET=/tmp/.X11-unix
 CONTAINER_NAME=skyport-dev
 NETWORK=skyportnet-dev
@@ -29,6 +31,16 @@ JUPUTER_HUB_API_PORT=8081
 JUPUTER_HUB_PORT=8000
 USER_API_PORT=8443
 CORE_API_PORT=10001
+
+PODMAN_MOUNT_ARGS=()
+PODMAN_ENV_ARGS=()
+if [ -S "${PODMAN_SOCK}" ]; then
+    PODMAN_MOUNT_ARGS=(-v "${PODMAN_SOCK}:${PODMAN_SOCK}")
+    PODMAN_ENV_ARGS=(
+        -e "SWM_CONTAINER_PODMAN_SOCK=${PODMAN_SOCK}"
+        -e "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
+    )
+fi
 
 STOP_SWM=0
 ARGS=()
@@ -134,8 +146,10 @@ ensure_container() {
             -v /etc/group:/etc/group \
             -v /opt:/opt \
             -v "${DOCKER_SOCKET}:${DOCKER_SOCKET}" \
+            "${PODMAN_MOUNT_ARGS[@]}" \
             -v "${X11_SOCKET}:${X11_SOCKET}" \
             -e "DISPLAY=${DISPLAY:-}" \
+            "${PODMAN_ENV_ARGS[@]}" \
             --name "${CONTAINER_NAME}" \
             --hostname "${HOSTNAME}" \
             --domainname "${DOMAIN}" \
