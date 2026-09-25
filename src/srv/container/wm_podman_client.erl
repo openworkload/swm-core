@@ -94,6 +94,24 @@ stop(HttpProcPid) ->
 %% Callbacks
 %% ============================================================================
 
+-spec init(term()) -> {ok, term()} | {ok, term(), hibernate | infinity | non_neg_integer()} | {stop, term()} | ignore.
+-spec handle_call(term(), term(), term()) ->
+                     {reply, term(), term()} |
+                     {reply, term(), term(), hibernate | infinity | non_neg_integer()} |
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()} |
+                     {stop, term(), term(), term()}.
+-spec handle_cast(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec handle_info(term(), term()) ->
+                     {noreply, term()} |
+                     {noreply, term(), hibernate | infinity | non_neg_integer()} |
+                     {stop, term(), term()}.
+-spec terminate(term(), term()) -> ok.
+-spec code_change(term(), term(), term()) -> {ok, term()}.
 init({Owner, SockPath, ReqID, Reason}) ->
     process_flag(trap_exit, true),
     application:ensure_all_started(gun),
@@ -158,11 +176,11 @@ handle_info({gun_response, _, _, nofin, 404, Hdrs}, #mstate{} = MState) ->
     notify_requestor(<<>>, Hdrs, 404, MState),
     shutdown(MState),
     {stop, normal, MState};
-handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) when Status =:= 304; Status =:= 101 ->
+handle_info({gun_response, _ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) when Status =:= 304; Status =:= 101 ->
     %% 101 = hijacked attach ready for stdin / stream.
     notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, Status, MState),
     {noreply, MState#mstate{hdrs = []}};
-handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) ->
+handle_info({gun_response, _ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) ->
     {noreply, MState#mstate{hdrs = MState#mstate.hdrs ++ Hdrs, http_status = Status}};
 %% gun 2.x delivers successful HTTP Upgrade (Podman/Docker attach hijack) as gun_upgrade,
 %% not gun_response/101. Connection becomes gun_raw with stream_ref=undefined.
@@ -174,7 +192,7 @@ handle_info({gun_upgrade, ConnPid, StreamRef, _Protocols, Hdrs}, #mstate{conn_pi
                       raw_hijack = true},
     notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, 101, NewState),
     {noreply, NewState};
-handle_info({gun_data, ConnPid, _, nofin, FrameData}, #mstate{} = MState) ->
+handle_info({gun_data, _ConnPid, _, nofin, FrameData}, #mstate{} = MState) ->
     case use_attach_demux(MState) of
         true ->
             {noreply, handle_mux_output(FrameData, MState)};
@@ -182,7 +200,7 @@ handle_info({gun_data, ConnPid, _, nofin, FrameData}, #mstate{} = MState) ->
             Old = MState#mstate.data,
             {noreply, MState#mstate{data = <<Old/binary, FrameData/binary>>}}
     end;
-handle_info({gun_data, ConnPid, _, fin, Data}, #mstate{} = MState) ->
+handle_info({gun_data, _ConnPid, _, fin, Data}, #mstate{} = MState) ->
     OldData = MState#mstate.data,
     Bin = <<OldData/binary, Data/binary>>,
     case use_attach_demux(MState) of
@@ -216,7 +234,7 @@ handle_info({'DOWN', MRef, process, ConnPid, Msg}, #mstate{mref = MRef, conn_pid
     ?LOG_DEBUG("Podman gun DOWN: ~p [~p]", [Msg, ConnPid]),
     shutdown(MState),
     {stop, shutdown, MState};
-handle_info({gun_inform, ConnPid, _, Status, Hdrs}, #mstate{} = MState) ->
+handle_info({gun_inform, _ConnPid, _, Status, Hdrs}, #mstate{} = MState) ->
     notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, Status, MState),
     {noreply, MState};
 handle_info(_Other, #mstate{} = MState) ->
@@ -253,8 +271,18 @@ open_conn(SockPath) ->
 
 shutdown(#mstate{conn_pid = ConnPid, mref = MRef}) ->
     demonitor(MRef),
-    catch gun:flush(ConnPid),
-    catch gun:shutdown(ConnPid),
+    try
+        gun:flush(ConnPid)
+    catch
+        _:_ ->
+            ok
+    end,
+    try
+        gun:shutdown(ConnPid)
+    catch
+        _:_ ->
+            ok
+    end,
     ok.
 
 do_get(Path, Hdr, #mstate{conn_pid = ConnPid} = MState) ->

@@ -32,10 +32,13 @@ get_unregistered_images() ->
     Path = api("/images/json"),
     BodyBin = wm_podman_client:get(Path, [], Http),
     wm_podman_client:stop(Http),
-    case catch wm_json:decode(BodyBin) of
+    try wm_json:decode(BodyBin) of
         ImageStructs when is_list(ImageStructs) ->
             get_images_from_json(ImageStructs, []);
         _ ->
+            []
+    catch
+        _:_ ->
             []
     end.
 
@@ -47,11 +50,11 @@ get_unregistered_image(ImageId) ->
         {404, _} ->
             not_found;
         {error, _} ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             not_found;
         {_Status, BodyBin} ->
             wm_podman_client:stop(Http),
-            case catch wm_json:decode(BodyBin) of
+            try wm_json:decode(BodyBin) of
                 {struct, _} = Struct ->
                     case get_images_from_json([Struct], []) of
                         [Image] ->
@@ -67,6 +70,9 @@ get_unregistered_image(ImageId) ->
                             not_found
                     end;
                 _ ->
+                    not_found
+            catch
+                _:_ ->
                     not_found
             end
     end.
@@ -174,14 +180,23 @@ delete(Job, Owner) ->
     Http = start_client(Owner, ContID, "delete " ++ ContID),
     Path = api("/containers/" ++ ContID ++ "?force=true&v=true"),
     %% Best-effort delete; do not block cleanup on API errors.
-    catch wm_podman_client:delete(Path, [], Http, []),
-    catch wm_podman_client:stop(Http),
+    try
+        wm_podman_client:delete(Path, [], Http, [])
+    catch
+        _:_ ->
+            ok
+    end,
+    safe_client_stop(Http),
     ok.
 
 -spec stop_client(pid() | undefined) -> ok.
 stop_client(undefined) ->
     ok;
 stop_client(Pid) when is_pid(Pid) ->
+    safe_client_stop(Pid).
+
+-spec safe_client_stop(pid()) -> ok.
+safe_client_stop(Pid) when is_pid(Pid) ->
     try
         wm_podman_client:stop(Pid)
     catch
@@ -229,13 +244,13 @@ query_oci_runtime() ->
     Http = start_client(self(), [], "podman info"),
     case wm_podman_client:get_status(api("/info"), [], Http) of
         {error, Reason} ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             {error, Reason};
         {404, _} ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             {error, not_found};
         {_St, Body} ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             case extract_runtime_name(Body) of
                 "" ->
                     {error, unknown_runtime};
@@ -245,24 +260,30 @@ query_oci_runtime() ->
     end.
 
 extract_runtime_name(Body) when is_binary(Body) ->
-    case catch jsx:decode(Body, [return_maps]) of
+    try jsx:decode(Body, [return_maps]) of
         #{<<"host">> := #{<<"ociRuntime">> := #{<<"name">> := N}}} when is_binary(N) ->
             binary_to_list(N);
         #{<<"host">> := #{<<"ociRuntime">> := #{<<"Name">> := N}}} when is_binary(N) ->
             binary_to_list(N);
         _ ->
-            %% Fallback: substring search
-            case binary:match(Body, <<"\"name\":\"crun\"">>) of
+            runtime_name_crun_fallback(Body)
+    catch
+        _:_ ->
+            runtime_name_crun_fallback(Body)
+    end.
+
+runtime_name_crun_fallback(Body) when is_binary(Body) ->
+    %% Fallback: substring search
+    case binary:match(Body, <<"\"name\":\"crun\"">>) of
+        nomatch ->
+            case binary:match(Body, <<"crun">>) of
                 nomatch ->
-                    case binary:match(Body, <<"crun">>) of
-                        nomatch ->
-                            "";
-                        _ ->
-                            "crun"
-                    end;
+                    "";
                 _ ->
                     "crun"
-            end
+            end;
+        _ ->
+            "crun"
     end.
 
 -spec ensure_gpu_cdi([#resource{}]) -> ok | {error, string()}.
@@ -287,16 +308,16 @@ image_exists(Image) ->
         {404, _} ->
             false;
         {error, _} ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             %% Fallback inspect
             image_inspect_ok(Image);
         {Status, _} when Status >= 200, Status < 300 ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             true;
         {204, _} ->
             true;
         _ ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             image_inspect_ok(Image)
     end.
 
@@ -307,17 +328,17 @@ image_inspect_ok(Image) ->
         {404, _} ->
             false;
         {error, _} ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             false;
         {Status, Data} when is_binary(Data), Data =/= <<>>, Status >= 200, Status < 300 ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             true;
         _ ->
-            catch wm_podman_client:stop(Http),
+            safe_client_stop(Http),
             false
     end.
 
-generate_create_json(#job{request = Request} = Job, Porter, ContID) ->
+generate_create_json(#job{request = Request}, Porter, ContID) ->
     Image = get_container_image(Request),
     Cmd = [list_to_binary(wm_utils:unroll_symlink(Porter)), <<"-d">>],
     Mounts = default_mounts(),
