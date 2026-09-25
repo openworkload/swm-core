@@ -76,14 +76,14 @@ get_remotes_info(Req) ->
     Remotes = gen_server:call(wm_user, {list, [remote], Limit}),
     F = fun(Remote, FullJson) ->
            RemoteJson =
-               jsx:encode(#{id => list_to_binary(wm_entity:get(id, Remote)),
-                            name => list_to_binary(wm_entity:get(name, Remote)),
-                            account_id => list_to_binary(wm_entity:get(account_id, Remote)),
-                            server => list_to_binary(wm_entity:get(server, Remote)),
-                            port => wm_entity:get(port, Remote),
-                            kind => wm_entity:get(kind, Remote),
-                            default_image_id => list_to_binary(wm_entity:get(default_image_id, Remote)),
-                            default_flavor_id => list_to_binary(wm_entity:get(default_flavor_id, Remote))}),
+               wm_json:encode(#{id => list_to_binary(wm_entity:get(id, Remote)),
+                                name => list_to_binary(wm_entity:get(name, Remote)),
+                                account_id => list_to_binary(wm_entity:get(account_id, Remote)),
+                                server => list_to_binary(wm_entity:get(server, Remote)),
+                                port => wm_entity:get(port, Remote),
+                                kind => wm_entity:get(kind, Remote),
+                                default_image_id => list_to_binary(wm_entity:get(default_image_id, Remote)),
+                                default_flavor_id => list_to_binary(wm_entity:get(default_flavor_id, Remote))}),
            [binary_to_list(RemoteJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], Remotes),
@@ -96,11 +96,11 @@ get_images_info(Req) ->
     Xs = gen_server:call(wm_user, {list, [image], Limit}),
     F = fun(Image, FullJson) ->
            ImageJson =
-               jsx:encode(#{id => list_to_binary(wm_entity:get(id, Image)),
-                            name => list_to_binary(wm_entity:get(name, Image)),
-                            remote_id => list_to_binary(wm_entity:get(remote_id, Image)),
-                            kind => atom_to_binary(wm_entity:get(kind, Image)),
-                            comment => list_to_binary(wm_entity:get(comment, Image))}),
+               wm_json:encode(#{id => list_to_binary(wm_entity:get(id, Image)),
+                                name => list_to_binary(wm_entity:get(name, Image)),
+                                remote_id => list_to_binary(wm_entity:get(remote_id, Image)),
+                                kind => atom_to_binary(wm_entity:get(kind, Image)),
+                                comment => list_to_binary(wm_entity:get(comment, Image))}),
            [binary_to_list(ImageJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], Xs),
@@ -113,16 +113,16 @@ get_nodes_info(Req) ->
     Xs = gen_server:call(wm_user, {list, [node], Limit}),
     F = fun(Node, FullJson) ->
            NodeJson =
-               jsx:encode(#{id => list_to_binary(wm_entity:get(id, Node)),
-                            name => list_to_binary(wm_entity:get(name, Node)),
-                            host => list_to_binary(wm_entity:get(host, Node)),
-                            api_port => wm_entity:get(api_port, Node),
-                            state_power => wm_entity:get(state_power, Node),
-                            state_alloc => wm_entity:get(state_alloc, Node),
-                            resources =>
-                                wm_user_json:get_resources_json(
-                                    wm_entity:get(resources, Node)),
-                            roles => wm_user_json:get_roles_json(Node)}),
+               wm_json:encode(#{id => list_to_binary(wm_entity:get(id, Node)),
+                                name => list_to_binary(wm_entity:get(name, Node)),
+                                host => list_to_binary(wm_entity:get(host, Node)),
+                                api_port => wm_entity:get(api_port, Node),
+                                state_power => wm_entity:get(state_power, Node),
+                                state_alloc => wm_entity:get(state_alloc, Node),
+                                resources =>
+                                    wm_user_json:get_resources_json(
+                                        wm_entity:get(resources, Node)),
+                                roles => wm_user_json:get_roles_json(Node)}),
            [binary_to_list(NodeJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], Xs),
@@ -143,13 +143,13 @@ get_flavors_info(Req) ->
                        ""
                end,
            FlavorJson =
-               jsx:encode(#{id => list_to_binary(wm_entity:get(id, FlavorNode)),
-                            name => list_to_binary(wm_entity:get(name, FlavorNode)),
-                            remote_id => list_to_binary(RemoteId),
-                            resources =>
-                                wm_user_json:get_resources_json(
-                                    wm_entity:get(resources, FlavorNode)),
-                            price => maps:get(AccountId, wm_entity:get(prices, FlavorNode), 0)}),
+               wm_json:encode(#{id => list_to_binary(wm_entity:get(id, FlavorNode)),
+                                name => list_to_binary(wm_entity:get(name, FlavorNode)),
+                                remote_id => list_to_binary(RemoteId),
+                                resources =>
+                                    wm_user_json:get_resources_json(
+                                        wm_entity:get(resources, FlavorNode)),
+                                price => maps:get(AccountId, wm_entity:get(prices, FlavorNode), 0)}),
            [binary_to_list(FlavorJson) | FullJson]
         end,
     Ms = lists:foldl(F, [], FlavorNodes),
@@ -221,28 +221,28 @@ job_to_json(Job, FullJson) ->
     MainIp = main_node_public_ip(JobNodes),
     {FlavorId, RemoteId} = wm_user_json:find_flavor_and_remote_ids(Job),
     JobJson =
-        jsx:encode(#{id => list_to_binary(wm_entity:get(id, Job)),
-                     name => list_to_binary(wm_entity:get(name, Job)),
-                     state => list_to_binary(wm_entity:get(state, Job)),
-                     state_details => list_to_binary(wm_entity:get(state_details, Job)),
-                     submit_time => list_to_binary(wm_entity:get(submit_time, Job)),
-                     start_time => list_to_binary(wm_entity:get(start_time, Job)),
-                     end_time => list_to_binary(wm_entity:get(end_time, Job)),
-                     duration => wm_entity:get(duration, Job),
-                     exitcode => wm_entity:get(exitcode, Job),
-                     signal => wm_entity:get(signal, Job),
-                     node_names => JobNodeHostnames,
-                     node_ips => JobNodeIps,
-                     main_ip => MainIp,
-                     remote_id => list_to_binary(RemoteId),
-                     flavor_id => list_to_binary(FlavorId),
-                     request =>
-                         wm_user_json:get_resources_json(
-                             wm_entity:get(request, Job)),
-                     resources =>
-                         wm_user_json:get_resources_json(
-                             wm_entity:get(resources, Job)),
-                     comment => list_to_binary(wm_entity:get(comment, Job))}),
+        wm_json:encode(#{id => list_to_binary(wm_entity:get(id, Job)),
+                         name => list_to_binary(wm_entity:get(name, Job)),
+                         state => list_to_binary(wm_entity:get(state, Job)),
+                         state_details => list_to_binary(wm_entity:get(state_details, Job)),
+                         submit_time => list_to_binary(wm_entity:get(submit_time, Job)),
+                         start_time => list_to_binary(wm_entity:get(start_time, Job)),
+                         end_time => list_to_binary(wm_entity:get(end_time, Job)),
+                         duration => wm_entity:get(duration, Job),
+                         exitcode => wm_entity:get(exitcode, Job),
+                         signal => wm_entity:get(signal, Job),
+                         node_names => JobNodeHostnames,
+                         node_ips => JobNodeIps,
+                         main_ip => MainIp,
+                         remote_id => list_to_binary(RemoteId),
+                         flavor_id => list_to_binary(FlavorId),
+                         request =>
+                             wm_user_json:get_resources_json(
+                                 wm_entity:get(request, Job)),
+                         resources =>
+                             wm_user_json:get_resources_json(
+                                 wm_entity:get(resources, Job)),
+                         comment => list_to_binary(wm_entity:get(comment, Job))}),
     [binary_to_list(JobJson) | FullJson].
 
 %% @doc Select nodes by id, keeping the caller's order (main / partmgr first).

@@ -151,11 +151,15 @@ handle_call({global, export}, _From, MState) ->
 handle_call({global, update, Bin}, _From, MState) ->
     case wm_db:ensure_running() of
         ok ->
-            {struct, SchemaJson} = wm_json:decode(Bin),
-            %TODO Suspend and then resume processes that use DB
-            Result = wm_db:upgrade_schema(SchemaJson),
-            %TODO reload services after the schema is updated
-            {reply, {list, Result}, MState};
+            case wm_json:decode(Bin) of
+                SchemaJson when is_map(SchemaJson) ->
+                    %TODO Suspend and then resume processes that use DB
+                    Result = wm_db:upgrade_schema(SchemaJson),
+                    %TODO reload services after the schema is updated
+                    {reply, {list, Result}, MState};
+                Error ->
+                    {reply, {error, Error}, MState}
+            end;
         {error, Reason} ->
             ?LOG_ERROR("~p", [Reason]),
             {reply, {error, Reason}, MState}

@@ -1,7 +1,5 @@
 -module(wm_entity).
 
--behaviour(json_rec_model).
-
 -include_lib("wm_entity.hrl").
 
 -include("wm_log.hrl").
@@ -188,12 +186,12 @@ decode_json_type(X) ->
       binary_to_atom(Y, utf8)
   end.
 
--spec extract_json_field_info({binary(), {struct, [{binary(), binary()}]}}) -> {atom(), term(), atom()}.
-extract_json_field_info({NameBin, {struct, [{<<"type">>, TypeBin}]}}) ->
-  extract_json_field_info({NameBin, {struct, [{<<"default">>, []},
-                                              {<<"type">>, TypeBin}]}});
-extract_json_field_info({NameBin, {struct, [{<<"default">>, DefaultBin},
-                                            {<<"type">>, TypeBin}]}}) ->
+-spec extract_json_field_info({binary(), map() | {struct, list()}}) -> {atom(), term(), atom()}.
+extract_json_field_info({NameBin, {struct, Props}}) when is_list(Props) ->
+  extract_json_field_info({NameBin, maps:from_list(Props)});
+extract_json_field_info({NameBin, Field}) when is_map(Field) ->
+  TypeBin = maps:get(<<"type">>, Field),
+  DefaultBin = maps:get(<<"default">>, Field, []),
   Name = binary_to_atom(NameBin, utf8),
   Type = decode_json_type(TypeBin),
   Default = decode_json_default(DefaultBin, Type),

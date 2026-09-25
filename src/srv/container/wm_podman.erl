@@ -33,8 +33,8 @@ get_unregistered_images() ->
     BodyBin = wm_podman_client:get(Path, [], Http),
     wm_podman_client:stop(Http),
     try wm_json:decode(BodyBin) of
-        ImageStructs when is_list(ImageStructs) ->
-            get_images_from_json(ImageStructs, []);
+        ImageMaps when is_list(ImageMaps) ->
+            get_images_from_json(ImageMaps, []);
         _ ->
             []
     catch
@@ -55,15 +55,8 @@ get_unregistered_image(ImageId) ->
         {_Status, BodyBin} ->
             wm_podman_client:stop(Http),
             try wm_json:decode(BodyBin) of
-                {struct, _} = Struct ->
-                    case get_images_from_json([Struct], []) of
-                        [Image] ->
-                            Image;
-                        _ ->
-                            not_found
-                    end;
                 Map when is_map(Map) ->
-                    case get_images_from_json([{struct, maps:to_list(Map)}], []) of
+                    case get_images_from_json([Map], []) of
                         [Image] ->
                             Image;
                         _ ->
@@ -170,7 +163,7 @@ create_exec(Job, Steps) ->
 start_exec(_Job, ExecId, HttpProcPid, Steps) ->
     Path = api("/exec/" ++ ExecId ++ "/start"),
     Hdrs = [{<<"content-type">>, <<"application/json">>}],
-    Body = jsx:encode(#{<<"Detach">> => false, <<"Tty">> => false}),
+    Body = wm_json:encode(#{<<"Detach">> => false, <<"Tty">> => false}),
     wm_podman_client:post(Path, Body, Hdrs, HttpProcPid, Steps),
     ok.
 
@@ -260,7 +253,7 @@ query_oci_runtime() ->
     end.
 
 extract_runtime_name(Body) when is_binary(Body) ->
-    try jsx:decode(Body, [return_maps]) of
+    try wm_json:decode(Body) of
         #{<<"host">> := #{<<"ociRuntime">> := #{<<"name">> := N}}} when is_binary(N) ->
             binary_to_list(N);
         #{<<"host">> := #{<<"ociRuntime">> := #{<<"Name">> := N}}} when is_binary(N) ->
@@ -362,7 +355,7 @@ generate_create_json(#job{request = Request}, Porter, ContID) ->
             _ ->
                 Term#{<<"cdi_devices">> => [#{<<"Name">> => <<"nvidia.com/gpu=all">>}]}
         end,
-    jsx:encode(Term2).
+    wm_json:encode(Term2).
 
 entrypoint_or_empty() ->
     case wm_container_cfg:entrypoint() of
@@ -392,11 +385,11 @@ default_mounts() ->
 
 generate_exec_create_json(Job) ->
     Cmd = get_finalize_cmd(Job),
-    jsx:encode(#{<<"Cmd">> => Cmd,
-                 <<"AttachStdout">> => true,
-                 <<"AttachStderr">> => true,
-                 <<"Privileged">> => false,
-                 <<"User">> => <<"root">>}).
+    wm_json:encode(#{<<"Cmd">> => Cmd,
+                     <<"AttachStdout">> => true,
+                     <<"AttachStderr">> => true,
+                     <<"Privileged">> => false,
+                     <<"User">> => <<"root">>}).
 
 get_finalize_cmd(#job{workdir = WorkDir} = Job) ->
     case wm_utils:get_job_user(Job) of
@@ -444,16 +437,14 @@ get_container_image([_ | T]) ->
 
 get_images_from_json([], Images) ->
     Images;
-get_images_from_json([{struct, ImageParams} | T], Images) ->
+get_images_from_json([ImageParams | T], Images) when is_map(ImageParams) ->
     EmptyImage = wm_entity:set([kind, container], wm_entity:new(<<"image">>)),
-    case fill_image_from_params(ImageParams, EmptyImage) of
+    case fill_image_from_params(maps:to_list(ImageParams), EmptyImage) of
         ignore ->
             get_images_from_json(T, Images);
         NewImage ->
             get_images_from_json(T, [NewImage | Images])
     end;
-get_images_from_json([Map | T], Images) when is_map(Map) ->
-    get_images_from_json([{struct, maps:to_list(Map)} | T], Images);
 get_images_from_json([_ | T], Images) ->
     get_images_from_json(T, Images).
 

@@ -95,8 +95,10 @@ update_existing(Tab, {KeyName, KeyVal}, Attr, AttrVal) ->
 update(Records) when is_list(Records) ->
     do_update(Records, 0).
 
--spec upgrade_schema([{binary(), {struct, list()}}]) -> [{atom, atom()} | {error, string()}].
-upgrade_schema(Json) ->
+-spec upgrade_schema(map() | [{binary(), map() | {struct, list()}}]) -> [{atom, atom()} | {error, string()}].
+upgrade_schema(Json) when is_map(Json) ->
+    upgrade_schema(maps:to_list(Json));
+upgrade_schema(Json) when is_list(Json) ->
     ?LOG_DEBUG("Upgrade schema call: ~P", [Json, 10]),
     case do_upgrade_schema(Json, []) of
         [] ->
@@ -233,7 +235,7 @@ compare_hashes(Hashes) ->
     DifferentTabs.
 
 %% @doc Return fields structures for tables with different hashes
--spec get_tables_meta([{atom(), binary()}]) -> [{atom(), {struct, list()}}].
+-spec get_tables_meta([{atom(), binary()}]) -> [{atom(), map()}].
 get_tables_meta(Hs) ->
     ?LOG_DEBUG("Get tables meta"),
     Meta = do_get_tables_meta(Hs, []),
@@ -710,7 +712,7 @@ do_wait_for_table(TabName) ->
 do_get_many(Tab, Attr, Values) ->
     do(qlc:q([X || X <- mnesia:table(Tab), lists:any(fun(Y) -> wm_entity:get(Attr, X) =:= Y end, Values)])).
 
--spec do_get_tables_meta([{atom(), binary()}], [{atom(), {struct, list()}}]) -> [{atom(), {struct, list()}}].
+-spec do_get_tables_meta([{atom(), binary()}], [{atom(), map()}]) -> [{atom(), map()}].
 do_get_tables_meta([], Meta) ->
     Meta;
 do_get_tables_meta([{TabName, ReqHash} | T], Meta) ->
@@ -734,9 +736,9 @@ do_get_tables_meta([{TabName, ReqHash} | T], Meta) ->
                     do_get_tables_meta(T, Meta);
                 _ ->
                     R = hd(M),
-                    Fields = wm_entity:get(fields, R),
+                    Fields = fields_as_map(wm_entity:get(fields, R)),
                     Name = wm_entity:get(name, R),
-                    S = {Name, {struct, Fields}},
+                    S = {Name, Fields},
                     ?LOG_DEBUG("Got meta for table ~p: ~P", [TabNameBin, R, 10]),
                     do_get_tables_meta(T, [S | Meta])
             end
@@ -837,8 +839,9 @@ do_upgrade_schema([RecordJson | T], Results) ->
             []
     end.
 
--spec do_update_tables_table({atom(), {struct, [term()]}}) -> ok | {error, term()}.
-do_update_tables_table({NameBin, {struct, Fields}}) ->
+-spec do_update_tables_table({binary(), map() | {struct, list()}}) -> ok | {error, term()}.
+do_update_tables_table({NameBin, Fields0}) ->
+    Fields = fields_as_map(Fields0),
     ?LOG_DEBUG("Update table 'table'"),
     ensure_table_exists(table, [], local),
     R1 = wm_entity:new(<<"table">>),
@@ -854,11 +857,12 @@ do_update_tables_table({NameBin, {struct, Fields}}) ->
             {error, Other}
     end.
 
--spec do_transform_table({atom(), {struct, [term()]}}) -> {error, string()} | atom().
-do_transform_table({NameBin, {struct, Fields}}) ->
+-spec do_transform_table({binary(), map() | {struct, list()}}) -> {error, string()} | atom().
+do_transform_table({NameBin, Fields0}) ->
+    Fields = fields_as_map(Fields0),
     ?LOG_DEBUG("Transform table ~p", [NameBin]),
     Name = binary_to_atom(NameBin, utf8),
-    {New, NewFields, Defaults} = record_from_json(Fields, wm_entity:new(NameBin), [], []),
+    {New, NewFields, Defaults} = record_from_json(maps:to_list(Fields), wm_entity:new(NameBin), [], []),
     OldFields =
         try
             mnesia:table_info(Name, attributes)
@@ -895,8 +899,22 @@ do_transform_table({NameBin, {struct, Fields}}) ->
             Name
     end.
 
--spec record_from_json([{atom(), {struct, [{binary(), binary()}]}}], term(), [atom()], [{atom(), term()}]) ->
-                          {term(), term(), [atom()], [{atom(), term()}]}.
+-spec fields_as_map(map() | {struct, list()} | list()) -> map().
+fields_as_map(Fields) when is_map(Fields) ->
+    maps:map(fun(_K, V) -> field_value_as_map(V) end, Fields);
+fields_as_map({struct, Props}) when is_list(Props) ->
+    fields_as_map(maps:from_list(Props));
+fields_as_map(Props) when is_list(Props) ->
+    fields_as_map(maps:from_list(Props)).
+
+-spec field_value_as_map(term()) -> term().
+field_value_as_map({struct, Props}) when is_list(Props) ->
+    maps:from_list(Props);
+field_value_as_map(Value) ->
+    Value.
+
+-spec record_from_json([{binary(), map() | {struct, list()}}], term(), [atom()], [{atom(), term()}]) ->
+                          {term(), [atom()], [{atom(), term()}]}.
 record_from_json([], NewRec, NewFields, Defaults) ->
     {NewRec, lists:reverse(NewFields), lists:reverse(Defaults)};
 record_from_json([JsonRecordField | T], NewRec, NewFields, Defaults) ->

@@ -98,6 +98,10 @@ handle_info(schedule, #mstate{} = MState) ->
     case get_scheduler() of
         {error, Error} ->
             ?LOG_ERROR("Cannot get scheduler: ~p", [Error]),
+            %% Keep the loop alive -- subdiv/topology can be briefly unavailable
+            %% during async RH rebuild (e.g. after cloud node create/destroy).
+            RetryMs = wm_conf:g(sched_retry_interval, {5000, integer}),
+            wm_utils:wake_up_after(RetryMs, schedule),
             {noreply, MState};
         {SubDivType, Scheduler} ->
             RunInterval = wm_entity:get(run_interval, Scheduler),

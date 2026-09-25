@@ -1,6 +1,7 @@
 -module(wm_accounting_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+
 -include("../src/lib/wm_entity.hrl").
 
 %% ./rebar3 eunit --module=wm_accounting_tests
@@ -206,7 +207,13 @@ node_weight_common_test() ->
     ?assert(wm_utils:match_floats(1.5873475143912377, wm_accounting:node_weight(PN1, NLN1, 1024), 5)),
     ?assert(wm_utils:match_floats(1.2500280148714087, wm_accounting:node_weight(PN2, NLN2, 1024), 5)),
     ?assert(wm_utils:match_floats(1.5999713139289142, wm_accounting:node_weight(PN3, NLN3, 1024), 5)),
-    ?assert(wm_utils:match_floats(5.3560809346836940, wm_accounting:node_weight(PN1, NLN1, 10 * 1024 * 1024 * 1024), 5)),
-    ?assert(wm_utils:match_floats(2.7474729303989958, wm_accounting:node_weight(PN2, NLN2, 10 * 1024 * 1024 * 1024), 5)),
-    ?assert(wm_utils:match_floats(1.1141834944983267, wm_accounting:node_weight(PN3, NLN3, 10 * 1024 * 1024 * 1024), 5)),
+    ?assert(wm_utils:match_floats(5.3560809346836940,
+                                  wm_accounting:node_weight(PN1, NLN1, 10 * 1024 * 1024 * 1024),
+                                  5)),
+    ?assert(wm_utils:match_floats(2.7474729303989958,
+                                  wm_accounting:node_weight(PN2, NLN2, 10 * 1024 * 1024 * 1024),
+                                  5)),
+    ?assert(wm_utils:match_floats(1.1141834944983267,
+                                  wm_accounting:node_weight(PN3, NLN3, 10 * 1024 * 1024 * 1024),
+                                  5)),
     ok.

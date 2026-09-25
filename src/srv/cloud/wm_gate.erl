@@ -170,7 +170,8 @@ get_address(SectionName, Remote) ->
 
 -spec generate_headers([{binary(), binary()}]) -> [{binary(), binary()}].
 generate_headers(ExtraHeaders) ->
-    [{<<"Accept">>, <<"application/json">>} | lists:reverse(ExtraHeaders)].
+    [{<<"Accept">>, <<"application/json">>}, {<<"Content-Type">>, <<"application/json">>}
+     | lists:reverse(ExtraHeaders)].
 
 -spec get_auth_body(binary()) -> [{binary(), binary()}].
 get_auth_body(PemData) ->

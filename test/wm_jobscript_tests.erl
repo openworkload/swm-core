@@ -1,6 +1,7 @@
 -module(wm_jobscript_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+
 -include("../src/lib/wm_entity.hrl").
 
 %% ./rebar3 eunit --module=wm_jobscript_tests

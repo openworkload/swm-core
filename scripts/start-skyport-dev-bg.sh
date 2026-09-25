@@ -160,11 +160,17 @@ stop_gate() {
     fi
     echo "Stopping swm-cloud-gate in ${CONTAINER_NAME}..."
     in_container "
-        pkill -f '${GATE_DIR}/run.py' 2>/dev/null || true
-        pkill -f '${GATE_DIR}/run.sh' 2>/dev/null || true
+        # Kill by port listener only -- avoid pkill -f run.py (matches this shell).
         if ss -lntp 2>/dev/null | grep -q ':8444 '; then
-            pid=\$(ss -lntp 2>/dev/null | awk '/:8444 / {match(\$0, /pid=[0-9]+/); if (RSTART) print substr(\$0, RSTART+4, RLENGTH-4)}' | head -1)
-            if [ -n \"\$pid\" ]; then kill \"\$pid\" 2>/dev/null || true; fi
+            pids=\$(ss -lntp 2>/dev/null | awk '/:8444 / {
+              while (match(\$0, /pid=[0-9]+/)) {
+                print substr(\$0, RSTART+4, RLENGTH-4)
+                \$0 = substr(\$0, RSTART+RLENGTH)
+              }
+            }' | sort -u)
+            for pid in \$pids; do
+              kill \"\$pid\" 2>/dev/null || true
+            done
         fi
     "
     local i
@@ -206,17 +212,53 @@ start_swm() {
     return 1
 }
 
+gate_python() {
+    # Prefer Python 3.12 (matches swm-cloud-gate requires-python and the debug image).
+    if in_container 'command -v python3.12 >/dev/null 2>&1'; then
+        echo python3.12
+    elif in_container 'command -v python3 >/dev/null 2>&1'; then
+        echo python3
+    else
+        return 1
+    fi
+}
+
+gate_venv_ok() {
+    # Venv must use an interpreter that exists *inside* the container (HOME is shared
+    # with the host, so a host-built .venv pointing at /usr/bin/python3.12 breaks here).
+    in_container "
+        cd '${GATE_DIR}' || exit 1
+        test -x .venv/bin/python || exit 1
+        .venv/bin/python -c 'import uvicorn' >/dev/null 2>&1
+    "
+}
+
+prepare_gate_venv() {
+    local py
+    py=$(gate_python) || {
+        echo "ERROR: no python3 in ${CONTAINER_NAME}" >&2
+        return 1
+    }
+    echo "Preparing swm-cloud-gate .venv inside ${CONTAINER_NAME} (PYTHON=${py})..."
+    in_container "
+        set -e
+        cd '${GATE_DIR}'
+        rm -rf .venv
+        PYTHON='${py}' make prepare-venv
+        .venv/bin/python -c 'import uvicorn'
+    "
+}
+
 check_gate_venv() {
-    # Require an existing venv; do not run `make prepare-venv` in the container.
     if [ ! -d "${GATE_DIR}" ]; then
         echo "ERROR: gate sources not found at ${GATE_DIR}" >&2
         return 1
     fi
-    if [ ! -d "${GATE_DIR}/.venv" ]; then
-        echo "ERROR: ${GATE_DIR}/.venv is missing." >&2
-        echo "Create it on the host first (e.g. 'make prepare-venv' in swm-cloud-gate), then re-run." >&2
-        return 1
+    if gate_venv_ok; then
+        return 0
     fi
+    echo "WARN: ${GATE_DIR}/.venv missing or not usable inside ${CONTAINER_NAME} (often a host-built venv)." >&2
+    prepare_gate_venv
 }
 
 start_gate() {
@@ -244,9 +286,9 @@ start_gate() {
 
 main() {
     cd "${ROOT_DIR}"
-    check_gate_venv
     ensure_network
     ensure_container
+    check_gate_venv
     start_swm
     start_gate
     echo

@@ -1,6 +1,7 @@
 -module(wm_relocator_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+
 -include("../src/lib/wm_entity.hrl").
 -include("../include/wm_scheduler.hrl").
 

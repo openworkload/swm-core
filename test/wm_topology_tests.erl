@@ -1,6 +1,7 @@
 -module(wm_topology_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+
 -include("../src/lib/wm_entity.hrl").
 
 %% Match wm_topology mstate so #mstate.ct / .rh work under eunit export_all.
@@ -14,7 +15,8 @@
          ct_map :: map(),
          mrole :: atom(),
          sname :: string(),
-         constructing = false :: boolean()}).
+         constructing = false :: boolean(),
+         pending_reconstruct = false :: boolean()}).
 
 %% ./rebar3 eunit --module=wm_topology_tests
 %% Relies on eunit_compile_opts export_all for private helpers.
@@ -268,4 +270,3 @@ neighbours_duplicate_managers_test() ->
     Result = wm_topology:find_close_nodes("node-skyport", RH, neighbours_only),
     ?assertEqual(0, length(Result)),
     finalize().
-

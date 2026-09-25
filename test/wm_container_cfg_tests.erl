@@ -55,8 +55,7 @@ run_steps_podman() ->
 
 communicate_steps_podman() ->
     Bin = <<"x">>,
-    ?assertEqual([attach_ws, {send, Bin}, return_sent, create_exec, start_exec],
-                 wm_podman:communicate_steps(Bin)).
+    ?assertEqual([attach_ws, {send, Bin}, return_sent, create_exec, start_exec], wm_podman:communicate_steps(Bin)).
 
 podman_sock_override() ->
     true = os:putenv("SWM_CONTAINER_PODMAN_SOCK", "/tmp/test-podman.sock"),

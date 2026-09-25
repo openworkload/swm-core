@@ -21,7 +21,11 @@
          ct_map :: map(),             %% NodeId --> Position in CT
          mrole :: atom(),             %% Management role name
          sname :: string(),           %% Short node name
-         constructing = false :: boolean()}).  %% Async RH rebuild in flight
+         constructing = false :: boolean(), %% Async RH rebuild in flight
+         %% When reload() arrives during an in-flight rebuild, remember to run
+         %% another pass afterward. Dropping those casts left cloud compute
+         %% nodes out of RH, so the scheduler saw preset=3 but after_preset=1.
+         pending_reconstruct = false :: boolean()}).
 
 -define(DEFAULT_TRIALS, 8).
 -define(BINARY_ID_BITS, 64).
@@ -202,36 +206,40 @@ handle_call(_Msg, _, #mstate{} = MState) ->
     {reply, {error, not_handled}, MState}.
 
 handle_cast(construct_data_types, #mstate{constructing = true} = MState) ->
-    ?LOG_DEBUG("Topology reconstruct already in progress; coalesce"),
-    {noreply, MState};
+    ?LOG_DEBUG("Topology reconstruct already in progress; coalesce (pending retry)"),
+    {noreply, MState#mstate{pending_reconstruct = true}};
 handle_cast(construct_data_types, #mstate{} = MState) ->
-    Self = self(),
-    Snapshot = MState,
-    spawn_link(fun() ->
-                  try
-                      Built = do_construct_inplace(Snapshot),
-                      gen_server:cast(Self, {construct_done, Built})
-                  catch
-                      Class:Error:Stack ->
-                          ?LOG_ERROR("Topology reconstruct failed: ~p:~p~n~p", [Class, Error, Stack]),
-                          gen_server:cast(Self, construct_failed)
-                  end
-               end),
-    {noreply, MState#mstate{constructing = true}};
-handle_cast({construct_done, Built}, #mstate{} = MState) ->
-    ?LOG_DEBUG("Async topology reconstruct applied (rh_nodes=~p)", [maps:size(Built#mstate.rh_index)]),
-    {noreply,
-     MState#mstate{rh = Built#mstate.rh,
-                   rh_index = Built#mstate.rh_index,
-                   rh_children = Built#mstate.rh_children,
-                   rh_neighbours = Built#mstate.rh_neighbours,
-                   nl = Built#mstate.nl,
-                   ct = Built#mstate.ct,
-                   ct_map = Built#mstate.ct_map,
-                   mrole = Built#mstate.mrole,
-                   constructing = false}};
-handle_cast(construct_failed, #mstate{} = MState) ->
-    {noreply, MState#mstate{constructing = false}};
+    {noreply, start_async_reconstruct(MState)};
+handle_cast({construct_done, Built}, #mstate{pending_reconstruct = Pending} = MState) ->
+    ?LOG_DEBUG("Async topology reconstruct applied (rh_nodes=~p, pending=~p)",
+               [maps:size(Built#mstate.rh_index), Pending]),
+    MState1 =
+        MState#mstate{rh = Built#mstate.rh,
+                      rh_index = Built#mstate.rh_index,
+                      rh_children = Built#mstate.rh_children,
+                      rh_neighbours = Built#mstate.rh_neighbours,
+                      nl = Built#mstate.nl,
+                      ct = Built#mstate.ct,
+                      ct_map = Built#mstate.ct_map,
+                      mrole = Built#mstate.mrole,
+                      constructing = false,
+                      pending_reconstruct = false},
+    case Pending of
+        true ->
+            ?LOG_DEBUG("Starting coalesced topology reconstruct"),
+            {noreply, start_async_reconstruct(MState1)};
+        false ->
+            {noreply, MState1}
+    end;
+handle_cast(construct_failed, #mstate{pending_reconstruct = Pending} = MState) ->
+    MState1 = MState#mstate{constructing = false, pending_reconstruct = false},
+    case Pending of
+        true ->
+            ?LOG_DEBUG("Retrying topology reconstruct after failure (coalesced request)"),
+            {noreply, start_async_reconstruct(MState1)};
+        false ->
+            {noreply, MState1}
+    end;
 handle_cast({update_latency, Node}, #mstate{} = MState) ->
     do_update_latency(Node, MState),
     {noreply, MState};
@@ -252,6 +260,23 @@ code_change(_OldVsn, #mstate{} = MState, _Extra) ->
 %% ============================================================================
 
 %% @doc Full RH/NL/CT rebuild. Safe to run off the gen_server process on a snapshot.
+-spec start_async_reconstruct(#mstate{}) -> #mstate{}.
+start_async_reconstruct(#mstate{} = MState) ->
+    Self = self(),
+    Snapshot = MState#mstate{constructing = false, pending_reconstruct = false},
+    spawn_link(fun() ->
+                  try
+                      Built = do_construct_inplace(Snapshot),
+                      gen_server:cast(Self, {construct_done, Built})
+                  catch
+                      Class:Error:Stack ->
+                          ?LOG_ERROR("Topology reconstruct failed: ~p:~p~n~p", [Class, Error, Stack]),
+                          gen_server:cast(Self, construct_failed)
+                  end
+               end),
+    MState#mstate{constructing = true, pending_reconstruct = false}.
+
+%% @doc Full RH/NL/CT rebuild. Safe to run off the gen_server process on a snapshot.
 -spec do_construct_inplace(#mstate{}) -> #mstate{}.
 do_construct_inplace(#mstate{} = MState) ->
     ?LOG_INFO("Construct topology"),
@@ -262,7 +287,7 @@ do_construct_inplace(#mstate{} = MState) ->
     ?LOG_DEBUG("Topology ready: role=~p rh_nodes=~p children_cached=~p",
                [MState4#mstate.mrole, maps:size(MState4#mstate.rh_index), maps:size(MState4#mstate.rh_children)]),
     wm_event:announce(topology_constructed),
-    MState4#mstate{constructing = false}.
+    MState4#mstate{constructing = false, pending_reconstruct = false}.
 
 -spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], #mstate{} = MState) ->

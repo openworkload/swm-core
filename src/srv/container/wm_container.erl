@@ -266,7 +266,7 @@ get_runtime() ->
 %% Podman/libpod exec create returns {"Id":"...","Warnings":[]} (and may use maps).
 -spec exec_id_from_create_response(binary() | list()) -> {ok, string()} | {error, term()}.
 exec_id_from_create_response(Data) when is_binary(Data) ->
-    try jsx:decode(Data, [return_maps]) of
+    try wm_json:decode(Data) of
         #{<<"Id">> := ExecIdBin} when is_binary(ExecIdBin) ->
             {ok, binary_to_list(ExecIdBin)};
         Other ->
