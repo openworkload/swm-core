@@ -90,7 +90,9 @@
     outputs.append("")
 
     pos = 2
-    includes = set()
+    # Unique includes in schema encounter order; emit sorted for stable diffs
+    # (Python set()/list(set()) reshuffles across regenerations).
+    includes = []
     for prop_name, prop_meta in entity_properties.items():
       is_tuple = False
       prop_type = prop_meta["type"]
@@ -108,12 +110,12 @@
       outputs.append("")
       pos += 1
 
-      if is_tuple:
-        includes.add(type_suffix)
+      if is_tuple and type_suffix not in includes:
+        includes.append(type_suffix)
 
     outputs.append("}")
     outputs.append("")
-    return (includes, outputs)
+    return (sorted(includes), outputs)
 
 
   def out_convert_fun(entity_name):
@@ -251,8 +253,7 @@
     cog.outl()
 
     includes, outputs = out_init_ctor(entity_name, entity_properties)
-    includes_list = list(includes)
-    for include in includes_list:
+    for include in includes:
       cog.outl('#include "wm_' + include + '.h"')
 
     cog.outl()
