@@ -302,9 +302,11 @@ select_jobs_waiting_for_relocation(Limit) ->
         fun (#job{state = S,
                   relocatable = true,
                   revision = R,
-                  nodes = Nodes})
-                when R > 0, Nodes =/= [] ->
-                lists:member(S, [?JOB_STATE_QUEUED, ?JOB_STATE_WAITING]);
+                  nodes = [NodeId | _]})
+                when R > 0 ->
+                %% Only cloud/template allocations need virtres; local on-prem
+                %% nodes are started by wm_compute and must not enter this queue.
+                lists:member(S, [?JOB_STATE_QUEUED, ?JOB_STATE_WAITING]) andalso is_template_node(NodeId);
             (_) ->
                 false
         end,
@@ -332,6 +334,15 @@ select_jobs_waiting_for_relocation(Limit) ->
                 false ->
                     Sorted
             end
+    end.
+
+-spec is_template_node(node_id()) -> boolean().
+is_template_node(NodeId) ->
+    case wm_conf:select(node, {id, NodeId}) of
+        {ok, #node{is_template = true}} ->
+            true;
+        _ ->
+            false
     end.
 
 % @doc Restart job relocation process that was started in the past but stopped by some reason
@@ -401,9 +412,7 @@ do_cancel_relocation(Job) ->
             ?LOG_DEBUG("Relocation is running => destroy its resources (job: ~p)", [JobId]),
             RelocationId = wm_entity:get(id, Relocation),
             %% Free the MAX_RELOCATIONS slot before resource/topology cleanup.
-            %% remove_relocation_entities/1 may block on wm_topology:reload/0 for
-            %% a long time; if the node stops mid-reload the row would otherwise
-            %% survive and permanently stall later jobs when max_relocations=1.
+            %% Topology reload is async; do not rely on it finishing before return.
             wm_conf:delete(Relocation),
             ok = wm_factory:send_event_locally(destroy, virtres, RelocationId),
             remove_relocation_entities(Job)
@@ -544,6 +553,8 @@ select_jobs_waiting_for_relocation_test_() ->
                     select,
                     fun (job, Filter) when is_function(Filter) ->
                             {ok, lists:filter(Filter, AllJobs)};
+                        (node, {id, "tpl1"}) ->
+                            {ok, wm_entity:set([{id, "tpl1"}, {is_template, true}], wm_entity:new(node))};
                         (relocation, {job_id, "active"}) ->
                             {ok, wm_entity:set([{id, 1}, {job_id, "active"}], wm_entity:new(relocation))};
                         (relocation, {job_id, _}) ->

@@ -18,11 +18,13 @@
 
 -spec run_steps() -> [atom() | {atom(), term()}].
 run_steps() ->
-    [create, attach, start, create_exec, start_exec, return_started].
+    %% Attach is deferred to communicate_steps/1 (after start) so Podman does not
+    %% close stdin. Finalize exec runs after Porter has been fed (return_sent).
+    [create, start, return_started].
 
 -spec communicate_steps(binary()) -> [atom() | {atom(), term()}].
 communicate_steps(Bin) when is_binary(Bin) ->
-    [attach_ws, {send, Bin}, return_sent].
+    [attach_ws, {send, Bin}, return_sent, create_exec, start_exec].
 
 -spec get_unregistered_images() -> list().
 get_unregistered_images() ->
@@ -119,6 +121,8 @@ start(Job, Steps) ->
 attach(Job, Owner, Steps) ->
     ContID = wm_entity:get(container, Job),
     Http = start_client(Owner, ContID, "attach " ++ ContID),
+    %% stdout/stderr only; Porter stdin is attached later via attach_ws after start.
+    %% Container create sets stdin=>true so PID 1 blocks instead of seeing EOF.
     Params = "?logs=true&stream=true&stderr=true&stdout=true&stdin=false",
     Path = api("/containers/" ++ ContID ++ "/attach" ++ Params),
     Hdrs =
@@ -128,12 +132,12 @@ attach(Job, Owner, Steps) ->
     wm_podman_client:post(Path, <<>>, Hdrs, Http, Steps),
     {ContID, Http}.
 
-%% @doc Attach for Porter stdin. Libpod has no /attach/ws; use hijacked attach.
+%% @doc Attach for Porter stdin (+ stdout/stderr for process status and logs).
 -spec attach_ws(#job{}, pid(), list()) -> {string(), pid()}.
 attach_ws(Job, Owner, Steps) ->
     ContID = wm_entity:get(container, Job),
     Http = start_client(Owner, ContID, "attach-stdin " ++ ContID),
-    Params = "?logs=false&stream=true&stderr=false&stdout=false&stdin=true",
+    Params = "?logs=true&stream=true&stderr=true&stdout=true&stdin=true",
     Path = api("/containers/" ++ ContID ++ "/attach" ++ Params),
     Hdrs =
         [{<<"Content-Type">>, <<"application/vnd.docker.raw-stream">>},
@@ -203,26 +207,41 @@ ensure_runtime_ok() ->
         false ->
             ok;
         true ->
-            case runtime_is_crun() of
-                true ->
+            case query_oci_runtime() of
+                {ok, "crun"} ->
                     ok;
-                false ->
-                    {error, "Podman OCI runtime must be crun (SWM_CONTAINER_REQUIRE_CRUN=1)"}
+                {ok, Other} ->
+                    {error,
+                     lists:flatten(
+                         io_lib:format("Podman OCI runtime is ~s; crun required (SWM_CONTAINER_REQUIRE_CRUN=1)",
+                                       [Other]))};
+                {error, Reason} ->
+                    Sock = wm_container_cfg:podman_sock(),
+                    {error,
+                     lists:flatten(
+                         io_lib:format("Podman API unreachable (~s): ~p (install/enable podman.socket + crun)",
+                                       [Sock, Reason]))}
             end
     end.
 
-runtime_is_crun() ->
+-spec query_oci_runtime() -> {ok, string()} | {error, term()}.
+query_oci_runtime() ->
     Http = start_client(self(), [], "podman info"),
     case wm_podman_client:get_status(api("/info"), [], Http) of
-        {error, _} ->
+        {error, Reason} ->
             catch wm_podman_client:stop(Http),
-            false;
+            {error, Reason};
         {404, _} ->
-            false;
+            catch wm_podman_client:stop(Http),
+            {error, not_found};
         {_St, Body} ->
             catch wm_podman_client:stop(Http),
-            Name = extract_runtime_name(Body),
-            string:lowercase(Name) =:= "crun"
+            case extract_runtime_name(Body) of
+                "" ->
+                    {error, unknown_runtime};
+                Name ->
+                    {ok, string:lowercase(Name)}
+            end
     end.
 
 extract_runtime_name(Body) when is_binary(Body) ->
@@ -307,6 +326,8 @@ generate_create_json(#job{request = Request} = Job, Porter, ContID) ->
           <<"image">> => Image,
           <<"command">> => Cmd,
           <<"entrypoint">> => entrypoint_or_empty(),
+          %% Keep stdin open until Porter input is written (attach alone is not enough).
+          <<"stdin">> => true,
           %% Host net: PMIx / multi-node wireup invariant (HOWTO/CONTAINERS.md).
           <<"netns">> => #{<<"nsmode">> => <<"host">>},
           <<"mounts">> => Mounts,

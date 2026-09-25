@@ -18,7 +18,11 @@
         {owner = undefined :: pid(),
          mref = undefined :: reference(),
          conn_pid = undefined :: pid(),
-         stream = undefined :: reference(),
+         stream = undefined :: reference() | undefined,
+         %% After gun_upgrade, gun switches the whole connection to gun_raw with
+         %% stream_ref=undefined. gun:data/4 must use undefined or gun crashes
+         %% (function_clause) and Porter sees EOF on stdin.
+         raw_hijack = false :: boolean(),
          data = <<>> :: binary(),
          data_type = -1 :: integer(),
          data_size = 0 :: integer(),
@@ -110,16 +114,30 @@ handle_call({attach_stdin_start, Path, Hdr, Steps} = Command, _, #mstate{} = MSt
     {reply, ok, do_post(Path, <<>>, Hdr, MState#mstate{steps = Steps, command = Command})};
 handle_call({delete_start, Path, Hdr, Steps} = Command, _, #mstate{} = MState) ->
     {reply, ok, do_delete(Path, Hdr, MState#mstate{steps = Steps, command = Command})};
-handle_call({raw_send, Data, Steps}, _, #mstate{conn_pid = ConnPid, stream = Stream} = MState) ->
-    case Stream of
-        undefined ->
-            ?LOG_ERROR("Podman raw_send with no stream");
-        _ ->
-            %% Hijacked attach: write Porter EI binary to container stdin.
-            ok = gun:data(ConnPid, Stream, nofin, Data)
+handle_call({raw_send, Data, Steps},
+            _,
+            #mstate{conn_pid = ConnPid,
+                    stream = Stream,
+                    raw_hijack = Raw} =
+                MState) ->
+    SendRef =
+        case Raw of
+            true ->
+                undefined;
+            false ->
+                Stream
+        end,
+    case SendRef =:= undefined andalso not Raw of
+        true ->
+            ?LOG_ERROR("Podman raw_send with no stream (bytes=~p)", [byte_size(Data)]);
+        false ->
+            ?LOG_DEBUG("Podman raw_send ~p bytes ref=~p raw_hijack=~p", [byte_size(Data), SendRef, Raw]),
+            ok = gun:data(ConnPid, SendRef, nofin, Data)
     end,
+    %% Advance scenario once; clear steps so later mux stdout/stderr cannot
+    %% re-enter return_sent/create_exec on this attach connection.
     notify_requestor(<<>>, [], ok, MState#mstate{steps = Steps}),
-    {reply, ok, MState#mstate{steps = Steps}};
+    {reply, ok, MState#mstate{steps = []}};
 handle_call(stop, _, #mstate{} = MState) ->
     shutdown(MState),
     {stop, normal, shutdown_ok, MState};
@@ -146,6 +164,16 @@ handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState)
     {noreply, MState#mstate{hdrs = []}};
 handle_info({gun_response, ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) ->
     {noreply, MState#mstate{hdrs = MState#mstate.hdrs ++ Hdrs, http_status = Status}};
+%% gun 2.x delivers successful HTTP Upgrade (Podman/Docker attach hijack) as gun_upgrade,
+%% not gun_response/101. Connection becomes gun_raw with stream_ref=undefined.
+handle_info({gun_upgrade, ConnPid, StreamRef, _Protocols, Hdrs}, #mstate{conn_pid = ConnPid} = MState) ->
+    ?LOG_DEBUG("[Podman HTTP] UPGRADE stream=~p -> raw_hijack hdrs=~p", [StreamRef, Hdrs]),
+    NewState =
+        MState#mstate{hdrs = [],
+                      stream = StreamRef,
+                      raw_hijack = true},
+    notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, 101, NewState),
+    {noreply, NewState};
 handle_info({gun_data, ConnPid, _, nofin, FrameData}, #mstate{} = MState) ->
     case use_attach_demux(MState) of
         true ->
@@ -249,8 +277,9 @@ use_attach_demux(#mstate{command = {get_start, _, _}}) ->
     false;
 use_attach_demux(#mstate{command = {delete_start, _, _, _}}) ->
     false;
-use_attach_demux(#mstate{command = {attach_stdin_start, _, _, _}}) ->
-    false;
+use_attach_demux(#mstate{command = {attach_stdin_start, Path, _, _}}) ->
+    %% Hijacked attach may also carry multiplexed stdout/stderr.
+    string:str(Path, "/attach") =/= 0;
 use_attach_demux(#mstate{command = {post_start, Path, _, _, _}}) ->
     %% Multiplexed stdout/stderr only for attach streams.
     string:str(Path, "/attach") =/= 0;
@@ -258,7 +287,9 @@ use_attach_demux(#mstate{}) ->
     false.
 
 handle_full_frame(Type, Frame, MState) ->
-    notify_requestor(Frame, [], {stream, Type}, MState).
+    %% Never carry scenario steps on mux frames -- wm_container step clauses
+    %% would otherwise match before {stream,N} handlers.
+    notify_requestor(Frame, [], {stream, Type}, MState#mstate{steps = []}).
 
 reset_data_state(MState) ->
     MState#mstate{data = <<>>,

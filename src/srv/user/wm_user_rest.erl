@@ -14,6 +14,8 @@
 -define(JOB_SUBMISSION_SCRIPT_WAIT_TIME, 15000).
 -define(JOB_ID_SIZE, 36).
 -define(SUBMISSION_HEADER, "\r\nContent-Disposition: form-data; name=\"script_content\"\r\n\r\n").
+%% Default gen_server:call is 5s; submit/cancel can wait on topology/DB longer.
+-define(USER_CALL_TIMEOUT, 60000).
 
 -record(mstate, {}).
 
@@ -323,7 +325,7 @@ delete_job(Req) ->
         #{path := <<"/user/job">>} ->
             purge_jobs(Req);
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
-            {string, Msg} = gen_server:call(wm_user, {cancel, [binary_to_list(JobId)]}),
+            {string, Msg} = gen_server:call(wm_user, {cancel, [binary_to_list(JobId)]}, user_call_timeout()),
             {Msg, ?HTTP_CODE_OK};
         _ ->
             {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
@@ -400,9 +402,13 @@ do_submit_jobscript(JobScriptPath, JobScriptContent, CertBin, IpStr) ->
             {Error, ?HTTP_CODE_BAD_REQUEST};
         {ok, Username} ->
             Args = {submit, JobScriptContent, JobScriptPath, Username, IpStr},
-            {string, Result} = gen_server:call(wm_user, Args),
+            {string, Result} = gen_server:call(wm_user, Args, user_call_timeout()),
             {Result, ?HTTP_CODE_OK}
     end.
+
+-spec user_call_timeout() -> pos_integer().
+user_call_timeout() ->
+    wm_conf:g(srv_local_call_timeout, {?USER_CALL_TIMEOUT, integer}).
 
 -spec do_submit_jobscript_path(string(), binary(), string()) -> {string(), pos_integer()} | {error, pos_integer()}.
 do_submit_jobscript_path(Path, CertBin, IpStr) ->

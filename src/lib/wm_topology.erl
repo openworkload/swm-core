@@ -20,7 +20,8 @@
          ct :: binary(),              %% Connection Topology (binary matrix)
          ct_map :: map(),             %% NodeId --> Position in CT
          mrole :: atom(),             %% Management role name
-         sname :: string()}).         %% Short node name
+         sname :: string(),           %% Short node name
+         constructing = false :: boolean()}).  %% Async RH rebuild in flight
 
 -define(DEFAULT_TRIALS, 8).
 -define(BINARY_ID_BITS, 64).
@@ -101,10 +102,12 @@ on_path(FromNodeId, ToNodeId) ->
 get_tree_nodes(WithTemplates) ->
     wm_utils:protected_call(?MODULE, {get_tree_nodes, WithTemplates}, []).
 
-%% @doc Reload topology data structures
+%% @doc Reload topology data structures asynchronously.
+%% Heavy RH rebuild must not block get_subdiv/other calls on this gen_server
+%% (otherwise job submit times out while cancel/cloud reloads run).
 -spec reload() -> ok.
 reload() ->
-    wm_utils:protected_call(?MODULE, construct_data_types, []).
+    gen_server:cast(?MODULE, construct_data_types).
 
 %% ============================================================================
 %% Server callbacks
@@ -193,18 +196,42 @@ handle_call({get_children_nodes, NodeId}, _, #mstate{rh_children = Ch, rh = RH} 
         end,
     {reply, Nodes, MState};
 handle_call(construct_data_types, _, #mstate{} = MState) ->
-    ?LOG_INFO("Construct topology"),
-    MState1 = set_management_role(MState),
-    MState2 = do_make_rh_main(MState1),
-    MState3 = do_make_nl(MState2#mstate.mrole, MState2),
-    MState4 = init_ct(MState3),
-    ?LOG_DEBUG("Topology ready: role=~p rh_nodes=~p children_cached=~p",
-               [MState4#mstate.mrole, maps:size(MState4#mstate.rh_index), maps:size(MState4#mstate.rh_children)]),
-    wm_event:announce(topology_constructed),
-    {reply, ok, MState4};
+    %% Sync path (startup via wm_works); callers that need RH immediately.
+    {reply, ok, do_construct_inplace(MState)};
 handle_call(_Msg, _, #mstate{} = MState) ->
     {reply, {error, not_handled}, MState}.
 
+handle_cast(construct_data_types, #mstate{constructing = true} = MState) ->
+    ?LOG_DEBUG("Topology reconstruct already in progress; coalesce"),
+    {noreply, MState};
+handle_cast(construct_data_types, #mstate{} = MState) ->
+    Self = self(),
+    Snapshot = MState,
+    spawn_link(fun() ->
+                  try
+                      Built = do_construct_inplace(Snapshot),
+                      gen_server:cast(Self, {construct_done, Built})
+                  catch
+                      Class:Error:Stack ->
+                          ?LOG_ERROR("Topology reconstruct failed: ~p:~p~n~p", [Class, Error, Stack]),
+                          gen_server:cast(Self, construct_failed)
+                  end
+               end),
+    {noreply, MState#mstate{constructing = true}};
+handle_cast({construct_done, Built}, #mstate{} = MState) ->
+    ?LOG_DEBUG("Async topology reconstruct applied (rh_nodes=~p)", [maps:size(Built#mstate.rh_index)]),
+    {noreply,
+     MState#mstate{rh = Built#mstate.rh,
+                   rh_index = Built#mstate.rh_index,
+                   rh_children = Built#mstate.rh_children,
+                   rh_neighbours = Built#mstate.rh_neighbours,
+                   nl = Built#mstate.nl,
+                   ct = Built#mstate.ct,
+                   ct_map = Built#mstate.ct_map,
+                   mrole = Built#mstate.mrole,
+                   constructing = false}};
+handle_cast(construct_failed, #mstate{} = MState) ->
+    {noreply, MState#mstate{constructing = false}};
 handle_cast({update_latency, Node}, #mstate{} = MState) ->
     do_update_latency(Node, MState),
     {noreply, MState};
@@ -223,6 +250,19 @@ code_change(_OldVsn, #mstate{} = MState, _Extra) ->
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
+
+%% @doc Full RH/NL/CT rebuild. Safe to run off the gen_server process on a snapshot.
+-spec do_construct_inplace(#mstate{}) -> #mstate{}.
+do_construct_inplace(#mstate{} = MState) ->
+    ?LOG_INFO("Construct topology"),
+    MState1 = set_management_role(MState),
+    MState2 = do_make_rh_main(MState1),
+    MState3 = do_make_nl(MState2#mstate.mrole, MState2),
+    MState4 = init_ct(MState3),
+    ?LOG_DEBUG("Topology ready: role=~p rh_nodes=~p children_cached=~p",
+               [MState4#mstate.mrole, maps:size(MState4#mstate.rh_index), maps:size(MState4#mstate.rh_children)]),
+    wm_event:announce(topology_constructed),
+    MState4#mstate{constructing = false}.
 
 -spec parse_args(list(), #mstate{}) -> #mstate{}.
 parse_args([], #mstate{} = MState) ->

@@ -73,7 +73,11 @@ finalize_prefers_container_env(_Config) ->
     ?assertEqual("/new/finalize.sh", wm_container_cfg:finalize_script()).
 
 run_steps_podman(_Config) ->
-    ?assertEqual([create, attach, start, create_exec, start_exec, return_started], wm_podman:run_steps()).
+    ?assertEqual([create, start, return_started], wm_podman:run_steps()).
+
+communicate_steps_podman(_Config) ->
+    Bin = <<"x">>,
+    ?assertEqual([attach_ws, {send, Bin}, return_sent, create_exec, start_exec], wm_podman:communicate_steps(Bin)).
 
 podman_sock_override(_Config) ->
     true = os:putenv("SWM_CONTAINER_PODMAN_SOCK", "/tmp/test-podman.sock"),
@@ -103,7 +107,3 @@ cdi_available_with_nvidia_json(_Config) ->
                 filename:join(Dir, "nvidia.com-gpu.json")),
         _ = file:del_dir(Dir)
     end.
-
-communicate_steps_podman(_Config) ->
-    Bin = <<"x">>,
-    ?assertMatch([attach_ws, {send, Bin}, return_sent], wm_podman:communicate_steps(Bin)).
