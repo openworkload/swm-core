@@ -129,6 +129,11 @@ RUN pip3 install openapi-python-client
 # For using docker inside docker container
 RUN apt-get install docker.io -y
 
+# Experimental: rootless Podman + crun for local ticket #7 experiments only.
+# NOT used by swm job execution (product path talks to host Podman later).
+# Do not configure SkyPort to use this in-container Podman.
+RUN apt-get install -y podman crun uidmap slirp4netns fuse-overlayfs
+
 # GitHub Actions runner (act) for local CI jobs
 RUN set -eux; \
     arch="$(uname -m)"; \
@@ -154,7 +159,7 @@ RUN echo . /usr/erlang/activate >> /etc/bash.bashrc
 RUN mkdir /tmp/swm-sched
 RUN mkdir /var/run/swm
 COPY ./priv/container/debug/build-package.sh /var/run/swm/
-COPY ./scripts/swm-docker-finalize.sh /var/run/swm/
+COPY ./scripts/swm-container-finalize.sh /var/run/swm/
 
 # for development of the prompt script
 RUN chmod 777 /etc/supervisor/conf.d/

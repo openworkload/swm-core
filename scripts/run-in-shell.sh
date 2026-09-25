@@ -100,16 +100,18 @@ else
   export SWM_SCHED_EXEC=${ROOT_DIR}/../swm-sched/bin/swm-sched
   export SWM_SCHED_LIB=${ROOT_DIR}/../swm-sched/bin
 fi
-## Job containers inherit mounts from the SkyPort container (porter, spool, etc.).
-## Must match the docker container name (see scripts/start-debug-container.sh).
-if [ -f /.dockerenv ]; then
-  export SWM_DOCKER_VOLUMES_FROM="${SWM_DOCKER_VOLUMES_FROM:-skyport-dev:ro}"
-  ## Plain images (e.g. ubuntu:24.04) have no tini; omit Entrypoint override.
-  export SWM_DOCKER_ENTRYPOINT="${SWM_DOCKER_ENTRYPOINT:-}"
-else
-  unset SWM_DOCKER_VOLUMES_FROM
+## Porter is PID 1: do not inject tini. Override with SWM_CONTAINER_ENTRYPOINT if needed.
+## Extra binds for Podman jobs: SWM_CONTAINER_EXTRA_BINDS=src:dst[:ro],...
+## Prefer host Podman API when skyport-dev has the socket mounted (see start-debug-container.sh).
+if [ -z "${SWM_CONTAINER_PODMAN_SOCK:-}" ]; then
+  _podman_sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+  if [ -S "${_podman_sock}" ]; then
+    export SWM_CONTAINER_PODMAN_SOCK="${_podman_sock}"
+  fi
+  unset _podman_sock
 fi
-export SWM_FINALIZE_IN_CONTAINER=${ROOT_DIR}/scripts/swm-docker-finalize.sh
+export SWM_CONTAINER_FINALIZE="${SWM_CONTAINER_FINALIZE:-${ROOT_DIR}/scripts/swm-container-finalize.sh}"
+export SWM_FINALIZE_IN_CONTAINER="${SWM_FINALIZE_IN_CONTAINER:-$SWM_CONTAINER_FINALIZE}"
 export SWM_PORTER_IN_CONTAINER=${ROOT_DIR}/c_src/porter/swm-porter
 export SWM_WORKER_LOCAL_PATH="${ROOT_DIR}/_build/packages/swm-worker.tar.gz"
 

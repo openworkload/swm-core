@@ -3,3 +3,7 @@
 # eaddrinuse / swm-ping "Connection error: closed". Use bridge isolation so
 # the CI job container can bind SWM_API_PORT (10001) cleanly.
 --network bridge
+# Jobs without `container:` (e.g. podman_smoke) need an explicit runner image
+# and privileged mode so nested Podman can create containers under act.
+-P ubuntu-24.04=ubuntu:24.04
+--container-options --privileged

@@ -86,3 +86,56 @@ jobs:
         run: |
           export SWM_GATE_DIR=$(pwd)/_build/ct-tests/swm-cloud-gate
           make test_ct
+
+  podman_smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v4
+      -
+        name: Install Podman and crun
+        run: |
+          # GHA runners have sudo; plain ubuntu images used by act run as root without sudo.
+          if command -v sudo >/dev/null 2>&1 && [[ "$(id -u)" -ne 0 ]]; then
+              SUDO=sudo
+          else
+              SUDO=
+          fi
+          $SUDO apt-get update
+          $SUDO apt-get install -y podman crun uidmap slirp4netns fuse-overlayfs curl python3
+      -
+        name: Configure rootless Podman (crun)
+        run: |
+          if command -v sudo >/dev/null 2>&1 && [[ "$(id -u)" -ne 0 ]]; then
+              SUDO=sudo
+          else
+              SUDO=
+          fi
+          mkdir -p ~/.config/containers
+          # Nested-friendly defaults (act runs inside Docker); GHA bare metal still works.
+          printf '%s\n' '[engine]' 'runtime = "crun"' 'cgroup_manager = "cgroupfs"' 'events_logger = "file"' \
+              > ~/.config/containers/containers.conf
+          printf '%s\n' '[storage]' 'driver = "vfs"' > ~/.config/containers/storage.conf
+          # Ensure subuid/subgid for the runner user (Ubuntu images usually have them)
+          grep -q "^$(id -un):" /etc/subuid || echo "$(id -un):100000:65536" | $SUDO tee -a /etc/subuid
+          grep -q "^$(id -un):" /etc/subgid || echo "$(id -un):100000:65536" | $SUDO tee -a /etc/subgid
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR/podman"
+          # Prefer user socket; fall back to foreground service (act / no systemd user session)
+          if systemctl --user enable --now podman.socket 2>/dev/null; then
+              sleep 2
+          elif [[ ! -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]]; then
+              podman system service --time=0 "unix://$XDG_RUNTIME_DIR/podman/podman.sock" &
+              for _ in $(seq 1 30); do
+                  [[ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]] && break
+                  sleep 0.5
+              done
+          fi
+          test -S "$XDG_RUNTIME_DIR/podman/podman.sock"
+      -
+        name: Rootless Podman libpod smoke
+        run: |
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          export PODMAN_NESTED=1
+          ./scripts/ci-podman-smoke.sh

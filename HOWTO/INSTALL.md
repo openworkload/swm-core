@@ -1,32 +1,52 @@
 Installation
 ============
 
-Prepare Docker (for both dev and prod setups)
-----------------------------------------------
+Job containers (recommended: rootless Podman + crun)
+----------------------------------------------------
 
-In the current version of SWM jobs are started via docker.
-All the communications between SWM and docker daemon are performed
-via a TCP port. By default it is port 6000 (set as SWM global option,
-that can be changed). The developer or administrator should ensure
-that the docker daemon listens to this port on the compute nodes
-(usually by default it does not do that by default).
+Supported job execution uses **rootless Podman** with **crun** via the native
+libpod API (unix socket). See HOWTO/CONTAINERS.md for architecture, versions,
+GPU (NVIDIA CDI), and migration notes (ticket #7).
 
-For that purpose this "-H tcp://0.0.0.0:6000" can be added to start
-arguments in docker.service. This is a subject for improvement.
+On each compute node:
 
-Then do "systemctl daemon-reload" and "systemctl restart docker".
-This should be done on every compute node where the jobs are suppose to run.
+1. Install Podman and crun; ensure cgroup v2 and subuid/subgid for the swm user.
+2. Pin the OCI runtime:
+   ```bash
+   mkdir -p ~/.config/containers
+   printf '[engine]\nruntime = "crun"\n' >> ~/.config/containers/containers.conf
+   ```
+3. Enable the API socket:
+   ```bash
+   systemctl --user enable --now podman.socket
+   # typical path: $XDG_RUNTIME_DIR/podman/podman.sock
+   ```
+4. Configure Sky Port globals (defaults are already `container` in `base.config`):
+   - `execution_method` = `container`
+   - optional: `SWM_CONTAINER_PODMAN_SOCK` if the socket path is non-default
 
-When SkyPort itself runs inside a Docker container (e.g. `skyport-dev`),
-it talks to the host Docker API as hostname `host` on port 6000. Ensure:
+Verify the stack (no Sky Port required):
 
-1. The container is started with `--add-host=host:host-gateway`
-   (see `scripts/start-debug-container.sh`).
-2. If UFW (or another host firewall) is active with a default DROP policy,
-   allow Docker bridge traffic to port 6000, for example:
-   `ufw allow in on <skyportnet-bridge> to any port 6000 proto tcp`
-   Otherwise inspect/create calls fail and jobs report
-   "Docker image not found" even when `docker images` shows the image.
+```bash
+./scripts/ci-podman-smoke.sh
+```
+
+Control plane vs jobs
+---------------------
+
+Docker is still used to deploy the Sky Port control plane (e.g. `skyport-dev`
+via `make cr`). Job execution uses rootless Podman on the compute host, not
+Docker Engine.
+
+`make cr` / `scripts/start-debug-container.sh` mount the host Podman socket
+(`$XDG_RUNTIME_DIR/podman/podman.sock`) into `skyport-dev` and set
+`SWM_CONTAINER_PODMAN_SOCK`. Enable the socket on the host first:
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+In-container Podman packages remain experiments only; jobs talk to the host API.
 
 
 Install Sky Port in production environment
