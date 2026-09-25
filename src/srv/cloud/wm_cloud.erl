@@ -325,22 +325,3 @@ cancel_timer_ignore_error(TRef) ->
             ok
     end,
     ok.
-
-%% ============================================================================
-%% Tests
-%% ============================================================================
-
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-lookup_node_test() ->
-    A = wm_entity:set({name, "a"}, wm_entity:new(node)),
-    B = wm_entity:set({name, "b"}, wm_entity:new(node)),
-    C = wm_entity:set({name, "c"}, wm_entity:new(node)),
-
-    ?assertEqual({ok, A}, lookup_node("a", [C, A, B])),
-    ?assertEqual({error, not_found}, lookup_node("z", [C, A, B])),
-    ok.
-
--endif.

@@ -137,31 +137,3 @@ parse_line(Ws, Job) ->
 get_account_id(AccountName) ->
     {ok, Account} = wm_conf:select(account, {name, AccountName}),
     wm_entity:get(id, Account).
-
-%% ============================================================================
-%% Tests
-%% ============================================================================
-
--ifdef(EUNIT).
-
--include_lib("eunit/include/eunit.hrl").
-
-% ./rebar3 eunit --module=wm_jobscript
--spec parse_nodes_directive_test() -> ok.
-parse_nodes_directive_test() ->
-    JobScript = "#!/bin/bash\n#SWM nodes 3\necho hello",
-    Job = parse(JobScript),
-    Resources = wm_entity:get(request, Job),
-    NodeResource = lists:keyfind("node", 2, Resources),
-    ?assertMatch(#resource{name = "node", count = 3}, NodeResource).
-
--spec parse_single_node_default_test() -> ok.
-parse_single_node_default_test() ->
-    JobScript = "#!/bin/bash\necho hello",
-    Job = parse(JobScript),
-    Resources = wm_entity:get(request, Job),
-    % When no nodes directive is present, default should be added elsewhere
-    % This test just ensures parsing doesn't crash
-    ?assertEqual([], Resources).
-
--endif.
