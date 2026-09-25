@@ -242,7 +242,7 @@ int swm::ei_buffer_to_atom(const char* buf, int &index, std::string &a) {
     return -1;
   }
   a = std::string(tmp);
-  delete tmp;
+  delete[] tmp;
   return 0;
 }
 
@@ -340,7 +340,7 @@ int swm::ei_buffer_to_str(const char* buf, int &index, std::string &s) {
     return -1;
   }
   s = std::string(tmp);
-  delete tmp;
+  delete[] tmp;
   return 0;
 }
 
@@ -388,7 +388,7 @@ int swm::ei_buffer_to_uint64_t(const char* buf, int &index, std::vector<uint64_t
     for (int i = 0; i < term_size; ++i) {
       array[i] = tmp[i];
     }
-    delete tmp;
+    delete[] tmp;
     return 0;
   }
 
