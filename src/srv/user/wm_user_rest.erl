@@ -33,7 +33,7 @@ init(Req, _Opts) ->
 
 -spec json_handler(map()) -> cowboy_req:req().
 json_handler(Req) ->
-    ?LOG_DEBUG("JSON handler for method ~p", [cowboy_req:method(Req)]),
+    ?LOG_ACCESS("JSON handler for method ~p", [cowboy_req:method(Req)]),
     Method = cowboy_req:method(Req),
     {Body, StatusCode} = handle_request(Method, Req),
     cowboy_req:reply(StatusCode, #{<<"content-type">> => <<"application/json; charset=utf-8">>}, Body, Req).
@@ -72,7 +72,7 @@ get_api_version() ->
 -spec get_remotes_info(map()) -> {[string()], pos_integer()}.
 get_remotes_info(Req) ->
     #{limit := Limit} = cowboy_req:match_qs([{limit, int, 10}], Req),
-    ?LOG_DEBUG("Handle remote sites info HTTP request (limit=~p)", [Limit]),
+    ?LOG_ACCESS("Handle remote sites info HTTP request (limit=~p)", [Limit]),
     Remotes = gen_server:call(wm_user, {list, [remote], Limit}),
     F = fun(Remote, FullJson) ->
            RemoteJson =
@@ -92,7 +92,7 @@ get_remotes_info(Req) ->
 -spec get_images_info(map()) -> {[string()], pos_integer()}.
 get_images_info(Req) ->
     #{limit := Limit} = cowboy_req:match_qs([{limit, int, 1000}], Req),
-    ?LOG_DEBUG("Handle images info HTTP request"),
+    ?LOG_ACCESS("Handle images info HTTP request"),
     Xs = gen_server:call(wm_user, {list, [image], Limit}),
     F = fun(Image, FullJson) ->
            ImageJson =
@@ -109,7 +109,7 @@ get_images_info(Req) ->
 -spec get_nodes_info(map()) -> {[string()], pos_integer()}.
 get_nodes_info(Req) ->
     #{limit := Limit} = cowboy_req:match_qs([{limit, int, 3000}], Req),
-    ?LOG_DEBUG("Handle nodes info HTTP request"),
+    ?LOG_ACCESS("Handle nodes info HTTP request"),
     Xs = gen_server:call(wm_user, {list, [node], Limit}),
     F = fun(Node, FullJson) ->
            NodeJson =
@@ -131,7 +131,7 @@ get_nodes_info(Req) ->
 -spec get_flavors_info(map()) -> {[string()], pos_integer()}.
 get_flavors_info(Req) ->
     #{limit := Limit} = cowboy_req:match_qs([{limit, int, 1000}], Req),
-    ?LOG_DEBUG("Handle flavors info HTTP request (limit=~p)", [Limit]),
+    ?LOG_ACCESS("Handle flavors info HTTP request (limit=~p)", [Limit]),
     FlavorNodes = gen_server:call(wm_user, {list, [flavor], Limit}),
     F = fun(FlavorNode, FullJson) ->
            RemoteId = wm_entity:get(remote_id, FlavorNode),
@@ -157,7 +157,7 @@ get_flavors_info(Req) ->
 
 -spec get_jobs_info(map()) -> {[string()], pos_integer()}.
 get_jobs_info(Req) ->
-    ?LOG_DEBUG("Handle job info HTTP request"),
+    ?LOG_ACCESS("Handle job info HTTP request"),
     case Req of
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/stdout">>} ->
             get_job_stdout(binary_to_list(JobId));
@@ -320,7 +320,7 @@ get_job_list() ->
 
 -spec delete_job(map()) -> {string(), pos_integer()}.
 delete_job(Req) ->
-    ?LOG_DEBUG("Handle job deletion HTTP request with url=~p", [maps:get(path, Req, undefined)]),
+    ?LOG_ACCESS("Handle job deletion HTTP request with url=~p", [maps:get(path, Req, undefined)]),
     case Req of
         #{path := <<"/user/job">>} ->
             purge_jobs(Req);
@@ -345,7 +345,7 @@ purge_jobs(Req) ->
 
 -spec update_job(map()) -> {string(), pos_integer()}.
 update_job(Req) ->
-    ?LOG_DEBUG("Handle job updating HTTP request: ~p", [Req]),
+    ?LOG_ACCESS("Handle job updating HTTP request: ~p", [Req]),
     case Req of
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
             case cowboy_req:header(<<"modification">>, Req) of
@@ -362,7 +362,7 @@ update_job(Req) ->
 
 -spec submit_job(map()) -> {string(), pos_integer()} | {error, pos_integer()}.
 submit_job(Req) ->
-    ?LOG_DEBUG("Handle job submission HTTP request"),
+    ?LOG_ACCESS("Handle job submission HTTP request"),
     CertBin = maps:get(cert, Req, undefined),
     {Ip, _} = cowboy_req:peer(Req),
     IpStr = inet:ntoa(Ip),

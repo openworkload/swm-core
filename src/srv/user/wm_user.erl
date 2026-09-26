@@ -121,7 +121,7 @@ handle_event(http_started, _) ->
 
 -spec handle_request(atom(), any(), #mstate{}) -> any().
 handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
-    ?LOG_DEBUG("Job ~p has been requested: ~p", [OutputType, JobId]),
+    ?LOG_ACCESS("Job ~p has been requested: ~p", [OutputType, JobId]),
     case wm_conf:select(job, {id, JobId}) of
         {ok, Job} ->
             FileName = wm_entity:get(OutputType, Job),
@@ -131,7 +131,7 @@ handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
             {error, "job not found"}
     end;
 handle_request(submit, Args, #mstate{spool = Spool}) ->
-    ?LOG_DEBUG("Job submission has been requested: ~n~p", [Args]),
+    ?LOG_ACCESS("Job submission has been requested: ~n~p", [Args]),
     {JobScriptContent, Filename, Username, IpStr} = Args,
     case wm_conf:select(user, {name, Username}) of
         {error, not_found} ->
@@ -164,7 +164,7 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
             {string, JobId}
     end;
 handle_request(requeue, Args, _) ->
-    ?LOG_DEBUG("Jobs requeue has been requested: ~p", [Args]),
+    ?LOG_ACCESS("Jobs requeue has been requested: ~p", [Args]),
     Results = requeue_jobs(Args, []),
     RequeuedFiltered =
         lists:filter(fun ({requeued, _}) ->
@@ -185,7 +185,7 @@ handle_request(requeue, Args, _) ->
     Msg = "Requeued: " ++ lists:join(", ", RequeuedIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
     {string, Msg};
 handle_request(cancel, Args, _) ->
-    ?LOG_DEBUG("Jobs cancellation has been requested: ~p", [Args]),
+    ?LOG_ACCESS("Jobs cancellation has been requested: ~p", [Args]),
     Results = cancel_jobs(Args, []),
     CanceledFiltered =
         lists:filter(fun ({canceled, _}) ->
@@ -206,7 +206,7 @@ handle_request(cancel, Args, _) ->
     Msg = "Canceled: " ++ lists:join(", ", CanceledIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
     {string, Msg};
 handle_request(purge, Username, _) ->
-    ?LOG_INFO("Jobs purge has been requested by user ~p", [Username]),
+    ?LOG_ACCESS("Jobs purge has been requested by user ~p", [Username]),
     case wm_conf:select(user, {name, Username}) of
         {error, not_found} ->
             {string, io_lib:format("User ~s is not registered", [Username])};
@@ -249,15 +249,15 @@ handle_request(list, {[flavor], Limit}, _) ->
     Nodes = wm_conf:select(node, {all, Limit}),
     lists:filter(fun(X) -> wm_entity:get(is_template, X) == true end, Nodes);
 handle_request(list, {Args, Limit}, _) ->
-    ?LOG_DEBUG("List of ~p entities with limit ~p has been requested", [Args, Limit]),
+    ?LOG_ACCESS("List of ~p entities with limit ~p has been requested", [Args, Limit]),
     F = fun(X) -> wm_conf:select(X, {all, Limit}) end,
     lists:flatten([F(X) || X <- Args]);
 handle_request(list, Args, _) ->
-    ?LOG_DEBUG("List of ~p entities has been requested", [Args]),
+    ?LOG_ACCESS("List of ~p entities has been requested", [Args]),
     F = fun(X) -> wm_conf:select(X, all) end,
     lists:flatten([F(X) || X <- Args]);
 handle_request(show, Args, _) ->
-    ?LOG_DEBUG("Job show has been requested: ~p", [Args]),
+    ?LOG_ACCESS("Job show has been requested: ~p", [Args]),
     wm_conf:select(job, Args).
 
 -spec ensure_request_is_full(#job{}) -> #job{}.

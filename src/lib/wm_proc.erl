@@ -307,8 +307,15 @@ do_complete(Process, #mstate{job_id = JobId} = MState) ->
     Job3 = wm_entity:set({signal, Sig}, Job2),
     Job4 = wm_entity:set({comment, Comment}, Job3),
     Job5 = wm_entity:set({state, State}, Job4),
-    wm_conf:update([Job5]),
-    ok = wm_container:clear(Job5),
+    Job6 =
+        case State of
+            ?JOB_STATE_FINISHED ->
+                wm_entity:set({state_details, "Finished"}, Job5);
+            _ ->
+                Job5
+        end,
+    wm_conf:update([Job6]),
+    ok = wm_container:clear(Job6),
     {ok, Node} = wm_self:get_node(),
     wm_conf:set_nodes_state(state_alloc, idle, [Node]),
     do_announce_completed(Process, MState).

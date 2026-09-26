@@ -13,12 +13,14 @@
 -define(LOG_WARN(X), wm_log:warn("~p:~p| ~s", [?MODULE, ?FN, X])).
 -define(LOG_ERROR(X), wm_log:err("~p:~p| ~s", [?MODULE, ?FN, X])).
 -define(LOG_FATAL(X), wm_log:fatal("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_ACCESS(X), wm_log:access("~p:~p| ~s", [?MODULE, ?FN, X])).
 -define(LOG_DEBUG(X, Y), wm_log:debug("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_INFO(X, Y), wm_log:info("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_NOTE(X, Y), wm_log:note("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_WARN(X, Y), wm_log:warn("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_ERROR(X, Y), wm_log:err("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_FATAL(X, Y), wm_log:fatal("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_ACCESS(X, Y), wm_log:access("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 
 % TEST
 -else.
@@ -33,12 +35,14 @@
 -define(LOG_WARN(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
 -define(LOG_ERROR(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
 -define(LOG_FATAL(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
+-define(LOG_ACCESS(X), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, X])).
 -define(LOG_DEBUG(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_INFO(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_NOTE(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_WARN(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_ERROR(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 -define(LOG_FATAL(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
+-define(LOG_ACCESS(X, Y), ?debugFmt("~p:~p| ~s", [?MODULE, ?FN, wm_utils:format(X, Y)])).
 
 % !DISABLE_LOGGING_IN_TESTS
 -else.
@@ -49,12 +53,14 @@
 -define(LOG_WARN(X), ok).
 -define(LOG_ERROR(X), ok).
 -define(LOG_FATAL(X), ok).
+-define(LOG_ACCESS(X), ok).
 -define(LOG_DEBUG(X, Y), ok).
 -define(LOG_INFO(X, Y), ok).
 -define(LOG_NOTE(X, Y), ok).
 -define(LOG_WARN(X, Y), ok).
 -define(LOG_ERROR(X, Y), ok).
 -define(LOG_FATAL(X, Y), ok).
+-define(LOG_ACCESS(X, Y), ok).
 
 -endif. %DISABLE_LOGGING_IN_TESTS
 -endif. %TEST
@@ -70,11 +76,13 @@
 -define(LOG_WARN(X), wm_log:warn(X)).
 -define(LOG_ERROR(X), wm_log:err(X)).
 -define(LOG_FATAL(X), wm_log:fatal(X)).
+-define(LOG_ACCESS(X), wm_log:access(X)).
 -define(LOG_INFO(X, Y), wm_log:info(X, Y)).
 -define(LOG_NOTE(X, Y), wm_log:note(X, Y)).
 -define(LOG_WARN(X, Y), wm_log:warn(X, Y)).
 -define(LOG_ERROR(X, Y), wm_log:err(X, Y)).
 -define(LOG_FATAL(X, Y), wm_log:fatal(X, Y)).
+-define(LOG_ACCESS(X, Y), wm_log:access(X, Y)).
 
 % TEST
 -else.
@@ -89,11 +97,13 @@
 -define(LOG_WARN(X), ?debugMsg(X)).
 -define(LOG_ERROR(X), ?debugMsg(X)).
 -define(LOG_FATAL(X), ?debugMsg(X)).
+-define(LOG_ACCESS(X), ?debugMsg(X)).
 -define(LOG_INFO(X, Y), ?debugFmt(X, Y)).
 -define(LOG_NOTE(X, Y), ?debugFmt(X, Y)).
 -define(LOG_WARN(X, Y), ?debugFmt(X, Y)).
 -define(LOG_ERROR(X, Y), ?debugFmt(X, Y)).
 -define(LOG_FATAL(X, Y), ?debugFmt(X, Y)).
+-define(LOG_ACCESS(X, Y), ?debugFmt(X, Y)).
 
 % DISABLE_LOGGING_IN_TESTS
 -else.
@@ -104,12 +114,14 @@
 -define(LOG_WARN(X), ok).
 -define(LOG_ERROR(X), ok).
 -define(LOG_FATAL(X), ok).
+-define(LOG_ACCESS(X), ok).
 -define(LOG_DEBUG(X, Y), ok).
 -define(LOG_INFO(X, Y), ok).
 -define(LOG_NOTE(X, Y), ok).
 -define(LOG_WARN(X, Y), ok).
 -define(LOG_ERROR(X, Y), ok).
 -define(LOG_FATAL(X, Y), ok).
+-define(LOG_ACCESS(X, Y), ok).
 
 -endif. %DISABLE_LOGGING_IN_TESTS
 -endif. %TEST

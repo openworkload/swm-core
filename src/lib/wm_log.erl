@@ -4,6 +4,7 @@
 
 -export([start_link/1]).
 -export([info/1, info/2, debug/1, debug/2, note/1, note/2, warn/1, warn/2, err/1, err/2, fatal/1, fatal/2]).
+-export([access/1, access/2]).
 -export([switch/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -11,7 +12,14 @@
 
 -define(NICE(Reason), lists:flatten(atom_to_list(?MODULE) ++ ": " ++ Reason)).
 
--record(mstate, {spool = "" :: string(), fd :: atom(), logf :: fun(), logfile = "" :: string()}).
+-record(mstate,
+        {spool = "" :: string(),
+         fd :: atom() | undefined,
+         access_fd :: atom() | undefined,
+         logf :: fun(),
+         accessf :: fun(),
+         logfile = "" :: string(),
+         access_logfile = "" :: string()}).
 
 %% ============================================================================
 %% API functions
@@ -85,6 +93,16 @@ fatal(Format, MsgParts) ->
 fatal(Msg) ->
     gen_server:call(?MODULE, {fatal, Msg}).
 
+%% @doc Log formatted API access message
+-spec access(string(), [term()]) -> ok.
+access(Format, MsgParts) ->
+    access(wm_utils:format(Format, MsgParts)).
+
+%% @doc Log API access message to access.log
+-spec access(string()) -> ok.
+access(Msg) ->
+    gen_server:call(?MODULE, {access, Msg}).
+
 %% @doc forward all log messages to stdout or to file
 -spec switch(atom()) -> ok.
 switch(Dest) ->
@@ -117,6 +135,11 @@ init(MState) ->
 
 handle_call({switch, Printer}, _From, MState) ->
     {reply, ok, set_printer(Printer, MState)};
+handle_call({access, Msg}, _From, MState) ->
+    Date = wm_utils:now_iso8601(with_ms),
+    FMsg = [Date, "|", "ACCESS", "|", Msg, io_lib:nl()],
+    Fun = MState#mstate.accessf,
+    {reply, Fun(MState#mstate.access_fd, FMsg), MState};
 handle_call({LogLevel, Msg}, _From, MState) ->
     Date = wm_utils:now_iso8601(with_ms),
     TypeMsg =
@@ -149,7 +172,8 @@ code_change(_OldVsn, MState, _Extra) ->
 
 terminate(Reason, MState) ->
     ?LOG_INFO("Terminating with reason: ~p", [Reason]),
-    disk_log:close(MState#mstate.fd).
+    close_disk_log(MState#mstate.fd),
+    close_disk_log(MState#mstate.access_fd).
 
 %% ============================================================================
 %% Implementation functions
@@ -174,39 +198,63 @@ make_dirs(MState) ->
     LogDir = wm_utils:get_env("SWM_LOG_DIR"),
     MainLogFile = filename:join([LogDir, YStr]),
     SaslLogFile = filename:join([LogDir, "sasl", "sasl.log"]),
+    AccessLogFile = filename:join([LogDir, "access.log"]),
     filelib:ensure_dir(MainLogFile),
     filelib:ensure_dir(SaslLogFile),
-    MState#mstate{logfile = MainLogFile}.
+    filelib:ensure_dir(AccessLogFile),
+    MState#mstate{logfile = MainLogFile, access_logfile = AccessLogFile}.
 
--spec open_disk_log(#mstate{}) -> {ok, #mstate{}} | {error, string()}.
-open_disk_log(MState) ->
-    DiskOpts = [{name, node()}, {file, MState#mstate.logfile}, {format, external}],
+-spec open_disk_log(atom(), string()) -> {ok, atom()} | {error, string()}.
+open_disk_log(Name, File) ->
+    DiskOpts = [{name, Name}, {file, File}, {format, external}],
     case disk_log:open(DiskOpts) of
         {ok, Fd} ->
-            {ok, MState#mstate{fd = Fd}};
+            {ok, Fd};
         {error, Reason} ->
             {error,
              ?NICE("Can't create "
-                   ++ MState#mstate.logfile
+                   ++ File
                    ++ lists:flatten(
                           io_lib:format(", ~p", [Reason])))};
         _ ->
-            {error, ?NICE("Can't create " ++ MState#mstate.logfile)}
+            {error, ?NICE("Can't create " ++ File)}
     end.
+
+-spec close_disk_log(atom() | undefined) -> ok | {error, term()}.
+close_disk_log(undefined) ->
+    ok;
+close_disk_log(Fd) ->
+    disk_log:close(Fd).
+
+-spec access_log_name() -> atom().
+access_log_name() ->
+    list_to_atom(atom_to_list(node()) ++ "_access").
 
 -spec set_printer(atom(), #mstate{}) -> #mstate{}.
 set_printer(none, MState) ->
-    MState#mstate{logf = fun(_, _) -> ok end};
+    MState#mstate{logf = fun(_, _) -> ok end, accessf = fun(_, _) -> ok end};
 set_printer(stdout, MState) ->
-    MState#mstate{logf = fun(_, Msg) -> io:format(Msg) end};
+    Out = fun(_, Msg) -> io:format(Msg) end,
+    MState#mstate{logf = Out, accessf = Out};
 set_printer(file, MState) ->
     MState2 = make_dirs(MState),
-    case open_disk_log(MState2) of
-        {ok, MState3} ->
-            MState3#mstate{logf = fun(Fd, Msg) -> disk_log:blog(Fd, Msg) end};
+    case open_disk_log(node(), MState2#mstate.logfile) of
+        {ok, Fd} ->
+            case open_disk_log(access_log_name(), MState2#mstate.access_logfile) of
+                {ok, AccessFd} ->
+                    Blog = fun(LogFd, Msg) -> disk_log:blog(LogFd, Msg) end,
+                    MState2#mstate{fd = Fd,
+                                   access_fd = AccessFd,
+                                   logf = Blog,
+                                   accessf = Blog};
+                {error, AccessError} ->
+                    io:format("ERROR: ~p~n", [AccessError]),
+                    close_disk_log(Fd),
+                    MState2#mstate{logf = fun(_, _) -> ok end, accessf = fun(_, _) -> ok end}
+            end;
         {error, Error} ->
             io:format("ERROR: ~p~n", [Error]),
-            MState2
+            MState2#mstate{logf = fun(_, _) -> ok end, accessf = fun(_, _) -> ok end}
     end.
 
 -spec log_intro(#mstate{}) -> ok.

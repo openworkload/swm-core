@@ -57,6 +57,8 @@ init_per_suite(Config) ->
     meck:expect(wm_log, err, fun(_, _) -> ok end),
     meck:expect(wm_log, fatal, fun(_) -> ok end),
     meck:expect(wm_log, fatal, fun(_, _) -> ok end),
+    meck:expect(wm_log, access, fun(_) -> ok end),
+    meck:expect(wm_log, access, fun(_, _) -> ok end),
 
     meck:new(wm_event, [no_link]),
     meck:expect(wm_event, subscribe, fun(_, _, _) -> ok end),

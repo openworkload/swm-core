@@ -64,7 +64,7 @@ init(Args) ->
                           {cacertfile, CaFile},
                           {certfile, CertFile},
                           {keyfile, KeyFile}],
-                         #{env => #{dispatch => Dispatch}, onresponse => fun error_hook/4}),
+                         #{env => #{dispatch => Dispatch}, onresponse => fun response_hook/4}),
     ?LOG_INFO("Web server has been started on port ~p: ~p", [Port, Result]),
     wm_event:announce(http_started),
     {ok, MState2}.
@@ -113,6 +113,14 @@ dispatch_rules([{Resource, {static, FsPath}} | T], Routes) ->
     Static = {Resource, cowboy_static, {dir, FsPath}},
     dispatch_rules(T, [Static | Routes]).
 
+%% @doc Log API access after the final response body is known.
+%% Empty 4xx/404 bodies are rewritten below and logged on the subsequent reply.
+response_hook(Code, Headers, <<>>, Req) when is_integer(Code), Code >= 400 ->
+    error_hook(Code, Headers, <<>>, Req);
+response_hook(Code, Headers, Body, Req) ->
+    log_access(Code, Req),
+    error_hook(Code, Headers, Body, Req).
+
 error_hook(404, Headers, <<>>, Req) ->
     Path = cowboy_req:path(Req),
     Body = ["404 Not Found: \"", Path, "\" is not the path you are looking for.\n"],
@@ -126,6 +134,37 @@ error_hook(Code, Headers, <<>>, Req) when is_integer(Code), Code >= 400 ->
     cowboy_req:reply(Code, Headers2, Body, Req);
 error_hook(_Code, _Headers, _Body, Req) ->
     Req.
+
+-spec log_access(pos_integer(), cowboy_req:req()) -> ok.
+log_access(Code, Req) ->
+    Method = cowboy_req:method(Req),
+    Path = cowboy_req:path(Req),
+    {PeerIp, PeerPort} = cowboy_req:peer(Req),
+    Peer =
+        lists:flatten(
+            io_lib:format("~s:~p", [inet:ntoa(PeerIp), PeerPort])),
+    User = access_user(Req),
+    ?LOG_ACCESS("~s ~s ~p peer=~s user=~s", [Method, Path, Code, Peer, User]).
+
+-spec access_user(cowboy_req:req()) -> string().
+access_user(Req) ->
+    case maps:get(cert, Req, undefined) of
+        undefined ->
+            "-";
+        CertBin ->
+            try
+                Cert = public_key:pkix_decode_cert(CertBin, otp),
+                case wm_cert:get_uid(Cert) of
+                    UID when is_list(UID), UID =/= "" ->
+                        UID;
+                    _ ->
+                        "-"
+                end
+            catch
+                _:_ ->
+                    "-"
+            end
+    end.
 
 update_routes(MState) ->
     Rules = dispatch_rules(MState#mstate.routes, []),

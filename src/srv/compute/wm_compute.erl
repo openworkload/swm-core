@@ -158,6 +158,7 @@ handle_event(wm_commit_done, {COMMIT_ID, _}, MState) ->
 handle_event(proc_started, {JobID, Node}, MState) ->
     update_job(JobID, state, ?JOB_STATE_RUNNING),
     update_job(JobID, start_time, wm_utils:now_iso8601(without_ms)),
+    update_job(JobID, state_details, "Started"),
     event_to_parent({event, proc_started, {JobID, Node}}),
     MState.
 
@@ -258,15 +259,21 @@ add_proc(JobID, ProcID, JobNodes, MState) ->
 
 -spec update_job(job_id(), atom(), #process{}) -> ok.
 update_job(JobID, process, Process) ->
-    update_job(JobID, state, wm_entity:get(state, Process)),
+    State = wm_entity:get(state, Process),
+    update_job(JobID, state, State),
     update_job(JobID, exitcode, wm_entity:get(exitcode, Process)),
     update_job(JobID, signal, wm_entity:get(signal, Process)),
-    case wm_entity:get(comment, Process) of
-        Comment when is_list(Comment), Comment =/= "" ->
-            update_job(JobID, comment, Comment),
-            update_job(JobID, state_details, Comment);
+    case State of
+        ?JOB_STATE_FINISHED ->
+            update_job(JobID, state_details, "Finished");
         _ ->
-            ok
+            case wm_entity:get(comment, Process) of
+                Comment when is_list(Comment), Comment =/= "" ->
+                    update_job(JobID, comment, Comment),
+                    update_job(JobID, state_details, Comment);
+                _ ->
+                    ok
+            end
     end;
 update_job(JobID, Attr, NewValue) ->
     case wm_conf:select(job, {id, JobID}) of

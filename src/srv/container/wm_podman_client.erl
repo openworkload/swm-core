@@ -31,6 +31,8 @@
          reqid = "" :: list(),
          steps = [] :: list(),
          command = undefined :: term(),
+         %% Pending gen_server:call From for synchronous GET (never receive in caller).
+         reply_to = undefined :: {pid(), term()} | undefined,
          retries = ?COMMAND_RETRIES :: integer(),
          sock = "" :: string()}).
 
@@ -45,27 +47,26 @@ start_link(SockPath, Owner, ReqID, Reason) ->
 
 -spec get(string(), list(), term()) -> binary().
 get(Path, Hdr, HttpProcPid) ->
-    {_, Data} = get_status(Path, Hdr, HttpProcPid),
-    Data.
+    case get_status(Path, Hdr, HttpProcPid) of
+        {error, _} ->
+            <<>>;
+        {_, Data} ->
+            Data
+    end.
 
+%% @doc Synchronous GET. Must not use receive-in-caller: when the caller is
+%% wm_container (gen_server), concurrent run calls would steal {'$gen_call',...}
+%% from its mailbox and surface as fake "Podman API unreachable" errors.
 -spec get_status(string(), list(), term()) -> {term(), binary()} | {error, term()}.
 get_status(Path, Hdr, HttpProcPid) ->
-    wm_utils:protected_call(HttpProcPid, {get_start, Path, Hdr}, []),
     Timeout = wm_conf:g(cont_timeout, {?HTTP_TIMEOUT, integer}),
-    wait_get_reply(Timeout).
-
--spec wait_get_reply(non_neg_integer()) -> {term(), binary()} | {error, term()}.
-wait_get_reply(Timeout) ->
-    receive
-        {'$gen_cast', {_, Status, Data, _, _}} ->
-            {Status, Data};
-        {'EXIT', _Pid, _Reason} ->
-            wait_get_reply(Timeout);
-        Other ->
-            ?LOG_ERROR("Podman GET unhandled reply: ~p", [Other]),
-            {error, Other}
-    after Timeout ->
-        {error, timeout}
+    try
+        gen_server:call(HttpProcPid, {get, Path, Hdr}, Timeout)
+    catch
+        exit:{timeout, _} ->
+            {error, timeout};
+        exit:Reason ->
+            {error, Reason}
     end.
 
 -spec post(string(), list() | binary(), list(), term(), list()) -> ok.
@@ -124,7 +125,11 @@ init({Owner, SockPath, ReqID, Reason}) ->
              reqid = ReqID,
              sock = SockPath}}.
 
+handle_call({get, Path, Hdr}, From, #mstate{} = MState) ->
+    %% Reply later from notify_requestor when the HTTP response arrives.
+    {noreply, do_get(Path, Hdr, MState#mstate{command = {get, Path, Hdr}, reply_to = From})};
 handle_call({get_start, Path, Hdr} = Command, _, #mstate{} = MState) ->
+    %% Legacy fire-and-forget start; prefer {get, Path, Hdr} for sync callers.
     {reply, ok, do_get(Path, Hdr, MState#mstate{command = Command})};
 handle_call({post_start, Path, Body, Hdr, Steps} = Command, _, #mstate{} = MState) ->
     {reply, ok, do_post(Path, Body, Hdr, MState#mstate{steps = Steps, command = Command})};
@@ -169,17 +174,17 @@ handle_info({gun_up, ConnPid, http}, #mstate{} = MState) ->
     ?LOG_DEBUG("[Podman HTTP] UP [~p]", [ConnPid]),
     {noreply, MState};
 handle_info({gun_response, ConnPid, _, fin, Status, Hdrs}, #mstate{} = MState) ->
-    notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, Status, MState),
+    MState2 = notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, Status, MState),
     ok = gun:flush(ConnPid),
-    {noreply, MState#mstate{hdrs = []}};
+    {noreply, MState2#mstate{hdrs = []}};
 handle_info({gun_response, _, _, nofin, 404, Hdrs}, #mstate{} = MState) ->
-    notify_requestor(<<>>, Hdrs, 404, MState),
-    shutdown(MState),
-    {stop, normal, MState};
+    MState2 = notify_requestor(<<>>, Hdrs, 404, MState),
+    shutdown(MState2),
+    {stop, normal, MState2};
 handle_info({gun_response, _ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) when Status =:= 304; Status =:= 101 ->
     %% 101 = hijacked attach ready for stdin / stream.
-    notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, Status, MState),
-    {noreply, MState#mstate{hdrs = []}};
+    MState2 = notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, Status, MState),
+    {noreply, MState2#mstate{hdrs = []}};
 handle_info({gun_response, _ConnPid, _, nofin, Status, Hdrs}, #mstate{} = MState) ->
     {noreply, MState#mstate{hdrs = MState#mstate.hdrs ++ Hdrs, http_status = Status}};
 %% gun 2.x delivers successful HTTP Upgrade (Podman/Docker attach hijack) as gun_upgrade,
@@ -190,8 +195,8 @@ handle_info({gun_upgrade, ConnPid, StreamRef, _Protocols, Hdrs}, #mstate{conn_pi
         MState#mstate{hdrs = [],
                       stream = StreamRef,
                       raw_hijack = true},
-    notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, 101, NewState),
-    {noreply, NewState};
+    MState2 = notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, 101, NewState),
+    {noreply, MState2};
 handle_info({gun_data, _ConnPid, _, nofin, FrameData}, #mstate{} = MState) ->
     case use_attach_demux(MState) of
         true ->
@@ -205,8 +210,8 @@ handle_info({gun_data, _ConnPid, _, fin, Data}, #mstate{} = MState) ->
     Bin = <<OldData/binary, Data/binary>>,
     case use_attach_demux(MState) of
         true ->
-            notify_requestor(Bin, [], [], MState),
-            {noreply, MState#mstate{data = Bin}};
+            MState2 = notify_requestor(Bin, [], [], MState),
+            {noreply, MState2#mstate{data = Bin}};
         false ->
             Status =
                 case MState#mstate.http_status of
@@ -215,28 +220,30 @@ handle_info({gun_data, _ConnPid, _, fin, Data}, #mstate{} = MState) ->
                     S ->
                         S
                 end,
-            notify_requestor(Bin, MState#mstate.hdrs, Status, MState),
+            MState2 = notify_requestor(Bin, MState#mstate.hdrs, Status, MState),
             {noreply,
-             MState#mstate{data = Bin,
-                           hdrs = [],
-                           http_status = undefined}}
+             MState2#mstate{data = Bin,
+                            hdrs = [],
+                            http_status = undefined}}
     end;
 handle_info({gun_error, ConnPid, Msg}, #mstate{} = MState) ->
     ?LOG_DEBUG("[Podman HTTP] ERROR (ignore): ~p [~p]", [Msg, ConnPid]),
     ok = gun:flush(ConnPid),
-    notify_requestor(<<>>, [], ok, MState),
-    {noreply, MState};
+    MState2 = notify_requestor(<<>>, [], ok, MState),
+    {noreply, MState2};
 handle_info({gun_down, ConnPid, Proto, Reason, _}, #mstate{} = MState) ->
     ?LOG_DEBUG("Podman connection down: ~p proto=~p [~p]", [Reason, Proto, ConnPid]),
-    shutdown(MState),
-    {stop, normal, MState};
+    MState2 = reply_pending_error({connection_down, Reason}, MState),
+    shutdown(MState2),
+    {stop, normal, MState2};
 handle_info({'DOWN', MRef, process, ConnPid, Msg}, #mstate{mref = MRef, conn_pid = ConnPid} = MState) ->
     ?LOG_DEBUG("Podman gun DOWN: ~p [~p]", [Msg, ConnPid]),
-    shutdown(MState),
-    {stop, shutdown, MState};
+    MState2 = reply_pending_error({gun_down, Msg}, MState),
+    shutdown(MState2),
+    {stop, shutdown, MState2};
 handle_info({gun_inform, _ConnPid, _, Status, Hdrs}, #mstate{} = MState) ->
-    notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, Status, MState),
-    {noreply, MState};
+    MState2 = notify_requestor(<<>>, MState#mstate.hdrs ++ Hdrs, Status, MState),
+    {noreply, MState2};
 handle_info(_Other, #mstate{} = MState) ->
     {noreply, MState}.
 
@@ -297,10 +304,24 @@ do_delete(Path, Hdr, #mstate{conn_pid = ConnPid} = MState) ->
     Stream = gun:delete(ConnPid, Path, Hdr),
     MState#mstate{stream = Stream}.
 
+notify_requestor(Data, Hdrs, Meta, #mstate{reply_to = From} = MState) when From =/= undefined ->
+    %% Synchronous GET path: reply to gen_server:call and do not cast the owner
+    %% (owner may be wm_container; casting is for async create/attach steps only).
+    gen_server:reply(From, {Meta, Data}),
+    MState#mstate{reply_to = undefined};
 notify_requestor(Data, Hdrs, Meta, MState) ->
     Msg = {MState#mstate.steps, Meta, Data, Hdrs, MState#mstate.reqid},
-    gen_server:cast(MState#mstate.owner, Msg).
+    gen_server:cast(MState#mstate.owner, Msg),
+    MState.
 
+reply_pending_error(Reason, #mstate{reply_to = From} = MState) when From =/= undefined ->
+    gen_server:reply(From, {error, Reason}),
+    MState#mstate{reply_to = undefined};
+reply_pending_error(_Reason, MState) ->
+    MState.
+
+use_attach_demux(#mstate{command = {get, _, _}}) ->
+    false;
 use_attach_demux(#mstate{command = {get_start, _, _}}) ->
     false;
 use_attach_demux(#mstate{command = {delete_start, _, _, _}}) ->
