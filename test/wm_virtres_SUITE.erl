@@ -89,7 +89,8 @@ init_test_group(Action, Config) ->
         end,
     meck:expect(wm_virtres_handler, get_remote, fun(X) when X == JobId -> {ok, Remote} end),
     meck:expect(wm_virtres_handler, wait_for_partition_fetch, fun() -> erlang:make_ref() end),
-    meck:expect(wm_virtres_handler, wait_for_ssh_connection, fun(_) -> erlang:make_ref() end),
+    meck:expect(wm_virtres_handler, wait_for_ssh_connection, 1, fun(_) -> erlang:make_ref() end),
+    meck:expect(wm_virtres_handler, wait_for_ssh_connection, 2, fun(_, _) -> erlang:make_ref() end),
     meck:expect(wm_virtres_handler, delete_partition, fun(_, _, _, _) -> {ok, WaitRef} end),
     meck:expect(wm_virtres_handler, start_job_data_uploading, fun(_, _, _) -> {ok, WaitRef} end),
     meck:expect(wm_virtres_handler, update_job, fun(_, _, _) -> 1 end),
@@ -181,7 +182,8 @@ part_fetched_up(Config) ->
     Part = wm_entity:set([{state, up}, {name, "Foo"}, {id, wm_utils:uuid(v4)}], wm_entity:new(partition)),
 
     meck:expect(wm_virtres_handler, ensure_entities_created, fun(_, X, _) when X == Part -> {ok, PartMgrNodeId} end),
-    meck:expect(wm_virtres_handler, wait_for_wm_resources_readiness, fun() -> erlang:make_ref() end),
+    meck:expect(wm_virtres_handler, wait_for_wm_resources_readiness, 0, fun() -> erlang:make_ref() end),
+    meck:expect(wm_virtres_handler, wait_for_wm_resources_readiness, 1, fun(_) -> erlang:make_ref() end),
 
     ok = gen_statem:cast(Pid, {partition_fetched, WaitRef, Part}),
     ?assertEqual(creating, gen_statem:call(Pid, get_current_state)),

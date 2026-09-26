@@ -3,6 +3,7 @@
 -behaviour(gen_server).
 
 -export([start_link/1]).
+-export([force_schedule/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../../../include/wm_scheduler.hrl").
@@ -17,6 +18,18 @@
 -spec start_link([term()]) -> {ok, pid()}.
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
+
+%% @doc Request an immediate scheduling pass (in addition to the periodic timer).
+%% Used after job submit/requeue so jobs do not wait up to run_interval.
+-spec force_schedule() -> ok.
+force_schedule() ->
+    try
+        ?MODULE ! schedule,
+        ok
+    catch
+        _:_ ->
+            ok
+    end.
 
 %% ============================================================================
 %% Callbacks

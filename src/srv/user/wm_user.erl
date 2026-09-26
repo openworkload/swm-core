@@ -160,6 +160,7 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
             Job4 = set_defaults(Job3, Spool),
             Job5 = ensure_request_is_full(Job4),
             1 = wm_conf:update(Job5),
+            wm_scheduler:force_schedule(),
             {string, JobId}
     end;
 handle_request(requeue, Args, _) ->
@@ -306,6 +307,7 @@ requeue_jobs([JobId | T], Results) ->
             {ok, Job} ->
                 UpdatedJob = wm_entity:set({state, ?JOB_STATE_QUEUED}, Job),
                 1 = wm_conf:update([UpdatedJob]),
+                wm_scheduler:force_schedule(),
                 {requeued, JobId};
             _ ->
                 {not_found, JobId}

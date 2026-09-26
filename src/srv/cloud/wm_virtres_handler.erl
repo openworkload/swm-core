@@ -3,18 +3,21 @@
 -export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/3,
          update_job/2, upload_swm_worker/2, start_job_data_uploading/3, start_job_data_downloading/3,
          delete_partition/4, spawn_partition/2, wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0,
-         wait_for_ssh_connection/1, remove_relocation_entities/1, ensure_entities_created/3,
-         try_upload_worker_later/0]).
+         wait_for_wm_resources_readiness/1, wait_for_ssh_connection/1, wait_for_ssh_connection/2,
+         remove_relocation_entities/1, ensure_entities_created/3, try_upload_worker_later/0]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 -include("../../../include/wm_general.hrl").
 
+%% Defaults used when globals are unset. Prefer shorter polls for SSH/readiness
+%% so we notice Azure/cloud-init completion sooner; partition fetch stays a bit
+%% longer because ARM create is already a long operation.
 -define(DEFAULT_CLOUD_NODE_API_PORT, 10001).
--define(REDINESS_CHECK_PERIOD, 30000).
--define(SSH_CHECK_PERIOD, 30000).
--define(PARTITION_FETCH_PERIOD, 30000).
--define(SWM_DIR_CHEK_PERIOD, 15000).
+-define(DEFAULT_READINESS_CHECK_PERIOD, 5000).
+-define(DEFAULT_SSH_CHECK_PERIOD, 5000).
+-define(DEFAULT_PARTITION_FETCH_PERIOD, 10000).
+-define(DEFAULT_SWM_DIR_CHECK_PERIOD, 5000).
 
 %% ============================================================================
 %% Module API
@@ -34,19 +37,51 @@ remove_relocation_entities(JobId) ->
 
 -spec try_upload_worker_later() -> reference().
 try_upload_worker_later() ->
-    wm_utils:wake_up_after(?SWM_DIR_CHEK_PERIOD, try_worker_upload).
+    wm_utils:wake_up_after(swm_dir_check_period(), try_worker_upload).
 
 -spec wait_for_partition_fetch() -> reference().
 wait_for_partition_fetch() ->
-    wm_utils:wake_up_after(?PARTITION_FETCH_PERIOD, part_fetch).
+    wm_utils:wake_up_after(partition_fetch_period(), part_fetch).
 
+%% @doc Schedule readiness check after the configured period (retries).
 -spec wait_for_wm_resources_readiness() -> reference().
 wait_for_wm_resources_readiness() ->
-    wm_utils:wake_up_after(?REDINESS_CHECK_PERIOD, part_check).
+    wait_for_wm_resources_readiness(delayed).
 
+%% @doc Schedule readiness check immediately (first attempt) or after period (retry).
+-spec wait_for_wm_resources_readiness(immediate | delayed) -> reference().
+wait_for_wm_resources_readiness(immediate) ->
+    wm_utils:wake_up_after(0, part_check);
+wait_for_wm_resources_readiness(delayed) ->
+    wm_utils:wake_up_after(readiness_check_period(), part_check).
+
+%% @doc Schedule SSH check after the configured period (retries).
 -spec wait_for_ssh_connection(atom()) -> reference().
 wait_for_ssh_connection(SshPortType) ->
-    wm_utils:wake_up_after(?SSH_CHECK_PERIOD, SshPortType).
+    wait_for_ssh_connection(SshPortType, delayed).
+
+%% @doc Schedule SSH check immediately (first attempt) or after period (retry).
+-spec wait_for_ssh_connection(atom(), immediate | delayed) -> reference().
+wait_for_ssh_connection(SshPortType, immediate) ->
+    wm_utils:wake_up_after(0, SshPortType);
+wait_for_ssh_connection(SshPortType, delayed) ->
+    wm_utils:wake_up_after(ssh_check_period(), SshPortType).
+
+-spec partition_fetch_period() -> pos_integer().
+partition_fetch_period() ->
+    wm_conf:g(virtres_partition_fetch_ms, {?DEFAULT_PARTITION_FETCH_PERIOD, integer}).
+
+-spec readiness_check_period() -> pos_integer().
+readiness_check_period() ->
+    wm_conf:g(virtres_readiness_check_ms, {?DEFAULT_READINESS_CHECK_PERIOD, integer}).
+
+-spec ssh_check_period() -> pos_integer().
+ssh_check_period() ->
+    wm_conf:g(virtres_ssh_check_ms, {?DEFAULT_SSH_CHECK_PERIOD, integer}).
+
+-spec swm_dir_check_period() -> pos_integer().
+swm_dir_check_period() ->
+    wm_conf:g(virtres_swm_dir_check_ms, {?DEFAULT_SWM_DIR_CHECK_PERIOD, integer}).
 
 -spec request_partition(job_id(), #remote{}) -> {atom(), string()}.
 request_partition(JobId, Remote) ->

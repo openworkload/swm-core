@@ -230,7 +230,7 @@ creating(cast,
                 {ok, SshProvClientPid} ->
                     ?LOG_INFO("SSH provision client process started, pid: ~p, job: ~p", [SshProvClientPid, JobId]),
                     {ok, PartMgrNodeId} = wm_virtres_handler:ensure_entities_created(JobId, Partition, TplNode),
-                    Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_prov_port),
+                    Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_prov_port, immediate),
                     {next_state,
                      creating,
                      MState#mstate{wait_ref = Ref,
@@ -268,7 +268,7 @@ creating(cast,
             case wm_ssh_client:start_link() of
                 {ok, SshTunnelClientPid} ->
                     ?LOG_INFO("SSH tunnel client process started, pid: ~p, job: ~p", [SshTunnelClientPid, JobId]),
-                    Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_swm_port),
+                    Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_swm_port, immediate),
                     {next_state,
                      creating,
                      MState#mstate{ssh_tunnel_conn_timer = Timer, ssh_tunnel_client_pid = SshTunnelClientPid}};
@@ -306,7 +306,7 @@ creating(cast,
     {next_state,
      creating,
      MState#mstate{wait_ref = undefined,
-                   readiness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
+                   readiness_timer = wm_virtres_handler:wait_for_wm_resources_readiness(immediate),
                    proxy_pids = start_proxies(JobId, ForwardedPortTuples)}};
 creating(cast, {error, Ref, {Msg, {part_id, PartId}}}, #mstate{wait_ref = Ref, job_id = JobId} = MState) ->
     fail_partition_creation(JobId, Msg, MState#mstate{part_id = PartId});
@@ -337,6 +337,7 @@ uploading(cast, {Ref, ok}, #mstate{upload_ref = Ref, job_id = JobId} = MState) -
     ?LOG_INFO("Uploading has finished (~p)", [Ref]),
     ?LOG_DEBUG("Let the job be scheduled again with preset nodes request (~p)", [JobId]),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}, {state_details, "Data uploaded, starting"}], JobId),
+    wm_scheduler:force_schedule(),
     {next_state, running, MState#mstate{upload_ref = finished}};
 uploading(cast, {Ref, {error, Node, Reason}}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Uploading to ~p has failed: ~s", [Node, Reason]),
@@ -482,6 +483,7 @@ truncate_error(Str) ->
 handle_remote_failure(#mstate{job_id = JobId, task_id = TaskId} = MState) ->
     ?LOG_INFO("Force state ~p for job ~p [~p]", [?JOB_STATE_QUEUED, JobId, TaskId]),
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}, {state_details, "Job failed and requeued"}], JobId),
+    wm_scheduler:force_schedule(),
     %TODO Try to delete resource several, but limited number of times
     {stop, normal, MState}.
 
@@ -675,7 +677,7 @@ handle_info(ssh_check_prov_port,
         not_ready ->
             ?LOG_DEBUG("SSH server is not ready yet, connection will be repeated"),
             wm_virtres_handler:update_job([{state_details, "Waiting for provisioning port readiness"}], JobId),
-            Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_prov_port),
+            Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_prov_port, delayed),
             {next_state, creating, MState#mstate{ssh_prov_conn_timer = Timer}}
     end;
 handle_info(try_worker_upload, _, MState = #mstate{worker_reupload_timer = OldTRef}) ->
@@ -710,7 +712,7 @@ handle_info(ssh_check_swm_port,
         not_ready ->
             ?LOG_DEBUG("SSH server is not ready yet, connection will be repeated"),
             wm_virtres_handler:update_job([{state_details, "Waiting for Sky Port port readiness"}], JobId),
-            Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_swm_port),
+            Timer = wm_virtres_handler:wait_for_ssh_connection(ssh_check_swm_port, delayed),
             {next_state, creating, MState#mstate{ssh_tunnel_conn_timer = Timer}}
     end;
 handle_info(part_check,
@@ -724,7 +726,7 @@ handle_info(part_check,
     case wm_virtres_handler:is_job_partition_ready(JobId) of
         false ->
             ?LOG_DEBUG("Not all nodes are UP (job ~p)", [JobId]),
-            Timer = wm_virtres_handler:wait_for_wm_resources_readiness(),
+            Timer = wm_virtres_handler:wait_for_wm_resources_readiness(delayed),
             wm_virtres_handler:update_job([{state_details, "Waiting for all nodes to come up"}], JobId),
             {next_state, StateName, MState#mstate{readiness_timer = Timer}};
         true ->
