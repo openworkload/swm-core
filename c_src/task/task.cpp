@@ -1,6 +1,6 @@
-// swm-task: start one task (workload chunk) on nodes allocated to a job.
-// Without --pmix: exec the binary locally in this container.
-// With --pmix: ask SWM via Porter control relay to start PMIx + one rank/node.
+// swm-task: start one task (workload chunk) on every node allocated to a job.
+// Always asks SWM via Porter control relay to spawn one process/container per node.
+// With --pmix: also start per-node swm-pmix and inject PMIX_* bootstrap env.
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -18,9 +18,9 @@ constexpr const char *ctrl_env_name = "SWM_PORTER_CTRL";
 
 void print_usage(const char *prog) {
   std::cerr << "Usage: " << prog << " [--pmix] [--help] <command> [args...]\n"
-            << "  Start one task per allocated node.\n\n"
-            << "  --pmix   Enable PMIx (disabled by default); asks SWM via Porter.\n"
-            << "           Without --pmix the command is exec'd in container as-is.\n";
+            << "  Spawn the command once per allocated job node via Porter/SWM.\n\n"
+            << "  --pmix   Also enable PMIx (per-node swm-pmix + PMIX_* env).\n"
+            << "           Without --pmix, ranks still spawn on every node, without PMIx.\n";
 }
 
 int connect_porter_ctrl(const std::string &path) {
@@ -143,22 +143,6 @@ int run_via_porter(bool pmix, const std::vector<std::string> &argv) {
   return 1;
 }
 
-int exec_local(const std::vector<std::string> &argv) {
-  if (argv.empty()) {
-    std::cerr << "swm-task: missing command\n";
-    return 2;
-  }
-  std::vector<char *> c_argv;
-  c_argv.reserve(argv.size() + 1);
-  for (const auto &a : argv) {
-    c_argv.push_back(const_cast<char *>(a.c_str()));
-  }
-  c_argv.push_back(nullptr);
-  execvp(c_argv[0], c_argv.data());
-  std::cerr << "swm-task: execvp(" << argv[0] << ") failed: " << std::strerror(errno) << "\n";
-  return 127;
-}
-
 }  // namespace
 
 int main(int argc, char *argv[]) {
@@ -190,11 +174,7 @@ int main(int argc, char *argv[]) {
     return 2;
   }
 
-  // Multi-node / PMIx always goes through Porter -> SWM.
-  // Local plain exec only when --pmix is off and we are not requesting remote ranks.
-  // Issue #9: without --pmix, run the binary as-is in this container.
-  if (pmix) {
-    return run_via_porter(true, cmd);
-  }
-  return exec_local(cmd);
+  // Always ask SWM (via Porter) to spawn one container/process per allocated node.
+  // --pmix additionally starts swm-pmix and injects PMIX_* bootstrap env.
+  return run_via_porter(pmix, cmd);
 }

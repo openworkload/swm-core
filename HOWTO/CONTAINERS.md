@@ -67,13 +67,13 @@ images such as stock `ubuntu:24.04`.
 
 ## PMIx / multi-process tasks
 
-Multi-rank MPI jobs use **`swm-task --pmix`** (not PRRTE). Flow:
+Multi-node tasks use **`swm-task`** (optionally **`--pmix`** for MPI; not PRRTE). Flow:
 
 1. Main node runs the job script in one Porter container (unchanged).
-2. `swm-task --pmix ./app` talks to Porter via `SWM_PORTER_CTRL` (only Porter talks to SWM).
-3. `wm_pmix` starts per-node **`swm-pmix`** (libpmix server host) and creates **one Porter container per rank** (v1: one rank per allocated node).
-4. Rank containers get `PMIX_*` / `SWM_*` via Porter; host networking is used for PMIx wireup.
-5. Cancel tears down rank containers and stops `swm-pmix`.
+2. `swm-task ./app` talks to Porter via `SWM_PORTER_CTRL` (only Porter talks to SWM).
+3. `wm_pmix` creates **one Porter container per allocated node** (v1: one rank per node).
+4. With `--pmix`, `wm_pmix` also starts per-node **`swm-pmix`** and injects `PMIX_*` / `SWM_*`.
+5. Cancel tears down rank containers (and stops `swm-pmix` if used).
 
 See `HOWTO/JOBS.md` (Tasks section).
 

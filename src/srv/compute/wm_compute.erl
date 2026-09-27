@@ -252,9 +252,9 @@ propagate_job_to_nodes(JobID, JobNodeIds0, MState) ->
 -spec start_job_processes([#node{}], job_id(), #mstate{}) -> #mstate{}.
 start_job_processes(JobNodes, JobID, MState) ->
     ?LOG_DEBUG("Start process for job ~p", [JobID]),
-    %% Primary job script runs as one wm_proc on main. Additional MPI ranks are
-    %% created lazily by wm_pmix when swm-task --pmix requests spawn (one Porter
-    %% container per rank/node).
+    %% Primary job script runs as one wm_proc on main. Additional task ranks are
+    %% created lazily by wm_pmix when swm-task requests spawn (one Porter
+    %% container per allocated node; --pmix also starts swm-pmix).
     wm_pmix:ensure_started(),
     {ok, ProcID} = wm_factory:new(proc, JobID, JobNodes),
     add_proc(JobID, ProcID, JobNodes, MState).

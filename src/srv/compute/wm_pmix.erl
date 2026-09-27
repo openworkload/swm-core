@@ -4,7 +4,8 @@
 
 %% @doc PMIx session owner for compute nodes (issue #9).
 %% Erlang owns lifecycle and RM policy; C++ swm-pmix links libpmix.
-%% Trigger: swm-task --pmix via Porter control relay (no submit-time flag).
+%% Trigger: swm-task via Porter control relay (no submit-time flag).
+%% --pmix adds per-node swm-pmix + PMIX_* bootstrap; without it, plain multi-node spawn.
 
 -export([start_link/1, ensure_started/0]).
 -export([handle_porter_req/4, reply_porter/3, cancel_job/1, bootstrap_env/2]).
@@ -203,7 +204,7 @@ do_porter_req(JobId, Ref, spawn_task, Args, MState) ->
         true ->
             spawn_pmix_task(Task, MState1);
         false ->
-            %% Without --pmix, swm-task execs locally; SPAWN without pmix is multi-node plain.
+            %% Plain SPAWN (swm-task without --pmix): one container per node, no PMIx.
             spawn_plain_task(Task, MState1)
     end;
 do_porter_req(_JobId, Ref, task_status, Args, MState) ->

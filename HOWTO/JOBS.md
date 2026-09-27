@@ -165,19 +165,20 @@ Call `swm-task` from the job script inside the job container:
 
 | Flag | Behavior |
 |------|----------|
-| (default) | Run the given command **as-is** in the current container (`exec`). |
-| `--pmix` | Enable PMIx. Ask SWM (via **Porter control relay** only) to start per-node `swm-pmix`, create one Porter container per rank (one rank per node in v1), and wait in the foreground until all ranks finish. |
+| (default) | Ask SWM (via **Porter control relay**) to spawn the command once per allocated node (one Porter container per node in v1) and wait in the foreground until all finish. |
+| `--pmix` | Same multi-node spawn, plus per-node `swm-pmix` and `PMIX_*` / `SWM_PMIX_*` bootstrap env for MPI. |
 
 `swm-task` never talks to Podman or SWM sockets directly. Inside containers only
 **Porter** may communicate with SWM; `swm-task` uses the Unix socket path in
 `SWM_PORTER_CTRL`.
 
-Flow with `--pmix`:
+Flow (with or without `--pmix`):
 
 1. Main node already runs the job script in one Porter container.
-2. `swm-task --pmix ./app` asks SWM (through Porter) to start PMIx and rank containers.
-3. SWM creates **one Porter container per rank** (currently: one rank per allocated node) and injects `PMIX_*` / `SWM_*`.
-4. `swm-task` stays in the foreground until all ranks finish; cancel tears down ranks and `swm-pmix`.
+2. `swm-task ./app` (or `swm-task --pmix ./app`) asks SWM through Porter to spawn ranks.
+3. SWM creates **one Porter container per allocated node** and runs the command there.
+4. With `--pmix`, SWM also starts per-node `swm-pmix` and injects `PMIX_*` / `SWM_*`.
+5. `swm-task` stays in the foreground until all ranks finish; cancel tears down ranks (and `swm-pmix` if used).
 
 ## Complete Multi-Node MPI Example
 
