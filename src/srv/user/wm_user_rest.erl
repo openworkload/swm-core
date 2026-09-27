@@ -178,7 +178,7 @@ get_jobs_info(Req) ->
 get_one_job(JobId) ->
     case gen_server:call(wm_user, {show, [JobId]}) of
         [Job] ->
-            {job_to_json(Job, <<>>), ?HTTP_CODE_OK};
+            {job_to_json(Job, <<>>, true), ?HTTP_CODE_OK};
         _ ->
             ?LOG_ERROR("Job not found by ID=~p", [JobId]),
             {error, ?HTTP_CODE_NOT_FOUND}
@@ -206,6 +206,10 @@ get_job_stderr(JobId) ->
 
 -spec job_to_json(#job{}, binary()) -> binary().
 job_to_json(Job, FullJson) ->
+    job_to_json(Job, FullJson, false).
+
+-spec job_to_json(#job{}, binary(), boolean()) -> binary().
+job_to_json(Job, FullJson, IncludeScript) ->
     JobNodes =
         case wm_entity:get(nodes, Job) of
             [] ->
@@ -220,29 +224,37 @@ job_to_json(Job, FullJson) ->
     JobNodeIps = nodes_to_ips(JobNodes),
     MainIp = main_node_public_ip(JobNodes),
     {FlavorId, RemoteId} = wm_user_json:find_flavor_and_remote_ids(Job),
-    JobJson =
-        wm_json:encode(#{id => list_to_binary(wm_entity:get(id, Job)),
-                         name => list_to_binary(wm_entity:get(name, Job)),
-                         state => list_to_binary(wm_entity:get(state, Job)),
-                         state_details => list_to_binary(wm_entity:get(state_details, Job)),
-                         submit_time => list_to_binary(wm_entity:get(submit_time, Job)),
-                         start_time => list_to_binary(wm_entity:get(start_time, Job)),
-                         end_time => list_to_binary(wm_entity:get(end_time, Job)),
-                         duration => wm_entity:get(duration, Job),
-                         exitcode => wm_entity:get(exitcode, Job),
-                         signal => wm_entity:get(signal, Job),
-                         node_names => JobNodeHostnames,
-                         node_ips => JobNodeIps,
-                         main_ip => MainIp,
-                         remote_id => list_to_binary(RemoteId),
-                         flavor_id => list_to_binary(FlavorId),
-                         request =>
-                             wm_user_json:get_resources_json(
-                                 wm_entity:get(request, Job)),
-                         resources =>
-                             wm_user_json:get_resources_json(
-                                 wm_entity:get(resources, Job)),
-                         comment => list_to_binary(wm_entity:get(comment, Job))}),
+    Base =
+        #{id => list_to_binary(wm_entity:get(id, Job)),
+          name => list_to_binary(wm_entity:get(name, Job)),
+          state => list_to_binary(wm_entity:get(state, Job)),
+          state_details => list_to_binary(wm_entity:get(state_details, Job)),
+          submit_time => list_to_binary(wm_entity:get(submit_time, Job)),
+          start_time => list_to_binary(wm_entity:get(start_time, Job)),
+          end_time => list_to_binary(wm_entity:get(end_time, Job)),
+          duration => wm_entity:get(duration, Job),
+          exitcode => wm_entity:get(exitcode, Job),
+          signal => wm_entity:get(signal, Job),
+          node_names => JobNodeHostnames,
+          node_ips => JobNodeIps,
+          main_ip => MainIp,
+          remote_id => list_to_binary(RemoteId),
+          flavor_id => list_to_binary(FlavorId),
+          request =>
+              wm_user_json:get_resources_json(
+                  wm_entity:get(request, Job)),
+          resources =>
+              wm_user_json:get_resources_json(
+                  wm_entity:get(resources, Job)),
+          comment => list_to_binary(wm_entity:get(comment, Job))},
+    JobMap =
+        case IncludeScript of
+            true ->
+                Base#{script_content => list_to_binary(wm_entity:get(script_content, Job))};
+            false ->
+                Base
+        end,
+    JobJson = wm_json:encode(JobMap),
     [binary_to_list(JobJson) | FullJson].
 
 %% @doc Select nodes by id, keeping the caller's order (main / partmgr first).
