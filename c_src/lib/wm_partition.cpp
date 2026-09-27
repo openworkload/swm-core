@@ -1,18 +1,16 @@
-#include <iostream>
-
 #include "wm_partition.h"
-
-#include <ei.h>
 
 #include "wm_resource.h"
 
+#include <ei.h>
+
+#include <iostream>
+
 using namespace swm;
 
+SwmPartition::SwmPartition() {}
 
-SwmPartition::SwmPartition() {
-}
-
-SwmPartition::SwmPartition(const char* buf, int &index) {
+SwmPartition::SwmPartition(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmPartition: null" << std::endl;
     return;
@@ -165,9 +163,7 @@ SwmPartition::SwmPartition(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmPartition::set_id(const std::string &new_val) {
   id = new_val;
@@ -331,8 +327,8 @@ int swm::ei_buffer_to_partition(const char *buf, int &index, std::vector<SwmPart
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a partition list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a partition list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -344,7 +340,7 @@ int swm::ei_buffer_to_partition(const char *buf, int &index, std::vector<SwmPart
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -366,7 +362,7 @@ int swm::ei_buffer_to_partition(const char *buf, int &index, std::vector<SwmPart
   return 0;
 }
 
-int swm::ei_buffer_to_partition(const char* buf, int &index, SwmPartition &obj) {
+int swm::ei_buffer_to_partition(const char *buf, int &index, SwmPartition &obj) {
   obj = SwmPartition(buf, index);
   return 0;
 }
@@ -379,8 +375,9 @@ void SwmPartition::print(const std::string &prefix, const char separator) const 
   if (nodes.empty()) {
     std::cerr << prefix << "nodes: []" << separator;
   } else {
-    std::cerr << prefix << "nodes" << ": [";
-    for (const auto &q: nodes) {
+    std::cerr << prefix << "nodes"
+              << ": [";
+    for (const auto &q : nodes) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -388,8 +385,9 @@ void SwmPartition::print(const std::string &prefix, const char separator) const 
   if (partitions.empty()) {
     std::cerr << prefix << "partitions: []" << separator;
   } else {
-    std::cerr << prefix << "partitions" << ": [";
-    for (const auto &q: partitions) {
+    std::cerr << prefix << "partitions"
+              << ": [";
+    for (const auto &q : partitions) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -397,8 +395,9 @@ void SwmPartition::print(const std::string &prefix, const char separator) const 
   if (hooks.empty()) {
     std::cerr << prefix << "hooks: []" << separator;
   } else {
-    std::cerr << prefix << "hooks" << ": [";
-    for (const auto &q: hooks) {
+    std::cerr << prefix << "hooks"
+              << ": [";
+    for (const auto &q : hooks) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -408,8 +407,9 @@ void SwmPartition::print(const std::string &prefix, const char separator) const 
   if (resources.empty()) {
     std::cerr << prefix << "resources: []" << separator;
   } else {
-    std::cerr << prefix << "resources" << ": [";
-    for (const auto &q: resources) {
+    std::cerr << prefix << "resources"
+              << ": [";
+    for (const auto &q : resources) {
       q.print(prefix, separator);
     }
     std::cerr << "]" << separator;
@@ -417,8 +417,9 @@ void SwmPartition::print(const std::string &prefix, const char separator) const 
   if (properties.empty()) {
     std::cerr << prefix << "properties: []" << separator;
   } else {
-    std::cerr << prefix << "properties" << ": [";
-    for (const auto &q: properties) {
+    std::cerr << prefix << "properties"
+              << ": [";
+    for (const auto &q : properties) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -433,4 +434,3 @@ void SwmPartition::print(const std::string &prefix, const char separator) const 
   std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
-

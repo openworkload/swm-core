@@ -1,17 +1,14 @@
-#include <iostream>
-
 #include "wm_account.h"
 
 #include <ei.h>
 
+#include <iostream>
 
 using namespace swm;
 
+SwmAccount::SwmAccount() {}
 
-SwmAccount::SwmAccount() {
-}
-
-SwmAccount::SwmAccount(const char* buf, int &index) {
+SwmAccount::SwmAccount(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmAccount: null" << std::endl;
     return;
@@ -80,9 +77,7 @@ SwmAccount::SwmAccount(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmAccount::set_id(const std::string &new_val) {
   id = new_val;
@@ -150,8 +145,8 @@ int swm::ei_buffer_to_account(const char *buf, int &index, std::vector<SwmAccoun
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a account list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a account list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -163,7 +158,7 @@ int swm::ei_buffer_to_account(const char *buf, int &index, std::vector<SwmAccoun
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -185,7 +180,7 @@ int swm::ei_buffer_to_account(const char *buf, int &index, std::vector<SwmAccoun
   return 0;
 }
 
-int swm::ei_buffer_to_account(const char* buf, int &index, SwmAccount &obj) {
+int swm::ei_buffer_to_account(const char *buf, int &index, SwmAccount &obj) {
   obj = SwmAccount(buf, index);
   return 0;
 }
@@ -197,8 +192,9 @@ void SwmAccount::print(const std::string &prefix, const char separator) const {
   if (users.empty()) {
     std::cerr << prefix << "users: []" << separator;
   } else {
-    std::cerr << prefix << "users" << ": [";
-    for (const auto &q: users) {
+    std::cerr << prefix << "users"
+              << ": [";
+    for (const auto &q : users) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -206,8 +202,9 @@ void SwmAccount::print(const std::string &prefix, const char separator) const {
   if (admins.empty()) {
     std::cerr << prefix << "admins: []" << separator;
   } else {
-    std::cerr << prefix << "admins" << ": [";
-    for (const auto &q: admins) {
+    std::cerr << prefix << "admins"
+              << ": [";
+    for (const auto &q : admins) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -216,4 +213,3 @@ void SwmAccount::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
-

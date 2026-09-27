@@ -2,7 +2,7 @@
 .PHONY: run-ghead run-chead
 .PHONY: test ftest
 .PHONY: cb cr build-all
-.PHONY: dialyzer format static_checks
+.PHONY: dialyzer format format-cpp format-cpp-check static_checks
 
 COG = cog
 REBAR = ./rebar3
@@ -56,6 +56,7 @@ gen:		##@SKYPORT Generate entity files
 			$(COG) -U -z -d -e -c -o ./src/lib/wm_entity.hrl ./src/lib/wm_entity.hrl.cog
 			$(COG) -U -z -d -e -c -o ./src/lib/wm_entity.erl ./src/lib/wm_entity.erl.cog
 			scripts/autogen-cpp.py
+			scripts/format-cpp.sh
 
 porter:		##@SKYPORT Compile Porter
 			$(MAKE) -C c_src/porter
@@ -122,8 +123,15 @@ clean:		##@DEV Clean sources
 dialyzer:		##@DEV Run dialyzer
 			$(REBAR) dialyzer
 
-format:		##@DEV Format erlang code
+format:		##@DEV Format erlang and C++ code
 			$(REBAR) format
+			scripts/format-cpp.sh
+
+format-cpp:		##@DEV Format C++ under c_src/ with clang-format
+			scripts/format-cpp.sh
+
+format-cpp-check:	##@DEV Check C++ formatting (no write)
+			scripts/format-cpp.sh check
 
 static_checks:		##@DEV Run erlang static checks to validate the code
 			$(REBAR) lint

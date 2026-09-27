@@ -1,17 +1,14 @@
-#include <iostream>
-
 #include "wm_metric.h"
 
 #include <ei.h>
 
+#include <iostream>
 
 using namespace swm;
 
+SwmMetric::SwmMetric() {}
 
-SwmMetric::SwmMetric() {
-}
-
-SwmMetric::SwmMetric(const char* buf, int &index) {
+SwmMetric::SwmMetric(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmMetric: null" << std::endl;
     return;
@@ -52,9 +49,7 @@ SwmMetric::SwmMetric(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmMetric::set_name(const std::string &new_val) {
   name = new_val;
@@ -90,8 +85,8 @@ int swm::ei_buffer_to_metric(const char *buf, int &index, std::vector<SwmMetric>
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a metric list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a metric list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -103,7 +98,7 @@ int swm::ei_buffer_to_metric(const char *buf, int &index, std::vector<SwmMetric>
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -125,7 +120,7 @@ int swm::ei_buffer_to_metric(const char *buf, int &index, std::vector<SwmMetric>
   return 0;
 }
 
-int swm::ei_buffer_to_metric(const char* buf, int &index, SwmMetric &obj) {
+int swm::ei_buffer_to_metric(const char *buf, int &index, SwmMetric &obj) {
   obj = SwmMetric(buf, index);
   return 0;
 }
@@ -136,4 +131,3 @@ void SwmMetric::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << value_float64 << separator;
   std::cerr << std::endl;
 }
-

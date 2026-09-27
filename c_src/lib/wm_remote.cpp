@@ -1,17 +1,14 @@
-#include <iostream>
-
 #include "wm_remote.h"
 
 #include <ei.h>
 
+#include <iostream>
 
 using namespace swm;
 
+SwmRemote::SwmRemote() {}
 
-SwmRemote::SwmRemote() {
-}
-
-SwmRemote::SwmRemote(const char* buf, int &index) {
+SwmRemote::SwmRemote(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmRemote: null" << std::endl;
     return;
@@ -108,9 +105,7 @@ SwmRemote::SwmRemote(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmRemote::set_id(const std::string &new_val) {
   id = new_val;
@@ -210,8 +205,8 @@ int swm::ei_buffer_to_remote(const char *buf, int &index, std::vector<SwmRemote>
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a remote list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a remote list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -223,7 +218,7 @@ int swm::ei_buffer_to_remote(const char *buf, int &index, std::vector<SwmRemote>
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -245,7 +240,7 @@ int swm::ei_buffer_to_remote(const char *buf, int &index, std::vector<SwmRemote>
   return 0;
 }
 
-int swm::ei_buffer_to_remote(const char* buf, int &index, SwmRemote &obj) {
+int swm::ei_buffer_to_remote(const char *buf, int &index, SwmRemote &obj) {
   obj = SwmRemote(buf, index);
   return 0;
 }
@@ -264,4 +259,3 @@ void SwmRemote::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
-

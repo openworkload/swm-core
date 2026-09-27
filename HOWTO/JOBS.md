@@ -1,10 +1,11 @@
 # Job scripts
 
-Job scripts in Sky Port use special directives prefixed with `#SWM` to specify job
-requirements and configuration. Porter runs the script inside the job container
-(see `HOWTO/CONTAINERS.md`) and exports `SWM_*` environment variables. From that
-script you can start **tasks** with `swm-task` when the workload needs one or
-more processes across the allocated nodes (for example MPI).
+Job scripts in Sky Port are regular shell scripts that use special directives
+prefixed with `#SWM` to specify job requirements and configuration.
+Porter runs the script inside the job container (see `HOWTO/CONTAINERS.md`)
+and exports `SWM_*` environment variables. From that script you can start
+**tasks** with `swm-task` when the workload needs one or more processes across
+the allocated nodes (for example MPI).
 
 ## Available Directives
 
@@ -175,14 +176,12 @@ Flow with `--pmix`:
 
 1. Main node already runs the job script in one Porter container.
 2. `swm-task --pmix ./app` asks SWM (through Porter) to start PMIx and rank containers.
-3. SWM creates **one Porter container per rank** (v1: one rank per allocated node) and injects `PMIX_*` / `SWM_*`.
+3. SWM creates **one Porter container per rank** (currently: one rank per allocated node) and injects `PMIX_*` / `SWM_*`.
 4. `swm-task` stays in the foreground until all ranks finish; cancel tears down ranks and `swm-pmix`.
-
-Container lifecycle and host networking details: `HOWTO/CONTAINERS.md`. Tracker: GitHub issue #9.
 
 ## Complete Multi-Node MPI Example
 
-See also `priv/examples/jobscripts/mpi.sh`.
+See also `priv/examples/jobscripts/mpi-azure.sh`.
 
 ```bash
 #!/bin/bash
@@ -196,7 +195,6 @@ set -euo pipefail
 #SWM cloud-image ubuntu-hpc/2404
 #SWM container-image ubuntu:24.04
 
-# Host /opt is bind-mounted; expect OpenMPI at /opt/openmpi (no apt openmpi).
 export PATH="/opt/openmpi/bin:${PATH}"
 export LD_LIBRARY_PATH="/opt/openmpi/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 

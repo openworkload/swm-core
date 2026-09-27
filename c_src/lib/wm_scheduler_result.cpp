@@ -1,19 +1,17 @@
-#include <iostream>
-
 #include "wm_scheduler_result.h"
-
-#include <ei.h>
 
 #include "wm_metric.h"
 #include "wm_timetable.h"
 
+#include <ei.h>
+
+#include <iostream>
+
 using namespace swm;
 
+SwmSchedulerResult::SwmSchedulerResult() {}
 
-SwmSchedulerResult::SwmSchedulerResult() {
-}
-
-SwmSchedulerResult::SwmSchedulerResult(const char* buf, int &index) {
+SwmSchedulerResult::SwmSchedulerResult(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmSchedulerResult: null" << std::endl;
     return;
@@ -82,9 +80,7 @@ SwmSchedulerResult::SwmSchedulerResult(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmSchedulerResult::set_timetable(const std::vector<SwmTimetable> &new_val) {
   timetable = new_val;
@@ -152,8 +148,8 @@ int swm::ei_buffer_to_scheduler_result(const char *buf, int &index, std::vector<
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a scheduler_result list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a scheduler_result list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -165,7 +161,7 @@ int swm::ei_buffer_to_scheduler_result(const char *buf, int &index, std::vector<
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -187,7 +183,7 @@ int swm::ei_buffer_to_scheduler_result(const char *buf, int &index, std::vector<
   return 0;
 }
 
-int swm::ei_buffer_to_scheduler_result(const char* buf, int &index, SwmSchedulerResult &obj) {
+int swm::ei_buffer_to_scheduler_result(const char *buf, int &index, SwmSchedulerResult &obj) {
   obj = SwmSchedulerResult(buf, index);
   return 0;
 }
@@ -196,8 +192,9 @@ void SwmSchedulerResult::print(const std::string &prefix, const char separator) 
   if (timetable.empty()) {
     std::cerr << prefix << "timetable: []" << separator;
   } else {
-    std::cerr << prefix << "timetable" << ": [";
-    for (const auto &q: timetable) {
+    std::cerr << prefix << "timetable"
+              << ": [";
+    for (const auto &q : timetable) {
       q.print(prefix, separator);
     }
     std::cerr << "]" << separator;
@@ -205,8 +202,9 @@ void SwmSchedulerResult::print(const std::string &prefix, const char separator) 
   if (metrics.empty()) {
     std::cerr << prefix << "metrics: []" << separator;
   } else {
-    std::cerr << prefix << "metrics" << ": [";
-    for (const auto &q: metrics) {
+    std::cerr << prefix << "metrics"
+              << ": [";
+    for (const auto &q : metrics) {
       q.print(prefix, separator);
     }
     std::cerr << "]" << separator;
@@ -218,4 +216,3 @@ void SwmSchedulerResult::print(const std::string &prefix, const char separator) 
   std::cerr << prefix << work_time << separator;
   std::cerr << std::endl;
 }
-

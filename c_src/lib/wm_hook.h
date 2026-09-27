@@ -1,29 +1,28 @@
 
 #pragma once
 
-#include <vector>
-
 #include "wm_entity.h"
 #include "wm_entity_utils.h"
 #include "wm_executable.h"
 
+#include <vector>
+
 namespace swm {
 
-class SwmHook:SwmEntity {
-
+class SwmHook : SwmEntity {
  public:
   SwmHook();
-  SwmHook(const char*, int&);
+  SwmHook(const char *, int &);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
-  void set_id(const std::string&);
-  void set_name(const std::string&);
-  void set_event(const std::string&);
-  void set_state(const std::string&);
-  void set_executable(const SwmExecutable&);
-  void set_comment(const std::string&);
-  void set_revision(const uint64_t&);
+  void set_id(const std::string &);
+  void set_name(const std::string &);
+  void set_event(const std::string &);
+  void set_state(const std::string &);
+  void set_executable(const SwmExecutable &);
+  void set_comment(const std::string &);
+  void set_revision(const uint64_t &);
 
   std::string get_id() const;
   std::string get_name() const;
@@ -41,10 +40,9 @@ class SwmHook:SwmEntity {
   SwmExecutable executable;
   std::string comment;
   uint64_t revision;
-
 };
 
-int ei_buffer_to_hook(const char*, int&, std::vector<SwmHook>&);
-int ei_buffer_to_hook(const char*, int&, SwmHook&);
+int ei_buffer_to_hook(const char *, int &, std::vector<SwmHook> &);
+int ei_buffer_to_hook(const char *, int &, SwmHook &);
 
-} // namespace swm
+}  // namespace swm

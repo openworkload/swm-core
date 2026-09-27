@@ -1,17 +1,14 @@
-#include <iostream>
-
 #include "wm_image.h"
 
 #include <ei.h>
 
+#include <iostream>
 
 using namespace swm;
 
+SwmImage::SwmImage() {}
 
-SwmImage::SwmImage() {
-}
-
-SwmImage::SwmImage(const char* buf, int &index) {
+SwmImage::SwmImage(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmImage: null" << std::endl;
     return;
@@ -108,9 +105,7 @@ SwmImage::SwmImage(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmImage::set_name(const std::string &new_val) {
   name = new_val;
@@ -210,8 +205,8 @@ int swm::ei_buffer_to_image(const char *buf, int &index, std::vector<SwmImage> &
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a image list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a image list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -223,7 +218,7 @@ int swm::ei_buffer_to_image(const char *buf, int &index, std::vector<SwmImage> &
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -245,7 +240,7 @@ int swm::ei_buffer_to_image(const char *buf, int &index, std::vector<SwmImage> &
   return 0;
 }
 
-int swm::ei_buffer_to_image(const char* buf, int &index, SwmImage &obj) {
+int swm::ei_buffer_to_image(const char *buf, int &index, SwmImage &obj) {
   obj = SwmImage(buf, index);
   return 0;
 }
@@ -256,8 +251,9 @@ void SwmImage::print(const std::string &prefix, const char separator) const {
   if (tags.empty()) {
     std::cerr << prefix << "tags: []" << separator;
   } else {
-    std::cerr << prefix << "tags" << ": [";
-    for (const auto &q: tags) {
+    std::cerr << prefix << "tags"
+              << ": [";
+    for (const auto &q : tags) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -272,4 +268,3 @@ void SwmImage::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
-

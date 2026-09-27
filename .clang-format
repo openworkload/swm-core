@@ -1,0 +1,52 @@
+# Matches swm-sched Google-based C++ style (see swm-sched/STYLE.md).
+# Applied to c_src/ via scripts/format-cpp.sh (make gen / make format).
+BasedOnStyle: Google
+Language: Cpp
+
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ColumnLimit: 120
+
+# Class sections public/protected/private, each indented one space.
+AccessModifierOffset: -1
+
+# Namespace contents are not indented.
+NamespaceIndentation: None
+
+# Existing code uses "Type *name" / "Type &name".
+PointerAlignment: Right
+ReferenceAlignment: Right
+DerivePointerAlignment: false
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBraces: Attach
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+IndentCaseLabels: true
+SpaceAfterCStyleCast: false
+SpaceBeforeCpp11BracedList: true
+SpacesBeforeTrailingComments: 2
+AlignConsecutiveMacros: Consecutive
+
+IncludeBlocks: Regroup
+SortIncludes: CaseSensitive
+IncludeCategories:
+  # Related header is kept first by clang-format when it matches the .cpp basename.
+  - Regex: '^".*"$'
+    Priority: 1
+  - Regex: '^<ext/.*\.h>'
+    Priority: 2
+  - Regex: '^<.*\.h>'
+    Priority: 2
+  - Regex: '^<.*>'
+    Priority: 3
+  - Regex: '.*'
+    Priority: 4

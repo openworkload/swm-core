@@ -95,12 +95,11 @@ RUN apt-get install net-tools -y
 RUN apt-get install iputils-ping -y
 RUN apt-get install telnet -y
 RUN apt-get install cmake -y
-# clang-format-14: swm-sched `make format` / `make format-check` (see swm-sched/.clang-format)
 RUN apt-get install clang-format-14 -y
 RUN apt-get install gnuplot -y
 RUN apt-get install strace -y
 
-# PMIx (issue #9: swm-pmix / swm-task --pmix)
+# PMIx
 RUN apt-get install libpmix-dev libpmix-bin -y
 RUN apt-get install libpmix2t64 -y || apt-get install libpmix2 -y
 

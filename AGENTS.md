@@ -10,8 +10,8 @@ Guidance for coding agents working on this repository. The codebase is primarily
 
 ## Build (typical)
 
-- `make gen` — regenerate cog outputs where applicable.
-- `make format` — format generated and source files after `make gen`.
+- `make gen` -- regenerate cog outputs; also runs `scripts/format-cpp.sh` on `c_src/`.
+- `make format` -- format Erlang (`rebar3 format`) and C++ under `c_src/` (`scripts/format-cpp.sh`, `.clang-format`).
 - `make porter` — build C++ Porter.
 - `make compile` — `./rebar3 compile`.
 - `make build-all` — full build in `skyport-dev` as `$USER`; **stops SWM first** so sync cannot race `rebar3`/compile.
@@ -59,7 +59,7 @@ Use the host `$USER` (or the uid that owns the workspace). Do not use `docker ex
 
 - **Erlang**: follow existing module layout, types/specs where the file already uses them, rebar3 profiles, and `make format` / lint expectations already wired in the repo.
 - **No Unicode em-dash (`—`, U+2014) in source or log strings.** `wm_log` formats messages with `~s`, which rejects codepoints above 255 and can crash the caller (e.g. `wm_factory`). Use ASCII `--` (or plain hyphen) instead. Prefer ASCII-only in `?LOG_*` format strings generally.
-- **After plan execution (or any non-trivial Erlang change):** force a clean recompile of touched modules and **fix all new Erlang warnings** (`warn_missing_spec`, unused variables, deprecated `catch ...`, etc.). Do not leave the work with warnings introduced by the change. Example: delete the relevant `.beam` files under `_build/default/lib/swm/ebin/` then `make compile`, or `touch` the sources and recompile, and inspect compiler output for the modules you edited.
+- **After plan execution (or any non-trivial Erlang change):** force a clean recompile of touched modules and **fix all new Erlang warnings** (`warn_missing_spec`, unused variables, deprecated `catch ...`, etc.). Do not leave the work with warnings introduced by the change. Do `make compile` and inspect compiler output for the modules you edited.
 - **C++**: match style and patterns in `c_src/lib/` and `c_src/porter/`; build through **`make porter`** or the subdirectory Makefiles rather than inventing new build systems.
 - **Scope**: change only what the task requires; do not refactor unrelated Erlang or C++ without a clear need.
 

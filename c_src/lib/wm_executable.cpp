@@ -1,17 +1,14 @@
-#include <iostream>
-
 #include "wm_executable.h"
 
 #include <ei.h>
 
+#include <iostream>
 
 using namespace swm;
 
+SwmExecutable::SwmExecutable() {}
 
-SwmExecutable::SwmExecutable() {
-}
-
-SwmExecutable::SwmExecutable(const char* buf, int &index) {
+SwmExecutable::SwmExecutable(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmExecutable: null" << std::endl;
     return;
@@ -66,9 +63,7 @@ SwmExecutable::SwmExecutable(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmExecutable::set_name(const std::string &new_val) {
   name = new_val;
@@ -120,8 +115,8 @@ int swm::ei_buffer_to_executable(const char *buf, int &index, std::vector<SwmExe
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a executable list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a executable list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -133,7 +128,7 @@ int swm::ei_buffer_to_executable(const char *buf, int &index, std::vector<SwmExe
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -155,7 +150,7 @@ int swm::ei_buffer_to_executable(const char *buf, int &index, std::vector<SwmExe
   return 0;
 }
 
-int swm::ei_buffer_to_executable(const char* buf, int &index, SwmExecutable &obj) {
+int swm::ei_buffer_to_executable(const char *buf, int &index, SwmExecutable &obj) {
   obj = SwmExecutable(buf, index);
   return 0;
 }
@@ -168,4 +163,3 @@ void SwmExecutable::print(const std::string &prefix, const char separator) const
   std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
-

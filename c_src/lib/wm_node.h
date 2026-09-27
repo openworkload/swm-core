@@ -1,40 +1,39 @@
 
 #pragma once
 
-#include <vector>
-
 #include "wm_entity.h"
 #include "wm_entity_utils.h"
 #include "wm_resource.h"
 
+#include <vector>
+
 namespace swm {
 
-class SwmNode:SwmEntity {
-
+class SwmNode : SwmEntity {
  public:
   SwmNode();
-  SwmNode(const char*, int&);
+  SwmNode(const char *, int &);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
-  void set_id(const std::string&);
-  void set_name(const std::string&);
-  void set_host(const std::string&);
-  void set_api_port(const uint64_t&);
-  void set_parent(const std::string&);
-  void set_state_power(const std::string&);
-  void set_state_alloc(const std::string&);
-  void set_roles(const std::vector<uint64_t>&);
-  void set_resources(const std::vector<SwmResource>&);
-  void set_properties(const std::vector<SwmTupleAtomBuff>&);
-  void set_subdivision(const std::string&);
-  void set_subdivision_id(const std::string&);
-  void set_comment(const std::string&);
-  void set_remote_id(const std::string&);
-  void set_is_template(const std::string&);
-  void set_gateway(const std::string&);
-  void set_prices(const std::map<std::string, std::string>&);
-  void set_revision(const uint64_t&);
+  void set_id(const std::string &);
+  void set_name(const std::string &);
+  void set_host(const std::string &);
+  void set_api_port(const uint64_t &);
+  void set_parent(const std::string &);
+  void set_state_power(const std::string &);
+  void set_state_alloc(const std::string &);
+  void set_roles(const std::vector<uint64_t> &);
+  void set_resources(const std::vector<SwmResource> &);
+  void set_properties(const std::vector<SwmTupleAtomBuff> &);
+  void set_subdivision(const std::string &);
+  void set_subdivision_id(const std::string &);
+  void set_comment(const std::string &);
+  void set_remote_id(const std::string &);
+  void set_is_template(const std::string &);
+  void set_gateway(const std::string &);
+  void set_prices(const std::map<std::string, std::string> &);
+  void set_revision(const uint64_t &);
 
   std::string get_id() const;
   std::string get_name() const;
@@ -74,10 +73,9 @@ class SwmNode:SwmEntity {
   std::string gateway;
   std::map<std::string, std::string> prices;
   uint64_t revision;
-
 };
 
-int ei_buffer_to_node(const char*, int&, std::vector<SwmNode>&);
-int ei_buffer_to_node(const char*, int&, SwmNode&);
+int ei_buffer_to_node(const char *, int &, std::vector<SwmNode> &);
+int ei_buffer_to_node(const char *, int &, SwmNode &);
 
-} // namespace swm
+}  // namespace swm

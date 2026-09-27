@@ -2,36 +2,36 @@
 #include "wm_entity.h"
 #include "wm_io.h"
 #include "wm_job.h"
-#include "wm_process.h"
 #include "wm_porter_ctrl.h"
 #include "wm_porter_data.h"
+#include "wm_process.h"
 
 #include <ei.h>
-
-#include <cerrno>
-#include <cstring>
-#include <iostream>
-#include <fstream>
 #include <fcntl.h>
 #include <getopt.h>
-#include <linux/limits.h>
 #include <limits.h>
+#include <linux/limits.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+#include <fstream>
+#include <iostream>
 #include <map>
 #include <vector>
 
-#define CHILD_WAITING_TIME 5
-#define PROCESS_TUPLE_SIZE 6
+#define CHILD_WAITING_TIME        5
+#define PROCESS_TUPLE_SIZE        6
 #define PORTER_COMMAND_CTRL_REPLY 2
 
 using namespace swm;
@@ -61,11 +61,11 @@ void set_workdir(passwd *pw, SwmJob &job) {
   // Validate current working directory
   char cwd[PATH_MAX];
   if (getcwd(cwd, sizeof(cwd))) {
-     swm_logi("Current working directory: %s", cwd);
-   } else {
-     perror("getcwd() error");
-     exit(EXIT_SYSTEM_ERROR);
-   }
+    swm_logi("Current working directory: %s", cwd);
+  } else {
+    perror("getcwd() error");
+    exit(EXIT_SYSTEM_ERROR);
+  }
 }
 
 void switch_stdout(const std::string &path) {
@@ -126,19 +126,16 @@ void print_usage(const std::string &prog) {
   std::cout << "Usage: " << prog << " [-d|-h]" << std::endl;
 }
 
-void parse_opts(int argc, char* const argv[]) {
-  const char* short_opts = "hd";
+void parse_opts(int argc, char *const argv[]) {
+  const char *short_opts = "hd";
   const option long_opts[] = {
-    {"help", no_argument, nullptr, 'h'},
-    {"debug", no_argument, nullptr, 'd'},
-    {nullptr, 0, nullptr, 0}
-  };
+      {"help", no_argument, nullptr, 'h'}, {"debug", no_argument, nullptr, 'd'}, {nullptr, 0, nullptr, 0}};
 
   int res;
   int opt_idx;
   int log_level = SWM_LOG_LEVEL_INFO;
-  while((res=getopt_long(argc, argv, short_opts, long_opts, &opt_idx)) != -1) {
-    switch(res) {
+  while ((res = getopt_long(argc, argv, short_opts, long_opts, &opt_idx)) != -1) {
+    switch (res) {
       case 'h': {
         print_usage(argv[0]);
         exit(0);
@@ -265,7 +262,7 @@ int send_process_info(const SwmProcess &proc) {
   }
 
   if (swm_get_log_level() >= SWM_LOG_LEVEL_DEBUG1) {
-    char* term_str = nullptr;
+    char *term_str = nullptr;
     int index = 0;
     ei_s_print_term(&term_str, x.buff, &index);
     swm_logd("Process term: ", term_str);
@@ -318,14 +315,13 @@ void set_job_dir_ownership(const SwmJob &job, const uid_t uid, const gid_t gid) 
   }
 }
 
-int main(int argc, char* const argv[]) {
-
+int main(int argc, char *const argv[]) {
   swm_logd("Porter has started");
 
   parse_opts(argc, argv);
   ei_init();
 
-  byte* data[SWM_DATA_TYPES_COUNT];
+  byte *data[SWM_DATA_TYPES_COUNT];
   if (get_porter_data(&std::cin, data)) {
     swm_loge("Could not read raw input data");
     return EXIT_FAILURE;
@@ -382,16 +378,12 @@ int main(int argc, char* const argv[]) {
 
     set_io(info.job);  // do not use logger after this point
 
-    extern char** environ;
-    char* const argv[] = {
-      const_cast<char*>("/bin/sh"),
-      const_cast<char*>("-c"),
-      const_cast<char*>(path.c_str()),
-      nullptr
-    };
+    extern char **environ;
+    char *const argv[] = {
+        const_cast<char *>("/bin/sh"), const_cast<char *>("-c"), const_cast<char *>(path.c_str()), nullptr};
     execve("/bin/sh", &argv[0], environ);
 
-  } else {  /* This is the parent */
+  } else { /* This is the parent */
     swm_logi("Parent process started, job process PID=%d", child_pid);
 
     // Non-blocking stdin for control replies from SWM.
@@ -408,8 +400,7 @@ int main(int argc, char* const argv[]) {
     std::map<std::string, int> pending_refs;  // ref -> client fd
 
     auto make_ref = []() {
-      return std::to_string(getpid()) + "-" + std::to_string(time(nullptr)) + "-" +
-             std::to_string(rand());
+      return std::to_string(getpid()) + "-" + std::to_string(time(nullptr)) + "-" + std::to_string(rand());
     };
 
     auto handle_ctrl_line = [&](const std::string &line) {
@@ -472,8 +463,7 @@ int main(int argc, char* const argv[]) {
       if (n != 4) {
         return;
       }
-      uint32_t len = (uint32_t(hdr[1]) << 24) | (uint32_t(hdr[2]) << 16) |
-                     (uint32_t(hdr[3]) << 8) | uint32_t(hdr[4]);
+      uint32_t len = (uint32_t(hdr[1]) << 24) | (uint32_t(hdr[2]) << 16) | (uint32_t(hdr[3]) << 8) | uint32_t(hdr[4]);
       if (len == 0 || len > 16 * 1024 * 1024) {
         return;
       }
@@ -590,7 +580,7 @@ int main(int argc, char* const argv[]) {
       try_read_ctrl_client();
       try_read_stdin_reply();
 
-      pid_t end_pid = waitpid(child_pid, &status, WNOHANG|WUNTRACED);
+      pid_t end_pid = waitpid(child_pid, &status, WNOHANG | WUNTRACED);
       SwmProcess proc;
       proc.set_pid(child_pid);
       proc.set_state(SWM_JOB_STATE_ERROR);
@@ -605,7 +595,7 @@ int main(int argc, char* const argv[]) {
           swm_loge("Process info not sent");
           return EXIT_FAILURE;
         }
-        sleep(CHILD_WAITING_TIME); // give container time to propagate the final info to swm
+        sleep(CHILD_WAITING_TIME);  // give container time to propagate the final info to swm
         exit(EXIT_FAILURE);
       } else if (end_pid == 0) { /* child still running  */
         proc.set_state(SWM_JOB_STATE_RUNNING);
@@ -623,7 +613,7 @@ int main(int argc, char* const argv[]) {
           if (status == 0) {
             swm_logi("Job process has terminated normally", exitcode);
           } else {
-            swm_loge("Job process has terminated with exit code",  exitcode);
+            swm_loge("Job process has terminated with exit code", exitcode);
           }
         }
         if (WIFSIGNALED(status)) {
@@ -639,14 +629,14 @@ int main(int argc, char* const argv[]) {
           const char *strsig = strsignal(sig);
           swm_loge("Job process has been stopped by delivery of a signal \"%s\"", strsig);
         }
-        proc.set_state( SWM_JOB_STATE_FINISHED);
+        proc.set_state(SWM_JOB_STATE_FINISHED);
         proc.set_exitcode(exitcode);
         proc.set_signal(sig);
         if (send_process_info(proc)) {
           swm_loge("The final job process info has not been sent");
           return EXIT_FAILURE;
         }
-        sleep(CHILD_WAITING_TIME); // give container time to propagate the final info to swm
+        sleep(CHILD_WAITING_TIME);  // give container time to propagate the final info to swm
         break;
       }
     }

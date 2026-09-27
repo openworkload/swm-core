@@ -1,17 +1,14 @@
-#include <iostream>
-
 #include "wm_user.h"
 
 #include <ei.h>
 
+#include <iostream>
 
 using namespace swm;
 
+SwmUser::SwmUser() {}
 
-SwmUser::SwmUser() {
-}
-
-SwmUser::SwmUser(const char* buf, int &index) {
+SwmUser::SwmUser(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmUser: null" << std::endl;
     return;
@@ -73,9 +70,7 @@ SwmUser::SwmUser(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmUser::set_id(const std::string &new_val) {
   id = new_val;
@@ -135,8 +130,8 @@ int swm::ei_buffer_to_user(const char *buf, int &index, std::vector<SwmUser> &ar
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a user list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a user list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -148,7 +143,7 @@ int swm::ei_buffer_to_user(const char *buf, int &index, std::vector<SwmUser> &ar
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -170,7 +165,7 @@ int swm::ei_buffer_to_user(const char *buf, int &index, std::vector<SwmUser> &ar
   return 0;
 }
 
-int swm::ei_buffer_to_user(const char* buf, int &index, SwmUser &obj) {
+int swm::ei_buffer_to_user(const char *buf, int &index, SwmUser &obj) {
   obj = SwmUser(buf, index);
   return 0;
 }
@@ -184,4 +179,3 @@ void SwmUser::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
-

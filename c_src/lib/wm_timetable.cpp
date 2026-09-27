@@ -1,17 +1,14 @@
-#include <iostream>
-
 #include "wm_timetable.h"
 
 #include <ei.h>
 
+#include <iostream>
 
 using namespace swm;
 
+SwmTimetable::SwmTimetable() {}
 
-SwmTimetable::SwmTimetable() {
-}
-
-SwmTimetable::SwmTimetable(const char* buf, int &index) {
+SwmTimetable::SwmTimetable(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmTimetable: null" << std::endl;
     return;
@@ -52,9 +49,7 @@ SwmTimetable::SwmTimetable(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmTimetable::set_start_time(const uint64_t &new_val) {
   start_time = new_val;
@@ -90,8 +85,8 @@ int swm::ei_buffer_to_timetable(const char *buf, int &index, std::vector<SwmTime
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a timetable list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a timetable list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -103,7 +98,7 @@ int swm::ei_buffer_to_timetable(const char *buf, int &index, std::vector<SwmTime
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -125,7 +120,7 @@ int swm::ei_buffer_to_timetable(const char *buf, int &index, std::vector<SwmTime
   return 0;
 }
 
-int swm::ei_buffer_to_timetable(const char* buf, int &index, SwmTimetable &obj) {
+int swm::ei_buffer_to_timetable(const char *buf, int &index, SwmTimetable &obj) {
   obj = SwmTimetable(buf, index);
   return 0;
 }
@@ -136,12 +131,12 @@ void SwmTimetable::print(const std::string &prefix, const char separator) const 
   if (job_nodes.empty()) {
     std::cerr << prefix << "job_nodes: []" << separator;
   } else {
-    std::cerr << prefix << "job_nodes" << ": [";
-    for (const auto &q: job_nodes) {
+    std::cerr << prefix << "job_nodes"
+              << ": [";
+    for (const auto &q : job_nodes) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
   }
   std::cerr << std::endl;
 }
-

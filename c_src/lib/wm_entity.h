@@ -7,8 +7,8 @@
 namespace swm {
 
 class SwmEntity {
-  public:
-    virtual void print(const std::string &prefix, const char separator) const = 0;
+ public:
+  virtual void print(const std::string &prefix, const char separator) const = 0;
 };
 
-} // namespace swm
+}  // namespace swm

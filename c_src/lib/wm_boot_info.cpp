@@ -1,17 +1,14 @@
-#include <iostream>
-
 #include "wm_boot_info.h"
 
 #include <ei.h>
 
+#include <iostream>
 
 using namespace swm;
 
+SwmBootInfo::SwmBootInfo() {}
 
-SwmBootInfo::SwmBootInfo() {
-}
-
-SwmBootInfo::SwmBootInfo(const char* buf, int &index) {
+SwmBootInfo::SwmBootInfo(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmBootInfo: null" << std::endl;
     return;
@@ -59,9 +56,7 @@ SwmBootInfo::SwmBootInfo(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmBootInfo::set_node_host(const std::string &new_val) {
   node_host = new_val;
@@ -105,8 +100,8 @@ int swm::ei_buffer_to_boot_info(const char *buf, int &index, std::vector<SwmBoot
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a boot_info list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a boot_info list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -118,7 +113,7 @@ int swm::ei_buffer_to_boot_info(const char *buf, int &index, std::vector<SwmBoot
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -140,7 +135,7 @@ int swm::ei_buffer_to_boot_info(const char *buf, int &index, std::vector<SwmBoot
   return 0;
 }
 
-int swm::ei_buffer_to_boot_info(const char* buf, int &index, SwmBootInfo &obj) {
+int swm::ei_buffer_to_boot_info(const char *buf, int &index, SwmBootInfo &obj) {
   obj = SwmBootInfo(buf, index);
   return 0;
 }
@@ -152,4 +147,3 @@ void SwmBootInfo::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << parent_port << separator;
   std::cerr << std::endl;
 }
-

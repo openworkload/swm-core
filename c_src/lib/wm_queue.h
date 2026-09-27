@@ -1,32 +1,31 @@
 
 #pragma once
 
-#include <vector>
-
 #include "wm_entity.h"
 #include "wm_entity_utils.h"
 
+#include <vector>
+
 namespace swm {
 
-class SwmQueue:SwmEntity {
-
+class SwmQueue : SwmEntity {
  public:
   SwmQueue();
-  SwmQueue(const char*, int&);
+  SwmQueue(const char *, int &);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
-  void set_id(const uint64_t&);
-  void set_name(const std::string&);
-  void set_state(const std::string&);
-  void set_jobs(const std::vector<std::string>&);
-  void set_nodes(const std::vector<std::string>&);
-  void set_users(const std::vector<std::string>&);
-  void set_admins(const std::vector<std::string>&);
-  void set_hooks(const std::vector<std::string>&);
-  void set_priority(const int64_t&);
-  void set_comment(const std::string&);
-  void set_revision(const uint64_t&);
+  void set_id(const uint64_t &);
+  void set_name(const std::string &);
+  void set_state(const std::string &);
+  void set_jobs(const std::vector<std::string> &);
+  void set_nodes(const std::vector<std::string> &);
+  void set_users(const std::vector<std::string> &);
+  void set_admins(const std::vector<std::string> &);
+  void set_hooks(const std::vector<std::string> &);
+  void set_priority(const int64_t &);
+  void set_comment(const std::string &);
+  void set_revision(const uint64_t &);
 
   uint64_t get_id() const;
   std::string get_name() const;
@@ -52,10 +51,9 @@ class SwmQueue:SwmEntity {
   int64_t priority;
   std::string comment;
   uint64_t revision;
-
 };
 
-int ei_buffer_to_queue(const char*, int&, std::vector<SwmQueue>&);
-int ei_buffer_to_queue(const char*, int&, SwmQueue&);
+int ei_buffer_to_queue(const char *, int &, std::vector<SwmQueue> &);
+int ei_buffer_to_queue(const char *, int &, SwmQueue &);
 
-} // namespace swm
+}  // namespace swm

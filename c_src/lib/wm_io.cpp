@@ -1,19 +1,21 @@
-#include "wm_entity.h"
 #include "wm_io.h"
 
-#include <cstring>
+#include "wm_entity.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
 
+#include <cstring>
+
 #define LOG_OUT_STREAM stderr
 
 static int g_log_level = SWM_LOG_LEVEL_INFO;
 static FILE *g_log_stream = nullptr;
 
-void _print_log_format(const char* tag, const char* message, va_list args, const bool end_line) {
+void _print_log_format(const char *tag, const char *message, va_list args, const bool end_line) {
   time_t now;
   time(&now);
   char *date = ctime(&now);
@@ -34,7 +36,7 @@ int swm_get_log_level() {
   return g_log_level;
 }
 
-void swm_logi(const char* message, ...) {
+void swm_logi(const char *message, ...) {
   va_list args;
   va_start(args, message);
   if (message == nullptr) {
@@ -46,7 +48,7 @@ void swm_logi(const char* message, ...) {
   fflush(LOG_OUT_STREAM);
 }
 
-void swm_loge(const char* message, ...) {
+void swm_loge(const char *message, ...) {
   va_list args;
   va_start(args, message);
   if (message == nullptr) {
@@ -61,7 +63,7 @@ void swm_loge(const char* message, ...) {
   fflush(LOG_OUT_STREAM);
 }
 
-void swm_logd(const char* message = nullptr, ...) {
+void swm_logd(const char *message = nullptr, ...) {
   if (g_log_level < SWM_LOG_LEVEL_DEBUG1) {
     return;
   }
@@ -76,7 +78,7 @@ void swm_logd(const char* message = nullptr, ...) {
   fflush(LOG_OUT_STREAM);
 }
 
-void swm_logdd(const char* message, ...) {
+void swm_logdd(const char *message, ...) {
   if (g_log_level < SWM_LOG_LEVEL_DEBUG2) {
     return;
   }
@@ -90,15 +92,12 @@ void swm_logdd(const char* message, ...) {
 bool swm_read_length(std::istream *stream, uint32_t *len) {
   // swm_read_exact() checks stream for nullptr
   unsigned char buf[4];
-  if (!swm_read_exact(stream, (char*)buf, 4)) {
+  if (!swm_read_exact(stream, (char *)buf, 4)) {
     return false;
   }
 
   // Convert 4 bytes to unsigned long:
-  *len = (buf[0] << 24) |
-         (buf[1] << 16) |
-         (buf[2] << 8)  |
-          buf[3];
+  *len = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
   return true;
 }
 
@@ -120,7 +119,7 @@ bool swm_write_exact(std::ostream *stream, char *buf, size_t len) {
   return stream->good();
 }
 
-void print_ei_buf(const char* buf, int index) {
+void print_ei_buf(const char *buf, int index) {
   ei_print_term(LOG_OUT_STREAM, buf, &index);
   fprintf(LOG_OUT_STREAM, "\n");
 }

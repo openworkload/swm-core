@@ -1,28 +1,27 @@
 
 #pragma once
 
-#include <vector>
-
 #include "wm_entity.h"
 #include "wm_entity_utils.h"
 
+#include <vector>
+
 namespace swm {
 
-class SwmAccount:SwmEntity {
-
+class SwmAccount : SwmEntity {
  public:
   SwmAccount();
-  SwmAccount(const char*, int&);
+  SwmAccount(const char *, int &);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
-  void set_id(const std::string&);
-  void set_name(const std::string&);
-  void set_price_list(const std::string&);
-  void set_users(const std::vector<std::string>&);
-  void set_admins(const std::vector<std::string>&);
-  void set_comment(const std::string&);
-  void set_revision(const uint64_t&);
+  void set_id(const std::string &);
+  void set_name(const std::string &);
+  void set_price_list(const std::string &);
+  void set_users(const std::vector<std::string> &);
+  void set_admins(const std::vector<std::string> &);
+  void set_comment(const std::string &);
+  void set_revision(const uint64_t &);
 
   std::string get_id() const;
   std::string get_name() const;
@@ -40,10 +39,9 @@ class SwmAccount:SwmEntity {
   std::vector<std::string> admins;
   std::string comment;
   uint64_t revision;
-
 };
 
-int ei_buffer_to_account(const char*, int&, std::vector<SwmAccount>&);
-int ei_buffer_to_account(const char*, int&, SwmAccount&);
+int ei_buffer_to_account(const char *, int &, std::vector<SwmAccount> &);
+int ei_buffer_to_account(const char *, int &, SwmAccount &);
 
-} // namespace swm
+}  // namespace swm

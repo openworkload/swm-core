@@ -12,7 +12,7 @@
     sys.exit(1)
 
   ClassName = "Swm" + WM_ENTITY_NAME.title().replace('_', '')
-  cog.msg("genareting %s code" % ClassName)
+  cog.msg("generating %s code" % ClassName)
 
   import json, collections
   json_data=open('./priv/schema.json')
@@ -67,16 +67,18 @@
         (type_str, to_defines) = transform(k["type"])
         defines.extend(to_defines)
       need_setters.append((z, type_str))
-      props.append("  " + type_str  + " " + z + ";")
+      props.append("  " + cxx_type(type_str) + " " + z + ";")
 
-    for define in defines:
+    # Unique entity includes, sorted for stable diffs and clang-format SortIncludes.
+    unique_defines = sorted(set(defines))
+    for define in unique_defines:
       cog.outl('#include "wm_%s.h"' % define)
-    cog.outl();
+    cog.outl()
 
-    cog.outl("namespace swm {");
-    cog.outl();
+    cog.outl("namespace swm {")
+    cog.outl()
 
-    cog.outl("class %s:SwmEntity {\n" % ClassName)
+    cog.outl("class %s : SwmEntity {" % ClassName)
     cog.outl(" public:")
     out_init_ctor(x,y)
     cog.outl("")
@@ -86,7 +88,7 @@
 
     cog.outl(" private:")
     cog.outl('\n'.join(props))
-    cog.outl();
+    cog.outl()
 
     cog.outl("};")
 
@@ -94,22 +96,21 @@
   def out_setters(need_setters):
     cog.outl()
     for (x,t) in need_setters:
-      operand = "" if t.endswith("*") else "&"
-      cog.outl(f"  void set_{x}(const {t}{operand});")
+      cog.outl(f"  void set_{x}({cxx_const_param(t)});")
     cog.outl()
     for (x,t) in need_setters:
-      cog.outl("  %s get_%s() const;" % (t, x))
+      cog.outl("  %s get_%s() const;" % (cxx_type(t), x))
 
 
   def out_init_ctor(x,y):
     cog.outl("  %s();" % ClassName)
-    cog.outl("  %s(const char*, int&);" % ClassName)
+    cog.outl("  %s(const char *, int &);" % ClassName)
 
 
   def out_convert(x,y):
-    cog.outl("int ei_buffer_to_%s(const char*, int&, std::vector<%s>&);" %\
+    cog.outl("int ei_buffer_to_%s(const char *, int &, std::vector<%s> &);" %\
              (x, ClassName))
-    cog.outl("int ei_buffer_to_%s(const char*, int&, %s&);" %\
+    cog.outl("int ei_buffer_to_%s(const char *, int &, %s &);" %\
              (x, ClassName))
 
   def out_print_funs(x,y):
@@ -130,18 +131,17 @@
     if WM_ENTITY_NAME == "job":
       out_job_defines()
 
-    cog.outl("#include \"wm_entity.h\"");
-    cog.outl("#include \"wm_entity_utils.h\"");
+    cog.outl('#include "wm_entity.h"')
+    cog.outl('#include "wm_entity_utils.h"')
     out_record(x,y)
-    cog.outl();
+    cog.outl()
 
     out_convert(x,y)
     cog.outl()
 
-    cog.outl("} // namespace swm");
+    cog.outl("}  // namespace swm")
 
 
   generate_output()
 
 ]]]
-

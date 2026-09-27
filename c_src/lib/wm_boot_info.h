@@ -1,25 +1,24 @@
 
 #pragma once
 
-#include <vector>
-
 #include "wm_entity.h"
 #include "wm_entity_utils.h"
 
+#include <vector>
+
 namespace swm {
 
-class SwmBootInfo:SwmEntity {
-
+class SwmBootInfo : SwmEntity {
  public:
   SwmBootInfo();
-  SwmBootInfo(const char*, int&);
+  SwmBootInfo(const char *, int &);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
-  void set_node_host(const std::string&);
-  void set_node_port(const uint64_t&);
-  void set_parent_host(const std::string&);
-  void set_parent_port(const uint64_t&);
+  void set_node_host(const std::string &);
+  void set_node_port(const uint64_t &);
+  void set_parent_host(const std::string &);
+  void set_parent_port(const uint64_t &);
 
   std::string get_node_host() const;
   uint64_t get_node_port() const;
@@ -31,10 +30,9 @@ class SwmBootInfo:SwmEntity {
   uint64_t node_port;
   std::string parent_host;
   uint64_t parent_port;
-
 };
 
-int ei_buffer_to_boot_info(const char*, int&, std::vector<SwmBootInfo>&);
-int ei_buffer_to_boot_info(const char*, int&, SwmBootInfo&);
+int ei_buffer_to_boot_info(const char *, int &, std::vector<SwmBootInfo> &);
+int ei_buffer_to_boot_info(const char *, int &, SwmBootInfo &);
 
-} // namespace swm
+}  // namespace swm

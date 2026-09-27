@@ -137,3 +137,17 @@ def c_struct(pp):
         if len(p) > 1:
             s += p.title()
     return s
+
+
+def cxx_type(t):
+    """Normalize C++ type string for clang-format PointerAlignment: Right."""
+    if t.endswith("*"):
+        return t[:-1].rstrip() + " *"
+    return t
+
+
+def cxx_const_param(t):
+    """Parameter type as const pointer or const reference (Right alignment)."""
+    if t.endswith("*"):
+        return "const " + t[:-1].rstrip() + " *"
+    return "const " + t + " &"

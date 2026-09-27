@@ -1,18 +1,14 @@
-#include <iostream>
-
 #include "wm_resource.h"
 
 #include <ei.h>
 
-#include "wm_resource.h"
+#include <iostream>
 
 using namespace swm;
 
+SwmResource::SwmResource() {}
 
-SwmResource::SwmResource() {
-}
-
-SwmResource::SwmResource(const char* buf, int &index) {
+SwmResource::SwmResource(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmResource: null" << std::endl;
     return;
@@ -81,9 +77,7 @@ SwmResource::SwmResource(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmResource::set_name(const std::string &new_val) {
   name = new_val;
@@ -151,8 +145,8 @@ int swm::ei_buffer_to_resource(const char *buf, int &index, std::vector<SwmResou
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a resource list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a resource list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -164,7 +158,7 @@ int swm::ei_buffer_to_resource(const char *buf, int &index, std::vector<SwmResou
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -186,7 +180,7 @@ int swm::ei_buffer_to_resource(const char *buf, int &index, std::vector<SwmResou
   return 0;
 }
 
-int swm::ei_buffer_to_resource(const char* buf, int &index, SwmResource &obj) {
+int swm::ei_buffer_to_resource(const char *buf, int &index, SwmResource &obj) {
   obj = SwmResource(buf, index);
   return 0;
 }
@@ -197,8 +191,9 @@ void SwmResource::print(const std::string &prefix, const char separator) const {
   if (hooks.empty()) {
     std::cerr << prefix << "hooks: []" << separator;
   } else {
-    std::cerr << prefix << "hooks" << ": [";
-    for (const auto &q: hooks) {
+    std::cerr << prefix << "hooks"
+              << ": [";
+    for (const auto &q : hooks) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -206,8 +201,9 @@ void SwmResource::print(const std::string &prefix, const char separator) const {
   if (properties.empty()) {
     std::cerr << prefix << "properties: []" << separator;
   } else {
-    std::cerr << prefix << "properties" << ": [";
-    for (const auto &q: properties) {
+    std::cerr << prefix << "properties"
+              << ": [";
+    for (const auto &q : properties) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -217,12 +213,12 @@ void SwmResource::print(const std::string &prefix, const char separator) const {
   if (resources.empty()) {
     std::cerr << prefix << "resources: []" << separator;
   } else {
-    std::cerr << prefix << "resources" << ": [";
-    for (const auto &q: resources) {
+    std::cerr << prefix << "resources"
+              << ": [";
+    for (const auto &q : resources) {
       q.print(prefix, separator);
     }
     std::cerr << "]" << separator;
   }
   std::cerr << std::endl;
 }
-

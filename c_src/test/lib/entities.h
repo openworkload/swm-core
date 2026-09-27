@@ -1,12 +1,12 @@
-#include <gtest/gtest.h>
 #include "gmock/gmock-matchers.h"
-
+#include "wm_entity_utils.h"
 #include "wm_job.h"
 #include "wm_node.h"
+#include "wm_process.h"
 #include "wm_resource.h"
 #include "wm_scheduler_result.h"
-#include "wm_entity_utils.h"
-#include "wm_process.h"
+
+#include <gtest/gtest.h>
 
 using ::testing::ElementsAre;
 
@@ -41,16 +41,16 @@ TEST(Node, construct) {
       EXPECT_EQ(ei_x_encode_atom(&x, "resource"), 0);
       EXPECT_EQ(ei_x_encode_string(&x, "mem"), 0);
       EXPECT_EQ(ei_x_encode_ulonglong(&x, 128000000), 0);
-      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // hooks
-      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // properties
-      EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0);   // prices
-      EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);     // usage time
-      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
+      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);     // hooks
+      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);     // properties
+      EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0);  // prices
+      EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);   // usage time
+      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);     // resources
     }
   }
   EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
 
-  EXPECT_EQ(ei_x_encode_empty_list(&x), 0); // properties
+  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // properties
 
   EXPECT_EQ(ei_x_encode_atom(&x, "partition"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "subdivision-id"), 0);
@@ -58,7 +58,7 @@ TEST(Node, construct) {
   EXPECT_EQ(ei_x_encode_string(&x, "remote-id"), 0);
   EXPECT_EQ(ei_x_encode_atom(&x, "false"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "gateway"), 0);
-  EXPECT_EQ(ei_x_encode_map_header(&x, 2), 0);   // prices
+  EXPECT_EQ(ei_x_encode_map_header(&x, 2), 0);  // prices
   {
     EXPECT_EQ(ei_x_encode_string(&x, "account-1"), 0);
     EXPECT_EQ(ei_x_encode_double(&x, 0.0), 0);
@@ -246,9 +246,7 @@ TEST(Job, construct) {
   EXPECT_EQ(ei_x_encode_string(&x, "workdir"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "user-id"), 0);
   EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // hooks
-  {
-    EXPECT_EQ(ei_x_encode_string(&x, "hook-id-1"), 0);
-  }
+  { EXPECT_EQ(ei_x_encode_string(&x, "hook-id-1"), 0); }
   EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
   EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // env
   {
@@ -280,10 +278,10 @@ TEST(Job, construct) {
       EXPECT_EQ(ei_x_encode_atom(&x, "resource"), 0);
       EXPECT_EQ(ei_x_encode_string(&x, "node"), 0);
       EXPECT_EQ(ei_x_encode_ulonglong(&x, 1), 0);
-      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // hooks
-      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // properties
+      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);      // hooks
+      EXPECT_EQ(ei_x_encode_empty_list(&x), 0);      // properties
       EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0);   // prices
-      EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);     // usage time
+      EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);    // usage time
       EXPECT_EQ(ei_x_encode_list_header(&x, 2), 0);  // resources
       {
         EXPECT_EQ(ei_x_encode_tuple_header(&x, 8), 0);
@@ -291,18 +289,18 @@ TEST(Job, construct) {
           EXPECT_EQ(ei_x_encode_atom(&x, "resource"), 0);
           EXPECT_EQ(ei_x_encode_string(&x, "mem"), 0);
           EXPECT_EQ(ei_x_encode_ulonglong(&x, 1234567), 0);
-          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // hooks
-          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // properties
-          EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0); // prices
-          EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);  // usage time
-          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);     // hooks
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);     // properties
+          EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0);  // prices
+          EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);   // usage time
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);     // resources
         }
         EXPECT_EQ(ei_x_encode_tuple_header(&x, 8), 0);
         {
           EXPECT_EQ(ei_x_encode_atom(&x, "resource"), 0);
           EXPECT_EQ(ei_x_encode_string(&x, "flavor"), 0);
           EXPECT_EQ(ei_x_encode_ulonglong(&x, 1), 0);
-          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // hooks
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);      // hooks
           EXPECT_EQ(ei_x_encode_list_header(&x, 1), 0);  // properties
           {
             EXPECT_EQ(ei_x_encode_tuple_header(&x, 2), 0);  // {value, "m1.tiny"}
@@ -312,9 +310,9 @@ TEST(Job, construct) {
             }
           }
           EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
-          EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0); // prices
-          EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);  // usage time
-          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
+          EXPECT_EQ(ei_x_encode_map_header(&x, 0), 0);  // prices
+          EXPECT_EQ(ei_x_encode_ulonglong(&x, 0), 0);   // usage time
+          EXPECT_EQ(ei_x_encode_empty_list(&x), 0);     // resources
         }
       }
       EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
@@ -324,9 +322,9 @@ TEST(Job, construct) {
   EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
   EXPECT_EQ(ei_x_encode_string(&x, "container-id-28"), 0);
   EXPECT_EQ(ei_x_encode_atom(&x, "true"), 0);  // relocatable
-  EXPECT_EQ(ei_x_encode_ulong(&x, 1), 0);  // exit code
-  EXPECT_EQ(ei_x_encode_ulong(&x, 15), 0);  // signal
-  EXPECT_EQ(ei_x_encode_ulong(&x, 1500), 0);  // priority
+  EXPECT_EQ(ei_x_encode_ulong(&x, 1), 0);      // exit code
+  EXPECT_EQ(ei_x_encode_ulong(&x, 15), 0);     // signal
+  EXPECT_EQ(ei_x_encode_ulong(&x, 1500), 0);   // priority
   EXPECT_EQ(ei_x_encode_string(&x, "comment"), 0);
   EXPECT_EQ(ei_x_encode_ulong(&x, 0), 0);  // revision
 

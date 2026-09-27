@@ -1,17 +1,14 @@
-#include <iostream>
-
 #include "wm_queue.h"
 
 #include <ei.h>
 
+#include <iostream>
 
 using namespace swm;
 
+SwmQueue::SwmQueue() {}
 
-SwmQueue::SwmQueue() {
-}
-
-SwmQueue::SwmQueue(const char* buf, int &index) {
+SwmQueue::SwmQueue(const char *buf, int &index) {
   if (!buf) {
     std::cerr << "Could not convert ei buffer into SwmQueue: null" << std::endl;
     return;
@@ -108,9 +105,7 @@ SwmQueue::SwmQueue(const char* buf, int &index) {
     std::cerr << std::endl;
     return;
   }
-
 }
-
 
 void SwmQueue::set_id(const uint64_t &new_val) {
   id = new_val;
@@ -210,8 +205,8 @@ int swm::ei_buffer_to_queue(const char *buf, int &index, std::vector<SwmQueue> &
   }
 
   if (term_type != ERL_LIST_EXT && term_type != ERL_NIL_EXT) {
-      std::cerr << "Could not parse term: not a queue list at " << index << ": " << term_type << std::endl;
-      return -1;
+    std::cerr << "Could not parse term: not a queue list at " << index << ": " << term_type << std::endl;
+    return -1;
   }
   int list_size = 0;
   if (ei_decode_list_header(buf, &index, &list_size) < 0) {
@@ -223,7 +218,7 @@ int swm::ei_buffer_to_queue(const char *buf, int &index, std::vector<SwmQueue> &
   }
 
   array.reserve(list_size);
-  for (int i=0; i<list_size; ++i) {
+  for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
     const int parsed = ei_get_type(buf, &index, &sub_term_type, &entry_size);
@@ -245,7 +240,7 @@ int swm::ei_buffer_to_queue(const char *buf, int &index, std::vector<SwmQueue> &
   return 0;
 }
 
-int swm::ei_buffer_to_queue(const char* buf, int &index, SwmQueue &obj) {
+int swm::ei_buffer_to_queue(const char *buf, int &index, SwmQueue &obj) {
   obj = SwmQueue(buf, index);
   return 0;
 }
@@ -257,8 +252,9 @@ void SwmQueue::print(const std::string &prefix, const char separator) const {
   if (jobs.empty()) {
     std::cerr << prefix << "jobs: []" << separator;
   } else {
-    std::cerr << prefix << "jobs" << ": [";
-    for (const auto &q: jobs) {
+    std::cerr << prefix << "jobs"
+              << ": [";
+    for (const auto &q : jobs) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -266,8 +262,9 @@ void SwmQueue::print(const std::string &prefix, const char separator) const {
   if (nodes.empty()) {
     std::cerr << prefix << "nodes: []" << separator;
   } else {
-    std::cerr << prefix << "nodes" << ": [";
-    for (const auto &q: nodes) {
+    std::cerr << prefix << "nodes"
+              << ": [";
+    for (const auto &q : nodes) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -275,8 +272,9 @@ void SwmQueue::print(const std::string &prefix, const char separator) const {
   if (users.empty()) {
     std::cerr << prefix << "users: []" << separator;
   } else {
-    std::cerr << prefix << "users" << ": [";
-    for (const auto &q: users) {
+    std::cerr << prefix << "users"
+              << ": [";
+    for (const auto &q : users) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -284,8 +282,9 @@ void SwmQueue::print(const std::string &prefix, const char separator) const {
   if (admins.empty()) {
     std::cerr << prefix << "admins: []" << separator;
   } else {
-    std::cerr << prefix << "admins" << ": [";
-    for (const auto &q: admins) {
+    std::cerr << prefix << "admins"
+              << ": [";
+    for (const auto &q : admins) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -293,8 +292,9 @@ void SwmQueue::print(const std::string &prefix, const char separator) const {
   if (hooks.empty()) {
     std::cerr << prefix << "hooks: []" << separator;
   } else {
-    std::cerr << prefix << "hooks" << ": [";
-    for (const auto &q: hooks) {
+    std::cerr << prefix << "hooks"
+              << ": [";
+    for (const auto &q : hooks) {
       std::cerr << q << ",";
     }
     std::cerr << "]" << separator;
@@ -304,4 +304,3 @@ void SwmQueue::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << revision << separator;
   std::cerr << std::endl;
 }
-

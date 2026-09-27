@@ -4,41 +4,44 @@
 
 #include <pmix.h>
 #include <pmix_server.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <atomic>
 #include <cstring>
 #include <iostream>
 #include <mutex>
 #include <string>
-#include <sys/stat.h>
-#include <unistd.h>
 
 namespace {
 
 std::string g_job_id;
 std::string g_nspace;
-std::atomic<bool> g_running{true};
+std::atomic<bool> g_running {true};
 std::mutex g_fence_mu;
 
-pmix_status_t connected(const pmix_proc_t * /*proc*/, void * /*server_object*/,
-                        pmix_op_cbfunc_t cbfunc, void *cbdata) {
+pmix_status_t connected(const pmix_proc_t * /*proc*/, void * /*server_object*/, pmix_op_cbfunc_t cbfunc, void *cbdata) {
   if (cbfunc) {
     cbfunc(PMIX_SUCCESS, cbdata);
   }
   return PMIX_SUCCESS;
 }
 
-pmix_status_t finalized(const pmix_proc_t * /*proc*/, void * /*server_object*/,
-                        pmix_op_cbfunc_t cbfunc, void *cbdata) {
+pmix_status_t finalized(const pmix_proc_t * /*proc*/, void * /*server_object*/, pmix_op_cbfunc_t cbfunc, void *cbdata) {
   if (cbfunc) {
     cbfunc(PMIX_SUCCESS, cbdata);
   }
   return PMIX_SUCCESS;
 }
 
-pmix_status_t abort_fn(const pmix_proc_t * /*proc*/, void * /*server_object*/, int status,
-                       const char msg[], pmix_proc_t /*procs*/[], size_t /*nprocs*/,
-                       pmix_op_cbfunc_t cbfunc, void *cbdata) {
+pmix_status_t abort_fn(const pmix_proc_t * /*proc*/,
+                       void * /*server_object*/,
+                       int status,
+                       const char msg[],
+                       pmix_proc_t /*procs*/[],
+                       size_t /*nprocs*/,
+                       pmix_op_cbfunc_t cbfunc,
+                       void *cbdata) {
   std::cerr << "swm-pmix: abort status=" << status << " msg=" << (msg ? msg : "") << "\n";
   if (cbfunc) {
     cbfunc(PMIX_SUCCESS, cbdata);
@@ -46,9 +49,14 @@ pmix_status_t abort_fn(const pmix_proc_t * /*proc*/, void * /*server_object*/, i
   return PMIX_SUCCESS;
 }
 
-pmix_status_t fencenb(const pmix_proc_t /*procs*/[], size_t /*nprocs*/,
-                      const pmix_info_t /*info*/[], size_t /*ninfo*/, char * /*data*/,
-                      size_t /*ndata*/, pmix_modex_cbfunc_t cbfunc, void *cbdata) {
+pmix_status_t fencenb(const pmix_proc_t /*procs*/[],
+                      size_t /*nprocs*/,
+                      const pmix_info_t /*info*/[],
+                      size_t /*ninfo*/,
+                      char * /*data*/,
+                      size_t /*ndata*/,
+                      pmix_modex_cbfunc_t cbfunc,
+                      void *cbdata) {
   // v1: local fence completes immediately (one rank/node). Cross-node fence
   // coordination can be added via wm_pmix later.
   std::lock_guard<std::mutex> lock(g_fence_mu);
@@ -58,8 +66,11 @@ pmix_status_t fencenb(const pmix_proc_t /*procs*/[], size_t /*nprocs*/,
   return PMIX_SUCCESS;
 }
 
-pmix_status_t dmodex(const pmix_proc_t * /*proc*/, const pmix_info_t /*info*/[], size_t /*ninfo*/,
-                     pmix_modex_cbfunc_t cbfunc, void *cbdata) {
+pmix_status_t dmodex(const pmix_proc_t * /*proc*/,
+                     const pmix_info_t /*info*/[],
+                     size_t /*ninfo*/,
+                     pmix_modex_cbfunc_t cbfunc,
+                     void *cbdata) {
   if (cbfunc) {
     cbfunc(PMIX_ERR_NOT_FOUND, nullptr, 0, cbdata, nullptr, nullptr);
   }

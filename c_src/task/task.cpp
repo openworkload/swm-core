@@ -2,19 +2,19 @@
 // Without --pmix: exec the binary locally in this container.
 // With --pmix: ask SWM via Porter control relay to start PMIx + one rank/node.
 
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
 #include <cerrno>
 #include <cstring>
 #include <iostream>
 #include <string>
-#include <unistd.h>
 #include <vector>
-
-#include <sys/socket.h>
-#include <sys/un.h>
 
 namespace {
 
-constexpr const char *kCtrlEnv = "SWM_PORTER_CTRL";
+constexpr const char *ctrl_env_name = "SWM_PORTER_CTRL";
 
 void print_usage(const char *prog) {
   std::cerr << "Usage: " << prog << " [--pmix] [--help] <command> [args...]\n"
@@ -28,7 +28,7 @@ int connect_porter_ctrl(const std::string &path) {
   if (fd < 0) {
     return -1;
   }
-  sockaddr_un addr{};
+  sockaddr_un addr {};
   addr.sun_family = AF_UNIX;
   if (path.size() >= sizeof(addr.sun_path)) {
     close(fd);
@@ -82,16 +82,15 @@ bool read_line(int fd, std::string &out) {
 }
 
 int run_via_porter(bool pmix, const std::vector<std::string> &argv) {
-  const char *ctrl = std::getenv(kCtrlEnv);
+  const char *ctrl = std::getenv(ctrl_env_name);
   if (!ctrl || !*ctrl) {
-    std::cerr << "swm-task: " << kCtrlEnv
+    std::cerr << "swm-task: " << ctrl_env_name
               << " is not set; Porter control relay is required inside job containers.\n";
     return 2;
   }
   int fd = connect_porter_ctrl(ctrl);
   if (fd < 0) {
-    std::cerr << "swm-task: cannot connect to Porter control socket " << ctrl << ": "
-              << std::strerror(errno) << "\n";
+    std::cerr << "swm-task: cannot connect to Porter control socket " << ctrl << ": " << std::strerror(errno) << "\n";
     return 2;
   }
 

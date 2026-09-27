@@ -1,22 +1,23 @@
 #include "wm_porter_ctrl.h"
+
 #include "wm_io.h"
 
 #include <ei.h>
-
-#include <cerrno>
-#include <cstring>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
 #include <vector>
 
 namespace swm {
 
 namespace {
 
-constexpr size_t kPorterReqTuple = 4;
+constexpr size_t porter_req_tuple_size = 4;
 
 std::string make_ctrl_path() {
   const char *job = std::getenv("SWM_JOB_ID");
@@ -37,7 +38,7 @@ std::string porter_ctrl_listen(int *listen_fd_out) {
     return "";
   }
 
-  sockaddr_un addr{};
+  sockaddr_un addr {};
   addr.sun_family = AF_UNIX;
   if (path.size() >= sizeof(addr.sun_path)) {
     close(fd);
@@ -93,8 +94,7 @@ static std::string unescape_token(const std::string &in) {
   return out;
 }
 
-bool porter_ctrl_parse_spawn(const std::string &line, bool *pmix_out,
-                             std::vector<std::string> *argv_out) {
+bool porter_ctrl_parse_spawn(const std::string &line, bool *pmix_out, std::vector<std::string> *argv_out) {
   *pmix_out = false;
   argv_out->clear();
   if (line.rfind("SPAWN", 0) != 0) {
@@ -130,8 +130,7 @@ bool porter_ctrl_parse_spawn(const std::string &line, bool *pmix_out,
   return !argv_out->empty();
 }
 
-int send_porter_req(const std::string &ref, const char *method, bool pmix,
-                    const std::vector<std::string> &argv) {
+int send_porter_req(const std::string &ref, const char *method, bool pmix, const std::vector<std::string> &argv) {
   ei_x_buff x;
   if (ei_x_new(&x)) {
     return -1;
@@ -140,7 +139,7 @@ int send_porter_req(const std::string &ref, const char *method, bool pmix,
     ei_x_free(&x);
     return -1;
   }
-  if (ei_x_encode_tuple_header(&x, kPorterReqTuple)) {
+  if (ei_x_encode_tuple_header(&x, porter_req_tuple_size)) {
     ei_x_free(&x);
     return -1;
   }

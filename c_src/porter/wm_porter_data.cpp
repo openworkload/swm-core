@@ -1,15 +1,15 @@
 
-#include "wm_entity.h"
 #include "wm_porter_data.h"
+
+#include "wm_entity.h"
 #include "wm_io.h"
 
-#define BUF_SIZE 32
+#define BUF_SIZE               32
 #define SWM_COMMAND_PORTER_RUN 1
 
 using namespace swm;
 
-
-int swm::get_porter_data(std::istream* input, byte* data[]) {
+int swm::get_porter_data(std::istream *input, byte *data[]) {
   swm_logd("Get porter input data");
   byte command;
   if (!swm_read_exact(input, &command, 1)) {
@@ -31,8 +31,7 @@ int swm::get_porter_data(std::istream* input, byte* data[]) {
     return -1;
   }
 
-  for (unsigned short i=0; i<SWM_DATA_TYPES_COUNT; ++i) {
-
+  for (unsigned short i = 0; i < SWM_DATA_TYPES_COUNT; ++i) {
     byte type = 0;
     if (!swm_read_exact(input, &type, 1)) {
       std::cerr << "Could not read data type (i=" << i << ")" << std::endl;
@@ -53,13 +52,13 @@ int swm::get_porter_data(std::istream* input, byte* data[]) {
     }
 
     unsigned int read_bytes = 0;
-    for (unsigned int marker=0; marker<len; marker+=BUF_SIZE) {
-      if (marker+BUF_SIZE<len) {
+    for (unsigned int marker = 0; marker < len; marker += BUF_SIZE) {
+      if (marker + BUF_SIZE < len) {
         read_bytes = BUF_SIZE;
       } else {
-        read_bytes = len-marker;
+        read_bytes = len - marker;
       }
-      if (!swm_read_exact(input, data[i]+marker, read_bytes)) {
+      if (!swm_read_exact(input, data[i] + marker, read_bytes)) {
         std::cerr << "Couldn't get " << read_bytes << " bytes of data type " << type << std::endl;
         return -1;
       }
@@ -72,8 +71,8 @@ int swm::get_porter_data(std::istream* input, byte* data[]) {
       return -1;
     }
     if (version != ERLANG_BINARY_FORMAT_VERSION) {
-      std::cerr << "Wrong erlang binary format version: " << version
-                << ", expected: " << ERLANG_BINARY_FORMAT_VERSION << std::endl;
+      std::cerr << "Wrong erlang binary format version: " << version << ", expected: " << ERLANG_BINARY_FORMAT_VERSION
+                << std::endl;
       return -1;
     }
 
@@ -83,7 +82,7 @@ int swm::get_porter_data(std::istream* input, byte* data[]) {
       std::cerr << "Could not get term type at position " << index << std::endl;
       return -1;
     }
-    char* term_str = nullptr;
+    char *term_str = nullptr;
     ei_s_print_term(&term_str, data[i], &index);
     swm_logd("Got term of size: %d and type: %d (index=%d): %s", term_size, term_type, index, term_str);
     delete[] term_str;
@@ -93,7 +92,7 @@ int swm::get_porter_data(std::istream* input, byte* data[]) {
 }
 
 int swm::parse_data(byte *buf[], SwmProcInfo &info) {
-  for (size_t i=0; i<SWM_DATA_TYPES_COUNT; ++i) {
+  for (size_t i = 0; i < SWM_DATA_TYPES_COUNT; ++i) {
     if (!buf[i]) {
       continue;
     }
@@ -105,8 +104,8 @@ int swm::parse_data(byte *buf[], SwmProcInfo &info) {
       return -1;
     }
     if (version != ERLANG_BINARY_FORMAT_VERSION) {
-      std::cerr << "Wrong erlang binary format version: " << version
-                << ", expected: " << ERLANG_BINARY_FORMAT_VERSION << std::endl;
+      std::cerr << "Wrong erlang binary format version: " << version << ", expected: " << ERLANG_BINARY_FORMAT_VERSION
+                << std::endl;
       return -1;
     }
 

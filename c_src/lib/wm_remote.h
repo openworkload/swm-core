@@ -1,32 +1,31 @@
 
 #pragma once
 
-#include <vector>
-
 #include "wm_entity.h"
 #include "wm_entity_utils.h"
 
+#include <vector>
+
 namespace swm {
 
-class SwmRemote:SwmEntity {
-
+class SwmRemote : SwmEntity {
  public:
   SwmRemote();
-  SwmRemote(const char*, int&);
+  SwmRemote(const char *, int &);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
-  void set_id(const std::string&);
-  void set_account_id(const std::string&);
-  void set_default_image_id(const std::string&);
-  void set_default_flavor_id(const std::string&);
-  void set_name(const std::string&);
-  void set_kind(const std::string&);
-  void set_location(const std::string&);
-  void set_server(const std::string&);
-  void set_port(const uint64_t&);
-  void set_runtime(const std::map<std::string, std::string>&);
-  void set_revision(const uint64_t&);
+  void set_id(const std::string &);
+  void set_account_id(const std::string &);
+  void set_default_image_id(const std::string &);
+  void set_default_flavor_id(const std::string &);
+  void set_name(const std::string &);
+  void set_kind(const std::string &);
+  void set_location(const std::string &);
+  void set_server(const std::string &);
+  void set_port(const uint64_t &);
+  void set_runtime(const std::map<std::string, std::string> &);
+  void set_revision(const uint64_t &);
 
   std::string get_id() const;
   std::string get_account_id() const;
@@ -52,10 +51,9 @@ class SwmRemote:SwmEntity {
   uint64_t port;
   std::map<std::string, std::string> runtime;
   uint64_t revision;
-
 };
 
-int ei_buffer_to_remote(const char*, int&, std::vector<SwmRemote>&);
-int ei_buffer_to_remote(const char*, int&, SwmRemote&);
+int ei_buffer_to_remote(const char *, int &, std::vector<SwmRemote> &);
+int ei_buffer_to_remote(const char *, int &, SwmRemote &);
 
-} // namespace swm
+}  // namespace swm

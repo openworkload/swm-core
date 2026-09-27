@@ -1,27 +1,26 @@
 
 #pragma once
 
-#include <vector>
-
 #include "wm_entity.h"
 #include "wm_entity_utils.h"
 
+#include <vector>
+
 namespace swm {
 
-class SwmUser:SwmEntity {
-
+class SwmUser : SwmEntity {
  public:
   SwmUser();
-  SwmUser(const char*, int&);
+  SwmUser(const char *, int &);
 
   virtual void print(const std::string &prefix, const char separator) const;
 
-  void set_id(const std::string&);
-  void set_name(const std::string&);
-  void set_acl(const std::string&);
-  void set_priority(const int64_t&);
-  void set_comment(const std::string&);
-  void set_revision(const uint64_t&);
+  void set_id(const std::string &);
+  void set_name(const std::string &);
+  void set_acl(const std::string &);
+  void set_priority(const int64_t &);
+  void set_comment(const std::string &);
+  void set_revision(const uint64_t &);
 
   std::string get_id() const;
   std::string get_name() const;
@@ -37,10 +36,9 @@ class SwmUser:SwmEntity {
   int64_t priority;
   std::string comment;
   uint64_t revision;
-
 };
 
-int ei_buffer_to_user(const char*, int&, std::vector<SwmUser>&);
-int ei_buffer_to_user(const char*, int&, SwmUser&);
+int ei_buffer_to_user(const char *, int &, std::vector<SwmUser> &);
+int ei_buffer_to_user(const char *, int &, SwmUser &);
 
-} // namespace swm
+}  // namespace swm
