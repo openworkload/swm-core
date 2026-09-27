@@ -67,6 +67,7 @@ init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     ?LOG_INFO("Compute node management service has been started"),
+    wm_pmix:ensure_started(),
     wm_event:subscribe(job_start_time, node(), ?MODULE),
     wm_event:subscribe(job_arrived, node(), ?MODULE),
     wm_event:subscribe(job_canceled, node(), ?MODULE),
@@ -82,6 +83,10 @@ handle_call(_Msg, _From, MState) ->
 handle_cast({job_arrived, JobNodes, JobID}, MState) ->
     ?LOG_DEBUG("Received event that job ~p has been propagated", [JobID]),
     {noreply, start_job_processes(JobNodes, JobID, MState)};
+handle_cast({pmix_start_rank, JobId, TaskId, Rank, Cmd, PmixEnv}, MState) ->
+    wm_pmix:ensure_started(),
+    gen_server:cast(wm_pmix, {start_rank_local, JobId, TaskId, Rank, Cmd, PmixEnv}),
+    {noreply, MState};
 handle_cast({event, EventType, EventData}, MState) ->
     {noreply, handle_event(EventType, EventData, MState)}.
 
@@ -118,6 +123,7 @@ handle_event(wm_proc_done, {ProcID, {JobID, Process, EndTime, Node}}, MState) ->
     MState#mstate{processes = PsMap};
 handle_event(job_canceled, {JobID, Process, EndTime, Node}, MState) ->
     ?LOG_DEBUG("Job canceled: ~p, process: ~1000p", [JobID, Process]),
+    wm_pmix:cancel_job(JobID),
     update_job(JobID, process, Process),
     update_job(JobID, end_time, EndTime),
     set_nodes_alloc_state(onprem, idle, JobID),
@@ -246,7 +252,10 @@ propagate_job_to_nodes(JobID, JobNodeIds0, MState) ->
 -spec start_job_processes([#node{}], job_id(), #mstate{}) -> #mstate{}.
 start_job_processes(JobNodes, JobID, MState) ->
     ?LOG_DEBUG("Start process for job ~p", [JobID]),
-    %TODO Calculate number of processes for this node and start/follow all of them with separate wm_procs
+    %% Primary job script runs as one wm_proc on main. Additional MPI ranks are
+    %% created lazily by wm_pmix when swm-task --pmix requests spawn (one Porter
+    %% container per rank/node).
+    wm_pmix:ensure_started(),
     {ok, ProcID} = wm_factory:new(proc, JobID, JobNodes),
     add_proc(JobID, ProcID, JobNodes, MState).
 

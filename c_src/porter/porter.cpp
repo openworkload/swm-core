@@ -3,6 +3,7 @@
 #include "wm_io.h"
 #include "wm_job.h"
 #include "wm_process.h"
+#include "wm_porter_ctrl.h"
 #include "wm_porter_data.h"
 
 #include <ei.h>
@@ -20,14 +21,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <map>
+#include <vector>
 
 #define CHILD_WAITING_TIME 5
 #define PROCESS_TUPLE_SIZE 6
+#define PORTER_COMMAND_CTRL_REPLY 2
 
 using namespace swm;
 
@@ -179,7 +184,7 @@ std::string ports_from_request(const SwmJob &job) {
   return "";
 }
 
-void set_env(passwd *pw, const SwmJob &job) {
+void set_env(passwd *pw, const SwmJob &job, const std::string &ctrl_path) {
   const std::string cwd = job.get_workdir();
   setenv("HOME", pw->pw_dir, 1);
   setenv("USER", pw->pw_name, 1);
@@ -208,6 +213,9 @@ void set_env(passwd *pw, const SwmJob &job) {
   const auto ports = ports_from_request(job);
   setenv("SWM_JOB_PORTS", ports.c_str(), 1);
   setenv("SWM_RELOCATABLE", job.get_relocatable() == "true" ? "YES" : "NO", 1);
+  if (!ctrl_path.empty()) {
+    setenv("SWM_PORTER_CTRL", ctrl_path.c_str(), 1);
+  }
 
   if (cwd.size()) {
     const std::string path = job.get_workdir() + ":" + getenv("PATH");
@@ -335,10 +343,17 @@ int main(int argc, char* const argv[]) {
 
   pid_t child_pid;
 
+  int ctrl_listen = -1;
+  setenv("SWM_JOB_ID", info.job.get_id().c_str(), 1);
+  const std::string ctrl_path = porter_ctrl_listen(&ctrl_listen);
+
   if ((child_pid = fork()) == -1) {
     swm_loge("Fork error!");
     exit(EXIT_FAILURE);
   } else if (child_pid == 0) { /* This is the child */
+    if (ctrl_listen >= 0) {
+      close(ctrl_listen);
+    }
     const auto username = info.user.get_name().c_str();
     swm_logi("Job process forked (UID=%d), user name: \"%s\"", getuid(), username);
 
@@ -362,7 +377,7 @@ int main(int argc, char* const argv[]) {
 
     set_job_dir_ownership(info.job, pw->pw_uid, pw->pw_gid);
     set_uid_gid(pw->pw_uid, pw->pw_gid);
-    set_env(pw, info.job);
+    set_env(pw, info.job, ctrl_path);
     set_workdir(pw, info.job);
 
     set_io(info.job);  // do not use logger after this point
@@ -379,9 +394,202 @@ int main(int argc, char* const argv[]) {
   } else {  /* This is the parent */
     swm_logi("Parent process started, job process PID=%d", child_pid);
 
-    int status = 0;
+    // Non-blocking stdin for control replies from SWM.
+    {
+      int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+      if (flags >= 0) {
+        fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+      }
+    }
 
-    while(1) {
+    int status = 0;
+    int ctrl_client = -1;
+    std::string ctrl_buf;
+    std::map<std::string, int> pending_refs;  // ref -> client fd
+
+    auto make_ref = []() {
+      return std::to_string(getpid()) + "-" + std::to_string(time(nullptr)) + "-" +
+             std::to_string(rand());
+    };
+
+    auto handle_ctrl_line = [&](const std::string &line) {
+      bool pmix = false;
+      std::vector<std::string> argv;
+      if (!porter_ctrl_parse_spawn(line, &pmix, &argv)) {
+        if (ctrl_client >= 0) {
+          porter_ctrl_write_line(ctrl_client, "ERR bad SPAWN line");
+        }
+        return;
+      }
+      const std::string ref = make_ref();
+      pending_refs[ref] = ctrl_client;
+      if (send_porter_req(ref, "spawn_task", pmix, argv)) {
+        porter_ctrl_write_line(ctrl_client, "ERR relay failed");
+        pending_refs.erase(ref);
+      }
+    };
+
+    auto try_read_ctrl_client = [&]() {
+      if (ctrl_client < 0) {
+        return;
+      }
+      char tmp[512];
+      ssize_t n = read(ctrl_client, tmp, sizeof(tmp));
+      if (n < 0) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+          close(ctrl_client);
+          ctrl_client = -1;
+        }
+        return;
+      }
+      if (n == 0) {
+        close(ctrl_client);
+        ctrl_client = -1;
+        return;
+      }
+      ctrl_buf.append(tmp, static_cast<size_t>(n));
+      size_t pos;
+      while ((pos = ctrl_buf.find('\n')) != std::string::npos) {
+        std::string line = ctrl_buf.substr(0, pos);
+        ctrl_buf.erase(0, pos + 1);
+        handle_ctrl_line(line);
+      }
+    };
+
+    auto try_read_stdin_reply = [&]() {
+      // Format: <<CMD=2, Size:32/big, TermBin>>
+      unsigned char hdr[5];
+      ssize_t n = read(STDIN_FILENO, hdr, 1);
+      if (n <= 0) {
+        return;
+      }
+      if (hdr[0] != PORTER_COMMAND_CTRL_REPLY) {
+        swm_loge("Unexpected stdin command after RUN: %d", static_cast<int>(hdr[0]));
+        // Drain rest poorly; skip
+        return;
+      }
+      n = read(STDIN_FILENO, hdr + 1, 4);
+      if (n != 4) {
+        return;
+      }
+      uint32_t len = (uint32_t(hdr[1]) << 24) | (uint32_t(hdr[2]) << 16) |
+                     (uint32_t(hdr[3]) << 8) | uint32_t(hdr[4]);
+      if (len == 0 || len > 16 * 1024 * 1024) {
+        return;
+      }
+      std::vector<char> buf(len);
+      size_t got = 0;
+      while (got < len) {
+        ssize_t r = read(STDIN_FILENO, buf.data() + got, len - got);
+        if (r <= 0) {
+          if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            usleep(10000);
+            continue;
+          }
+          return;
+        }
+        got += static_cast<size_t>(r);
+      }
+      // Decode {porter_rep, RefBin, Msg}
+      int index = 0;
+      int version = 0;
+      if (ei_decode_version(buf.data(), &index, &version) < 0) {
+        return;
+      }
+      int arity = 0;
+      if (ei_decode_tuple_header(buf.data(), &index, &arity) < 0 || arity < 3) {
+        return;
+      }
+      char atom[64];
+      if (ei_decode_atom(buf.data(), &index, atom) < 0) {
+        return;
+      }
+      int bin_size = 0;
+      int type = 0;
+      long ignored = 0;
+      if (ei_get_type(buf.data(), &index, &type, &bin_size) < 0) {
+        return;
+      }
+      std::vector<char> refbuf(static_cast<size_t>(bin_size) + 1, 0);
+      if (type == ERL_BINARY_EXT || type == ERL_STRING_EXT) {
+        if (type == ERL_BINARY_EXT) {
+          long sz = 0;
+          if (ei_decode_binary(buf.data(), &index, refbuf.data(), &sz) < 0) {
+            return;
+          }
+          refbuf[static_cast<size_t>(sz)] = 0;
+        } else {
+          if (ei_decode_string(buf.data(), &index, refbuf.data()) < 0) {
+            return;
+          }
+        }
+      } else {
+        return;
+      }
+      std::string ref(refbuf.data());
+      auto it = pending_refs.find(ref);
+      if (it == pending_refs.end()) {
+        swm_logd("No pending ctrl client for ref %s", ref.c_str());
+        return;
+      }
+      int cfd = it->second;
+      // Peek Msg: atom done | ok | error | tuple
+      int mtype = 0;
+      int msize = 0;
+      if (ei_get_type(buf.data(), &index, &mtype, &msize) < 0) {
+        return;
+      }
+      if (mtype == ERL_ATOM_EXT || mtype == ERL_ATOM_UTF8_EXT || mtype == ERL_SMALL_ATOM_EXT ||
+          mtype == ERL_SMALL_ATOM_UTF8_EXT) {
+        char matom[256];
+        if (ei_decode_atom(buf.data(), &index, matom) == 0) {
+          if (std::strcmp(matom, "ok") == 0 || std::string(matom).find("ok") == 0) {
+            // might be bare ok -- treat as OK
+            porter_ctrl_write_line(cfd, std::string("OK ") + ref);
+          }
+        }
+      } else if (mtype == ERL_SMALL_TUPLE_EXT || mtype == ERL_LARGE_TUPLE_EXT) {
+        int tarity = 0;
+        int idx2 = index;
+        if (ei_decode_tuple_header(buf.data(), &idx2, &tarity) == 0 && tarity >= 1) {
+          char tag[64];
+          if (ei_decode_atom(buf.data(), &idx2, tag) == 0) {
+            if (std::strcmp(tag, "done") == 0 && tarity >= 2) {
+              long code = 1;
+              ei_decode_long(buf.data(), &idx2, &code);
+              porter_ctrl_write_line(cfd, "DONE " + std::to_string(code));
+              pending_refs.erase(it);
+              if (cfd == ctrl_client) {
+                // keep connection for simplicity
+              }
+            } else if (std::strcmp(tag, "ok") == 0) {
+              porter_ctrl_write_line(cfd, std::string("OK ") + ref);
+            } else if (std::strcmp(tag, "error") == 0) {
+              porter_ctrl_write_line(cfd, "ERR task failed");
+              pending_refs.erase(it);
+            }
+          }
+        }
+      }
+      (void)ignored;
+    };
+
+    while (1) {
+      // Accept new control clients
+      if (ctrl_listen >= 0 && ctrl_client < 0) {
+        int cfd = porter_ctrl_accept(ctrl_listen);
+        if (cfd >= 0) {
+          int flags = fcntl(cfd, F_GETFL, 0);
+          if (flags >= 0) {
+            fcntl(cfd, F_SETFL, flags | O_NONBLOCK);
+          }
+          ctrl_client = cfd;
+          ctrl_buf.clear();
+        }
+      }
+      try_read_ctrl_client();
+      try_read_stdin_reply();
+
       pid_t end_pid = waitpid(child_pid, &status, WNOHANG|WUNTRACED);
       SwmProcess proc;
       proc.set_pid(child_pid);
@@ -400,13 +608,13 @@ int main(int argc, char* const argv[]) {
         sleep(CHILD_WAITING_TIME); // give container time to propagate the final info to swm
         exit(EXIT_FAILURE);
       } else if (end_pid == 0) { /* child still running  */
-        //swm_logd("Parent process started waiting for child");
         proc.set_state(SWM_JOB_STATE_RUNNING);
         if (send_process_info(proc)) {
           swm_loge("Child process info not sent");
           return EXIT_FAILURE;
         }
-        sleep(CHILD_WAITING_TIME);
+        // Short sleep so control I/O stays responsive
+        usleep(200000);
       } else if (end_pid == child_pid) { /* child ended */
         int exitcode = -1;
         int sig = 0;
@@ -441,6 +649,13 @@ int main(int argc, char* const argv[]) {
         sleep(CHILD_WAITING_TIME); // give container time to propagate the final info to swm
         break;
       }
+    }
+    if (ctrl_client >= 0) {
+      close(ctrl_client);
+    }
+    if (ctrl_listen >= 0) {
+      close(ctrl_listen);
+      unlink(ctrl_path.c_str());
     }
     wait(&status);
   }

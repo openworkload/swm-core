@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, list_images/1, register_image/1, run/4, communicate/3, clear/1]).
+-export([start_link/1, list_images/1, register_image/1, run/4, communicate/3, clear/1, send_porter_reply/3]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../../lib/wm_log.hrl").
@@ -50,6 +50,11 @@ register_image(ImageID) ->
 -spec clear(#job{}) -> ok.
 clear(Job) ->
     gen_server:call(?MODULE, {clear_container, Job}).
+
+%% @doc Send a Porter control reply on the attached stdin stream.
+-spec send_porter_reply(string(), binary(), term()) -> ok.
+send_porter_reply(ContID, Ref, Msg) ->
+    gen_server:cast(?MODULE, {porter_rep, ContID, Ref, Msg}).
 
 %% ============================================================================
 %% CALLBACKS
@@ -108,7 +113,13 @@ handle_call({run, Job, Cmd, Envs, Owner, [create | Steps]}, _, #mstate{spool = S
         ok ->
             {ContID, HttpProcPid} = Module:create(Job, Cmd, Envs, self(), Steps),
             NewJob = wm_entity:set({container, ContID}, Job),
-            wm_conf:update([NewJob]),
+            %% Rank containers must not overwrite the primary job.container in DB.
+            case lists:prefix("swmrank-", ContID) of
+                true ->
+                    ok;
+                false ->
+                    wm_conf:update([NewJob])
+            end,
             JobID = wm_entity:get(id, Job),
             {ok, LoggerPid} = wm_container_log:start_link([{spool, Spool}, {job_id, JobID}]),
             Map = maps:put(ContID, {Owner, NewJob, HttpProcPid, LoggerPid}, MState#mstate.containers),
@@ -132,16 +143,29 @@ handle_cast({_, {stream, 1}, Data, _, ContID}, #mstate{} = MState) ->
             case element(1, Term) of
                 process ->
                     send_event_to_owner({process, Term}, ContID, MState);
+                porter_req ->
+                    handle_porter_req_term(Term, ContID, MState);
                 _ ->
-                    ?LOG_DEBUG("Unhandled tuple from stdout: ~p", Term)
+                    ?LOG_DEBUG("Unhandled tuple from stdout: ~p", [Term])
             end
         catch
             _:_ ->
-                ?LOG_DEBUG("Unhandled binary from stdout: ~p", Data)
+                ?LOG_DEBUG("Unhandled binary from stdout: ~p", [Data])
         end
     catch
         E1:E2 ->
             ?LOG_ERROR("Could not convert binary to term: ~p ~p", [E1, E2])
+    end,
+    {noreply, MState};
+handle_cast({porter_rep, ContID, Ref, Msg}, #mstate{containers = ContMap} = MState) ->
+    case maps:get(ContID, ContMap, undefined) of
+        {_, _, HttpProcPid, _} when is_pid(HttpProcPid) ->
+            Bin = wm_porter_protocol:prepare_ctrl_reply(Ref, Msg),
+            Module = get_runtime(),
+            Module:send(HttpProcPid, Bin, []),
+            ok;
+        _ ->
+            ?LOG_ERROR("No attachment for Porter reply to ~p", [ContID])
     end,
     {noreply, MState};
 handle_cast({_, {stream, 2}, Data, _, ContID}, #mstate{containers = ContMap} = MState) ->
@@ -288,4 +312,18 @@ clean_containers_map(ContID, #mstate{containers = OldMap} = MState) ->
 send_event_to_owner(Event, ContID, #mstate{} = MState) ->
     {Owner, Job, _, _} = maps:get(ContID, MState#mstate.containers),
     JobID = wm_entity:get(id, Job),
+    %% Works for both gen_statem (wm_proc) and gen_server (wm_pmix).
     gen_statem:cast(Owner, {Event, JobID}).
+
+-spec handle_porter_req_term(tuple(), string(), #mstate{}) -> ok.
+handle_porter_req_term({porter_req, Ref, Method, Args0}, ContID, #mstate{containers = ContMap})
+    when is_binary(Ref), is_atom(Method), is_map(Args0) ->
+    {_, Job, _, _} = maps:get(ContID, ContMap),
+    JobID = wm_entity:get(id, Job),
+    Args = Args0#{cont_id => ContID},
+    wm_pmix:ensure_started(),
+    wm_pmix:handle_porter_req(JobID, Ref, Method, Args),
+    ok;
+handle_porter_req_term(Other, ContID, _) ->
+    ?LOG_DEBUG("Bad porter_req from ~p: ~p", [ContID, Other]),
+    ok.

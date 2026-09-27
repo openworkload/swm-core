@@ -213,8 +213,9 @@ handle_request(purge, Username, _) ->
         {ok, User} ->
             UserId = wm_entity:get(id, User),
             Filter =
-                fun (#job{user_id = Uid}) when Uid == UserId ->
-                        true;
+                fun (#job{user_id = Uid, state = State}) when Uid == UserId ->
+                        %% Keep running jobs; purge queued and all other non-running states.
+                        State =/= ?JOB_STATE_RUNNING;
                     (_) ->
                         false
                 end,

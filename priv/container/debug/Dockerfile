@@ -100,6 +100,10 @@ RUN apt-get install clang-format-14 -y
 RUN apt-get install gnuplot -y
 RUN apt-get install strace -y
 
+# PMIx (issue #9: swm-pmix / swm-task --pmix)
+RUN apt-get install libpmix-dev libpmix-bin -y
+RUN apt-get install libpmix2t64 -y || apt-get install libpmix2 -y
+
 # For documentation build
 RUN apt-get install texlive-full -y
 RUN apt-get install libxml2-utils -y

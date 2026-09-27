@@ -1,6 +1,10 @@
-# Job Script Directives
+# Job scripts
 
-Job scripts in Sky Port use special directives prefixed with `#SWM` to specify job requirements and configuration.
+Job scripts in Sky Port use special directives prefixed with `#SWM` to specify job
+requirements and configuration. Porter runs the script inside the job container
+(see `HOWTO/CONTAINERS.md`) and exports `SWM_*` environment variables. From that
+script you can start **tasks** with `swm-task` when the workload needs one or
+more processes across the allocated nodes (for example MPI).
 
 ## Available Directives
 
@@ -150,11 +154,35 @@ Porter exports the following variables into the job script process. Values come 
 
 Empty lists/strings are exported as an empty value. User-defined pairs from the job `env` field are also applied; the `SWM_*` variables above always take precedence.
 
-## Complete Multi-Node Example
+## Tasks (`swm-task`)
 
-See also `priv/examples/jobscripts/multi-node.job` for a full OpenMPI hello-world script.
+A **job** is the scheduled allocation plus the main job script (Porter on **main**).
+A **task** is one workload chunk of that job — typically one process (or one MPI
+rank) that should run on the allocated nodes.
 
-For MPI (and similar), build a hostfile from the allocated node names. The job container runs on **main** with host networking; multi-host `mpirun` needs passwordless SSH (or an equivalent PMI launcher) between the partition hosts.
+Call `swm-task` from the job script inside the job container:
+
+| Flag | Behavior |
+|------|----------|
+| (default) | Run the given command **as-is** in the current container (`exec`). |
+| `--pmix` | Enable PMIx. Ask SWM (via **Porter control relay** only) to start per-node `swm-pmix`, create one Porter container per rank (one rank per node in v1), and wait in the foreground until all ranks finish. |
+
+`swm-task` never talks to Podman or SWM sockets directly. Inside containers only
+**Porter** may communicate with SWM; `swm-task` uses the Unix socket path in
+`SWM_PORTER_CTRL`.
+
+Flow with `--pmix`:
+
+1. Main node already runs the job script in one Porter container.
+2. `swm-task --pmix ./app` asks SWM (through Porter) to start PMIx and rank containers.
+3. SWM creates **one Porter container per rank** (v1: one rank per allocated node) and injects `PMIX_*` / `SWM_*`.
+4. `swm-task` stays in the foreground until all ranks finish; cancel tears down ranks and `swm-pmix`.
+
+Container lifecycle and host networking details: `HOWTO/CONTAINERS.md`. Tracker: GitHub issue #9.
+
+## Complete Multi-Node MPI Example
+
+See also `priv/examples/jobscripts/mpi.sh`.
 
 ```bash
 #!/bin/bash
@@ -163,20 +191,34 @@ set -euo pipefail
 #SWM name Multi-node MPI example
 #SWM nodes 3
 #SWM relocatable
-#SWM comment OpenMPI hello across the allocated partition nodes
+#SWM comment OpenMPI hello via swm-task --pmix (one rank per node)
 #SWM flavor Standard_D4s_v3
 #SWM cloud-image ubuntu-hpc/2404
 #SWM container-image ubuntu:24.04
 
-HOSTFILE="${PWD}/hostfile"
-IFS=',' read -r -a NODES <<< "${SWM_JOB_NODES}"
+# Host /opt is bind-mounted; expect OpenMPI at /opt/openmpi (no apt openmpi).
+export PATH="/opt/openmpi/bin:${PATH}"
+export LD_LIBRARY_PATH="/opt/openmpi/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
-{
-    for host in "${NODES[@]}"; do
-        echo "${host} slots=1"
-    done
-} >"${HOSTFILE}"
+cat >mpi_hello.c <<'EOF'
+#include <mpi.h>
+#include <stdio.h>
+int main(int argc, char **argv) {
+    MPI_Init(&argc, &argv);
+    int rank = 0, size = 0, name_len = 0;
+    char name[MPI_MAX_PROCESSOR_NAME];
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Get_processor_name(name, &name_len);
+    printf("Hello from MPI rank %d/%d on %s\n", rank, size, name);
+    fflush(stdout);
+    MPI_Finalize();
+    return 0;
+}
+EOF
 
-# Install / compile OpenMPI app, then:
-mpirun --hostfile "${HOSTFILE}" -np "${SWM_JOB_NODES_NUMBER}" ./mpi_hello
+mpicc -o mpi_hello mpi_hello.c
+
+# One rank per allocated node; PMIx server is owned by SWM (swm-pmix).
+swm-task --pmix ./mpi_hello
 ```

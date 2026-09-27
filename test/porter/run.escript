@@ -3,7 +3,7 @@
 %%! -smp enable
 
 -include("../../src/lib/wm_log.hrl").
--include("../../include/wm_scheduler.hrl").
+-include("../../include/wm_porter.hrl").
 
 -define(DEFAULT_SWM_LIB, "../../../_build/default/lib/swm/ebin").
 -define(PORTER_START_TIMEOUT, 5000).

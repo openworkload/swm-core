@@ -99,7 +99,7 @@ ensure_create_ready(#job{request = Request} = Job) ->
 
 -spec create(#job{}, string(), map(), pid(), list()) -> {string(), pid()}.
 create(Job, Porter, _Envs, Owner, Steps) ->
-    ContID = "swmjob-" ++ wm_entity:get(id, Job),
+    ContID = container_id(Job),
     ?LOG_DEBUG("Podman create container ~p", [ContID]),
     Http = start_client(Owner, ContID, "create " ++ ContID),
     Body = generate_create_json(Job, Porter, ContID),
@@ -107,6 +107,15 @@ create(Job, Porter, _Envs, Owner, Steps) ->
     Hdrs = [{<<"content-type">>, <<"application/json">>}],
     wm_podman_client:post(Path, Body, Hdrs, Http, Steps),
     {ContID, Http}.
+
+-spec container_id(#job{}) -> string().
+container_id(Job) ->
+    case wm_entity:get(container, Job) of
+        Name when is_list(Name), Name =/= [] ->
+            Name;
+        _ ->
+            "swmjob-" ++ wm_entity:get(id, Job)
+    end.
 
 -spec start(#job{}, list()) -> ok.
 start(Job, Steps) ->
@@ -331,7 +340,7 @@ image_inspect_ok(Image) ->
             false
     end.
 
-generate_create_json(#job{request = Request}, Porter, ContID) ->
+generate_create_json(#job{request = Request} = Job, Porter, ContID) ->
     Image = get_container_image(Request),
     Cmd = [list_to_binary(wm_utils:unroll_symlink(Porter)), <<"-d">>],
     Mounts = default_mounts(),
@@ -346,16 +355,138 @@ generate_create_json(#job{request = Request}, Porter, ContID) ->
           <<"netns">> => #{<<"nsmode">> => <<"host">>},
           <<"mounts">> => Mounts,
           <<"work_dir">> => <<"/tmp">>,
-          <<"env">> => #{<<"SWM_CONTAINER_RUNTIME">> => <<"podman">>},
+          <<"env">> => job_create_env(Job),
           <<"remove">> => true},
+    Term1 = maps:merge(Term, resource_limits(Job)),
     Term2 =
         case get_gpus(Request) of
             <<"0">> ->
-                Term;
+                Term1;
             _ ->
-                Term#{<<"cdi_devices">> => [#{<<"Name">> => <<"nvidia.com/gpu=all">>}]}
+                Term1#{<<"cdi_devices">> => [#{<<"Name">> => <<"nvidia.com/gpu=all">>}]}
         end,
     wm_json:encode(Term2).
+
+%% @doc SWM-owned cgroup budget: containers inherit CPU/memory limits.
+-spec resource_limits(#job{}) -> map().
+resource_limits(Job) ->
+    Mem = memory_limit_bytes(Job),
+    Cpu = cpu_quota(Job),
+    Limits =
+        case {Mem, Cpu} of
+            {undefined, undefined} ->
+                #{};
+            {MemLim, undefined} ->
+                #{<<"resource_limits">> => #{<<"memory">> => #{<<"limit">> => MemLim}}};
+            {undefined, CpuQuota} ->
+                #{<<"resource_limits">> => #{<<"cpu">> => #{<<"quota">> => CpuQuota, <<"period">> => 100000}}};
+            {MemLim, CpuQuota} ->
+                #{<<"resource_limits">> =>
+                      #{<<"memory">> => #{<<"limit">> => MemLim},
+                        <<"cpu">> => #{<<"quota">> => CpuQuota, <<"period">> => 100000}}}
+        end,
+    Limits.
+
+-spec memory_limit_bytes(#job{}) -> non_neg_integer() | undefined.
+memory_limit_bytes(Job) ->
+    case os:getenv("SWM_CONTAINER_MEMORY_LIMIT") of
+        false ->
+            case request_prop_int(wm_entity:get(request, Job), "mem", "value") of
+                undefined ->
+                    undefined;
+                N when N > 0 ->
+                    %% Job request mem historically in MB.
+                    N * 1024 * 1024;
+                _ ->
+                    undefined
+            end;
+        S ->
+            try list_to_integer(S) of
+                N when N > 0 ->
+                    N;
+                _ ->
+                    undefined
+            catch
+                _:_ ->
+                    undefined
+            end
+    end.
+
+-spec cpu_quota(#job{}) -> non_neg_integer() | undefined.
+cpu_quota(Job) ->
+    case os:getenv("SWM_CONTAINER_CPU_QUOTA") of
+        false ->
+            case request_prop_int(wm_entity:get(request, Job), "cpus", "value") of
+                undefined ->
+                    undefined;
+                N when N > 0 ->
+                    %% 100000 period units per CPU.
+                    N * 100000;
+                _ ->
+                    undefined
+            end;
+        S ->
+            try list_to_integer(S) of
+                N when N > 0 ->
+                    N;
+                _ ->
+                    undefined
+            catch
+                _:_ ->
+                    undefined
+            end
+    end.
+
+-spec request_prop_int([#resource{}], string(), string()) -> integer() | undefined.
+request_prop_int([], _, _) ->
+    undefined;
+request_prop_int([#resource{name = Name,
+                            count = Count,
+                            properties = Props}
+                  | T],
+                 Want,
+                 PropKey) ->
+    case Name =:= Want of
+        true ->
+            case proplists:get_value(list_to_atom(PropKey), Props) of
+                V when is_integer(V), V > 0 ->
+                    V;
+                V when is_list(V) ->
+                    try list_to_integer(V) of
+                        N when N > 0 ->
+                            N;
+                        _ ->
+                            fallback_count(Count, T, Want, PropKey)
+                    catch
+                        _:_ ->
+                            fallback_count(Count, T, Want, PropKey)
+                    end;
+                _ ->
+                    fallback_count(Count, T, Want, PropKey)
+            end;
+        false ->
+            request_prop_int(T, Want, PropKey)
+    end.
+
+fallback_count(Count, _T, _Want, _PropKey) when is_integer(Count), Count > 0 ->
+    Count;
+fallback_count(_, T, Want, PropKey) ->
+    request_prop_int(T, Want, PropKey).
+
+-spec job_create_env(#job{}) -> map().
+job_create_env(Job) ->
+    Base = #{<<"SWM_CONTAINER_RUNTIME">> => <<"podman">>},
+    %% Bind PMIx socket path hint when present in job env (host networking).
+    lists:foldl(fun({K, V}, Acc) ->
+                   case is_list(K) andalso (lists:prefix("PMIX_", K) orelse lists:prefix("SWM_PMIX_", K)) of
+                       true ->
+                           Acc#{list_to_binary(K) => list_to_binary(V)};
+                       false ->
+                           Acc
+                   end
+                end,
+                Base,
+                wm_entity:get(env, Job)).
 
 entrypoint_or_empty() ->
     case wm_container_cfg:entrypoint() of
@@ -376,6 +507,10 @@ default_mounts() ->
          #{<<"destination">> => <<"/tmp">>,
            <<"type">> => <<"bind">>,
            <<"source">> => <<"/tmp">>,
+           <<"options">> => [<<"rbind">>, <<"rw">>]},
+         #{<<"destination">> => <<"/opt">>,
+           <<"type">> => <<"bind">>,
+           <<"source">> => <<"/opt">>,
            <<"options">> => [<<"rbind">>, <<"rw">>]},
          #{<<"destination">> => RootBin,
            <<"type">> => <<"bind">>,

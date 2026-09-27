@@ -1,4 +1,4 @@
-.PHONY: all gen porter compile release
+.PHONY: all gen porter task pmix compile release
 .PHONY: run-ghead run-chead
 .PHONY: test ftest
 .PHONY: cb cr build-all
@@ -29,7 +29,7 @@ HELP_FUN = \
 
 export REBAR_CACHE_DIR=${HOME}/.cache/rebar3
 
-all: gen compile porter format
+all: gen compile porter task pmix format
 
 help:		## Show this help
 			@perl -e '$(HELP_FUN)' $(MAKEFILE_LIST)
@@ -59,6 +59,12 @@ gen:		##@SKYPORT Generate entity files
 
 porter:		##@SKYPORT Compile Porter
 			$(MAKE) -C c_src/porter
+
+task:		##@SKYPORT Compile swm-task
+			$(MAKE) -C c_src/task
+
+pmix:		##@SKYPORT Compile swm-pmix host helper
+			$(MAKE) -C c_src/pmix
 
 compile:	##@SKYPORT Compile Core
 			$(REBAR) compile
@@ -109,6 +115,8 @@ clean:		##@DEV Clean sources
 			$(REBAR) clean
 			rm -f erl_crash.dump
 			$(MAKE) clean -C c_src/porter
+			$(MAKE) clean -C c_src/task
+			$(MAKE) clean -C c_src/pmix
 			$(MAKE) clean -C c_src/lib
 
 dialyzer:		##@DEV Run dialyzer

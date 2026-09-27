@@ -11,11 +11,6 @@
 % Scheduler default parameters
 -define(SCHEDULE_START_TIMEOUT, 5000).
 -define(SCHEDULE_COMM_TIMEOUT, 30000).
-% Porter commands and data types
--define(PORTER_COMMAND_RUN, 1).
--define(PORTER_DATA_TYPES_COUNT, 2).
--define(PORTER_DATA_TYPE_USERS, 0).
--define(PORTER_DATA_TYPE_JOBS, 1).
 % Job states
 -define(JOB_STATE_RUNNING, "R").
 -define(JOB_STATE_QUEUED, "Q").
