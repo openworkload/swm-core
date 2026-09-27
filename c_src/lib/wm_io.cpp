@@ -2,6 +2,7 @@
 
 #include "wm_entity.h"
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,14 +50,21 @@ void swm_logi(const char *message, ...) {
 }
 
 void swm_loge(const char *message, ...) {
+  // Capture errno before any further libc calls clobber it.
+  const int saved_errno = errno;
   va_list args;
   va_start(args, message);
   if (message == nullptr) {
     fprintf(LOG_OUT_STREAM, "\n");
   } else {
     _print_log_format("ERROR", message, args, true);
-    if (errno) {
-      _print_log_format("ERRNO", strerror(errno), NULL, true);
+    if (saved_errno) {
+      // Do not pass a null va_list into vfprintf (UB); print strerror directly.
+      time_t now;
+      time(&now);
+      char *date = ctime(&now);
+      date[strlen(date) - 1] = '\0';
+      fprintf(LOG_OUT_STREAM, "%s [ERRNO] %s\n", date, strerror(saved_errno));
     }
   }
   va_end(args);

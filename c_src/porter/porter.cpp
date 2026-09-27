@@ -610,14 +610,29 @@ int main(int argc, char *const argv[]) {
         int sig = 0;
         if (WIFEXITED(status)) {
           exitcode = WEXITSTATUS(status);
-          if (status == 0) {
-            swm_logi("Job process has terminated normally", exitcode);
-          } else {
-            swm_loge("Job process has terminated with exit code", exitcode);
-          }
         }
         if (WIFSIGNALED(status)) {
           sig = WTERMSIG(status);
+        }
+        if (WIFSTOPPED(status)) {
+          sig = WSTOPSIG(status);
+        }
+        // Send final status first so a logging failure cannot leave the job stuck in R.
+        proc.set_state(SWM_JOB_STATE_FINISHED);
+        proc.set_exitcode(exitcode);
+        proc.set_signal(sig);
+        if (send_process_info(proc)) {
+          swm_loge("The final job process info has not been sent");
+          return EXIT_FAILURE;
+        }
+        if (WIFEXITED(status)) {
+          if (exitcode == 0) {
+            swm_logi("Job process has terminated normally (exit=%d)", exitcode);
+          } else {
+            swm_loge("Job process has terminated with exit code %d", exitcode);
+          }
+        }
+        if (WIFSIGNALED(status)) {
           const char *strsig = strsignal(sig);
           swm_loge("Job process has terminated by uncaught signal \"%s\"", strsig);
           if (WCOREDUMP(status)) {
@@ -625,16 +640,8 @@ int main(int argc, char *const argv[]) {
           }
         }
         if (WIFSTOPPED(status)) {
-          sig = WSTOPSIG(status);
           const char *strsig = strsignal(sig);
           swm_loge("Job process has been stopped by delivery of a signal \"%s\"", strsig);
-        }
-        proc.set_state(SWM_JOB_STATE_FINISHED);
-        proc.set_exitcode(exitcode);
-        proc.set_signal(sig);
-        if (send_process_info(proc)) {
-          swm_loge("The final job process info has not been sent");
-          return EXIT_FAILURE;
         }
         sleep(CHILD_WAITING_TIME);  // give container time to propagate the final info to swm
         break;
