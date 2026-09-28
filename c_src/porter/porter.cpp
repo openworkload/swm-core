@@ -69,7 +69,8 @@ void set_workdir(passwd *pw, SwmJob &job) {
 }
 
 void switch_stdout(const std::string &path) {
-  FILE *outfile = fopen(path.c_str(), "w");
+  // Append so concurrent rank Porters on a shared NFS workdir keep all output.
+  FILE *outfile = fopen(path.c_str(), "a");
   if (!outfile) {
     swm_loge("Can't open %s", path.c_str());
     perror("Stdout file opening error");
@@ -84,7 +85,7 @@ void switch_stdout(const std::string &path) {
 }
 
 void switch_stderr(const std::string &path) {
-  FILE *errfile = fopen(path.c_str(), "w");
+  FILE *errfile = fopen(path.c_str(), "a");
   if (!errfile) {
     swm_loge("Can't open %s", path.c_str());
     exit(EXIT_FILE_ERROR);
@@ -181,6 +182,27 @@ std::string ports_from_request(const SwmJob &job) {
   return "";
 }
 
+// Directories prepended to PATH so job scripts find swm-task / swm-porter / etc.
+std::vector<std::string> swm_path_dirs() {
+  std::vector<std::string> dirs;
+  dirs.emplace_back("/opt/swm/current/bin");
+
+  char buf[PATH_MAX];
+  const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (n > 0) {
+    buf[n] = '\0';
+    std::string exe(buf);
+    const auto slash = exe.rfind('/');
+    if (slash != std::string::npos && slash > 0) {
+      const std::string exe_dir = exe.substr(0, slash);
+      if (exe_dir != dirs.front()) {
+        dirs.push_back(exe_dir);
+      }
+    }
+  }
+  return dirs;
+}
+
 void set_env(passwd *pw, const SwmJob &job, const std::string &ctrl_path) {
   const std::string cwd = job.get_workdir();
   setenv("HOME", pw->pw_dir, 1);
@@ -214,12 +236,29 @@ void set_env(passwd *pw, const SwmJob &job, const std::string &ctrl_path) {
     setenv("SWM_PORTER_CTRL", ctrl_path.c_str(), 1);
   }
 
-  if (cwd.size()) {
-    const std::string path = job.get_workdir() + ":" + getenv("PATH");
-    setenv("PATH", path.c_str(), 1);
-    setenv("PWD", path.c_str(), 1);
-    swm_logi("Job PATH=%s", path.c_str());
+  // workdir : /opt/swm/current/bin [: porter dir] : inherited PATH
+  const char *old_path = getenv("PATH");
+  std::string path;
+  if (!cwd.empty()) {
+    path = cwd;
   }
+  for (const auto &dir : swm_path_dirs()) {
+    if (!path.empty()) {
+      path += ":";
+    }
+    path += dir;
+  }
+  if (old_path != nullptr && old_path[0] != '\0') {
+    if (!path.empty()) {
+      path += ":";
+    }
+    path += old_path;
+  }
+  setenv("PATH", path.c_str(), 1);
+  if (!cwd.empty()) {
+    setenv("PWD", cwd.c_str(), 1);
+  }
+  swm_logi("Job PATH=%s", path.c_str());
 }
 
 int send_process_info(const SwmProcess &proc) {
@@ -280,8 +319,20 @@ int send_process_info(const SwmProcess &proc) {
   return 0;
 }
 
-std::string save_script(const std::string &job_id, const uid_t uid, const gid_t gid, const std::string &content) {
-  const std::string path = "/tmp/swm-" + job_id + ".sh";
+std::string save_script(const SwmJob &job, const uid_t uid, const gid_t gid, const std::string &content) {
+  // Prefer container name over pid: rank Porters can share the same host pid
+  // namespace view (e.g. both pid 2) when /tmp is bind-mounted across containers.
+  const auto job_id = job.get_id();
+  std::string tag = job.get_container();
+  if (tag.empty()) {
+    tag = "pid" + std::to_string(getpid());
+  }
+  for (char &c : tag) {
+    if (c == '/' || c == ' ') {
+      c = '-';
+    }
+  }
+  const std::string path = "/tmp/swm-" + job_id + "-" + tag + ".sh";
   std::ofstream file(path, std::ofstream::out);
   if (!file.is_open()) {
     const auto msg = "Error creating script file: " + path;
@@ -367,8 +418,7 @@ int main(int argc, char *const argv[]) {
     swm_logd("User \"%s\" found: uid=%d gid=%d", username, pw->pw_uid, pw->pw_gid);
 
     const auto content = info.job.get_script_content();
-    const auto job_id = info.job.get_id();
-    const auto path = save_script(job_id, pw->pw_uid, pw->pw_gid, content);
+    const auto path = save_script(info.job, pw->pw_uid, pw->pw_gid, content);
     swm_logi("Temporary execution path: \"%s\"", path.c_str());
 
     set_job_dir_ownership(info.job, pw->pw_uid, pw->pw_gid);

@@ -304,7 +304,7 @@ do_delete(Path, Hdr, #mstate{conn_pid = ConnPid} = MState) ->
     Stream = gun:delete(ConnPid, Path, Hdr),
     MState#mstate{stream = Stream}.
 
-notify_requestor(Data, Hdrs, Meta, #mstate{reply_to = From} = MState) when From =/= undefined ->
+notify_requestor(Data, _Hdrs, Meta, #mstate{reply_to = From} = MState) when From =/= undefined ->
     %% Synchronous GET path: reply to gen_server:call and do not cast the owner
     %% (owner may be wm_container; casting is for async create/attach steps only).
     gen_server:reply(From, {Meta, Data}),

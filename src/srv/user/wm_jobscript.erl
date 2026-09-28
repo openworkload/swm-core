@@ -125,13 +125,35 @@ parse_line(Ws, Job) when hd(Ws) == "relocatable" ->
     wm_entity:set({relocatable, true}, Job);
 parse_line(Ws, Job) when hd(Ws) == "input-files" ->
     Old = wm_entity:get(input_files, Job),
-    wm_entity:set({input_files, Old ++ tl(Ws)}, Job);
+    Expanded = [expand_user_path(F) || F <- tl(Ws)],
+    wm_entity:set({input_files, Old ++ Expanded}, Job);
 parse_line(Ws, Job) when hd(Ws) == "output-files" ->
     Old = wm_entity:get(output_files, Job),
     wm_entity:set({output_files, Old ++ tl(Ws)}, Job);
 parse_line(Ws, Job) ->
     ?LOG_DEBUG("Unknown jobscript statement: ~p (~p)", [Ws, wm_entity:get(id, Job)]),
     Job.
+
+%% Expand leading ~/ to $HOME so examples can use `#SWM input-files ~/mpi_hello`.
+-spec expand_user_path(string()) -> string().
+expand_user_path([$/ | _] = Path) ->
+    Path;
+expand_user_path([$~, $/ | Rest]) ->
+    case os:getenv("HOME") of
+        false ->
+            [$~, $/ | Rest];
+        Home ->
+            filename:join(Home, Rest)
+    end;
+expand_user_path([$~]) ->
+    case os:getenv("HOME") of
+        false ->
+            "~";
+        Home ->
+            Home
+    end;
+expand_user_path(Path) ->
+    filename:absname(Path).
 
 -spec get_account_id(string()) -> account_id().
 get_account_id(AccountName) ->

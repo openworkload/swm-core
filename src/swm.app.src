@@ -17,7 +17,6 @@
     folsom,
     gun,
     cowboy,
-    jwalk,
-    meck]},
+    jwalk]},
   {mod, {swm_app, []}},
   {env, []}]}.

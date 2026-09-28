@@ -8,10 +8,13 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -96,6 +99,55 @@ bool register_nspace(const std::string &nspace, size_t nprocs) {
   return rc == PMIX_SUCCESS || rc == PMIX_OPERATION_SUCCEEDED;
 }
 
+// Ask libpmix for client rendezvous env (URI is versioned: PMIX_SERVER_URI41, etc.).
+struct ForkEnv {
+  std::string uri;
+  std::vector<std::pair<std::string, std::string>> vars;
+};
+
+ForkEnv server_fork_env(const std::string &nspace, pmix_rank_t rank) {
+  ForkEnv out;
+  pmix_proc_t proc;
+  PMIX_PROC_LOAD(&proc, nspace.c_str(), rank);
+  char **env = nullptr;
+  pmix_status_t rc = PMIx_server_setup_fork(&proc, &env);
+  if (rc == PMIX_SUCCESS && env != nullptr) {
+    for (char **ep = env; *ep != nullptr; ++ep) {
+      const char *eq = std::strchr(*ep, '=');
+      if (eq == nullptr) {
+        continue;
+      }
+      std::string key(*ep, eq - *ep);
+      std::string val(eq + 1);
+      if (key.rfind("PMIX_SERVER_URI", 0) == 0 && out.uri.empty()) {
+        out.uri = val;
+      }
+      out.vars.emplace_back(std::move(key), std::move(val));
+    }
+    PMIX_ARGV_FREE(env);
+  }
+  // Unversioned alias for clients that look for PMIX_SERVER_URI.
+  if (!out.uri.empty()) {
+    bool have = false;
+    for (const auto &kv : out.vars) {
+      if (kv.first == "PMIX_SERVER_URI") {
+        have = true;
+        break;
+      }
+    }
+    if (!have) {
+      out.vars.emplace_back("PMIX_SERVER_URI", out.uri);
+    }
+  }
+  return out;
+}
+
+void chmod_tree_world_rx(const std::string &path) {
+  // Rank containers bind /tmp and run as the job user; dstore defaults to 0750.
+  const std::string cmd = "chmod -R a+rX " + path + " 2>/dev/null";
+  std::system(cmd.c_str());
+}
+
 }  // namespace
 
 int main(int argc, char *argv[]) {
@@ -136,7 +188,8 @@ int main(int argc, char *argv[]) {
   size_t ninfo = 1;
   PMIX_INFO_CREATE(info, ninfo);
   std::string tmpdir = "/tmp/swm-pmix-" + g_job_id;
-  ::mkdir(tmpdir.c_str(), 0700);
+  // Rank containers bind-mount /tmp and run as the job user; allow traverse.
+  ::mkdir(tmpdir.c_str(), 0755);
   PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TMPDIR, tmpdir.c_str(), PMIX_STRING);
 
   pmix_status_t rc = PMIx_server_init(&module, info, ninfo);
@@ -150,7 +203,17 @@ int main(int argc, char *argv[]) {
     std::cerr << "swm-pmix: register_nspace warning (continuing)\n";
   }
 
-  std::cout << "READY nspace=" << g_nspace << " job=" << g_job_id << std::endl;
+  // setup_fork materializes rendezvous URI + dstore paths for clients (MPI/PMIx).
+  const ForkEnv fork_env = server_fork_env(g_nspace, 0);
+  chmod_tree_world_rx(tmpdir);
+  if (fork_env.uri.empty()) {
+    std::cerr << "swm-pmix: warning: PMIX_SERVER_URI empty after setup_fork\n";
+  }
+  std::cout << "READY nspace=" << g_nspace << " job=" << g_job_id << " uri=" << fork_env.uri << std::endl;
+  for (const auto &kv : fork_env.vars) {
+    std::cout << "ENV " << kv.first << "=" << kv.second << std::endl;
+  }
+  std::cout << "FORK_ENV_DONE" << std::endl;
 
   std::string line;
   while (g_running && std::getline(std::cin, line)) {
@@ -166,6 +229,20 @@ int main(int argc, char *argv[]) {
       } else {
         std::cout << "ERR REGISTER" << std::endl;
       }
+    } else if (line.rfind("SETUP_FORK ", 0) == 0) {
+      pmix_rank_t rank = 0;
+      try {
+        rank = static_cast<pmix_rank_t>(std::stoul(line.substr(11)));
+      } catch (...) {
+        rank = 0;
+      }
+      const ForkEnv fe = server_fork_env(g_nspace, rank);
+      chmod_tree_world_rx(tmpdir);
+      std::cout << "OK SETUP_FORK rank=" << rank << " uri=" << fe.uri << std::endl;
+      for (const auto &kv : fe.vars) {
+        std::cout << "ENV " << kv.first << "=" << kv.second << std::endl;
+      }
+      std::cout << "FORK_ENV_DONE" << std::endl;
     } else if (line == "STOP") {
       g_running = false;
       break;

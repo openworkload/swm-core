@@ -27,10 +27,16 @@
          exitcode = undefined :: integer() | undefined}).
 -record(mstate,
         {helpers = #{} :: map(),
+         %% JobId => PMIX_SERVER_URI from local swm-pmix READY line
+         server_uris = #{} :: map(),
+         %% JobId => [{Key, Val}] from swm-pmix setup_fork ENV lines
+         fork_envs = #{} :: map(),
          tasks = #{} :: map(),
          job_tasks = #{} :: map(),
          %% ContID => TaskId for rank container events
-         cont_tasks = #{} :: map()}).
+         cont_tasks = #{} :: map(),
+         %% TaskId => address of the node that owns the swm-task (main)
+         rank_reply_to = #{} :: map()}).
 
 %% ============================================================================
 %% API
@@ -75,13 +81,25 @@ bootstrap_env(JobMap, Rank) when is_map(JobMap) ->
     Nspace = "swm-" ++ JobId,
     Size = max(1, length(Nodes)),
     Uri = maps:get(server_uri, JobMap, ""),
+    %% HPC-X Open MPI 4.x (ORTE) always uses ess_singleton for direct-launched
+    %% binaries. Without isolated=true it forks orted, which then tries plm_rsh
+    %% (ssh) when PMIX_JOB_SIZE>1 -- ubuntu containers have no ssh. Isolated
+    %% keeps each rank local (MPI world size 1) until cross-node PMIx fence
+    %% exists; SWM_PMIX_RANK / OMPI_COMM_WORLD_RANK still carry the real rank.
     Base =
         [{"PMIX_NAMESPACE", Nspace},
          {"PMIX_RANK", integer_to_list(Rank)},
          {"PMIX_JOB_SIZE", integer_to_list(Size)},
          {"PMIX_LOCAL_SIZE", "1"},
          {"SWM_PMIX_NSPACE", Nspace},
-         {"SWM_PMIX_RANK", integer_to_list(Rank)}],
+         {"SWM_PMIX_RANK", integer_to_list(Rank)},
+         {"OMPI_COMM_WORLD_RANK", integer_to_list(Rank)},
+         {"OMPI_COMM_WORLD_SIZE", integer_to_list(Size)},
+         {"OMPI_COMM_WORLD_LOCAL_RANK", "0"},
+         {"OMPI_COMM_WORLD_LOCAL_SIZE", "1"},
+         {"OMPI_UNIVERSE_SIZE", integer_to_list(Size)},
+         {"OMPI_MCA_ess_singleton_isolated", "true"},
+         {"OMPI_MCA_plm", "^rsh"}],
     case Uri of
         "" ->
             Base;
@@ -123,8 +141,20 @@ handle_cast({porter_req, JobId, Ref, Method, Args}, MState) ->
     {noreply, do_porter_req(JobId, Ref, Method, Args, MState)};
 handle_cast({cancel_job, JobId}, MState) ->
     {noreply, do_cancel_job(JobId, MState)};
+%% Remote nodes receive this via wm_api:cast_self/2 (module = caller = wm_pmix).
+%% Job + ReplyTo are included so compute nodes can finish ranks without a local task.
+handle_cast({pmix_start_rank, JobId, TaskId, Rank, Cmd, PmixEnv, Job, ReplyTo}, MState) ->
+    MS1 = remember_rank_reply_to(TaskId, ReplyTo, MState),
+    {noreply, do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, Job, MS1)};
+handle_cast({pmix_start_rank, JobId, TaskId, Rank, Cmd, PmixEnv, Job}, MState) ->
+    {noreply, do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, Job, MState)};
+%% Older 6-tuple casts (no Job): resolve from local DB if present.
+handle_cast({pmix_start_rank, JobId, TaskId, Rank, Cmd, PmixEnv}, MState) ->
+    {noreply, do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, undefined, MState)};
 handle_cast({start_rank_local, JobId, TaskId, Rank, Cmd, PmixEnv}, MState) ->
-    {noreply, do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, MState)};
+    {noreply, do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, undefined, MState)};
+handle_cast({rank_done, TaskId, ExitCode}, MState) ->
+    {noreply, rank_finished(TaskId, ExitCode, MState)};
 handle_cast({started, JobId}, MState) ->
     ?LOG_DEBUG("Rank container started for job ~p", [JobId]),
     {noreply, MState};
@@ -137,13 +167,29 @@ handle_cast(Msg, MState) ->
     ?LOG_DEBUG("wm_pmix unhandled cast: ~p", [Msg]),
     {noreply, MState}.
 
-handle_info({'EXIT', Port, Reason}, #mstate{helpers = Helpers} = MState) when is_port(Port) ->
+handle_info({'EXIT', Port, Reason},
+            #mstate{helpers = Helpers,
+                    server_uris = Uris,
+                    fork_envs = ForkEnvs} =
+                MState)
+    when is_port(Port) ->
     ?LOG_DEBUG("swm-pmix helper port exited: ~p", [Reason]),
+    JobIds = [J || {J, P} <- maps:to_list(Helpers), P =:= Port],
     Helpers2 = maps:filter(fun(_, P) -> P =/= Port end, Helpers),
-    {noreply, MState#mstate{helpers = Helpers2}};
-handle_info({Port, {data, Data}}, #mstate{helpers = Helpers} = MState) when is_port(Port) ->
-    ?LOG_DEBUG("swm-pmix: ~s", [Data]),
-    _ = Helpers,
+    Uris2 = lists:foldl(fun(J, Acc) -> maps:remove(J, Acc) end, Uris, JobIds),
+    Fork2 = lists:foldl(fun(J, Acc) -> maps:remove(J, Acc) end, ForkEnvs, JobIds),
+    {noreply,
+     MState#mstate{helpers = Helpers2,
+                   server_uris = Uris2,
+                   fork_envs = Fork2}};
+handle_info({Port, {data, {eol, Line}}}, #mstate{} = MState) when is_port(Port) ->
+    ?LOG_DEBUG("swm-pmix: ~s", [Line]),
+    {noreply, MState};
+handle_info({Port, {data, {noeol, Line}}}, #mstate{} = MState) when is_port(Port) ->
+    ?LOG_DEBUG("swm-pmix: ~s", [Line]),
+    {noreply, MState};
+handle_info({Port, {data, Data}}, #mstate{} = MState) when is_port(Port) ->
+    ?LOG_DEBUG("swm-pmix: ~p", [Data]),
     {noreply, MState};
 handle_info(_Info, MState) ->
     {noreply, MState}.
@@ -282,7 +328,7 @@ spawn_pmix_task(#task{job_id = JobId} = Task, MState) ->
                     wm_entity:get(nodes, Job)),
             N = length(NodeIds),
             maybe_register_nspace(JobId, N, MState1),
-            launch_ranks(Task#task{rank_expected = N}, NodeIds, true, MState1);
+            launch_ranks(Task#task{rank_expected = N}, NodeIds, true, Job, MState1);
         _ ->
             finish_task(Task#task.id, 1, "job not found", MState1)
     end.
@@ -294,20 +340,27 @@ spawn_plain_task(#task{job_id = JobId} = Task, MState) ->
             NodeIds =
                 wm_utils:order_node_ids_main_first(
                     wm_entity:get(nodes, Job)),
-            launch_ranks(Task#task{rank_expected = length(NodeIds)}, NodeIds, false, MState);
+            launch_ranks(Task#task{rank_expected = length(NodeIds)}, NodeIds, false, Job, MState);
         _ ->
             finish_task(Task#task.id, 1, "job not found", MState)
     end.
 
 -spec ensure_helper(string(), #mstate{}) -> #mstate{}.
-ensure_helper(JobId, #mstate{helpers = Helpers} = MState) ->
+ensure_helper(JobId,
+              #mstate{helpers = Helpers,
+                      server_uris = Uris,
+                      fork_envs = ForkEnvs} =
+                  MState) ->
     case maps:get(JobId, Helpers, undefined) of
         Port when is_port(Port) ->
             MState;
         _ ->
             case start_swm_pmix(JobId) of
-                {ok, Port} ->
-                    MState#mstate{helpers = maps:put(JobId, Port, Helpers)};
+                {ok, Port, Uri, ForkEnv} ->
+                    ?LOG_INFO("swm-pmix ready for job ~p uri=~s (~b fork env vars)", [JobId, Uri, length(ForkEnv)]),
+                    MState#mstate{helpers = maps:put(JobId, Port, Helpers),
+                                  server_uris = maps:put(JobId, Uri, Uris),
+                                  fork_envs = maps:put(JobId, ForkEnv, ForkEnvs)};
                 {error, Reason} ->
                     ?LOG_ERROR("Failed to start swm-pmix for job ~p: ~p", [JobId, Reason]),
                     MState
@@ -325,7 +378,7 @@ maybe_register_nspace(JobId, N, #mstate{helpers = Helpers}) ->
             ok
     end.
 
--spec start_swm_pmix(string()) -> {ok, port()} | {error, term()}.
+-spec start_swm_pmix(string()) -> {ok, port(), string(), [{string(), string()}]} | {error, term()}.
 start_swm_pmix(JobId) ->
     Exec = get_swm_pmix_path(),
     case filelib:is_file(Exec) of
@@ -336,17 +389,153 @@ start_swm_pmix(JobId) ->
                 Port =
                     open_port({spawn_executable, Exec},
                               [{args, ["--job-id", JobId]},
-                               {env, [{"SWM_JOB_ID", JobId}]},
+                               {env, pmix_port_env(JobId)},
                                binary,
                                exit_status,
                                use_stdio,
                                stderr_to_stdout,
                                {line, 1024}]),
-                {ok, Port}
+                case wait_pmix_ready(Port, 10000) of
+                    {ok, Uri, ForkEnv} ->
+                        {ok, Port, Uri, ForkEnv};
+                    {error, Reason} ->
+                        safe_port_close(Port),
+                        {error, Reason}
+                end
             catch
                 E:R ->
                     {error, {E, R}}
             end
+    end.
+
+%% Prefer release-bundled libpmix.so.2 (see c_src/pmix/Makefile / rebar overlay).
+-spec pmix_port_env(string()) -> [{string(), string()}].
+pmix_port_env(JobId) ->
+    %% Prefer host OpenPMIx when present; else release-bundled libpmix.so.2.
+    ReleaseLib =
+        filename:join(
+            filename:dirname(
+                filename:dirname(get_swm_pmix_path())),
+            "lib"),
+    Candidates =
+        ["/opt/pmix/4.2.9/lib",
+         "/opt/pmix/lib",
+         case filelib:is_dir(ReleaseLib) of
+             true ->
+                 filename:absname(ReleaseLib);
+             false ->
+                 ""
+         end],
+    LibDirs =
+        [D
+         || D <- Candidates,
+            is_list(D),
+            D =/= "",
+            filelib:is_file(
+                filename:join(D, "libpmix.so.2"))],
+    Prefix = string:join(LibDirs, ":"),
+    Ld = case {Prefix, os:getenv("LD_LIBRARY_PATH")} of
+             {"", false} ->
+                 [];
+             {"", Old} ->
+                 [{"LD_LIBRARY_PATH", Old}];
+             {Dir, false} ->
+                 [{"LD_LIBRARY_PATH", Dir}];
+             {Dir, Old} ->
+                 [{"LD_LIBRARY_PATH", Dir ++ ":" ++ Old}]
+         end,
+    [{"SWM_JOB_ID", JobId} | Ld].
+
+-spec wait_pmix_ready(port(), non_neg_integer()) -> {ok, string(), [{string(), string()}]} | {error, term()}.
+wait_pmix_ready(Port, Timeout) ->
+    case recv_port_line(Port, Timeout) of
+        {ok, Line} ->
+            case parse_ready_line(Line) of
+                {ok, Uri} ->
+                    case collect_fork_env(Port, Timeout, []) of
+                        {ok, ForkEnv} ->
+                            {ok, Uri, ForkEnv};
+                        {error, _} = Err ->
+                            Err
+                    end;
+                skip ->
+                    wait_pmix_ready(Port, Timeout)
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+-spec collect_fork_env(port(), non_neg_integer(), [{string(), string()}]) ->
+                          {ok, [{string(), string()}]} | {error, term()}.
+collect_fork_env(Port, Timeout, Acc) ->
+    case recv_port_line(Port, Timeout) of
+        {ok, Line} ->
+            case Line of
+                "FORK_ENV_DONE" ++ _ ->
+                    {ok, lists:reverse(Acc)};
+                "ENV " ++ Rest ->
+                    collect_fork_env(Port, Timeout, [split_env_kv(Rest) | Acc]);
+                _ ->
+                    %% Ignore non-ENV chatter between READY and FORK_ENV_DONE.
+                    collect_fork_env(Port, Timeout, Acc)
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+-spec recv_port_line(port(), non_neg_integer()) -> {ok, string()} | {error, term()}.
+recv_port_line(Port, Timeout) ->
+    receive
+        {Port, {data, {eol, Line}}} ->
+            {ok, line_to_list(Line)};
+        {Port, {data, {noeol, Line}}} ->
+            {ok, line_to_list(Line)};
+        {Port, {data, Data}} ->
+            {ok, line_to_list(Data)};
+        {Port, {exit_status, Status}} ->
+            {error, {exit_status, Status}}
+    after Timeout ->
+        {error, timeout}
+    end.
+
+-spec line_to_list(term()) -> string().
+line_to_list(Line) when is_binary(Line) ->
+    binary_to_list(Line);
+line_to_list(Line) when is_list(Line) ->
+    Line;
+line_to_list(Other) ->
+    lists:flatten(
+        io_lib:format("~p", [Other])).
+
+-spec split_env_kv(string()) -> {string(), string()}.
+split_env_kv(S) ->
+    case lists:splitwith(fun(C) -> C =/= $= end, S) of
+        {K, [$= | V]} ->
+            {K, V};
+        {K, _} ->
+            {K, ""}
+    end.
+
+-spec parse_ready_line(term()) -> {ok, string()} | skip.
+parse_ready_line(Line) when is_binary(Line) ->
+    parse_ready_line(binary_to_list(Line));
+parse_ready_line(Line) when is_list(Line) ->
+    case string:find(Line, "READY ") of
+        nomatch ->
+            skip;
+        _ ->
+            {ok, extract_uri_token(Line)}
+    end;
+parse_ready_line(_) ->
+    skip.
+
+-spec extract_uri_token(string()) -> string().
+extract_uri_token(Line) ->
+    case re:run(Line, "uri=(\\S+)", [{capture, [1], list}]) of
+        {match, [Uri]} ->
+            Uri;
+        _ ->
+            ""
     end.
 
 -spec get_swm_pmix_path() -> string().
@@ -363,13 +552,14 @@ get_swm_pmix_path() ->
             Path
     end.
 
--spec launch_ranks(#task{}, [string()], boolean(), #mstate{}) -> #mstate{}.
+-spec launch_ranks(#task{}, [string()], boolean(), #job{}, #mstate{}) -> #mstate{}.
 launch_ranks(#task{id = TaskId,
                    job_id = JobId,
                    cmd = Cmd} =
                  Task,
              NodeIds,
              Pmix,
+             Job,
              MState) ->
     case NodeIds of
         [] ->
@@ -382,23 +572,27 @@ launch_ranks(#task{id = TaskId,
                                PmixEnv =
                                    case Pmix of
                                        true ->
-                                           do_bootstrap_env(JobId, Rank);
+                                           do_bootstrap_env(JobId, Rank, MS);
                                        false ->
                                            []
                                    end,
                                MS2 = case NodeId of
                                          SelfId ->
-                                             do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, MS);
+                                             do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, Job, MS);
                                          _ ->
                                              case wm_conf:select(node, {id, NodeId}) of
                                                  {ok, Node} ->
                                                      Addr = wm_conf:get_relative_address(Node, MyNode),
+                                                     ReplyTo = wm_conf:get_my_relative_address(Addr),
+                                                     %% Pass Job + ReplyTo: remotes report rank_done to main.
                                                      wm_api:cast_self({pmix_start_rank,
                                                                        JobId,
                                                                        TaskId,
                                                                        Rank,
                                                                        Cmd,
-                                                                       PmixEnv},
+                                                                       PmixEnv,
+                                                                       Job,
+                                                                       ReplyTo},
                                                                       [Addr]),
                                                      MS;
                                                  _ ->
@@ -412,8 +606,10 @@ launch_ranks(#task{id = TaskId,
             MState2
     end.
 
--spec do_bootstrap_env(string(), non_neg_integer()) -> [{string(), string()}].
-do_bootstrap_env(JobId, Rank) ->
+-spec do_bootstrap_env(string(), non_neg_integer(), #mstate{}) -> [{string(), string()}].
+do_bootstrap_env(JobId, Rank, #mstate{}) ->
+    %% Rank/nspace/size only. Per-node setup_fork env (URI, dstore paths) is
+    %% applied in do_start_rank_local so remotes never inherit the main node's URI.
     case wm_conf:select(job, {id, JobId}) of
         {ok, Job} ->
             NodeIds = wm_entity:get(nodes, Job),
@@ -432,24 +628,121 @@ do_bootstrap_env(JobId, Rank) ->
             bootstrap_env(#{job_id => JobId, nodes => []}, Rank)
     end.
 
--spec do_start_rank_local(string(), binary(), non_neg_integer(), [string()], [{string(), string()}], #mstate{}) ->
+-spec merge_env([{string(), string()}], [{string(), string()}]) -> [{string(), string()}].
+merge_env(Base, Overlay) ->
+    lists:foldl(fun({K, V}, Acc) -> lists:keystore(K, 1, Acc, {K, V}) end, Base, Overlay).
+
+%% setup_fork(rank=0) at helper start emits PMIX_RANK=0; never let that clobber the real rank.
+-spec fork_env_without_rank([{string(), string()}]) -> [{string(), string()}].
+fork_env_without_rank(Fork) ->
+    [KV
+     || {K, _} = KV <- Fork,
+        K =/= "PMIX_RANK",
+        K =/= "PMIX_NAMESPACE",
+        K =/= "PMIX_JOB_SIZE",
+        K =/= "PMIX_LOCAL_SIZE",
+        K =/= "SWM_PMIX_RANK",
+        K =/= "SWM_PMIX_NSPACE"].
+
+-spec apply_rank_env([{string(), string()}], non_neg_integer()) -> [{string(), string()}].
+apply_rank_env(Env, Rank) ->
+    RankStr = integer_to_list(Rank),
+    lists:foldl(fun({K, V}, Acc) -> lists:keystore(K, 1, Acc, {K, V}) end,
+                Env,
+                [{"PMIX_RANK", RankStr},
+                 {"SWM_PMIX_RANK", RankStr},
+                 {"OMPI_COMM_WORLD_RANK", RankStr},
+                 {"OMPI_COMM_WORLD_LOCAL_RANK", "0"}]).
+
+-spec remember_rank_reply_to(binary(), term(), #mstate{}) -> #mstate{}.
+remember_rank_reply_to(_TaskId, undefined, MState) ->
+    MState;
+remember_rank_reply_to(_TaskId, {error, _}, MState) ->
+    MState;
+remember_rank_reply_to(TaskId, ReplyTo, #mstate{rank_reply_to = Map} = MState) ->
+    MState#mstate{rank_reply_to = maps:put(TaskId, ReplyTo, Map)}.
+
+%% OpenPMIx clients prefer versioned PMIX_SERVER_URI* (e.g. URI41); keep them in sync.
+-spec apply_server_uri([{string(), string()}], string()) -> [{string(), string()}].
+apply_server_uri(Env, "") ->
+    Env;
+apply_server_uri(Env, Uri) ->
+    Updated =
+        lists:map(fun({K, V}) ->
+                     case K =:= "PMIX_SERVER_URI" orelse lists:prefix("PMIX_SERVER_URI", K) of
+                         true ->
+                             {K, Uri};
+                         false ->
+                             {K, V}
+                     end
+                  end,
+                  Env),
+    lists:keystore("PMIX_SERVER_URI", 1, Updated, {"PMIX_SERVER_URI", Uri}).
+
+-spec do_start_rank_local(string(),
+                          binary(),
+                          non_neg_integer(),
+                          [string()],
+                          [{string(), string()}],
+                          #job{} | undefined,
+                          #mstate{}) ->
                              #mstate{}.
-do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, #mstate{cont_tasks = CT} = MState) ->
-    case wm_conf:select(job, {id, JobId}) of
-        {ok, Job0} ->
+do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv0, JobIn, MState0) ->
+    %% Each allocated node runs its own swm-pmix; inject that node's fork env/URI.
+    {MState, PmixEnv} =
+        case PmixEnv0 of
+            [] ->
+                {MState0, []};
+            _ ->
+                MS1 = ensure_helper(JobId, MState0),
+                N = case lists:keyfind("PMIX_JOB_SIZE", 1, PmixEnv0) of
+                        {_, SizeStr} ->
+                            try
+                                list_to_integer(SizeStr)
+                            catch
+                                _:_ ->
+                                    1
+                            end;
+                        false ->
+                            1
+                    end,
+                maybe_register_nspace(JobId, N, MS1),
+                Fork = fork_env_without_rank(maps:get(JobId, MS1#mstate.fork_envs, [])),
+                Uri = maps:get(JobId, MS1#mstate.server_uris, ""),
+                %% Local fork env must win for URI/tmpdir; rank identity stays from bootstrap.
+                EnvMerged = apply_rank_env(apply_server_uri(merge_env(PmixEnv0, Fork), Uri), Rank),
+                {MS1, EnvMerged}
+        end,
+    Job0 =
+        case JobIn of
+            #job{} = J ->
+                J;
+            _ ->
+                case wm_conf:select(job, {id, JobId}) of
+                    {ok, J} ->
+                        J;
+                    _ ->
+                        undefined
+                end
+        end,
+    case Job0 of
+        #job{} ->
             Script = shell_join(Cmd),
             ContName = "swmrank-" ++ short_id(JobId) ++ "-" ++ integer_to_list(Rank),
-            Env0 = wm_entity:get(env, Job0),
-            Env1 =
-                Env0 ++ PmixEnv ++ [{"SWM_TASK_ID", binary_to_list(TaskId)}, {"SWM_PMIX_RANK", integer_to_list(Rank)}],
-            Job1 = wm_entity:set([{script_content, Script}, {container, ContName}, {env, Env1}], Job0),
+            JobEnv0 = wm_entity:get(env, Job0),
+            RankEnv =
+                JobEnv0
+                ++ PmixEnv
+                ++ [{"SWM_TASK_ID", binary_to_list(TaskId)}, {"SWM_PMIX_RANK", integer_to_list(Rank)}],
+            Job1 = wm_entity:set([{script_content, Script}, {container, ContName}, {env, RankEnv}], Job0),
             Porter = porter_path(),
-            case wm_container:run(Job1, Porter, maps:from_list(Env1), self()) of
+            case wm_container:run(Job1, Porter, maps:from_list(RankEnv), self()) of
                 {ok, NewJob} ->
                     ?LOG_DEBUG("Started rank ~p container ~p for task ~p", [Rank, ContName, TaskId]),
                     ContID = wm_entity:get(container, NewJob),
-                    spawn(fun() -> feed_rank_porter(NewJob) end),
-                    MState#mstate{cont_tasks = maps:put(ContID, TaskId, CT)};
+                    Owner = self(),
+                    spawn(fun() -> feed_rank_porter(NewJob, Owner) end),
+                    MState#mstate{cont_tasks = maps:put(ContID, TaskId, MState#mstate.cont_tasks)};
                 {error, Msg} ->
                     ?LOG_ERROR("Rank ~p start failed: ~p", [Rank, Msg]),
                     finish_task(TaskId,
@@ -459,6 +752,7 @@ do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, #mstate{cont_tasks = CT} 
                                 MState)
             end;
         _ ->
+            ?LOG_ERROR("Rank ~p start failed: job ~p not found locally and not provided in cast", [Rank, JobId]),
             finish_task(TaskId, 1, "job not found", MState)
     end.
 
@@ -468,13 +762,15 @@ short_id(JobId) when length(JobId) >= 8 ->
 short_id(JobId) ->
     JobId.
 
--spec feed_rank_porter(#job{}) -> ok.
-feed_rank_porter(Job) ->
+-spec feed_rank_porter(#job{}, pid()) -> ok.
+feed_rank_porter(Job, Owner) ->
     timer:sleep(500),
     case wm_utils:get_job_user(Job) of
         {ok, User} ->
             Bin = wm_porter_protocol:prepare_run_input(Job, User),
-            case wm_container:communicate(Job, Bin, self()) of
+            %% Owner must stay wm_pmix: communicate() replaces the container owner
+            %% map entry; using spawn self() dropped {process,F} on a dead pid.
+            case wm_container:communicate(Job, Bin, Owner) of
                 ok ->
                     ok;
                 {error, E} ->
@@ -513,20 +809,44 @@ on_rank_process(JobId, Process, #mstate{cont_tasks = CT} = MState) ->
     case State of
         S when S =:= ?JOB_STATE_FINISHED; S =:= ?JOB_STATE_ERROR ->
             Exit = wm_entity:get(exitcode, Process),
-            Ids = maps:get(JobId, MState#mstate.job_tasks, []),
-            case Ids of
-                [TaskId | _] ->
-                    rank_finished(TaskId, Exit, MState);
+            TaskId =
+                case maps:get(JobId, MState#mstate.job_tasks, []) of
+                    [Tid | _] ->
+                        Tid;
+                    _ ->
+                        case maps:values(CT) of
+                            [Tid | _] ->
+                                Tid;
+                            _ ->
+                                undefined
+                        end
+                end,
+            case TaskId of
+                undefined ->
+                    ?LOG_DEBUG("Rank process finished for job ~p but no task id", [JobId]),
+                    MState;
                 _ ->
-                    case maps:values(CT) of
-                        [TaskId | _] ->
-                            rank_finished(TaskId, Exit, MState);
-                        _ ->
-                            MState
-                    end
+                    report_rank_done(TaskId, Exit, MState)
             end;
         _ ->
             MState
+    end.
+
+-spec report_rank_done(binary(), integer(), #mstate{}) -> #mstate{}.
+report_rank_done(TaskId, ExitCode, #mstate{tasks = Tasks, rank_reply_to = Origins} = MState) ->
+    case maps:get(TaskId, Tasks, undefined) of
+        #task{} ->
+            rank_finished(TaskId, ExitCode, MState);
+        undefined ->
+            case maps:get(TaskId, Origins, undefined) of
+                undefined ->
+                    ?LOG_ERROR("rank_done for unknown task ~p (no local task, no ReplyTo)", [TaskId]),
+                    MState;
+                ReplyTo ->
+                    ?LOG_DEBUG("Forward rank_done for task ~p to ~p exit=~p", [TaskId, ReplyTo, ExitCode]),
+                    wm_api:cast_self({rank_done, TaskId, ExitCode}, [ReplyTo]),
+                    MState#mstate{rank_reply_to = maps:remove(TaskId, Origins)}
+            end
     end.
 
 -spec rank_finished(binary(), integer(), #mstate{}) -> #mstate{}.
@@ -586,16 +906,23 @@ finish_task(TaskId, ExitCode, Comment, #mstate{tasks = Tasks} = MState) ->
     end.
 
 -spec do_cancel_job(string(), #mstate{}) -> #mstate{}.
-do_cancel_job(JobId, #mstate{job_tasks = JT, helpers = Helpers} = MState) ->
+do_cancel_job(JobId,
+              #mstate{job_tasks = JT,
+                      helpers = Helpers,
+                      server_uris = Uris,
+                      fork_envs = ForkEnvs} =
+                  MState) ->
     Ids = maps:get(JobId, JT, []),
     MState1 = lists:foldl(fun(Tid, MS) -> do_cancel_task(JobId, Tid, MS) end, MState, Ids),
     case maps:get(JobId, Helpers, undefined) of
         Port when is_port(Port) ->
             safe_port_cmd(Port, <<"STOP\n">>),
             safe_port_close(Port),
-            MState1#mstate{helpers = maps:remove(JobId, Helpers)};
+            MState1#mstate{helpers = maps:remove(JobId, Helpers),
+                           server_uris = maps:remove(JobId, Uris),
+                           fork_envs = maps:remove(JobId, ForkEnvs)};
         _ ->
-            MState1
+            MState1#mstate{server_uris = maps:remove(JobId, Uris), fork_envs = maps:remove(JobId, ForkEnvs)}
     end.
 
 -spec do_cancel_task(string(), binary(), #mstate{}) -> #mstate{}.

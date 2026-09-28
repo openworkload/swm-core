@@ -1,4 +1,4 @@
-.PHONY: all gen porter task pmix compile release
+.PHONY: all gen porter task pmix mpi-example compile release
 .PHONY: run-ghead run-chead
 .PHONY: test ftest
 .PHONY: cb cr build-all
@@ -29,7 +29,7 @@ HELP_FUN = \
 
 export REBAR_CACHE_DIR=${HOME}/.cache/rebar3
 
-all: gen compile porter task pmix format
+all: gen compile porter task pmix mpi-example format
 
 help:		## Show this help
 			@perl -e '$(HELP_FUN)' $(MAKEFILE_LIST)
@@ -66,6 +66,9 @@ task:		##@SKYPORT Compile swm-task
 
 pmix:		##@SKYPORT Compile swm-pmix host helper
 			$(MAKE) -C c_src/pmix
+
+mpi-example:	##@SKYPORT Build example MPI hello into $$HOME/mpi_hello
+			$(MAKE) -C c_src/examples/mpi
 
 compile:	##@SKYPORT Compile Core
 			$(REBAR) compile
@@ -118,6 +121,7 @@ clean:		##@DEV Clean sources
 			$(MAKE) clean -C c_src/porter
 			$(MAKE) clean -C c_src/task
 			$(MAKE) clean -C c_src/pmix
+			$(MAKE) clean -C c_src/examples/mpi
 			$(MAKE) clean -C c_src/lib
 
 dialyzer:		##@DEV Run dialyzer

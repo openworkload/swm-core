@@ -767,7 +767,12 @@ def apply_input_from_user(opts: dict[str, str]) -> None:
 
 
 def create_archive(opts: dict[str, str]) -> None:
-    LOG.info("Create SkyPort distribution archives")
+    """Build swm-worker.tar.gz from a staged, pruned copy of the release.
+
+    Always stages into a temp tree so pruning never deletes scheduler (or other)
+    bits from a live skyport install under SWM_ROOT.
+    """
+    LOG.info("Create SkyPort worker archive")
     spool_dir = opts["SWM_SPOOL"]
     swm_version = opts["SWM_VERSION"]
     key_dirs = [
@@ -781,46 +786,111 @@ def create_archive(opts: dict[str, str]) -> None:
             LOG.error(f"No such key directory: {key_dir}")
             sys.exit(1)
 
-    files = []
     if opts.get("TESTING", False):
         build_dir = os.path.join(SWM_VERSION_DIR, "_build")
-        tmp_dir = os.path.join(build_dir, "packages", "swm")
-
         release_dir = os.path.join(build_dir, "default", "rel", "swm")
-        version_dir = os.path.join(tmp_dir, opts["SWM_VERSION"])
-        copy_and_overwrite(release_dir, version_dir)
-
         root_dir = os.path.join(build_dir, "packages")
-        make_dirs(root_dir)
-        files.append(version_dir)
-
-        secure_dir = os.path.join(tmp_dir, "spool", "secure")
-        make_dirs(secure_dir)
-        for key_dir in key_dirs:
-            copy_and_overwrite(
-                key_dir, os.path.join(secure_dir, os.path.basename(key_dir))
-            )
-        files.append(secure_dir)
+        tmp_dir = os.path.join(root_dir, "swm")
     else:
+        release_dir = os.path.join(opts["SWM_ROOT"], swm_version)
         root_dir = opts["SWM_ROOT"]
-        files.append(os.path.join(root_dir, opts["SWM_VERSION"]))
-        files.extend(key_dirs)
+        tmp_dir = os.path.join(root_dir, ".worker-stage")
+
+    if not os.path.isdir(release_dir):
+        LOG.error(f"No such release directory: {release_dir}")
+        sys.exit(1)
+
+    make_dirs(root_dir)
+    version_dir = os.path.join(tmp_dir, swm_version)
+    copy_and_overwrite(release_dir, version_dir)
+    prune_worker_release(version_dir)
+
+    secure_dir = os.path.join(tmp_dir, "spool", "secure")
+    make_dirs(secure_dir)
+    for key_dir in key_dirs:
+        copy_and_overwrite(key_dir, os.path.join(secure_dir, os.path.basename(key_dir)))
 
     archive = f"{root_dir}/{PRODUCT}-worker.tar.gz"
-    transform_args = [
-        "--transform",
-        "'s,^.*\/swm/,,'",
-        "--transform",
-        "'s,^home/" + opts["SWM_USER"] + "/.swm,,'",
-    ]
-    args = transform_args + ["-czf", archive, " ".join(files)]
-
+    # Tar relative names from the stage dir: <version>/... and spool/secure/...
+    args = ["-C", tmp_dir, "-czf", archive, swm_version, "spool"]
     run("tar", args, os.environ)
     LOG.info(f"Final worker SWM archive: {archive}")
 
-    if opts.get("TESTING", False):
-        LOG.info(f"Remove temporary directory: {tmp_dir}")
-        shutil.rmtree(tmp_dir)
+    LOG.info(f"Remove temporary directory: {tmp_dir}")
+    shutil.rmtree(tmp_dir)
+
+
+def prune_worker_release(version_dir: str) -> None:
+    """Remove skyport-only / non-runtime files from a staged worker release tree."""
+    LOG.info(f"Prune worker release tree: {version_dir}")
+
+    def rm_path(path: str) -> None:
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+            LOG.info(f"  removed dir {path}")
+        elif os.path.lexists(path):
+            os.unlink(path)
+            LOG.info(f"  removed file {path}")
+
+    # Scheduler (partition/compute roles do not run wm_scheduler).
+    rm_path(os.path.join(version_dir, "bin", "swm-sched"))
+    rm_path(os.path.join(version_dir, "lib64"))
+
+    # Cert tooling: worker VMs receive certs inside the archive.
+    for name in ("create-cert.escript", "swm-create-cert"):
+        rm_path(os.path.join(version_dir, "bin", name))
+
+    # Dev / skyport-only scripts (job nodes need setup-swm-core, finalize, run, env).
+    scripts_dir = os.path.join(version_dir, "scripts")
+    for name in (
+        "setup-skyport.sh",
+        "update-worker.sh",
+        "skyport-container-prompt.py",
+    ):
+        rm_path(os.path.join(scripts_dir, name))
+
+    # Non-runtime priv (keep base.config, setup/, schema.json for job-node setup).
+    # Strip both the release overlay copy and the swm application priv tree.
+    non_runtime_priv = (
+        "examples",
+        "webui",
+        "container",
+        "openstack",
+        "openapi.yaml",
+    )
+    for priv_dir in [os.path.join(version_dir, "priv")]:
+        for name in non_runtime_priv:
+            rm_path(os.path.join(priv_dir, name))
+
+    lib_dir = os.path.join(version_dir, "lib")
+    if os.path.isdir(lib_dir):
+        for entry in os.listdir(lib_dir):
+            # Safety net if an older release still bundled these apps.
+            if entry.startswith(("compiler-", "tools-", "meck-")):
+                rm_path(os.path.join(lib_dir, entry))
+                continue
+            if entry.startswith("swm-"):
+                app_priv = os.path.join(lib_dir, entry, "priv")
+                for name in non_runtime_priv:
+                    rm_path(os.path.join(app_priv, name))
+
+    # ERTS build/analysis tools (keep beam.smp, erl, escript, epmd, ...).
+    for entry in os.listdir(version_dir):
+        if not entry.startswith("erts-"):
+            continue
+        erts_bin = os.path.join(version_dir, entry, "bin")
+        if not os.path.isdir(erts_bin):
+            continue
+        for name in (
+            "erlc",
+            "dialyzer",
+            "typer",
+            "ct_run",
+            "erl.src",
+            "start.src",
+            "start_erl.src",
+        ):
+            rm_path(os.path.join(erts_bin, name))
 
 
 def copy_and_overwrite(from_path: str, to_path: str) -> None:
