@@ -29,7 +29,7 @@ HELP_FUN = \
 
 export REBAR_CACHE_DIR=${HOME}/.cache/rebar3
 
-all: gen compile porter task pmix mpi-example format
+all: gen compile porter task pmix format
 
 help:		## Show this help
 			@perl -e '$(HELP_FUN)' $(MAKEFILE_LIST)

@@ -25,6 +25,11 @@
          rank_expected = 0 :: non_neg_integer(),
          ranks_done = 0 :: non_neg_integer(),
          exitcode = undefined :: integer() | undefined}).
+-record(fence_round,
+        {expected = 1 :: pos_integer(),
+         arrived = #{} :: #{non_neg_integer() => binary()},
+         %% Local FENCE_IN ids waiting for FENCE_OUT on this node
+         local_ids = [] :: [non_neg_integer()]}).
 -record(mstate,
         {helpers = #{} :: map(),
          %% JobId => PMIX_SERVER_URI from local swm-pmix READY line
@@ -36,7 +41,17 @@
          %% ContID => TaskId for rank container events
          cont_tasks = #{} :: map(),
          %% TaskId => address of the node that owns the swm-task (main)
-         rank_reply_to = #{} :: map()}).
+         rank_reply_to = #{} :: map(),
+         %% JobId => fence coordinator address (set on remotes)
+         fence_leader = #{} :: map(),
+         %% JobId => [Addr] all helpers participating in fence (on leader)
+         fence_peers = #{} :: map(),
+         %% JobId => expected contributor count
+         fence_expected = #{} :: map(),
+         %% JobId => #fence_round{} while collecting
+         fences = #{} :: map(),
+         %% Port => JobId
+         helper_jobs = #{} :: map()}).
 
 %% ============================================================================
 %% API
@@ -81,11 +96,9 @@ bootstrap_env(JobMap, Rank) when is_map(JobMap) ->
     Nspace = "swm-" ++ JobId,
     Size = max(1, length(Nodes)),
     Uri = maps:get(server_uri, JobMap, ""),
-    %% HPC-X Open MPI 4.x (ORTE) always uses ess_singleton for direct-launched
-    %% binaries. Without isolated=true it forks orted, which then tries plm_rsh
-    %% (ssh) when PMIX_JOB_SIZE>1 -- ubuntu containers have no ssh. Isolated
-    %% keeps each rank local (MPI world size 1) until cross-node PMIx fence
-    %% exists; SWM_PMIX_RANK / OMPI_COMM_WORLD_RANK still carry the real rank.
+    %% HPC-X Open MPI 4.x direct-launches via ess_singleton. Cross-node PMIx
+    %% fence (wm_pmix allgather) supplies peer modex so ranks form one world.
+    %% plm=^rsh blocks orted from trying ssh if singleton still attempts spawn.
     Base =
         [{"PMIX_NAMESPACE", Nspace},
          {"PMIX_RANK", integer_to_list(Rank)},
@@ -98,7 +111,6 @@ bootstrap_env(JobMap, Rank) when is_map(JobMap) ->
          {"OMPI_COMM_WORLD_LOCAL_RANK", "0"},
          {"OMPI_COMM_WORLD_LOCAL_SIZE", "1"},
          {"OMPI_UNIVERSE_SIZE", integer_to_list(Size)},
-         {"OMPI_MCA_ess_singleton_isolated", "true"},
          {"OMPI_MCA_plm", "^rsh"}],
     case Uri of
         "" ->
@@ -145,7 +157,8 @@ handle_cast({cancel_job, JobId}, MState) ->
 %% Job + ReplyTo are included so compute nodes can finish ranks without a local task.
 handle_cast({pmix_start_rank, JobId, TaskId, Rank, Cmd, PmixEnv, Job, ReplyTo}, MState) ->
     MS1 = remember_rank_reply_to(TaskId, ReplyTo, MState),
-    {noreply, do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, Job, MS1)};
+    MS2 = MS1#mstate{fence_leader = maps:put(JobId, ReplyTo, MS1#mstate.fence_leader)},
+    {noreply, do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, Job, MS2)};
 handle_cast({pmix_start_rank, JobId, TaskId, Rank, Cmd, PmixEnv, Job}, MState) ->
     {noreply, do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, Job, MState)};
 %% Older 6-tuple casts (no Job): resolve from local DB if present.
@@ -155,6 +168,11 @@ handle_cast({start_rank_local, JobId, TaskId, Rank, Cmd, PmixEnv}, MState) ->
     {noreply, do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, undefined, MState)};
 handle_cast({rank_done, TaskId, ExitCode}, MState) ->
     {noreply, rank_finished(TaskId, ExitCode, MState)};
+%% Cross-node fence: remotes forward contribs to the leader; leader broadcasts result.
+handle_cast({pmix_fence_contrib, JobId, ContribId, Data, FromAddr}, MState) ->
+    {noreply, on_fence_contrib(JobId, ContribId, Data, FromAddr, false, undefined, MState)};
+handle_cast({pmix_fence_result, JobId, Status, Aggregated}, MState) ->
+    {noreply, apply_fence_result(JobId, Status, Aggregated, MState)};
 handle_cast({started, JobId}, MState) ->
     ?LOG_DEBUG("Rank container started for job ~p", [JobId]),
     {noreply, MState};
@@ -170,27 +188,39 @@ handle_cast(Msg, MState) ->
 handle_info({'EXIT', Port, Reason},
             #mstate{helpers = Helpers,
                     server_uris = Uris,
-                    fork_envs = ForkEnvs} =
+                    fork_envs = ForkEnvs,
+                    helper_jobs = HelperJobs,
+                    fences = Fences,
+                    fence_expected = FenceExp,
+                    fence_peers = FencePeers,
+                    fence_leader = FenceLeader} =
                 MState)
     when is_port(Port) ->
     ?LOG_DEBUG("swm-pmix helper port exited: ~p", [Reason]),
     JobIds = [J || {J, P} <- maps:to_list(Helpers), P =:= Port],
     Helpers2 = maps:filter(fun(_, P) -> P =/= Port end, Helpers),
+    HelperJobs2 = maps:filter(fun(P, _) -> P =/= Port end, HelperJobs),
     Uris2 = lists:foldl(fun(J, Acc) -> maps:remove(J, Acc) end, Uris, JobIds),
     Fork2 = lists:foldl(fun(J, Acc) -> maps:remove(J, Acc) end, ForkEnvs, JobIds),
+    Fences2 = lists:foldl(fun(J, Acc) -> maps:remove(J, Acc) end, Fences, JobIds),
+    FenceExp2 = lists:foldl(fun(J, Acc) -> maps:remove(J, Acc) end, FenceExp, JobIds),
+    FencePeers2 = lists:foldl(fun(J, Acc) -> maps:remove(J, Acc) end, FencePeers, JobIds),
+    FenceLeader2 = lists:foldl(fun(J, Acc) -> maps:remove(J, Acc) end, FenceLeader, JobIds),
     {noreply,
      MState#mstate{helpers = Helpers2,
+                   helper_jobs = HelperJobs2,
                    server_uris = Uris2,
-                   fork_envs = Fork2}};
+                   fork_envs = Fork2,
+                   fences = Fences2,
+                   fence_expected = FenceExp2,
+                   fence_peers = FencePeers2,
+                   fence_leader = FenceLeader2}};
 handle_info({Port, {data, {eol, Line}}}, #mstate{} = MState) when is_port(Port) ->
-    ?LOG_DEBUG("swm-pmix: ~s", [Line]),
-    {noreply, MState};
+    {noreply, on_helper_line(Port, line_to_list(Line), MState)};
 handle_info({Port, {data, {noeol, Line}}}, #mstate{} = MState) when is_port(Port) ->
-    ?LOG_DEBUG("swm-pmix: ~s", [Line]),
-    {noreply, MState};
+    {noreply, on_helper_line(Port, line_to_list(Line), MState)};
 handle_info({Port, {data, Data}}, #mstate{} = MState) when is_port(Port) ->
-    ?LOG_DEBUG("swm-pmix: ~p", [Data]),
-    {noreply, MState};
+    {noreply, on_helper_line(Port, line_to_list(Data), MState)};
 handle_info(_Info, MState) ->
     {noreply, MState}.
 
@@ -327,8 +357,8 @@ spawn_pmix_task(#task{job_id = JobId} = Task, MState) ->
                 wm_utils:order_node_ids_main_first(
                     wm_entity:get(nodes, Job)),
             N = length(NodeIds),
-            maybe_register_nspace(JobId, N, MState1),
-            launch_ranks(Task#task{rank_expected = N}, NodeIds, true, Job, MState1);
+            MState2 = maybe_register_nspace(JobId, N, MState1),
+            launch_ranks(Task#task{rank_expected = N}, NodeIds, true, Job, MState2);
         _ ->
             finish_task(Task#task.id, 1, "job not found", MState1)
     end.
@@ -349,7 +379,8 @@ spawn_plain_task(#task{job_id = JobId} = Task, MState) ->
 ensure_helper(JobId,
               #mstate{helpers = Helpers,
                       server_uris = Uris,
-                      fork_envs = ForkEnvs} =
+                      fork_envs = ForkEnvs,
+                      helper_jobs = HelperJobs} =
                   MState) ->
     case maps:get(JobId, Helpers, undefined) of
         Port when is_port(Port) ->
@@ -359,6 +390,7 @@ ensure_helper(JobId,
                 {ok, Port, Uri, ForkEnv} ->
                     ?LOG_INFO("swm-pmix ready for job ~p uri=~s (~b fork env vars)", [JobId, Uri, length(ForkEnv)]),
                     MState#mstate{helpers = maps:put(JobId, Port, Helpers),
+                                  helper_jobs = maps:put(Port, JobId, HelperJobs),
                                   server_uris = maps:put(JobId, Uri, Uris),
                                   fork_envs = maps:put(JobId, ForkEnv, ForkEnvs)};
                 {error, Reason} ->
@@ -367,15 +399,15 @@ ensure_helper(JobId,
             end
     end.
 
--spec maybe_register_nspace(string(), non_neg_integer(), #mstate{}) -> ok.
-maybe_register_nspace(JobId, N, #mstate{helpers = Helpers}) ->
+-spec maybe_register_nspace(string(), non_neg_integer(), #mstate{}) -> #mstate{}.
+maybe_register_nspace(JobId, N, #mstate{helpers = Helpers, fence_expected = FE} = MState) ->
     case maps:get(JobId, Helpers, undefined) of
         Port when is_port(Port) ->
             Cmd = list_to_binary(io_lib:format("REGISTER ~b~n", [max(1, N)])),
             safe_port_cmd(Port, Cmd),
-            ok;
+            MState#mstate{fence_expected = maps:put(JobId, max(1, N), FE)};
         _ ->
-            ok
+            MState
     end.
 
 -spec start_swm_pmix(string()) -> {ok, port(), string(), [{string(), string()}]} | {error, term()}.
@@ -394,7 +426,8 @@ start_swm_pmix(JobId) ->
                                exit_status,
                                use_stdio,
                                stderr_to_stdout,
-                               {line, 1024}]),
+                               %% Fence modex blobs are base64 on one line.
+                               {line, 262144}]),
                 case wait_pmix_ready(Port, 10000) of
                     {ok, Uri, ForkEnv} ->
                         {ok, Port, Uri, ForkEnv};
@@ -567,7 +600,37 @@ launch_ranks(#task{id = TaskId,
         _ ->
             SelfId = wm_self:get_node_id(),
             {ok, MyNode} = wm_self:get_node(),
-            {MState2, _} =
+            N = length(NodeIds),
+            {MState1, PeerAddrs} =
+                lists:foldl(fun(NodeId, {MS, Acc}) ->
+                               case NodeId of
+                                   SelfId ->
+                                       case wm_conf:get_my_address() of
+                                           not_found ->
+                                               {MS, Acc};
+                                           {error, _} ->
+                                               {MS, Acc};
+                                           MyAddr ->
+                                               {MS, [MyAddr | Acc]}
+                                       end;
+                                   _ ->
+                                       case wm_conf:select(node, {id, NodeId}) of
+                                           {ok, Node} ->
+                                               Addr = wm_conf:get_relative_address(Node, MyNode),
+                                               {MS, [Addr | Acc]};
+                                           _ ->
+                                               {MS, Acc}
+                                       end
+                               end
+                            end,
+                            {MState, []},
+                            NodeIds),
+            Peers = lists:reverse(PeerAddrs),
+            MState2 =
+                MState1#mstate{fence_peers = maps:put(JobId, Peers, MState1#mstate.fence_peers),
+                               fence_expected = maps:put(JobId, max(1, N), MState1#mstate.fence_expected),
+                               tasks = maps:put(TaskId, Task, MState1#mstate.tasks)},
+            {MState3, _} =
                 lists:foldl(fun(NodeId, {MS, Rank}) ->
                                PmixEnv =
                                    case Pmix of
@@ -584,7 +647,6 @@ launch_ranks(#task{id = TaskId,
                                                  {ok, Node} ->
                                                      Addr = wm_conf:get_relative_address(Node, MyNode),
                                                      ReplyTo = wm_conf:get_my_relative_address(Addr),
-                                                     %% Pass Job + ReplyTo: remotes report rank_done to main.
                                                      wm_api:cast_self({pmix_start_rank,
                                                                        JobId,
                                                                        TaskId,
@@ -601,9 +663,9 @@ launch_ranks(#task{id = TaskId,
                                      end,
                                {MS2, Rank + 1}
                             end,
-                            {MState#mstate{tasks = maps:put(TaskId, Task, MState#mstate.tasks)}, 0},
+                            {MState2, 0},
                             NodeIds),
-            MState2
+            MState3
     end.
 
 -spec do_bootstrap_env(string(), non_neg_integer(), #mstate{}) -> [{string(), string()}].
@@ -706,12 +768,13 @@ do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv0, JobIn, MState0) ->
                         false ->
                             1
                     end,
-                maybe_register_nspace(JobId, N, MS1),
-                Fork = fork_env_without_rank(maps:get(JobId, MS1#mstate.fork_envs, [])),
-                Uri = maps:get(JobId, MS1#mstate.server_uris, ""),
+                MS2 = maybe_register_nspace(JobId, N, MS1),
+                send_contrib_id(JobId, Rank, MS2),
+                Fork = fork_env_without_rank(maps:get(JobId, MS2#mstate.fork_envs, [])),
+                Uri = maps:get(JobId, MS2#mstate.server_uris, ""),
                 %% Local fork env must win for URI/tmpdir; rank identity stays from bootstrap.
                 EnvMerged = apply_rank_env(apply_server_uri(merge_env(PmixEnv0, Fork), Uri), Rank),
-                {MS1, EnvMerged}
+                {MS2, EnvMerged}
         end,
     Job0 =
         case JobIn of
@@ -905,12 +968,211 @@ finish_task(TaskId, ExitCode, Comment, #mstate{tasks = Tasks} = MState) ->
             MState#mstate{tasks = Tasks2}
     end.
 
+-spec send_contrib_id(string(), non_neg_integer(), #mstate{}) -> ok.
+send_contrib_id(JobId, Rank, #mstate{helpers = Helpers}) ->
+    case maps:get(JobId, Helpers, undefined) of
+        Port when is_port(Port) ->
+            safe_port_cmd(Port, list_to_binary(io_lib:format("CONTRIB_ID ~b~n", [Rank])));
+        _ ->
+            ok
+    end.
+
+-spec on_helper_line(port(), string(), #mstate{}) -> #mstate{}.
+on_helper_line(Port, Line, #mstate{helper_jobs = HJ} = MState) ->
+    case Line of
+        "FENCE_IN " ++ _ ->
+            case maps:get(Port, HJ, undefined) of
+                undefined ->
+                    ?LOG_ERROR("FENCE_IN from unknown helper port"),
+                    MState;
+                JobId ->
+                    on_local_fence_in(JobId, Line, MState)
+            end;
+        _ ->
+            ?LOG_DEBUG("swm-pmix: ~s", [Line]),
+            MState
+    end.
+
+-spec on_local_fence_in(string(), string(), #mstate{}) -> #mstate{}.
+on_local_fence_in(JobId, Line, MState) ->
+    case parse_fence_in(Line) of
+        {ok, FenceId, ContribId, Data} ->
+            case maps:get(JobId, MState#mstate.fence_leader, undefined) of
+                undefined ->
+                    %% Leader (or single-node): accumulate locally.
+                    on_fence_contrib(JobId, ContribId, Data, local, true, FenceId, MState);
+                Leader ->
+                    %% Remote helper: remember local id, forward blob to leader.
+                    MS1 = remember_local_fence_id(JobId, FenceId, MState),
+                    MyAddr =
+                        case wm_conf:get_my_relative_address(Leader) of
+                            {error, _} ->
+                                wm_conf:get_my_address();
+                            Addr ->
+                                Addr
+                        end,
+                    wm_api:cast_self({pmix_fence_contrib, JobId, ContribId, Data, MyAddr}, [Leader]),
+                    MS1
+            end;
+        {error, Reason} ->
+            ?LOG_ERROR("Bad FENCE_IN for job ~p: ~p (~s)", [JobId, Reason, Line]),
+            MState
+    end.
+
+-spec remember_local_fence_id(string(), non_neg_integer(), #mstate{}) -> #mstate{}.
+remember_local_fence_id(JobId, FenceId, #mstate{fences = Fences} = MState) ->
+    Round =
+        case maps:get(JobId, Fences, undefined) of
+            undefined ->
+                Exp = maps:get(JobId, MState#mstate.fence_expected, 1),
+                #fence_round{expected = Exp, local_ids = [FenceId]};
+            #fence_round{local_ids = Ids} = R ->
+                R#fence_round{local_ids = [FenceId | Ids]}
+        end,
+    MState#mstate{fences = maps:put(JobId, Round, Fences)}.
+
+-spec on_fence_contrib(string(),
+                       non_neg_integer(),
+                       binary(),
+                       term(),
+                       boolean(),
+                       non_neg_integer() | undefined,
+                       #mstate{}) ->
+                          #mstate{}.
+on_fence_contrib(JobId, ContribId, Data, _FromAddr, IsLocal, LocalFenceId, #mstate{fences = Fences} = MState) ->
+    Exp = maps:get(JobId, MState#mstate.fence_expected, 1),
+    Round0 =
+        case maps:get(JobId, Fences, undefined) of
+            undefined ->
+                #fence_round{expected = Exp};
+            R ->
+                R
+        end,
+    Round1 =
+        case IsLocal andalso LocalFenceId =/= undefined of
+            true ->
+                Round0#fence_round{local_ids = [LocalFenceId | Round0#fence_round.local_ids]};
+            false ->
+                Round0
+        end,
+    Arrived = maps:put(ContribId, Data, Round1#fence_round.arrived),
+    Round2 = Round1#fence_round{arrived = Arrived},
+    MState1 = MState#mstate{fences = maps:put(JobId, Round2, Fences)},
+    case maps:size(Arrived) >= Round2#fence_round.expected of
+        true ->
+            complete_fence_round(JobId, Round2, MState1);
+        false ->
+            ?LOG_DEBUG("Fence job ~p contrib ~p (~b/~b)",
+                       [JobId, ContribId, maps:size(Arrived), Round2#fence_round.expected]),
+            MState1
+    end.
+
+-spec complete_fence_round(string(), #fence_round{}, #mstate{}) -> #mstate{}.
+complete_fence_round(JobId, #fence_round{arrived = Arrived} = Round, MState) ->
+    %% Concatenate contributions in contrib-id order (OpenPMIx host allgather).
+    Sorted = lists:keysort(1, maps:to_list(Arrived)),
+    Aggregated = iolist_to_binary([D || {_, D} <- Sorted]),
+    ?LOG_INFO("Fence complete for job ~p: ~b contribs, ~b bytes", [JobId, maps:size(Arrived), byte_size(Aggregated)]),
+    Peers = maps:get(JobId, MState#mstate.fence_peers, []),
+    lists:foreach(fun(Addr) ->
+                     case is_local_fence_peer(Addr) of
+                         true ->
+                             ok;
+                         false ->
+                             wm_api:cast_self({pmix_fence_result, JobId, 0, Aggregated}, [Addr])
+                     end
+                  end,
+                  Peers),
+    apply_fence_result(JobId,
+                       0,
+                       Aggregated,
+                       MState#mstate{fences = maps:put(JobId, Round#fence_round{arrived = #{}}, MState#mstate.fences)}).
+
+-spec is_local_fence_peer(term()) -> boolean().
+is_local_fence_peer(Addr) ->
+    case wm_conf:get_my_address() of
+        Addr ->
+            true;
+        _ ->
+            wm_conf:is_my_address(Addr)
+    end.
+
+-spec apply_fence_result(string(), integer(), binary(), #mstate{}) -> #mstate{}.
+apply_fence_result(JobId, Status, Aggregated, #mstate{helpers = Helpers, fences = Fences} = MState) ->
+    LocalIds =
+        case maps:get(JobId, Fences, undefined) of
+            #fence_round{local_ids = Ids} ->
+                lists:reverse(Ids);
+            _ ->
+                []
+        end,
+    case maps:get(JobId, Helpers, undefined) of
+        Port when is_port(Port) ->
+            B64 = base64:encode_to_string(Aggregated),
+            lists:foreach(fun(FenceId) ->
+                             Cmd = list_to_binary(io_lib:format("FENCE_OUT id=~b status=~b nbytes=~b b64=~s~n",
+                                                                [FenceId, Status, byte_size(Aggregated), B64])),
+                             safe_port_cmd(Port, Cmd)
+                          end,
+                          LocalIds);
+        _ ->
+            ?LOG_ERROR("No helper for fence result job ~p", [JobId])
+    end,
+    %% Clear round but keep expected/peers for a later fence.
+    MState#mstate{fences = maps:remove(JobId, Fences)}.
+
+-spec parse_fence_in(string()) -> {ok, non_neg_integer(), non_neg_integer(), binary()} | {error, term()}.
+parse_fence_in(Line) ->
+    try
+        Id = list_to_integer(fence_token(Line, "id=")),
+        Contrib = list_to_integer(fence_token(Line, "contrib=")),
+        B64 = fence_token_rest(Line, "b64="),
+        Data =
+            case B64 of
+                "" ->
+                    <<>>;
+                _ ->
+                    base64:decode(B64)
+            end,
+        {ok, Id, Contrib, Data}
+    catch
+        E:R ->
+            {error, {E, R}}
+    end.
+
+-spec fence_token(string(), string()) -> string().
+fence_token(Line, Key) ->
+    case string:find(Line, Key) of
+        nomatch ->
+            error({missing, Key});
+        Rest0 ->
+            Rest = lists:nthtail(length(Key), Rest0),
+            case lists:splitwith(fun(C) -> C =/= $  end, Rest) of
+                {Tok, _} ->
+                    Tok
+            end
+    end.
+
+-spec fence_token_rest(string(), string()) -> string().
+fence_token_rest(Line, Key) ->
+    case string:find(Line, Key) of
+        nomatch ->
+            "";
+        Rest0 ->
+            lists:nthtail(length(Key), Rest0)
+    end.
+
 -spec do_cancel_job(string(), #mstate{}) -> #mstate{}.
 do_cancel_job(JobId,
               #mstate{job_tasks = JT,
                       helpers = Helpers,
+                      helper_jobs = HelperJobs,
                       server_uris = Uris,
-                      fork_envs = ForkEnvs} =
+                      fork_envs = ForkEnvs,
+                      fences = Fences,
+                      fence_expected = FenceExp,
+                      fence_peers = FencePeers,
+                      fence_leader = FenceLeader} =
                   MState) ->
     Ids = maps:get(JobId, JT, []),
     MState1 = lists:foldl(fun(Tid, MS) -> do_cancel_task(JobId, Tid, MS) end, MState, Ids),
@@ -919,10 +1181,20 @@ do_cancel_job(JobId,
             safe_port_cmd(Port, <<"STOP\n">>),
             safe_port_close(Port),
             MState1#mstate{helpers = maps:remove(JobId, Helpers),
+                           helper_jobs = maps:remove(Port, HelperJobs),
                            server_uris = maps:remove(JobId, Uris),
-                           fork_envs = maps:remove(JobId, ForkEnvs)};
+                           fork_envs = maps:remove(JobId, ForkEnvs),
+                           fences = maps:remove(JobId, Fences),
+                           fence_expected = maps:remove(JobId, FenceExp),
+                           fence_peers = maps:remove(JobId, FencePeers),
+                           fence_leader = maps:remove(JobId, FenceLeader)};
         _ ->
-            MState1#mstate{server_uris = maps:remove(JobId, Uris), fork_envs = maps:remove(JobId, ForkEnvs)}
+            MState1#mstate{server_uris = maps:remove(JobId, Uris),
+                           fork_envs = maps:remove(JobId, ForkEnvs),
+                           fences = maps:remove(JobId, Fences),
+                           fence_expected = maps:remove(JobId, FenceExp),
+                           fence_peers = maps:remove(JobId, FencePeers),
+                           fence_leader = maps:remove(JobId, FenceLeader)}
     end.
 
 -spec do_cancel_task(string(), binary(), #mstate{}) -> #mstate{}.

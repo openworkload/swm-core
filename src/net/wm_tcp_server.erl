@@ -196,6 +196,10 @@ loop({Server, ListenSocket, Module}) ->
         case ssl:transport_accept(ListenSocket) of
             {ok, TlsTransportSocket} ->
                 ?LOG_DEBUG("Transport connection has been accepted"),
+                %% Re-arm the next acceptor before handshake. Handshake failures
+                %% (e.g. plain-TCP probes) used to exit without casting {accepted},
+                %% which permanently stalled the listen queue and marked the node DOWN.
+                gen_server:cast(Server, {accepted, self()}),
                 case ssl:handshake(TlsTransportSocket, ?SSL_HANDSHAKE_TIMEOUT) of
                     {ok, SslSocket} ->
                         {IPv4, Port} =
@@ -214,9 +218,7 @@ loop({Server, ListenSocket, Module}) ->
                         Cert = public_key:pkix_decode_cert(CertBin, otp),
                         UserId = wm_cert:get_uid(Cert),
                         ?LOG_DEBUG("Peer certificate user id: ~p", [UserId]),
-                        gen_server:cast(Server, {accepted, self()}),
                         T = wm_conf:g(conn_timeout, {?DEFAULT_TIMEOUT, integer}),
-                        %?LOG_DEBUG("Call ~p with message ~p", [Module, {accept_conn, SslSocket}]),
                         ServerPid = self(),
                         case gen_server:call(Module, {accept_conn, ServerPid, SslSocket}, T) of
                             ok ->
@@ -224,8 +226,8 @@ loop({Server, ListenSocket, Module}) ->
                             Error ->
                                 ?LOG_ERROR("Module ~p could not handle the connection: ~p", [Module, Error])
                         end,
-                        % Wait for the call handling, otherwise the connection
-                        % will be closed by the server automatically:
+                        %% Wait for the call handling, otherwise the connection
+                        %% will be closed by the server automatically:
                         receive
                             replied ->
                                 ok
