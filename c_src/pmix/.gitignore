@@ -1,3 +1,4 @@
 swm-pmix
 libpmix.so.2
 *.o
+uri_probe
