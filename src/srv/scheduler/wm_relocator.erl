@@ -112,9 +112,9 @@ handle_cast({event, job_finished, {JobId, _, _, _}}, #mstate{} = MState) ->
     ?LOG_DEBUG("Job finished: ~p", [JobId]),
     case wm_conf:select(job, {id, JobId}) of
         {ok, #job{state = ?JOB_STATE_CANCELED}} ->
-            %% Cancel already destroyed remote resources and stopped virtres;
-            %% do not start the normal finish/download path, but still drop any
-            %% leftover #relocation row so it cannot block MAX_RELOCATIONS.
+            %% Cancel already stopped virtres (and destroyed remote resources unless
+            %% keep-resources). Do not start the normal finish/download path, but
+            %% still drop any leftover #relocation row so it cannot block MAX_RELOCATIONS.
             case wm_conf:select(relocation, {job_id, JobId}) of
                 {ok, Leftover} ->
                     ?LOG_DEBUG("Remove leftover relocation for canceled job: ~p", [JobId]),
@@ -401,6 +401,19 @@ predict_job_node_names(Job) ->
     [Main | Extras].
 
 -spec do_cancel_relocation(#job{}) -> ok.
+do_cancel_relocation(#job{keep_resources = true} = Job) ->
+    JobId = wm_entity:get(id, Job),
+    ?LOG_INFO("Job ~p canceled with keep-resources => leave remote partition intact", [JobId]),
+    case wm_conf:select(relocation, {job_id, JobId}) of
+        {ok, Relocation} ->
+            RelocationId = wm_entity:get(id, Relocation),
+            %% Free the MAX_RELOCATIONS slot; tell virtres to stop without cloud destroy.
+            wm_conf:delete(Relocation),
+            ok = wm_factory:send_event_locally(cancel_keep, virtres, RelocationId);
+        {error, not_found} ->
+            ok
+    end,
+    remove_relocation_entities(Job);
 do_cancel_relocation(Job) ->
     JobId = wm_entity:get(id, Job),
     case wm_conf:select(relocation, {job_id, JobId}) of

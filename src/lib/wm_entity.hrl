@@ -125,8 +125,8 @@
          deps = [] :: [{atom(), string()}], account_id = "" :: account_id(), gang_id = "" :: string(),
          execution_path = "" :: string(), script_content = "" :: string(), request = [] :: [#resource{}],
          resources = [] :: [#resource{}], container = "" :: string(), relocatable = true :: atom(),
-         exitcode = 0 :: pos_integer(), signal = 0 :: pos_integer(), priority = 0 :: pos_integer(),
-         comment = "" :: string(), revision = 0 :: pos_integer()}).
+         keep_resources = false :: atom(), exitcode = 0 :: pos_integer(), signal = 0 :: pos_integer(),
+         priority = 0 :: pos_integer(), comment = "" :: string(), revision = 0 :: pos_integer()}).
 -record(process,
         {pid = -1 :: integer(),
          state = "unknown" :: string(),

@@ -206,7 +206,7 @@ TEST(Process, construct) {
 }
 
 TEST(Job, construct) {
-  static const int entity_tuple_arity = 34;
+  static const int entity_tuple_arity = 35;
 
   ei_x_buff x;
   EXPECT_EQ(ei_x_new(&x), 0);
@@ -224,6 +224,7 @@ TEST(Job, construct) {
   }
   EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "Q"), 0);
+  EXPECT_EQ(ei_x_encode_string(&x, "queued"), 0);  // state_details
   EXPECT_EQ(ei_x_encode_string(&x, "2022-05-22T20:01:48"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "2022-05-22T20:00:34"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "2022-05-22T20:02:00"), 0);
@@ -266,7 +267,6 @@ TEST(Job, construct) {
     }
   }
   EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
-  EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // projects
   EXPECT_EQ(ei_x_encode_string(&x, "account-id-2"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "gang-id-4"), 0);
   EXPECT_EQ(ei_x_encode_string(&x, "/home/dude/exec1"), 0);
@@ -321,10 +321,11 @@ TEST(Job, construct) {
   EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
   EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
   EXPECT_EQ(ei_x_encode_string(&x, "container-id-28"), 0);
-  EXPECT_EQ(ei_x_encode_atom(&x, "true"), 0);  // relocatable
-  EXPECT_EQ(ei_x_encode_ulong(&x, 1), 0);      // exit code
-  EXPECT_EQ(ei_x_encode_ulong(&x, 15), 0);     // signal
-  EXPECT_EQ(ei_x_encode_ulong(&x, 1500), 0);   // priority
+  EXPECT_EQ(ei_x_encode_atom(&x, "true"), 0);   // relocatable
+  EXPECT_EQ(ei_x_encode_atom(&x, "false"), 0);  // keep_resources
+  EXPECT_EQ(ei_x_encode_ulong(&x, 1), 0);       // exit code
+  EXPECT_EQ(ei_x_encode_ulong(&x, 15), 0);      // signal
+  EXPECT_EQ(ei_x_encode_ulong(&x, 1500), 0);    // priority
   EXPECT_EQ(ei_x_encode_string(&x, "comment"), 0);
   EXPECT_EQ(ei_x_encode_ulong(&x, 0), 0);  // revision
 
@@ -336,6 +337,7 @@ TEST(Job, construct) {
   EXPECT_EQ(entity.get_cluster_id(), "cluster-id");
   EXPECT_THAT(entity.get_nodes(), ElementsAre("node-id-1", "node-id-2", "node-id-3"));
   EXPECT_EQ(entity.get_state(), "Q");
+  EXPECT_EQ(entity.get_state_details(), "queued");
   EXPECT_EQ(entity.get_start_time(), "2022-05-22T20:01:48");
   EXPECT_EQ(entity.get_submit_time(), "2022-05-22T20:00:34");
   EXPECT_EQ(entity.get_end_time(), "2022-05-22T20:02:00");
@@ -381,6 +383,7 @@ TEST(Job, construct) {
   EXPECT_TRUE(entity.get_resources().empty());
   EXPECT_EQ(entity.get_container(), "container-id-28");
   EXPECT_EQ(entity.get_relocatable(), "true");
+  EXPECT_EQ(entity.get_keep_resources(), "false");
   EXPECT_EQ(entity.get_exitcode(), 1ul);
   EXPECT_EQ(entity.get_signal(), 15ul);
   EXPECT_EQ(entity.get_priority(), 1500ul);

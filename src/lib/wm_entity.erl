@@ -465,6 +465,8 @@ get_type(job, Attr) when is_atom(Attr) ->
             string;
         relocatable ->
             atom;
+        keep_resources ->
+            atom;
         exitcode ->
             integer;
         signal ->

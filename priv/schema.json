@@ -517,6 +517,10 @@
       "default": "true",
       "type": "atom()"
     },
+    "keep_resources": {
+      "default": "false",
+      "type": "atom()"
+    },
     "exitcode": {
       "default": 0,
       "type": "pos_integer()"

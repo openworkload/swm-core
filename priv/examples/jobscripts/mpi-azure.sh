@@ -5,7 +5,7 @@ set -euo pipefail
 #   make -C c_src/examples/mpi
 # Then submit; ~/mpi_hello is uploaded via input-files before the job starts.
 #SWM name Multi-node MPI example
-#SWM nodes 3
+#SWM nodes 2
 #SWM relocatable
 #SWM comment OpenMPI hello via swm-task --pmix (one rank per node)
 #SWM flavor Standard_D2_v4

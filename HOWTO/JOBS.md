@@ -136,6 +136,13 @@ Mark the job as relocatable (can be migrated between nodes).
 #SWM relocatable
 ```
 
+#### keep-resources
+Keep remote cloud resources after the job finishes or is canceled (do not destroy the partition). Useful for debugging stuck or failed runs. Explicit job purge still destroys remote resources.
+```bash
+#SWM keep-resources
+#SWM --keep-resources
+```
+
 ## Environment Variables
 
 Porter exports the following variables into the job script process. Values come from the job record (and related config) at start time.
@@ -152,6 +159,7 @@ Porter exports the following variables into the job script process. Values come 
 | `SWM_JOB_OUTPUT_FILES` | Comma-separated output files downloaded when the job finishes (`#SWM output-files`) |
 | `SWM_JOB_PORTS` | Ports to forward from the remote side (`#SWM ports`), as requested |
 | `SWM_RELOCATABLE` | `YES` or `NO` — whether the job is relocatable (`#SWM relocatable`) |
+| `SWM_KEEP_RESOURCES` | `YES` or `NO` — whether cloud resources are kept after finish/cancel (`#SWM keep-resources`) |
 
 Empty lists/strings are exported as an empty value. User-defined pairs from the job `env` field are also applied; the `SWM_*` variables above always take precedence.
 

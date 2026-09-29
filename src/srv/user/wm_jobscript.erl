@@ -123,6 +123,8 @@ parse_line(Ws, Job) when hd(Ws) == "workdir", length(Ws) > 1 ->
                   Job);
 parse_line(Ws, Job) when hd(Ws) == "relocatable" ->
     wm_entity:set({relocatable, true}, Job);
+parse_line(Ws, Job) when hd(Ws) == "keep-resources"; hd(Ws) == "--keep-resources" ->
+    wm_entity:set({keep_resources, true}, Job);
 parse_line(Ws, Job) when hd(Ws) == "input-files" ->
     Old = wm_entity:get(input_files, Job),
     Expanded = [expand_user_path(F) || F <- tl(Ws)],

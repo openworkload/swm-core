@@ -52,6 +52,7 @@ class SwmJob : SwmEntity {
   void set_resources(const std::vector<SwmResource> &);
   void set_container(const std::string &);
   void set_relocatable(const std::string &);
+  void set_keep_resources(const std::string &);
   void set_exitcode(const uint64_t &);
   void set_signal(const uint64_t &);
   void set_priority(const uint64_t &);
@@ -86,6 +87,7 @@ class SwmJob : SwmEntity {
   std::vector<SwmResource> get_resources() const;
   std::string get_container() const;
   std::string get_relocatable() const;
+  std::string get_keep_resources() const;
   uint64_t get_exitcode() const;
   uint64_t get_signal() const;
   uint64_t get_priority() const;
@@ -121,6 +123,7 @@ class SwmJob : SwmEntity {
   std::vector<SwmResource> resources;
   std::string container;
   std::string relocatable;
+  std::string keep_resources;
   uint64_t exitcode;
   uint64_t signal;
   uint64_t priority;

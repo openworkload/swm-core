@@ -1,6 +1,7 @@
 
 #include "wm_entity_utils.h"
 
+#include <cstdlib>
 #include <iostream>
 #include <new>
 
@@ -231,12 +232,13 @@ int swm::ei_buffer_to_atom(const char *buf, int &index, std::string &a) {
   }
   const auto term_size = get_term_size(buf, index);
   char *tmp = new (std::nothrow) char[term_size + 1];
-  if (ei_decode_atom(buf, &index, tmp)) {
-    std::cerr << "Could not decode atom at " << index << std::endl;
+  if (!tmp) {
+    std::cerr << "Could not allocate " << (term_size + 1) << " bytes for atom at " << index << std::endl;
     return -1;
   }
-  if (tmp == nullptr) {
-    std::cerr << "Could not decode atom at " << index << ": empty pointer" << std::endl;
+  if (ei_decode_atom(buf, &index, tmp)) {
+    std::cerr << "Could not decode atom at " << index << std::endl;
+    delete[] tmp;
     return -1;
   }
   a = std::string(tmp);
@@ -315,27 +317,33 @@ int swm::ei_buffer_to_str(const char *buf, int &index, std::string &s) {
     std::cerr << "Could not get term type at position " << index << std::endl;
     return -1;
   }
+
+  if (term_type != ERL_BINARY_EXT && term_type != ERL_STRING_EXT) {
+    // Empty list [] and other non-string encodings: treat as empty string.
+    ei_skip_term(buf, &index);
+    return 0;
+  }
+
   char *tmp = new (std::nothrow) char[term_size + 1];
+  if (!tmp) {
+    std::cerr << "Could not allocate " << (term_size + 1) << " bytes for string at " << index << std::endl;
+    return -1;
+  }
 
   if (term_type == ERL_BINARY_EXT) {
     int iodata_size = 0;
     if (ei_decode_iodata(buf, &index, &iodata_size, tmp)) {
       std::cerr << "Could not decode iodata at " << index << std::endl;
+      delete[] tmp;
       return -1;
     }
     tmp[iodata_size] = '\0';
-  } else if (term_type == ERL_STRING_EXT) {
+  } else {  // ERL_STRING_EXT
     if (ei_decode_string(buf, &index, tmp)) {
       std::cerr << "Could not decode string at " << index << std::endl;
+      delete[] tmp;
       return -1;
     }
-  } else {                      // assume empty string or iodata
-    ei_skip_term(buf, &index);  // last element of a list is empty list
-    return 0;
-  }
-  if (tmp == nullptr) {
-    std::cerr << "Could not decode string (nullptr) at " << index << std::endl;
-    return -1;
   }
   s = std::string(tmp);
   delete[] tmp;
@@ -608,7 +616,8 @@ std::ostream &operator<<(std::ostream &out, const std::pair<std::string, ei_x_bu
   int index = 0;
   ei_s_print_term(&term_str, std::get<1>(x).buff, &index);
   out << std::string("(") << std::get<0>(x) << std::string(", ") + term_str + ")";
-  delete[] term_str;
+  // ei_s_print_term allocates with malloc(); must free(), not delete[].
+  free(term_str);
   return out;
 }
 

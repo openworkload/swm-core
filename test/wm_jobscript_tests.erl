@@ -14,6 +14,15 @@ parse_nodes_directive_test() ->
     NodeResource = lists:keyfind("node", 2, Resources),
     ?assertMatch(#resource{name = "node", count = 3}, NodeResource).
 
+-spec parse_keep_resources_directive_test() -> ok.
+parse_keep_resources_directive_test() ->
+    Job1 = wm_jobscript:parse("#!/bin/bash\n#SWM keep-resources\necho hello"),
+    ?assertEqual(true, wm_entity:get(keep_resources, Job1)),
+    Job2 = wm_jobscript:parse("#!/bin/bash\n#SWM --keep-resources\necho hello"),
+    ?assertEqual(true, wm_entity:get(keep_resources, Job2)),
+    Job3 = wm_jobscript:parse("#!/bin/bash\necho hello"),
+    ?assertEqual(false, wm_entity:get(keep_resources, Job3)).
+
 -spec parse_single_node_default_test() -> ok.
 parse_single_node_default_test() ->
     JobScript = "#!/bin/bash\necho hello",

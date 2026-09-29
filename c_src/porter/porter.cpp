@@ -232,6 +232,7 @@ void set_env(passwd *pw, const SwmJob &job, const std::string &ctrl_path) {
   const auto ports = ports_from_request(job);
   setenv("SWM_JOB_PORTS", ports.c_str(), 1);
   setenv("SWM_RELOCATABLE", job.get_relocatable() == "true" ? "YES" : "NO", 1);
+  setenv("SWM_KEEP_RESOURCES", job.get_keep_resources() == "true" ? "YES" : "NO", 1);
   if (!ctrl_path.empty()) {
     setenv("SWM_PORTER_CTRL", ctrl_path.c_str(), 1);
   }
@@ -305,7 +306,8 @@ int send_process_info(const SwmProcess &proc) {
     int index = 0;
     ei_s_print_term(&term_str, x.buff, &index);
     swm_logd("Process term: ", term_str);
-    delete[] term_str;
+    // ei_s_print_term allocates with malloc(); must free(), not delete[].
+    free(term_str);
   }
 
   const uint64_t buf_bytes = x.index;
