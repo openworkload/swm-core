@@ -120,14 +120,22 @@ handle_event(http_started, _) ->
     wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stderr").
 
 -spec handle_request(atom(), any(), #mstate{}) -> any().
-handle_request({output, job_stdout}, JobId, #mstate{spool = Spool}) ->
-    ?LOG_ACCESS("Job ~p has been requested: ~p", [job_stdout, JobId]),
+handle_request({output, OutputType}, JobId, #mstate{spool = Spool})
+  when OutputType =:= job_stdout; OutputType =:= job_stderr ->
+    ?LOG_ACCESS("Job ~p has been requested: ~p", [OutputType, JobId]),
     case wm_conf:select(job, {id, JobId}) of
         {ok, Job} ->
-            FileName = wm_entity:get(job_stdout, Job),
+            FileName = wm_entity:get(OutputType, Job),
             Dir = filename:join([Spool, ?REMOTE_USER_DIR_NAME, JobId]),
             FullPath = filename:join(Dir, FileName),
-            read_stdout_with_tasks(Dir, FileName, FullPath);
+            Stream =
+                case OutputType of
+                    job_stdout ->
+                        stdout;
+                    job_stderr ->
+                        stderr
+                end,
+            read_output_with_tasks(Dir, FileName, FullPath, Stream);
         _ ->
             {error, "job not found"}
     end;
@@ -394,10 +402,11 @@ delete_job_timetable(JobId) ->
             ok
     end.
 
-%% Compose job-script stdout.log with per-task stdout-taskN.log files so
-%% clients (swm-console) can show each MPI/task rank separately.
--spec read_stdout_with_tasks(string(), string(), string()) -> {ok, binary()} | {error, term()}.
-read_stdout_with_tasks(Dir, FileName, FullPath) ->
+%% Compose job-script stdout.log/stderr.log with per-task *-taskN.log files so
+%% clients (swm-console) can show each task stream separately.
+-spec read_output_with_tasks(string(), string(), string(), stdout | stderr) ->
+                                {ok, binary()} | {error, term()}.
+read_output_with_tasks(Dir, FileName, FullPath, Stream) ->
     Base =
         case wm_utils:read_file(FullPath, [binary]) of
             {ok, Bin} when is_binary(Bin) ->
@@ -407,7 +416,7 @@ read_stdout_with_tasks(Dir, FileName, FullPath) ->
             _ ->
                 <<>>
         end,
-    TaskParts = read_task_stdout_parts(Dir, FileName),
+    TaskParts = read_task_output_parts(Dir, FileName, Stream),
     case {Base, TaskParts} of
         {<<>>, []} ->
             {error, enoent};
@@ -415,14 +424,14 @@ read_stdout_with_tasks(Dir, FileName, FullPath) ->
             {ok, iolist_to_binary([ensure_trailing_nl(Base), TaskParts])}
     end.
 
--spec read_task_stdout_parts(string(), string()) -> iodata().
-read_task_stdout_parts(Dir, FileName) ->
-    Pattern = filename:join(Dir, task_stdout_glob(FileName)),
+-spec read_task_output_parts(string(), string(), stdout | stderr) -> iodata().
+read_task_output_parts(Dir, FileName, Stream) ->
+    Pattern = filename:join(Dir, task_output_glob(FileName)),
     Files = lists:sort(fun compare_task_log_files/2, filelib:wildcard(Pattern)),
-    [format_task_stdout_section(F) || F <- Files].
+    [format_task_output_section(F, Stream) || F <- Files].
 
--spec task_stdout_glob(string()) -> string().
-task_stdout_glob(FileName) ->
+-spec task_output_glob(string()) -> string().
+task_output_glob(FileName) ->
     case string:split(FileName, ".", trailing) of
         [Name, Ext] ->
             Name ++ "-task*." ++ Ext;
@@ -444,8 +453,8 @@ task_num_from_path(Path) ->
             0
     end.
 
--spec format_task_stdout_section(string()) -> iodata().
-format_task_stdout_section(Path) ->
+-spec format_task_output_section(string(), stdout | stderr) -> iodata().
+format_task_output_section(Path, Stream) ->
     N = task_num_from_path(Path),
     Body =
         case wm_utils:read_file(Path, [binary]) of
@@ -456,8 +465,15 @@ format_task_stdout_section(Path) ->
             _ ->
                 <<>>
         end,
+    Label =
+        case Stream of
+            stdout ->
+                "stdout";
+            stderr ->
+                "stderr"
+        end,
     [<<"\n--------------------------------------------------------------------------------\n">>,
-     io_lib:format("Task ~b stdout:\n", [N]),
+     io_lib:format("Task ~b ~s:\n", [N, Label]),
      ensure_trailing_nl(Body)].
 
 -spec ensure_trailing_nl(binary()) -> binary().

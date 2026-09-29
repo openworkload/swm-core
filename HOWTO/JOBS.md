@@ -85,16 +85,20 @@ Specify the standard input file.
 ```
 
 #### stdout
-Specify where to redirect standard output.
+Specify where to redirect standard output of the **job script** (default `stdout.log` in the job workdir).
 ```bash
 #SWM stdout <file_path>
 ```
 
+Task processes spawned by `swm-task` do **not** append to this file; see [Task stdout and stderr](#task-stdout-and-stderr).
+
 #### stderr
-Specify where to redirect standard error.
+Specify where to redirect standard error of the **job script** (default `stderr.log` in the job workdir).
 ```bash
 #SWM stderr <file_path>
 ```
+
+Same separation applies for task processes; see [Task stdout and stderr](#task-stdout-and-stderr).
 
 #### workdir
 Set the working directory for the job.
@@ -187,6 +191,25 @@ Flow (with or without `--pmix`):
 3. SWM creates **one Porter container per allocated node** and runs the command there.
 4. With `--pmix`, SWM also starts per-node `swm-pmix` and injects `PMIX_*` / `SWM_*`.
 5. `swm-task` stays in the foreground until all ranks finish; cancel tears down ranks (and `swm-pmix` if used).
+
+### Task stdout and stderr
+
+The job script and `swm-task` child processes use **separate** log files next to each other in the job workdir. That avoids concurrent NFS appends to one shared `stdout.log` / `stderr.log`.
+
+| Writer | Stdout file | Stderr file |
+|--------|-------------|-------------|
+| Job script (main Porter) | `#SWM stdout` path, default `stdout.log` | `#SWM stderr` path, default `stderr.log` |
+| Each `swm-task` process (task / rank `N`) | `stdout-taskN.log` (or `<basename>-taskN.<ext>` if `#SWM stdout` is customized) | `stderr-taskN.log` (same naming rule for `#SWM stderr`) |
+
+Examples with the defaults (`stdout.log` / `stderr.log`) and three nodes (`N` = 0, 1, 2):
+
+- `stdout.log`, `stderr.log` -- job script only
+- `stdout-task0.log` .. `stdout-task2.log` -- one per task
+- `stderr-task0.log` .. `stderr-task2.log` -- one per task
+
+When the job finishes on cloud resources, SWM downloads the base logs and all present `*-taskN.log` files back to Skyport (into the job spool workdir). The HTTP APIs `/user/job/{id}/stdout` and `/user/job/{id}/stderr` return the job-script file plus each task file, separated by a line and labeled `Task N stdout:` / `Task N stderr:`.
+
+See also `priv/examples/jobscripts/multiple-tasks-azure.sh` (plain `swm-task`) and `priv/examples/jobscripts/mpi-azure.sh` (`swm-task --pmix`).
 
 ## Complete Multi-Node MPI Example
 
