@@ -9,7 +9,9 @@ bootstrap_env_test() ->
     ?assertEqual("1", proplists:get_value("PMIX_RANK", Env)),
     ?assertEqual("3", proplists:get_value("PMIX_JOB_SIZE", Env)),
     ?assertEqual("1", proplists:get_value("PMIX_LOCAL_SIZE", Env)),
-    ?assertEqual(undefined, proplists:get_value("OMPI_MCA_ess_singleton_isolated", Env)),
+    ?assertEqual("pmi", proplists:get_value("OMPI_MCA_ess", Env)),
+    ?assertEqual("none", proplists:get_value("PMIX_MCA_psec", Env)),
+    ?assertEqual("swm-abc", proplists:get_value("FLUX_JOB_ID", Env)),
     ?assertEqual("^rsh", proplists:get_value("OMPI_MCA_plm", Env)).
 
 bootstrap_env_with_uri_test() ->

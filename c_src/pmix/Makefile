@@ -1,9 +1,14 @@
 CC=g++
 SWM_C_LIB=../lib
-PMIX_INCLUDE?=/usr/lib/x86_64-linux-gnu/pmix2/include
-PMIX_LIBDIR?=/usr/lib/x86_64-linux-gnu
-# Prefer the multiarch pmix2 lib dir when present (ships the real .so).
-PMIX_SO_DIR?=$(shell if [ -f /usr/lib/x86_64-linux-gnu/pmix2/lib/libpmix.so.2 ]; then echo /usr/lib/x86_64-linux-gnu/pmix2/lib; else echo $(PMIX_LIBDIR); fi)
+# Prefer host OpenPMIx 4.2.9 (HPC-X clients Init-hang with bundled 4.1.2 servers).
+# Fall back to Debian pmix2 / generic libdir for build containers without /opt/pmix.
+PMIX_INCLUDE?=$(shell if [ -f /opt/pmix/4.2.9/include/pmix.h ]; then echo /opt/pmix/4.2.9/include; \
+	elif [ -f /usr/lib/x86_64-linux-gnu/pmix2/include/pmix.h ]; then echo /usr/lib/x86_64-linux-gnu/pmix2/include; \
+	else echo /usr/include; fi)
+PMIX_LIBDIR?=$(shell if [ -f /opt/pmix/4.2.9/lib/libpmix.so.2 ]; then echo /opt/pmix/4.2.9/lib; \
+	elif [ -f /usr/lib/x86_64-linux-gnu/pmix2/lib/libpmix.so.2 ]; then echo /usr/lib/x86_64-linux-gnu/pmix2/lib; \
+	else echo /usr/lib/x86_64-linux-gnu; fi)
+PMIX_SO_DIR?=$(PMIX_LIBDIR)
 CFLAGS=-I${_KERL_ACTIVE_DIR}/usr/include\
        -I${SWM_C_LIB}\
        -I${PMIX_INCLUDE}\

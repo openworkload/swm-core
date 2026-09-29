@@ -7,11 +7,14 @@
 
 #include <pmix.h>
 #include <pmix_server.h>
+#include <pwd.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -28,6 +31,7 @@ std::string g_nspace;
 std::atomic<bool> g_running {true};
 std::atomic<int> g_contrib_id {0};
 std::atomic<uint64_t> g_fence_seq {1};
+bool g_nspace_registered = false;
 
 std::mutex g_io_mu;
 std::mutex g_fence_mu;
@@ -125,7 +129,9 @@ void release_fence_buf(void *cbdata) {
   delete[] static_cast<char *>(cbdata);
 }
 
-pmix_status_t connected(const pmix_proc_t * /*proc*/, void * /*server_object*/, pmix_op_cbfunc_t cbfunc, void *cbdata) {
+pmix_status_t connected(const pmix_proc_t *proc, void * /*server_object*/, pmix_op_cbfunc_t cbfunc, void *cbdata) {
+  std::cerr << "swm-pmix: CONNECTED " << (proc ? proc->nspace : "?") << ":"
+            << (proc ? static_cast<unsigned>(proc->rank) : 0) << "\n";
   if (cbfunc) {
     cbfunc(PMIX_SUCCESS, cbdata);
   }
@@ -223,19 +229,174 @@ void print_usage(const char *prog) {
   std::cerr << "Usage: " << prog << " --job-id <id> [--nspace <name>]\n";
 }
 
-bool register_nspace(const std::string &nspace, size_t nprocs) {
+// OpenPMIx server APIs are often async: SUCCESS means "wait for cbfunc".
+struct SyncOp {
+  std::atomic<int> active {-1};  // -1 pending; otherwise pmix_status_t
+};
+
+void sync_op_cb(pmix_status_t status, void *cbdata) {
+  auto *s = static_cast<SyncOp *>(cbdata);
+  s->active.store(static_cast<int>(status));
+}
+
+bool wait_sync(SyncOp &s, int timeout_ms = 10000) {
+  for (int i = 0; i < timeout_ms / 5; ++i) {
+    if (s.active.load() != -1) {
+      const int st = s.active.load();
+      return st == PMIX_SUCCESS || st == PMIX_OPERATION_SUCCEEDED;
+    }
+    usleep(5000);
+  }
+  return false;
+}
+
+pmix_status_t wait_call(pmix_status_t imm, SyncOp &s) {
+  if (imm == PMIX_OPERATION_SUCCEEDED) {
+    return PMIX_SUCCESS;
+  }
+  if (imm != PMIX_SUCCESS) {
+    return imm;
+  }
+  if (!wait_sync(s)) {
+    return PMIX_ERR_TIMEOUT;
+  }
+  return static_cast<pmix_status_t>(s.active.load());
+}
+
+// setup_application uses a richer callback that must release via cbfunc.
+void setup_app_cb(pmix_status_t status,
+                  pmix_info_t /*info*/[],
+                  size_t /*ninfo*/,
+                  void *provided_cbdata,
+                  pmix_op_cbfunc_t cbfunc,
+                  void *cbdata) {
+  auto *s = static_cast<SyncOp *>(provided_cbdata);
+  s->active.store(static_cast<int>(status));
+  if (cbfunc) {
+    cbfunc(PMIX_SUCCESS, cbdata);
+  }
+}
+
+void job_credentials(uid_t &uid, gid_t &gid) {
+  uid = getuid();
+  gid = getgid();
+  // Helper often runs as root while the app is the job user. register_client
+  // must match the connecting process credentials.
+  if (const char *name = std::getenv("SWM_JOB_USER")) {
+    if (name[0] != '\0') {
+      if (passwd *pw = getpwnam(name)) {
+        uid = pw->pw_uid;
+        gid = pw->pw_gid;
+      } else {
+        std::cerr << "swm-pmix: SWM_JOB_USER=" << name << " not found in passwd\n";
+      }
+    }
+  }
+}
+
+bool register_clients(const std::string &nspace, const std::vector<pmix_rank_t> &ranks) {
+  uid_t uid = 0;
+  gid_t gid = 0;
+  job_credentials(uid, gid);
+  bool ok = true;
+  for (pmix_rank_t rank : ranks) {
+    pmix_proc_t proc;
+    PMIX_PROC_LOAD(&proc, nspace.c_str(), rank);
+    SyncOp sop;
+    const pmix_status_t rc = wait_call(PMIx_server_register_client(&proc, uid, gid, nullptr, sync_op_cb, &sop), sop);
+    if (rc != PMIX_SUCCESS) {
+      std::cerr << "swm-pmix: register_client rank=" << rank << " uid=" << uid << " rc=" << rc << "\n";
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+bool register_nspace(const std::string &nspace, size_t nprocs, size_t local_size, const std::string &peers) {
+  if (local_size == 0 || local_size > nprocs) {
+    local_size = (nprocs == 0) ? 1 : nprocs;
+  }
+  std::string local_peers = peers;
+  if (local_peers.empty()) {
+    for (size_t i = 0; i < local_size; ++i) {
+      if (i) {
+        local_peers += ",";
+      }
+      local_peers += std::to_string(i);
+    }
+  }
+
+  // Re-REGISTER without deregister wedged OpenPMIx: clients CONNECT then hang.
+  if (g_nspace_registered) {
+    SyncOp dop;
+    PMIx_server_deregister_nspace(nspace.c_str(), sync_op_cb, &dop);
+    if (!wait_sync(dop, 5000)) {
+      std::cerr << "swm-pmix: deregister_nspace timeout\n";
+    }
+    g_nspace_registered = false;
+  }
+
+  char hostname[256];
+  if (gethostname(hostname, sizeof(hostname)) != 0) {
+    std::snprintf(hostname, sizeof(hostname), "localhost");
+  }
+  char *node_regex = nullptr;
+  char *ppn = nullptr;
+  (void)PMIx_generate_regex(hostname, &node_regex);
+  (void)PMIx_generate_ppn(local_peers.c_str(), &ppn);
+
   pmix_info_t *info = nullptr;
-  size_t ninfo = 2;
+  const size_t ninfo = 7;
   PMIX_INFO_CREATE(info, ninfo);
   uint32_t job_size = static_cast<uint32_t>(nprocs);
-  uint32_t local = 1;
-  PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &job_size, PMIX_UINT32);
-  PMIX_INFO_LOAD(&info[1], PMIX_LOCAL_SIZE, &local, PMIX_UINT32);
+  uint32_t univ = job_size;
+  uint32_t local = static_cast<uint32_t>(local_size);
+  uint32_t spawned = 0;
+  PMIX_INFO_LOAD(&info[0], PMIX_UNIV_SIZE, &univ, PMIX_UINT32);
+  PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &job_size, PMIX_UINT32);
+  PMIX_INFO_LOAD(&info[2], PMIX_LOCAL_SIZE, &local, PMIX_UINT32);
+  PMIX_INFO_LOAD(&info[3], PMIX_SPAWNED, &spawned, PMIX_UINT32);
+  PMIX_INFO_LOAD(&info[4], PMIX_LOCAL_PEERS, local_peers.c_str(), PMIX_STRING);
+  if (node_regex) {
+    PMIX_INFO_LOAD(&info[5], PMIX_NODE_MAP, node_regex, PMIX_STRING);
+  }
+  if (ppn) {
+    PMIX_INFO_LOAD(&info[6], PMIX_PROC_MAP, ppn, PMIX_STRING);
+  }
 
-  pmix_status_t rc =
-      PMIx_server_register_nspace(nspace.c_str(), static_cast<int>(nprocs), info, ninfo, nullptr, nullptr);
+  // Second arg is nlocalprocs (not job size). Job size goes in PMIX_JOB_SIZE info.
+  SyncOp sop;
+  pmix_status_t rc = wait_call(
+      PMIx_server_register_nspace(nspace.c_str(), static_cast<int>(local_size), info, ninfo, sync_op_cb, &sop), sop);
   PMIX_INFO_FREE(info, ninfo);
-  return rc == PMIX_SUCCESS || rc == PMIX_OPERATION_SUCCEEDED;
+  if (node_regex) {
+    free(node_regex);
+  }
+  if (ppn) {
+    free(ppn);
+  }
+  if (rc != PMIX_SUCCESS) {
+    std::cerr << "swm-pmix: register_nspace rc=" << rc << "\n";
+    return false;
+  }
+  g_nspace_registered = true;
+
+  // Required before clients connect (see OpenPMIx examples/server.c).
+  {
+    SyncOp app_op;
+    rc = wait_call(PMIx_server_setup_application(nspace.c_str(), nullptr, 0, setup_app_cb, &app_op), app_op);
+    if (rc != PMIX_SUCCESS) {
+      std::cerr << "swm-pmix: setup_application rc=" << rc << "\n";
+    }
+  }
+  {
+    SyncOp loc_op;
+    rc = wait_call(PMIx_server_setup_local_support(nspace.c_str(), nullptr, 0, sync_op_cb, &loc_op), loc_op);
+    if (rc != PMIX_SUCCESS) {
+      std::cerr << "swm-pmix: setup_local_support rc=" << rc << "\n";
+    }
+  }
+  return true;
 }
 
 struct ForkEnv {
@@ -279,8 +440,11 @@ ForkEnv server_fork_env(const std::string &nspace, pmix_rank_t rank) {
   return out;
 }
 
-void chmod_tree_world_rx(const std::string &path) {
-  const std::string cmd = "chmod -R a+rX " + path + " 2>/dev/null";
+void chmod_tree_world_rwx(const std::string &path) {
+  // Clients often run as the job user while swm-pmix is root. Shared-memory
+  // GDS (ds12/ds21) needs write on lock files; a+rX alone causes
+  // gds_ds12_lock_pthread failures and hangs MPI_Init before fence.
+  const std::string cmd = "chmod -R a+rwX " + path + " 2>/dev/null";
   std::system(cmd.c_str());
 }
 
@@ -363,19 +527,23 @@ int main(int argc, char *argv[]) {
     g_nspace = "swm-" + g_job_id;
   }
 
+  // TCP cannot use SO_PEERCRED ("native"); force psec=none before server_init.
+  ::setenv("PMIX_MCA_psec", "none", 0);
+
   pmix_server_module_t module;
   std::memset(&module, 0, sizeof(module));
   module.client_connected = connected;
   module.client_finalized = finalized;
   module.abort = abort_fn;
   module.fence_nb = fencenb;
-  module.direct_modex = dmodex;
+  // Leave direct_modex nullptr (NOT_SUPPORTED). A NOT_FOUND stub can stall HPC-X Init.
 
   pmix_info_t *info = nullptr;
   size_t ninfo = 1;
   PMIX_INFO_CREATE(info, ninfo);
   std::string tmpdir = "/tmp/swm-pmix-" + g_job_id;
-  ::mkdir(tmpdir.c_str(), 0755);
+  ::mkdir(tmpdir.c_str(), 0777);
+  ::chmod(tmpdir.c_str(), 0777);
   PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TMPDIR, tmpdir.c_str(), PMIX_STRING);
 
   pmix_status_t rc = PMIx_server_init(&module, info, ninfo);
@@ -385,12 +553,15 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  if (!register_nspace(g_nspace, 1)) {
+  // Minimal placeholder so setup_fork can publish a URI for READY. Full job
+  // topology arrives later via REGISTER (do not treat nprocs as nlocalprocs).
+  if (!register_nspace(g_nspace, 1, 1, "0")) {
     std::cerr << "swm-pmix: register_nspace warning (continuing)\n";
   }
+  (void)register_clients(g_nspace, {0});
 
   const ForkEnv fork_env = server_fork_env(g_nspace, 0);
-  chmod_tree_world_rx(tmpdir);
+  chmod_tree_world_rwx(tmpdir);
   if (fork_env.uri.empty()) {
     std::cerr << "swm-pmix: warning: PMIX_SERVER_URI empty after setup_fork\n";
   }
@@ -403,14 +574,70 @@ int main(int argc, char *argv[]) {
   std::string line;
   while (g_running && std::getline(std::cin, line)) {
     if (line.rfind("REGISTER ", 0) == 0) {
+      // REGISTER <nprocs> [local_size] [peers]
+      // SWM 1-rank/node: REGISTER N 1 <rank>
       size_t nprocs = 1;
+      size_t local = 0;
+      std::string peers;
       try {
-        nprocs = static_cast<size_t>(std::stoul(line.substr(9)));
+        size_t pos = 0;
+        const std::string args = line.substr(9);
+        nprocs = static_cast<size_t>(std::stoul(args, &pos));
+        while (pos < args.size() && args[pos] == ' ') {
+          ++pos;
+        }
+        if (pos < args.size()) {
+          size_t pos2 = 0;
+          local = static_cast<size_t>(std::stoul(args.substr(pos), &pos2));
+          pos += pos2;
+          while (pos < args.size() && args[pos] == ' ') {
+            ++pos;
+          }
+          if (pos < args.size()) {
+            peers = args.substr(pos);
+            // trim trailing whitespace
+            while (!peers.empty() && (peers.back() == ' ' || peers.back() == '\r')) {
+              peers.pop_back();
+            }
+          }
+        }
       } catch (...) {
         nprocs = 1;
+        local = 0;
+        peers.clear();
       }
-      if (register_nspace(g_nspace, nprocs)) {
-        emit_line("OK REGISTER " + std::to_string(nprocs));
+      if (local == 0) {
+        local = 1;  // SWM default: one rank per node
+      }
+      if (peers.empty()) {
+        // Default local peer list 0..local-1 (same-node multi-rank tests).
+        for (size_t i = 0; i < local; ++i) {
+          if (i) {
+            peers += ",";
+          }
+          peers += std::to_string(i);
+        }
+      }
+      std::vector<pmix_rank_t> ranks;
+      {
+        size_t start = 0;
+        while (start <= peers.size()) {
+          const size_t comma = peers.find(',', start);
+          const std::string tok = peers.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+          if (!tok.empty()) {
+            try {
+              ranks.push_back(static_cast<pmix_rank_t>(std::stoul(tok)));
+            } catch (...) {
+            }
+          }
+          if (comma == std::string::npos) {
+            break;
+          }
+          start = comma + 1;
+        }
+      }
+      if (register_nspace(g_nspace, nprocs, local, peers) && register_clients(g_nspace, ranks)) {
+        emit_line("OK REGISTER " + std::to_string(nprocs) + " local=" + std::to_string(local) + " peers=" + peers);
       } else {
         emit_line("ERR REGISTER");
       }
@@ -429,8 +656,9 @@ int main(int argc, char *argv[]) {
         rank = 0;
       }
       g_contrib_id.store(static_cast<int>(rank));
+      (void)register_clients(g_nspace, {rank});
       const ForkEnv fe = server_fork_env(g_nspace, rank);
-      chmod_tree_world_rx(tmpdir);
+      chmod_tree_world_rwx(tmpdir);
       emit_line("OK SETUP_FORK rank=" + std::to_string(rank) + " uri=" + fe.uri);
       for (const auto &kv : fe.vars) {
         emit_line("ENV " + kv.first + "=" + kv.second);

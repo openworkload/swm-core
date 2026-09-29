@@ -4,6 +4,8 @@
 #include "wm_entity.h"
 #include "wm_io.h"
 
+#include <cstdlib>
+
 #define BUF_SIZE               32
 #define SWM_COMMAND_PORTER_RUN 1
 
@@ -85,7 +87,8 @@ int swm::get_porter_data(std::istream *input, byte *data[]) {
     char *term_str = nullptr;
     ei_s_print_term(&term_str, data[i], &index);
     swm_logd("Got term of size: %d and type: %d (index=%d): %s", term_size, term_type, index, term_str);
-    delete[] term_str;
+    // ei_s_print_term allocates with malloc(); must free(), not delete[].
+    free(term_str);
   }
 
   return 0;

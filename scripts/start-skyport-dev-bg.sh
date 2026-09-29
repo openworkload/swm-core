@@ -123,7 +123,8 @@ ensure_container() {
 }
 
 swm_running() {
-    in_container 'pgrep -x beam.smp >/dev/null 2>&1'
+    # Ignore zombie beam.smp leftovers (ppid 1 / state Z); only live SWM counts.
+    in_container 'ps -C beam.smp -o pid=,stat= 2>/dev/null | awk '\''$2 !~ /^Z/ {found=1} END {exit !found}'\'''
 }
 
 gate_running() {
@@ -149,8 +150,12 @@ stop_swm() {
         fi
         sleep 1
     done
-    echo "WARN: swm-core still running after stop; killing beam.smp" >&2
-    in_container 'pkill -x beam.smp || true'
+    echo "WARN: swm-core still running after stop; killing live beam.smp" >&2
+    in_container '
+        ps -C beam.smp -o pid=,stat= 2>/dev/null | awk '\''$2 !~ /^Z/ {print $1}'\'' | while read -r pid; do
+            kill "$pid" 2>/dev/null || true
+        done
+    '
     sleep 1
 }
 

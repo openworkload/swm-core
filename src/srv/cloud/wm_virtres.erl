@@ -368,16 +368,13 @@ downloading({call, From}, get_current_state, MState) ->
     {keep_state, MState, [{reply, From, ?FUNCTION_NAME}]};
 downloading(cast, {Ref, ok}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_INFO("Downloading has finished => delete entities [~p, ~p]", [Ref, JobId]),
-    wm_virtres_handler:update_job([{state_details, "Destroying remote resources"}], JobId),
     stop_port_forwarding(MState),
-    gen_statem:cast(self(), start_destroying),
-    {next_state, destroying, MState#mstate{download_ref = finished}};
+    finish_or_destroy_resources(JobId, MState);
 downloading(cast, {Ref, {error, File, Reason}}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_WARN("Downloading of ~p has failed: ~p", [File, Reason]),
     wm_virtres_handler:update_job([{state_details, "Data downloading failed"}], JobId),
     stop_port_forwarding(MState),
-    gen_statem:cast(self(), start_destroying),
-    {next_state, destroying, MState#mstate{download_ref = finished}};
+    finish_or_destroy_resources(JobId, MState);
 downloading(cast, {Ref, 'EXIT', Reason}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
     ?LOG_DEBUG("Downloading has unexpectedly exited: ~p", [Reason]),
     wm_virtres_handler:update_job([{state_details, "Data downloading has unexpectedly exited"}], JobId),
@@ -485,6 +482,38 @@ handle_remote_failure(#mstate{job_id = JobId, task_id = TaskId} = MState) ->
     wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}, {state_details, "Job failed and requeued"}], JobId),
     wm_scheduler:force_schedule(),
     %TODO Try to delete resource several, but limited number of times
+    {stop, normal, MState}.
+
+%% After download: destroy cloud partition unless the job asked to keep resources.
+-spec finish_or_destroy_resources(job_id(), #mstate{}) -> {atom(), atom(), #mstate{}} | {stop, normal, #mstate{}}.
+finish_or_destroy_resources(JobId, #mstate{} = MState) ->
+    case job_keeps_resources(JobId) of
+        true ->
+            keep_resources_and_stop(JobId,
+                                    "Job finished, remote resources kept",
+                                    MState#mstate{download_ref = finished});
+        false ->
+            wm_virtres_handler:update_job([{state_details, "Destroying remote resources"}], JobId),
+            gen_statem:cast(self(), start_destroying),
+            {next_state, destroying, MState#mstate{download_ref = finished}}
+    end.
+
+-spec job_keeps_resources(job_id()) -> boolean().
+job_keeps_resources(JobId) ->
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, #job{keep_resources = true}} ->
+            true;
+        _ ->
+            false
+    end.
+
+-spec keep_resources_and_stop(job_id(), string(), #mstate{}) -> {stop, normal, #mstate{}}.
+keep_resources_and_stop(JobId, StateDetails, #mstate{} = MState) ->
+    ?LOG_INFO("Job ~p requested keep-resources => leave remote partition intact (~s)", [JobId, StateDetails]),
+    wm_virtres_handler:update_job([{state_details, StateDetails}], JobId),
+    %% Drop local relocation entities so topology/pinger stay clean;
+    %% cloud VMs/partition remain until deleted manually (or purged).
+    ok = wm_virtres_handler:remove_relocation_entities(JobId),
     {stop, normal, MState}.
 
 -spec parse_args(list(), #mstate{}) -> #mstate{}.
@@ -600,13 +629,21 @@ get_ssh_user_dir() ->
 get_ssh_swm_dir(Spool) ->
     filename:join([Spool, "secure/host"]).
 
--spec handle_event(term(), term(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+-spec handle_event(term(), term(), #mstate{}) -> {atom(), atom(), #mstate{}} | {stop, normal, #mstate{}}.
 handle_event(job_canceled, _, #mstate{job_id = JobId, task_id = TaskId} = MState) ->
-    ?LOG_DEBUG("Job ~p was canceled, its resources will be destroyed (task_id: ~p)", [JobId, TaskId]),
-    %% Relocator also handles job_canceled (pinger + entity cleanup). Here we
-    %% only tear down the remote partition for this virtres task.
-    gen_statem:cast(self(), start_destroying),
-    {next_state, destroying, MState};
+    case job_keeps_resources(JobId) of
+        true ->
+            keep_resources_and_stop(JobId, "Job canceled, remote resources kept", MState);
+        false ->
+            ?LOG_DEBUG("Job ~p was canceled, its resources will be destroyed (task_id: ~p)", [JobId, TaskId]),
+            %% Relocator also handles job_canceled (pinger + entity cleanup). Here we
+            %% only tear down the remote partition for this virtres task.
+            gen_statem:cast(self(), start_destroying),
+            {next_state, destroying, MState}
+    end;
+handle_event(cancel_keep, _, #mstate{job_id = JobId} = MState) ->
+    %% Sent by relocator when canceling a keep-resources job: stop virtres, leave cloud VMs.
+    keep_resources_and_stop(JobId, "Job canceled, remote resources kept", MState);
 handle_event(job_finished,
              _,
              #mstate{job_id = JobId,
@@ -632,15 +669,21 @@ handle_event(destroy,
                      part_ext_id = PartExtId,
                      remote = Remote} =
                  MState) ->
-    ?LOG_DEBUG("Destroy remote partition for job ~p (part=~p, ext=~p, task_id: ~p)",
-               [JobId, PartId, PartExtId, TaskId]),
-    wm_virtres_handler:update_job([{state_details, "Destroying partition resources"}], JobId),
-    case wm_virtres_handler:delete_partition(PartId, PartExtId, JobId, Remote) of
-        {ok, WaitRef} ->
-            {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
-        {error, not_found} ->
-            ?LOG_INFO("Partition already absent while destroying job ~p: ~p", [JobId, PartId]),
-            {stop, normal, MState}
+    case job_keeps_resources(JobId) of
+        true ->
+            %% Cancel/relocator destroy raced with keep-resources: do not delete cloud partition.
+            keep_resources_and_stop(JobId, "Job canceled, remote resources kept", MState);
+        false ->
+            ?LOG_DEBUG("Destroy remote partition for job ~p (part=~p, ext=~p, task_id: ~p)",
+                       [JobId, PartId, PartExtId, TaskId]),
+            wm_virtres_handler:update_job([{state_details, "Destroying partition resources"}], JobId),
+            case wm_virtres_handler:delete_partition(PartId, PartExtId, JobId, Remote) of
+                {ok, WaitRef} ->
+                    {next_state, destroying, MState#mstate{action = destroy, wait_ref = WaitRef}};
+                {error, not_found} ->
+                    ?LOG_INFO("Partition already absent while destroying job ~p: ~p", [JobId, PartId]),
+                    {stop, normal, MState}
+            end
     end;
 handle_event({error, PartId, not_found}, StateName, MState) ->
     ?LOG_DEBUG("Partition ~p  not found", [PartId]),

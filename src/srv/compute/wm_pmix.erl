@@ -96,14 +96,17 @@ bootstrap_env(JobMap, Rank) when is_map(JobMap) ->
     Nspace = "swm-" ++ JobId,
     Size = max(1, length(Nodes)),
     Uri = maps:get(server_uri, JobMap, ""),
-    %% HPC-X Open MPI 4.x direct-launches via ess_singleton. Cross-node PMIx
-    %% fence (wm_pmix allgather) supplies peer modex so ranks form one world.
-    %% plm=^rsh blocks orted from trying ssh if singleton still attempts spawn.
+    %% HPC-X Open MPI 4.x defaults to ess_singleton unless a scheduler schizo
+    %% declares direct-launch. FLUX_JOB_ID selects schizo_flux -> ess=pmi so
+    %% MPI_Init attaches to swm-pmix and runs the collecting fence.
+    %% PMIX_MCA_psec=none: TCP has no SO_PEERCRED (native auth hangs/fails).
     Base =
         [{"PMIX_NAMESPACE", Nspace},
          {"PMIX_RANK", integer_to_list(Rank)},
          {"PMIX_JOB_SIZE", integer_to_list(Size)},
          {"PMIX_LOCAL_SIZE", "1"},
+         {"PMIX_SECURITY_MODE", "none"},
+         {"PMIX_MCA_psec", "none"},
          {"SWM_PMIX_NSPACE", Nspace},
          {"SWM_PMIX_RANK", integer_to_list(Rank)},
          {"OMPI_COMM_WORLD_RANK", integer_to_list(Rank)},
@@ -111,7 +114,12 @@ bootstrap_env(JobMap, Rank) when is_map(JobMap) ->
          {"OMPI_COMM_WORLD_LOCAL_RANK", "0"},
          {"OMPI_COMM_WORLD_LOCAL_SIZE", "1"},
          {"OMPI_UNIVERSE_SIZE", integer_to_list(Size)},
-         {"OMPI_MCA_plm", "^rsh"}],
+         {"OMPI_APP_CTX_NUM_PROCS", integer_to_list(Size)},
+         {"OMPI_MCA_ess", "pmi"},
+         {"OMPI_MCA_orte_ess_num_procs", integer_to_list(Size)},
+         {"OMPI_MCA_plm", "^rsh"},
+         {"OMPI_MCA_hwloc_base_binding_policy", "none"},
+         {"FLUX_JOB_ID", "swm-" ++ JobId}],
     case Uri of
         "" ->
             Base;
@@ -357,7 +365,8 @@ spawn_pmix_task(#task{job_id = JobId} = Task, MState) ->
                 wm_utils:order_node_ids_main_first(
                     wm_entity:get(nodes, Job)),
             N = length(NodeIds),
-            MState2 = maybe_register_nspace(JobId, N, MState1),
+            %% Main-node helper: register job size with local rank 0.
+            MState2 = maybe_register_nspace(JobId, N, 0, MState1),
             launch_ranks(Task#task{rank_expected = N}, NodeIds, true, Job, MState2);
         _ ->
             finish_task(Task#task.id, 1, "job not found", MState1)
@@ -399,11 +408,12 @@ ensure_helper(JobId,
             end
     end.
 
--spec maybe_register_nspace(string(), non_neg_integer(), #mstate{}) -> #mstate{}.
-maybe_register_nspace(JobId, N, #mstate{helpers = Helpers, fence_expected = FE} = MState) ->
+-spec maybe_register_nspace(string(), non_neg_integer(), non_neg_integer(), #mstate{}) -> #mstate{}.
+maybe_register_nspace(JobId, N, Rank, #mstate{helpers = Helpers, fence_expected = FE} = MState) ->
     case maps:get(JobId, Helpers, undefined) of
         Port when is_port(Port) ->
-            Cmd = list_to_binary(io_lib:format("REGISTER ~b~n", [max(1, N)])),
+            %% 1 rank/node: REGISTER <job_size> 1 <rank>
+            Cmd = list_to_binary(io_lib:format("REGISTER ~b 1 ~b~n", [max(1, N), Rank])),
             safe_port_cmd(Port, Cmd),
             MState#mstate{fence_expected = maps:put(JobId, max(1, N), FE)};
         _ ->
@@ -441,10 +451,26 @@ start_swm_pmix(JobId) ->
             end
     end.
 
+%% Job user name for swm-pmix register_client (root helper, app runs as user).
+-spec job_user_name(string()) -> string().
+job_user_name(JobId) ->
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, Job} ->
+            case wm_utils:get_job_user(Job) of
+                {ok, User} ->
+                    wm_entity:get(name, User);
+                _ ->
+                    ""
+            end;
+        _ ->
+            ""
+    end.
+
 %% Prefer release-bundled libpmix.so.2 (see c_src/pmix/Makefile / rebar overlay).
+%% Note: swm-pmix uses DT_RPATH=$ORIGIN/../lib, so the bundled lib wins over
+%% LD_LIBRARY_PATH; keep the release lib ABI-matched to the binary (OpenPMIx 4.2+).
 -spec pmix_port_env(string()) -> [{string(), string()}].
 pmix_port_env(JobId) ->
-    %% Prefer host OpenPMIx when present; else release-bundled libpmix.so.2.
     ReleaseLib =
         filename:join(
             filename:dirname(
@@ -477,7 +503,22 @@ pmix_port_env(JobId) ->
              {Dir, Old} ->
                  [{"LD_LIBRARY_PATH", Dir ++ ":" ++ Old}]
          end,
-    [{"SWM_JOB_ID", JobId} | Ld].
+    Psec = [{"PMIX_MCA_psec", "none"}],
+    PmixPrefix =
+        case filelib:is_dir("/opt/pmix/4.2.9") of
+            true ->
+                [{"PMIX_PREFIX", "/opt/pmix/4.2.9"}];
+            false ->
+                []
+        end,
+    JobUser =
+        case job_user_name(JobId) of
+            "" ->
+                [];
+            Name ->
+                [{"SWM_JOB_USER", Name}]
+        end,
+    [{"SWM_JOB_ID", JobId} | JobUser ++ Psec ++ PmixPrefix ++ Ld].
 
 -spec wait_pmix_ready(port(), non_neg_integer()) -> {ok, string(), [{string(), string()}]} | {error, term()}.
 wait_pmix_ready(Port, Timeout) ->
@@ -768,12 +809,17 @@ do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv0, JobIn, MState0) ->
                         false ->
                             1
                     end,
-                MS2 = maybe_register_nspace(JobId, N, MS1),
+                MS2 = maybe_register_nspace(JobId, N, Rank, MS1),
                 send_contrib_id(JobId, Rank, MS2),
                 Fork = fork_env_without_rank(maps:get(JobId, MS2#mstate.fork_envs, [])),
                 Uri = maps:get(JobId, MS2#mstate.server_uris, ""),
                 %% Local fork env must win for URI/tmpdir; rank identity stays from bootstrap.
-                EnvMerged = apply_rank_env(apply_server_uri(merge_env(PmixEnv0, Fork), Uri), Rank),
+                %% Keep psec=none: TCP cannot use native SO_PEERCRED auth.
+                EnvMerged0 = apply_rank_env(apply_server_uri(merge_env(PmixEnv0, Fork), Uri), Rank),
+                EnvMerged =
+                    lists:foldl(fun({K, V}, Acc) -> lists:keystore(K, 1, Acc, {K, V}) end,
+                                EnvMerged0,
+                                [{"PMIX_SECURITY_MODE", "none"}, {"PMIX_MCA_psec", "none"}]),
                 {MS2, EnvMerged}
         end,
     Job0 =
