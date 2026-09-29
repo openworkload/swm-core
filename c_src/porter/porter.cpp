@@ -103,11 +103,26 @@ void set_io(const SwmJob &job) {
   static std::string token = "%j";
   const auto id = job.get_id();
   const size_t len = std::string("%j").size();
+  // Job script keeps stdout.log / stderr.log. Rank/task processes (SWM_PMIX_RANK
+  // set) write separate files next to them: stdout-task<N>.log, stderr-task<N>.log
+  // so concurrent NFS writers do not share one append stream.
+  const char *task_num = std::getenv("SWM_PMIX_RANK");
+  auto task_log_name = [task_num](std::string base) {
+    if (!task_num || task_num[0] == '\0') {
+      return base;
+    }
+    const auto dot = base.rfind('.');
+    if (dot == std::string::npos) {
+      return base + "-task" + task_num;
+    }
+    return base.substr(0, dot) + "-task" + task_num + base.substr(dot);
+  };
   if (out_path.size()) {
     const size_t pos = out_path.find(token);
     if (pos != std::string::npos) {
       out_path.replace(pos, len, id);
     }
+    out_path = task_log_name(std::move(out_path));
     swm_logi("Job stdout: %s", out_path.c_str());
     switch_stdout(out_path);
   }
@@ -118,6 +133,7 @@ void set_io(const SwmJob &job) {
     if (pos != std::string::npos) {
       err_path.replace(pos, len, id);
     }
+    err_path = task_log_name(std::move(err_path));
     swm_logi("Job stderr: %s", err_path.c_str());
     switch_stderr(err_path);
   }

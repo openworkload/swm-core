@@ -831,9 +831,31 @@ do_copy_files(SrcServerRef, DstServerRef, [File | Files], Destination, Opts) ->
                 Otherwise ->
                     Otherwise
             end;
-        Error ->
-            Error
+        {error, File, Reason} = Error ->
+            %% Optional per-task logs (stdout-taskN.log) may be absent if a rank
+            %% never opened I/O; do not fail the whole job download for that.
+            case is_optional_task_log(File) andalso is_enoent_reason(Reason) of
+                true ->
+                    ?LOG_DEBUG("Skip missing optional task log ~p: ~p", [File, Reason]),
+                    do_copy_files(SrcServerRef, DstServerRef, Files, Destination, Opts);
+                false ->
+                    Error
+            end
     end.
+
+-spec is_optional_task_log(file:filename()) -> boolean().
+is_optional_task_log(File) ->
+    string:find(
+        filename:basename(File), "-task")
+    =/= nomatch.
+
+-spec is_enoent_reason(term()) -> boolean().
+is_enoent_reason(enoent) ->
+    true;
+is_enoent_reason(Reason) when is_list(Reason) ->
+    string:find(Reason, "No such file or directory") =/= nomatch;
+is_enoent_reason(_) ->
+    false.
 
 -spec do_delete_files(any(), [file:filename()]) -> ok.
 do_delete_files(_, []) ->

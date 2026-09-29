@@ -120,6 +120,17 @@ handle_event(http_started, _) ->
     wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stderr").
 
 -spec handle_request(atom(), any(), #mstate{}) -> any().
+handle_request({output, job_stdout}, JobId, #mstate{spool = Spool}) ->
+    ?LOG_ACCESS("Job ~p has been requested: ~p", [job_stdout, JobId]),
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, Job} ->
+            FileName = wm_entity:get(job_stdout, Job),
+            Dir = filename:join([Spool, ?REMOTE_USER_DIR_NAME, JobId]),
+            FullPath = filename:join(Dir, FileName),
+            read_stdout_with_tasks(Dir, FileName, FullPath);
+        _ ->
+            {error, "job not found"}
+    end;
 handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
     ?LOG_ACCESS("Job ~p has been requested: ~p", [OutputType, JobId]),
     case wm_conf:select(job, {id, JobId}) of
@@ -381,6 +392,83 @@ delete_job_timetable(JobId) ->
             lists:foreach(fun(Row) -> wm_conf:delete(Row) end, List);
         _ ->
             ok
+    end.
+
+%% Compose job-script stdout.log with per-task stdout-taskN.log files so
+%% clients (swm-console) can show each MPI/task rank separately.
+-spec read_stdout_with_tasks(string(), string(), string()) -> {ok, binary()} | {error, term()}.
+read_stdout_with_tasks(Dir, FileName, FullPath) ->
+    Base =
+        case wm_utils:read_file(FullPath, [binary]) of
+            {ok, Bin} when is_binary(Bin) ->
+                Bin;
+            {ok, List} when is_list(List) ->
+                list_to_binary(List);
+            _ ->
+                <<>>
+        end,
+    TaskParts = read_task_stdout_parts(Dir, FileName),
+    case {Base, TaskParts} of
+        {<<>>, []} ->
+            {error, enoent};
+        _ ->
+            {ok, iolist_to_binary([ensure_trailing_nl(Base), TaskParts])}
+    end.
+
+-spec read_task_stdout_parts(string(), string()) -> iodata().
+read_task_stdout_parts(Dir, FileName) ->
+    Pattern = filename:join(Dir, task_stdout_glob(FileName)),
+    Files = lists:sort(fun compare_task_log_files/2, filelib:wildcard(Pattern)),
+    [format_task_stdout_section(F) || F <- Files].
+
+-spec task_stdout_glob(string()) -> string().
+task_stdout_glob(FileName) ->
+    case string:split(FileName, ".", trailing) of
+        [Name, Ext] ->
+            Name ++ "-task*." ++ Ext;
+        [Name] ->
+            Name ++ "-task*"
+    end.
+
+-spec compare_task_log_files(string(), string()) -> boolean().
+compare_task_log_files(A, B) ->
+    task_num_from_path(A) =< task_num_from_path(B).
+
+-spec task_num_from_path(string()) -> integer().
+task_num_from_path(Path) ->
+    Base = filename:basename(Path),
+    case re:run(Base, "-task([0-9]+)", [{capture, all_but_first, list}]) of
+        {match, [NumStr]} ->
+            list_to_integer(NumStr);
+        _ ->
+            0
+    end.
+
+-spec format_task_stdout_section(string()) -> iodata().
+format_task_stdout_section(Path) ->
+    N = task_num_from_path(Path),
+    Body =
+        case wm_utils:read_file(Path, [binary]) of
+            {ok, Bin} when is_binary(Bin) ->
+                Bin;
+            {ok, List} when is_list(List) ->
+                list_to_binary(List);
+            _ ->
+                <<>>
+        end,
+    [<<"\n--------------------------------------------------------------------------------\n">>,
+     io_lib:format("Task ~b stdout:\n", [N]),
+     ensure_trailing_nl(Body)].
+
+-spec ensure_trailing_nl(binary()) -> binary().
+ensure_trailing_nl(<<>>) ->
+    <<>>;
+ensure_trailing_nl(Bin) ->
+    case binary:last(Bin) of
+        $\n ->
+            Bin;
+        _ ->
+            <<Bin/binary, $\n>>
     end.
 
 -spec set_defaults(#job{}, string()) -> #job{}.

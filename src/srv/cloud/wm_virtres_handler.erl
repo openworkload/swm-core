@@ -167,7 +167,10 @@ start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
     StdOutFile = wm_entity:get(job_stdout, Job),
     StdErrPath = filename:join([WorkDir, StdErrFile]),
     StdOutPath = filename:join([WorkDir, StdOutFile]),
-    Files = lists:filter(fun(X) -> X =/= [] end, [StdErrPath, StdOutPath | OutputFiles]),
+    %% Per-task Porter logs (stdout-taskN.log / stderr-taskN.log) live next to
+    %% the job-script stdout/stderr; download them too when present.
+    TaskLogPaths = task_log_paths(WorkDir, StdOutFile, StdErrFile, length(wm_entity:get(nodes, Job))),
+    Files = lists:filter(fun(X) -> X =/= [] end, [StdErrPath, StdOutPath | OutputFiles ++ TaskLogPaths]),
     case wm_conf:select(node, {id, PartMgrNodeID}) of
         {ok, FromNode} ->
             {ok, MyNode} = wm_self:get_node(),
@@ -182,6 +185,33 @@ start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
             {ok, Ref, Files};
         {error, Error} ->
             {error, Error}
+    end.
+
+%% Porter renames "stdout.log" -> "stdout-task<N>.log" when SWM_PMIX_RANK is set.
+-spec task_log_paths(string(), string(), string(), non_neg_integer()) -> [string()].
+task_log_paths(_WorkDir, _StdOut, _StdErr, NodeCount) when NodeCount < 1 ->
+    [];
+task_log_paths(WorkDir, StdOutFile, StdErrFile, NodeCount) ->
+    lists:foldl(fun(R, Acc) ->
+                   Acc ++ [maybe_task_log_path(WorkDir, StdOutFile, R), maybe_task_log_path(WorkDir, StdErrFile, R)]
+                end,
+                [],
+                lists:seq(0, NodeCount - 1)).
+
+-spec maybe_task_log_path(string(), string(), non_neg_integer()) -> string().
+maybe_task_log_path(_WorkDir, [], _TaskNum) ->
+    [];
+maybe_task_log_path(WorkDir, BaseName, TaskNum) ->
+    filename:join(WorkDir, task_log_name(BaseName, TaskNum)).
+
+-spec task_log_name(string(), non_neg_integer()) -> string().
+task_log_name(BaseName, TaskNum) ->
+    TaskStr = integer_to_list(TaskNum),
+    case string:split(BaseName, ".", trailing) of
+        [Name, Ext] ->
+            Name ++ "-task" ++ TaskStr ++ "." ++ Ext;
+        [Name] ->
+            Name ++ "-task" ++ TaskStr
     end.
 
 -spec delete_partition(partition_id() | undefined, string() | undefined, job_id(), #remote{}) ->
