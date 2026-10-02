@@ -126,14 +126,15 @@ Auto-attach when either:
 
 - An RDMA/IB CDI spec is present under CDI dirs (`/etc/cdi`, `/var/run/cdi`, or
   `SWM_CONTAINER_CDI_PATHS`), or
-- `/dev/infiniband` contains device nodes
+- The IB device directory (default `/dev/infiniband`, or `SWM_CONTAINER_IB_DEV_DIR`)
+  contains device nodes
 
 Then create JSON includes:
 
 | Field | Behavior |
 |-------|----------|
 | `cdi_devices` | RDMA names (default `rdma.com/ib=all`, or `SWM_CONTAINER_RDMA_CDI` comma list), merged with GPU CDI when `#SWM gpus` > 0 |
-| `devices` | Fallback: each `/dev/infiniband/*` node if no RDMA CDI names |
+| `devices` | Fallback: each node under the IB device directory if no RDMA CDI names |
 | `cap_add` | `IPC_LOCK` (for RDMA memory registration) |
 | `r_limits` | `MEMLOCK` soft+hard from the SWM process `/proc/self/limits` (unlimited encoded as uint64 max). Libpod field name is `r_limits`; rootless cannot raise memlock above the host user limit. |
 

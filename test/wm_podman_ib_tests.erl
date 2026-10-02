@@ -4,7 +4,8 @@
 
 -include("../src/lib/wm_entity.hrl").
 
--define(ENV_KEYS, ["SWM_CONTAINER_CDI_PATHS", "SWM_CONTAINER_RDMA_CDI", "SWM_ROOT"]).
+-define(ENV_KEYS,
+        ["SWM_CONTAINER_CDI_PATHS", "SWM_CONTAINER_RDMA_CDI", "SWM_CONTAINER_IB_DEV_DIR", "SWM_ROOT"]).
 
 clear_env() ->
     lists:foreach(fun(K) -> os:unsetenv(K) end, ?ENV_KEYS),
@@ -68,7 +69,9 @@ create_json_ib_devices_fallback() ->
     ?assertEqual([<<"rdma.com/ib=all">>], [maps:get(<<"Name">>, D) || D <- Cdi]).
 
 create_json_no_ib_without_host() ->
+    %% Isolate from host /dev/infiniband (present on some GHA Azure runners).
     true = os:putenv("SWM_CONTAINER_CDI_PATHS", "/tmp/swm-cdi-empty-noexist"),
+    true = os:putenv("SWM_CONTAINER_IB_DEV_DIR", "/tmp/swm-ib-empty-noexist"),
     Job = fake_job(0),
     Bin = wm_podman:generate_create_json(Job, "/opt/swm/current/bin/swm-porter", "swm-test-noib"),
     Map = wm_json:decode(Bin),

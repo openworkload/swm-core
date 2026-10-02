@@ -5,7 +5,7 @@
 
 -export([finalize_script/0, entrypoint/0, getenv_first/2, podman_sock/0, podman_api_prefix/0, require_crun/0,
          cdi_available/0, cdi_dirs/0, extra_binds/0, gpu_cdi_missing_msg/0, rdma_cdi_available/0, rdma_cdi_names/0,
-         ib_host_supported/0, ib_host_devices/0]).
+         ib_host_supported/0, ib_host_devices/0, ib_dev_dir/0]).
 
 -define(DEFAULT_FINALIZE, "/opt/swm/current/scripts/swm-container-finalize.sh").
 -define(DEFAULT_API_PREFIX, "/v5.0.0/libpod").
@@ -168,17 +168,31 @@ default_rdma_cdi_names() ->
             []
     end.
 
-%% @doc Host has RDMA CDI and/or /dev/infiniband device nodes.
+%% @doc Host has RDMA CDI and/or IB device nodes (see ib_dev_dir/0).
 -spec ib_host_supported() -> boolean().
 ib_host_supported() ->
     rdma_cdi_available() orelse ib_host_devices() =/= [].
 
-%% @doc Existing device nodes under /dev/infiniband (absolute paths).
+%% @doc Directory scanned for IB device nodes (default /dev/infiniband).
+%% Override with SWM_CONTAINER_IB_DEV_DIR (tests / CI isolation from host RDMA).
+-spec ib_dev_dir() -> string().
+ib_dev_dir() ->
+    case getenv_first(["SWM_CONTAINER_IB_DEV_DIR"], false) of
+        false ->
+            "/dev/infiniband";
+        "" ->
+            "/dev/infiniband";
+        Dir ->
+            Dir
+    end.
+
+%% @doc Existing device nodes under ib_dev_dir/0 (absolute paths).
 -spec ib_host_devices() -> [string()].
 ib_host_devices() ->
-    case file:list_dir("/dev/infiniband") of
+    Dir = ib_dev_dir(),
+    case file:list_dir(Dir) of
         {ok, Files} ->
-            [filename:join("/dev/infiniband", F) || F <- lists:sort(Files), F =/= ".", F =/= ".."];
+            [filename:join(Dir, F) || F <- lists:sort(Files), F =/= ".", F =/= ".."];
         _ ->
             []
     end.

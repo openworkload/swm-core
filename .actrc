@@ -3,7 +3,9 @@
 # eaddrinuse / swm-ping "Connection error: closed". Use bridge isolation so
 # the CI job container can bind SWM_API_PORT (10001) cleanly.
 --network bridge
-# Jobs without `container:` (e.g. podman_smoke) need an explicit runner image
-# and privileged mode so nested Podman can create containers under act.
--P ubuntu-24.04=ubuntu:24.04
+# Jobs without `container:` (e.g. podman_smoke, podman_gpu_ib) need an explicit
+# runner image and privileged mode so nested Podman can create containers under
+# act. Use the act Ubuntu image (includes Node for JS actions like setup-beam);
+# plain ubuntu:24.04 fails Install OTP with "node: not found".
+-P ubuntu-24.04=catthehacker/ubuntu:act-24.04
 --container-options --privileged

@@ -10,7 +10,8 @@
          "SWM_CONTAINER_PODMAN_SOCK",
          "SWM_CONTAINER_REQUIRE_CRUN",
          "SWM_CONTAINER_CDI_PATHS",
-         "SWM_CONTAINER_RDMA_CDI"]).
+         "SWM_CONTAINER_RDMA_CDI",
+         "SWM_CONTAINER_IB_DEV_DIR"]).
 
 %% ============================================================================
 %% Fixtures
@@ -40,7 +41,8 @@ wm_container_cfg_test_() ->
       fun cdi_available_with_nvidia_json/0,
       fun rdma_cdi_available_with_rdma_json/0,
       fun rdma_cdi_names_from_env/0,
-      fun ib_host_supported_with_rdma_env/0]}.
+      fun ib_host_supported_with_rdma_env/0,
+      fun ib_dev_dir_override_hides_host/0]}.
 
 entrypoint_default_no_tini() ->
     ?assertEqual(undefined, wm_container_cfg:entrypoint()).
@@ -113,3 +115,10 @@ rdma_cdi_names_from_env() ->
 ib_host_supported_with_rdma_env() ->
     true = os:putenv("SWM_CONTAINER_RDMA_CDI", "rdma.com/ib=all"),
     ?assertEqual(true, wm_container_cfg:ib_host_supported()).
+
+ib_dev_dir_override_hides_host() ->
+    true = os:putenv("SWM_CONTAINER_CDI_PATHS", "/tmp/swm-cdi-empty-test-dir-noexist"),
+    true = os:putenv("SWM_CONTAINER_IB_DEV_DIR", "/tmp/swm-ib-empty-test-dir-noexist"),
+    ?assertEqual("/tmp/swm-ib-empty-test-dir-noexist", wm_container_cfg:ib_dev_dir()),
+    ?assertEqual([], wm_container_cfg:ib_host_devices()),
+    ?assertEqual(false, wm_container_cfg:ib_host_supported()).

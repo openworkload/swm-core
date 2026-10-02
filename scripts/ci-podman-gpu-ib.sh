@@ -36,19 +36,35 @@ command -v python3 >/dev/null || die "python3 not installed"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 mkdir -p "${XDG_RUNTIME_DIR}/podman" ~/.config/containers "${CDI_DIR}" "${FAKE_IB_DIR}"
 
-# Nested-friendly Podman (act / Docker).
+# Nested-friendly Podman (act / Docker). Disable cgroups: nested runners often
+# lack delegated controllers (e.g. crun "pids is not available").
+NESTED=0
+CGROUP_ARGS=()
 if [[ "${PODMAN_NESTED:-}" == "1" ]] || [[ -f /.dockerenv ]] || grep -qE '/docker|/lxc' /proc/1/cgroup 2>/dev/null; then
-  log "nested runtime; cgroupfs + vfs"
+  NESTED=1
+  CGROUP_ARGS=(--cgroups=disabled)
+  log "nested runtime; cgroupfs + vfs + cgroups=disabled"
   cat > ~/.config/containers/containers.conf <<'EOF'
 [engine]
 runtime = "crun"
 cgroup_manager = "cgroupfs"
 events_logger = "file"
+
+[containers]
+cgroups = "disabled"
 EOF
   cat > ~/.config/containers/storage.conf <<'EOF'
 [storage]
 driver = "vfs"
 EOF
+fi
+
+if [[ "$NESTED" -eq 1 && -S "${SOCK}" ]]; then
+  log "restarting podman API to pick up nested config"
+  pkill -f "podman system service" 2>/dev/null || true
+  systemctl --user stop podman.socket 2>/dev/null || true
+  rm -f "${SOCK}" 2>/dev/null || true
+  sleep 1
 fi
 
 if [[ ! -S "${SOCK}" ]]; then
@@ -86,8 +102,8 @@ cat > "${CDI_DIR}/rdma.com-ib.json" <<EOF
   }]
 }
 EOF
-# Char device under a temp dir for Podman --device (do NOT create /dev/infiniband
-# before eunit -- that would break create_json_no_ib_without_host).
+# Char device under a temp dir for Podman --device. Eunit isolates from host
+# /dev/infiniband via SWM_CONTAINER_IB_DEV_DIR in wm_podman_ib_tests.
 if command -v sudo >/dev/null 2>&1 && [[ "$(id -u)" -ne 0 ]]; then
   SUDO=sudo
 else
@@ -147,6 +163,7 @@ else
   DEV_ARGS=(-v "${IB_DEV}:/dev/infiniband/uverbs0:ro")
 fi
 podman create --name "${NAME}" \
+  "${CGROUP_ARGS[@]}" \
   --cap-add IPC_LOCK \
   --ulimit memlock=-1:-1 \
   "${DEV_ARGS[@]}" \
@@ -155,7 +172,9 @@ podman create --name "${NAME}" \
   bash -lc 'set -e; test -e /dev/infiniband/uverbs0; ulimit -l; grep -q Cap /proc/self/status; echo GPU_IB_OK' \
   >/dev/null
 
-podman start -a "${NAME}" | tee /tmp/swm-ci-gpu-ib-out.txt
+if ! podman start -a "${NAME}" | tee /tmp/swm-ci-gpu-ib-out.txt; then
+  die "podman start failed (see above); nested act often needs --cgroups=disabled"
+fi
 grep -q GPU_IB_OK /tmp/swm-ci-gpu-ib-out.txt || die "container did not report GPU_IB_OK"
 INSPECT_CAPS="$(podman inspect -f '{{json .HostConfig.CapAdd}}' "${NAME}")"
 echo "${INSPECT_CAPS}" | grep -q IPC_LOCK || die "CapAdd missing IPC_LOCK: ${INSPECT_CAPS}"
