@@ -114,3 +114,60 @@ Compute nodes install Podman+crun on the **host**.
 
 Host needs: NVIDIA driver, `nvidia-container-toolkit` with CDI generation
 (e.g. `nvidia-cdi-refresh`), cgroup v2, and CDI specs under `/etc/cdi` or `/var/run/cdi`.
+
+## InfiniBand / RDMA
+
+When the compute host supports IB/RDMA, Sky Port automatically attaches it to
+job containers (no `#SWM` flag). Host networking and the `/opt` bind (when
+`/opt` exists on the host) are already used; jobscripts should set `PATH` /
+`LD_LIBRARY_PATH` for HPC-X or Open MPI under `/opt` themselves.
+
+Auto-attach when either:
+
+- An RDMA/IB CDI spec is present under CDI dirs (`/etc/cdi`, `/var/run/cdi`, or
+  `SWM_CONTAINER_CDI_PATHS`), or
+- `/dev/infiniband` contains device nodes
+
+Then create JSON includes:
+
+| Field | Behavior |
+|-------|----------|
+| `cdi_devices` | RDMA names (default `rdma.com/ib=all`, or `SWM_CONTAINER_RDMA_CDI` comma list), merged with GPU CDI when `#SWM gpus` > 0 |
+| `devices` | Fallback: each `/dev/infiniband/*` node if no RDMA CDI names |
+| `cap_add` | `IPC_LOCK` (for RDMA memory registration) |
+| `r_limits` | `MEMLOCK` soft+hard from the SWM process `/proc/self/limits` (unlimited encoded as uint64 max). Libpod field name is `r_limits`; rootless cannot raise memlock above the host user limit. |
+
+Unlike GPUs, missing IB is **soft**: containers still start without IB fields.
+
+### Host prep
+
+1. Install OFED / rdma-core so `/dev/infiniband` exists on IB VMs.
+2. Prefer an RDMA CDI spec (example under `/etc/cdi/rdma.com-ib.json`):
+
+```json
+{
+  "cdiVersion": "0.5.0",
+  "kind": "rdma.com/ib",
+  "devices": [
+    {
+      "name": "all",
+      "containerEdits": {
+        "deviceNodes": [
+          { "path": "/dev/infiniband/uverbs0", "type": "c", "major": 231, "minor": 192 }
+        ]
+      }
+    }
+  ]
+}
+```
+
+(Adjust major/minor from `ls -l /dev/infiniband`.) Override device names with
+`SWM_CONTAINER_RDMA_CDI=rdma.com/ib=all`.
+
+3. Rootless Podman must be allowed to use those devices (CDI is the preferred
+   path; plain `--device` may be limited under user namespaces).
+
+### Examples and CI
+
+- Azure NCCL over IB+GPU: `priv/examples/jobscripts/nccl-azure.sh`
+- GHA fake GPU/IB validation: `scripts/ci-podman-gpu-ib.sh` (job `podman_gpu_ib`)

@@ -209,7 +209,9 @@ Examples with the defaults (`stdout.log` / `stderr.log`) and three nodes (`N` = 
 
 When the job finishes on cloud resources, SWM downloads the base logs and all present `*-taskN.log` files back to Skyport (into the job spool workdir). The HTTP APIs `/user/job/{id}/stdout` and `/user/job/{id}/stderr` return the job-script file plus each task file, separated by a line and labeled `Task N stdout:` / `Task N stderr:`.
 
-See also `priv/examples/jobscripts/multiple-tasks-azure.sh` (plain `swm-task`) and `priv/examples/jobscripts/mpi-azure.sh` (`swm-task --pmix`).
+See also `priv/examples/jobscripts/multiple-tasks-azure.sh` (plain `swm-task`),
+`priv/examples/jobscripts/mpi-azure.sh` (`swm-task --pmix`), and
+`priv/examples/jobscripts/nccl-azure-ib.sh` (Azure ND + NCCL over IB).
 
 ## Complete Multi-Node MPI Example
 

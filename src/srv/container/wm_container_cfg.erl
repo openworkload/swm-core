@@ -4,7 +4,8 @@
 -module(wm_container_cfg).
 
 -export([finalize_script/0, entrypoint/0, getenv_first/2, podman_sock/0, podman_api_prefix/0, require_crun/0,
-         cdi_available/0, cdi_dirs/0, extra_binds/0, gpu_cdi_missing_msg/0]).
+         cdi_available/0, cdi_dirs/0, extra_binds/0, gpu_cdi_missing_msg/0, rdma_cdi_available/0, rdma_cdi_names/0,
+         ib_host_supported/0, ib_host_devices/0]).
 
 -define(DEFAULT_FINALIZE, "/opt/swm/current/scripts/swm-container-finalize.sh").
 -define(DEFAULT_API_PREFIX, "/v5.0.0/libpod").
@@ -120,6 +121,67 @@ is_nvidia_cdi_name(Name) ->
 -spec gpu_cdi_missing_msg() -> string().
 gpu_cdi_missing_msg() ->
     ?GPU_CDI_MISSING_MSG.
+
+%% @doc True if an RDMA/IB CDI spec appears to be present on this host.
+-spec rdma_cdi_available() -> boolean().
+rdma_cdi_available() ->
+    case getenv_first(["SWM_CONTAINER_RDMA_CDI"], false) of
+        false ->
+            lists:any(fun dir_has_rdma_cdi/1, cdi_dirs());
+        "" ->
+            lists:any(fun dir_has_rdma_cdi/1, cdi_dirs());
+        _ ->
+            true
+    end.
+
+dir_has_rdma_cdi(Dir) ->
+    case file:list_dir(Dir) of
+        {ok, Files} ->
+            lists:any(fun is_rdma_cdi_name/1, Files);
+        _ ->
+            false
+    end.
+
+is_rdma_cdi_name(Name) ->
+    Low = string:lowercase(Name),
+    IsSpec = lists:suffix(".json", Low) orelse lists:suffix(".yaml", Low) orelse lists:suffix(".yml", Low),
+    IsSpec
+    andalso (string:str(Low, "rdma") > 0 orelse string:str(Low, "infiniband") > 0 orelse string:str(Low, "mlx") > 0).
+
+%% @doc CDI device names to attach for RDMA/IB (e.g. rdma.com/ib=all).
+-spec rdma_cdi_names() -> [binary()].
+rdma_cdi_names() ->
+    case getenv_first(["SWM_CONTAINER_RDMA_CDI"], false) of
+        false ->
+            default_rdma_cdi_names();
+        "" ->
+            default_rdma_cdi_names();
+        Spec ->
+            [list_to_binary(S) || S <- string:tokens(Spec, ","), S =/= ""]
+    end.
+
+default_rdma_cdi_names() ->
+    case rdma_cdi_available() of
+        true ->
+            [<<"rdma.com/ib=all">>];
+        false ->
+            []
+    end.
+
+%% @doc Host has RDMA CDI and/or /dev/infiniband device nodes.
+-spec ib_host_supported() -> boolean().
+ib_host_supported() ->
+    rdma_cdi_available() orelse ib_host_devices() =/= [].
+
+%% @doc Existing device nodes under /dev/infiniband (absolute paths).
+-spec ib_host_devices() -> [string()].
+ib_host_devices() ->
+    case file:list_dir("/dev/infiniband") of
+        {ok, Files} ->
+            [filename:join("/dev/infiniband", F) || F <- lists:sort(Files), F =/= ".", F =/= ".."];
+        _ ->
+            []
+    end.
 
 %% @doc Extra bind mounts for Podman: SWM_CONTAINER_EXTRA_BINDS=src:dst[:ro],...
 -spec extra_binds() -> [map()].

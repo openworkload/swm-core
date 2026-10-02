@@ -9,7 +9,8 @@
          "SWM_FINALIZE_IN_CONTAINER",
          "SWM_CONTAINER_PODMAN_SOCK",
          "SWM_CONTAINER_REQUIRE_CRUN",
-         "SWM_CONTAINER_CDI_PATHS"]).
+         "SWM_CONTAINER_CDI_PATHS",
+         "SWM_CONTAINER_RDMA_CDI"]).
 
 %% ============================================================================
 %% Fixtures
@@ -36,7 +37,10 @@ wm_container_cfg_test_() ->
       fun cdi_missing_msg/0,
       fun require_crun_default/0,
       fun cdi_unavailable_without_specs/0,
-      fun cdi_available_with_nvidia_json/0]}.
+      fun cdi_available_with_nvidia_json/0,
+      fun rdma_cdi_available_with_rdma_json/0,
+      fun rdma_cdi_names_from_env/0,
+      fun ib_host_supported_with_rdma_env/0]}.
 
 entrypoint_default_no_tini() ->
     ?assertEqual(undefined, wm_container_cfg:entrypoint()).
@@ -85,3 +89,27 @@ cdi_available_with_nvidia_json() ->
                 filename:join(Dir, "nvidia.com-gpu.json")),
         _ = file:del_dir(Dir)
     end.
+
+rdma_cdi_available_with_rdma_json() ->
+    Dir = "/tmp/swm-rdma-cdi-" ++ integer_to_list(erlang:unique_integer([positive])),
+    ok = file:make_dir(Dir),
+    try
+        ok =
+            file:write_file(
+                filename:join(Dir, "rdma.com-ib.json"), <<"{}\n">>),
+        true = os:putenv("SWM_CONTAINER_CDI_PATHS", Dir),
+        ?assertEqual(true, wm_container_cfg:rdma_cdi_available()),
+        ?assertEqual([<<"rdma.com/ib=all">>], wm_container_cfg:rdma_cdi_names())
+    after
+        _ = file:delete(
+                filename:join(Dir, "rdma.com-ib.json")),
+        _ = file:del_dir(Dir)
+    end.
+
+rdma_cdi_names_from_env() ->
+    true = os:putenv("SWM_CONTAINER_RDMA_CDI", "rdma.com/ib=all,rdma.com/ib=mlx5_0"),
+    ?assertEqual([<<"rdma.com/ib=all">>, <<"rdma.com/ib=mlx5_0">>], wm_container_cfg:rdma_cdi_names()).
+
+ib_host_supported_with_rdma_env() ->
+    true = os:putenv("SWM_CONTAINER_RDMA_CDI", "rdma.com/ib=all"),
+    ?assertEqual(true, wm_container_cfg:ib_host_supported()).

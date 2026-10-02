@@ -121,7 +121,7 @@ handle_event(http_started, _) ->
 
 -spec handle_request(atom(), any(), #mstate{}) -> any().
 handle_request({output, OutputType}, JobId, #mstate{spool = Spool})
-  when OutputType =:= job_stdout; OutputType =:= job_stderr ->
+    when OutputType =:= job_stdout; OutputType =:= job_stderr ->
     ?LOG_ACCESS("Job ~p has been requested: ~p", [OutputType, JobId]),
     case wm_conf:select(job, {id, JobId}) of
         {ok, Job} ->
@@ -404,8 +404,7 @@ delete_job_timetable(JobId) ->
 
 %% Compose job-script stdout.log/stderr.log with per-task *-taskN.log files so
 %% clients (swm-console) can show each task stream separately.
--spec read_output_with_tasks(string(), string(), string(), stdout | stderr) ->
-                                {ok, binary()} | {error, term()}.
+-spec read_output_with_tasks(string(), string(), string(), stdout | stderr) -> {ok, binary()} | {error, term()}.
 read_output_with_tasks(Dir, FileName, FullPath, Stream) ->
     Base =
         case wm_utils:read_file(FullPath, [binary]) of

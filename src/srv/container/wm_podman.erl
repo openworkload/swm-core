@@ -5,12 +5,15 @@
 -behaviour(wm_container_runtime).
 
 -export([run_steps/0, communicate_steps/1, get_unregistered_images/0, get_unregistered_image/1, ensure_create_ready/1,
-         create/5, start/2, attach/3, attach_ws/3, delete/2, send/3, create_exec/2, start_exec/4, stop_client/1]).
+         create/5, start/2, attach/3, attach_ws/3, delete/2, send/3, create_exec/2, start_exec/4, stop_client/1,
+         generate_create_json/3]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
 
 -define(GPU_CDI_MISSING_MSG, "GPU job requires NVIDIA CDI on the compute node, but CDI was not available").
+%% RLIMIT_MEMLOCK soft+hard = infinity (uint64 max) for IB RDMA registration.
+-define(RLIM_INFINITY, 18446744073709551615).
 
 %% ============================================================================
 %% wm_container_runtime
@@ -340,6 +343,8 @@ image_inspect_ok(Image) ->
             false
     end.
 
+%% @doc Build libpod Create JSON (exported for tests / CI assertions).
+-spec generate_create_json(#job{}, string(), string()) -> binary().
 generate_create_json(#job{request = Request} = Job, Porter, ContID) ->
     Image = get_container_image(Request),
     Cmd = [list_to_binary(wm_utils:unroll_symlink(Porter)), <<"-d">>],
@@ -358,14 +363,109 @@ generate_create_json(#job{request = Request} = Job, Porter, ContID) ->
           <<"env">> => job_create_env(Job),
           <<"remove">> => true},
     Term1 = maps:merge(Term, resource_limits(Job)),
-    Term2 =
-        case get_gpus(Request) of
-            <<"0">> ->
-                Term1;
+    Term2 = apply_gpu_cdi(Term1, Request),
+    Term3 = apply_ib_create_fields(Term2),
+    wm_json:encode(Term3).
+
+-spec apply_gpu_cdi(map(), [#resource{}]) -> map().
+apply_gpu_cdi(Term, Request) ->
+    case get_gpus(Request) of
+        <<"0">> ->
+            Term;
+        _ ->
+            add_cdi_devices(Term, [<<"nvidia.com/gpu=all">>])
+    end.
+
+%% @doc When host supports IB/RDMA: CDI and/or /dev/infiniband devices, IPC_LOCK, memlock unlimited.
+-spec apply_ib_create_fields(map()) -> map().
+apply_ib_create_fields(Term) ->
+    case wm_container_cfg:ib_host_supported() of
+        false ->
+            Term;
+        true ->
+            Term1 = add_cdi_devices(Term, wm_container_cfg:rdma_cdi_names()),
+            Term2 = add_ib_devices_fallback(Term1),
+            Term3 = Term2#{<<"cap_add">> => [<<"IPC_LOCK">>]},
+            merge_memlock_rlimit(Term3)
+    end.
+
+-spec add_cdi_devices(map(), [binary()]) -> map().
+add_cdi_devices(Term, []) ->
+    Term;
+add_cdi_devices(Term, Names) ->
+    Existing =
+        case maps:get(<<"cdi_devices">>, Term, []) of
+            List when is_list(List) ->
+                List;
             _ ->
-                Term1#{<<"cdi_devices">> => [#{<<"Name">> => <<"nvidia.com/gpu=all">>}]}
+                []
         end,
-    wm_json:encode(Term2).
+    ExistingNames = [maps:get(<<"Name">>, D, <<>>) || D <- Existing, is_map(D)],
+    New = [#{<<"Name">> => N} || N <- Names, not lists:member(N, ExistingNames)],
+    Term#{<<"cdi_devices">> => Existing ++ New}.
+
+%% Prefer RDMA CDI; if none, expose host /dev/infiniband nodes via devices.
+-spec add_ib_devices_fallback(map()) -> map().
+add_ib_devices_fallback(Term) ->
+    case wm_container_cfg:rdma_cdi_names() of
+        [_ | _] ->
+            Term;
+        [] ->
+            case wm_container_cfg:ib_host_devices() of
+                [] ->
+                    Term;
+                Paths ->
+                    Devs = [#{<<"path">> => list_to_binary(P)} || P <- Paths],
+                    Term#{<<"devices">> => Devs}
+            end
+    end.
+
+%% Prefer host RLIMIT_MEMLOCK (rootless cannot raise above it). Libpod create
+%% field is `r_limits` with type `MEMLOCK` (not `rlimits` / `RLIMIT_MEMLOCK`).
+-spec merge_memlock_rlimit(map()) -> map().
+merge_memlock_rlimit(Term) ->
+    {Soft, Hard} = memlock_limit_bytes(),
+    Memlock =
+        #{<<"type">> => <<"MEMLOCK">>,
+          <<"hard">> => Hard,
+          <<"soft">> => Soft},
+    Old = maps:get(<<"r_limits">>, Term, []),
+    Term#{<<"r_limits">> => [Memlock | Old]}.
+
+%% Soft/hard from /proc/self/limits; "unlimited" -> uint64 max for the API.
+-spec memlock_limit_bytes() -> {non_neg_integer(), non_neg_integer()}.
+memlock_limit_bytes() ->
+    case file:read_file("/proc/self/limits") of
+        {ok, Bin} ->
+            case parse_proc_memlock(binary_to_list(Bin)) of
+                {Soft, Hard} ->
+                    {Soft, Hard};
+                undefined ->
+                    {?RLIM_INFINITY, ?RLIM_INFINITY}
+            end;
+        _ ->
+            {?RLIM_INFINITY, ?RLIM_INFINITY}
+    end.
+
+-spec parse_proc_memlock(string()) -> {non_neg_integer(), non_neg_integer()} | undefined.
+parse_proc_memlock(Text) ->
+    case re:run(Text, "Max locked memory\\s+(\\S+)\\s+(\\S+)", [{capture, all_but_first, list}]) of
+        {match, [SoftS, HardS]} ->
+            {parse_limit_token(SoftS), parse_limit_token(HardS)};
+        _ ->
+            undefined
+    end.
+
+-spec parse_limit_token(string()) -> non_neg_integer().
+parse_limit_token("unlimited") ->
+    ?RLIM_INFINITY;
+parse_limit_token(S) ->
+    case string:to_integer(S) of
+        {N, _} when is_integer(N), N >= 0 ->
+            N;
+        _ ->
+            ?RLIM_INFINITY
+    end.
 
 %% @doc SWM-owned cgroup budget: containers inherit CPU/memory limits.
 -spec resource_limits(#job{}) -> map().
@@ -507,16 +607,25 @@ default_mounts() ->
          #{<<"destination">> => <<"/tmp">>,
            <<"type">> => <<"bind">>,
            <<"source">> => <<"/tmp">>,
-           <<"options">> => [<<"rbind">>, <<"rw">>]},
-         #{<<"destination">> => <<"/opt">>,
-           <<"type">> => <<"bind">>,
-           <<"source">> => <<"/opt">>,
-           <<"options">> => [<<"rbind">>, <<"rw">>]},
-         #{<<"destination">> => RootBin,
-           <<"type">> => <<"bind">>,
-           <<"source">> => RootBin,
-           <<"options">> => [<<"rbind">>, <<"rw">>]}],
+           <<"options">> => [<<"rbind">>, <<"rw">>]}]
+        ++ opt_mount_if_present()
+        ++ [#{<<"destination">> => RootBin,
+              <<"type">> => <<"bind">>,
+              <<"source">> => RootBin,
+              <<"options">> => [<<"rbind">>, <<"rw">>]}],
     Base ++ wm_container_cfg:extra_binds().
+
+-spec opt_mount_if_present() -> [map()].
+opt_mount_if_present() ->
+    case filelib:is_dir("/opt") of
+        true ->
+            [#{<<"destination">> => <<"/opt">>,
+               <<"type">> => <<"bind">>,
+               <<"source">> => <<"/opt">>,
+               <<"options">> => [<<"rbind">>, <<"rw">>]}];
+        false ->
+            []
+    end.
 
 generate_exec_create_json(Job) ->
     Cmd = get_finalize_cmd(Job),
