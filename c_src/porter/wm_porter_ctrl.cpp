@@ -190,7 +190,7 @@ int send_porter_req(const std::string &ref, const char *method, bool pmix, const
     }
   }
 
-  const uint64_t buf_bytes = x.index;
+  const size_t buf_bytes = static_cast<size_t>(x.index);
   swm_write_exact(&std::cout, x.buff, buf_bytes);
   ei_x_free(&x);
   fflush(stdout);

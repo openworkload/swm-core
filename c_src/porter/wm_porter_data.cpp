@@ -4,6 +4,7 @@
 #include "wm_entity.h"
 #include "wm_io.h"
 
+#include <cstdint>
 #include <cstdlib>
 
 #define BUF_SIZE               32
@@ -53,8 +54,8 @@ int swm::get_porter_data(std::istream *input, byte *data[]) {
       return -1;
     }
 
-    unsigned int read_bytes = 0;
-    for (unsigned int marker = 0; marker < len; marker += BUF_SIZE) {
+    uint32_t read_bytes = 0;
+    for (uint32_t marker = 0; marker < len; marker += BUF_SIZE) {
       if (marker + BUF_SIZE < len) {
         read_bytes = BUF_SIZE;
       } else {

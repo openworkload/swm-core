@@ -327,7 +327,7 @@ int send_process_info(const SwmProcess &proc) {
     free(term_str);
   }
 
-  const uint64_t buf_bytes = x.index;
+  const size_t buf_bytes = static_cast<size_t>(x.index);
   swm_write_exact(&std::cout, x.buff, buf_bytes);
   if (ei_x_free(&x)) {
     swm_loge("Can't free encoded buffer for process term");

@@ -313,16 +313,15 @@ bool encode_kv_binary(EiBuf &buf, std::string_view key, std::string_view value) 
   return encode_atom(buf, key) && encode_binary(buf, value);
 }
 
-bool encode_kv_longlong(EiBuf &buf, std::string_view key, long long value) {
-  return encode_atom(buf, key) && ei_x_encode_longlong(&buf.x, value) == 0;
+bool encode_kv_i64(EiBuf &buf, std::string_view key, int64_t value) {
+  return encode_atom(buf, key) && ei_x_encode_longlong(&buf.x, static_cast<long long>(value)) == 0;
 }
 
-bool encode_kv_ulong(EiBuf &buf, std::string_view key, unsigned long value) {
-  return encode_atom(buf, key) && ei_x_encode_ulong(&buf.x, value) == 0;
-}
-
-bool encode_kv_ulonglong(EiBuf &buf, std::string_view key, unsigned long long value) {
-  return encode_atom(buf, key) && ei_x_encode_ulonglong(&buf.x, value) == 0;
+bool encode_kv_u64(EiBuf &buf, std::string_view key, uint64_t value) {
+  // ei_x_encode_ulong takes unsigned long; ei_x_encode_ulonglong takes EI_ULONGLONG.
+  // Prefer ulonglong for full uint64_t range on all LP64/LLP64 hosts.
+  return encode_atom(buf, key) &&
+         ei_x_encode_ulonglong(&buf.x, static_cast<unsigned long long>(value)) == 0;
 }
 
 bool encode_kv_double(EiBuf &buf, std::string_view key, double value) {
@@ -369,26 +368,26 @@ bool send_aggregated_metrics(std::string_view job_id,
   }
 
   if (!encode_kv_binary(buf, "job_id", job_id) || !encode_kv_binary(buf, "node", node) ||
-      !encode_kv_longlong(buf, "ts", ts_ms) || !encode_kv_ulong(buf, "samples", window.samples) ||
-      !encode_kv_longlong(buf, "window_ms", window_ms)) {
+      !encode_kv_i64(buf, "ts", ts_ms) || !encode_kv_u64(buf, "samples", window.samples) ||
+      !encode_kv_i64(buf, "window_ms", window_ms)) {
     return false;
   }
   if (have_cpu &&
       (!encode_kv_double(buf, "cpu_percent", cpu_avg) || !encode_kv_double(buf, "cpu_percent_max", window.cpu_max))) {
     return false;
   }
-  if (have_mem &&
-      (!encode_kv_ulonglong(buf, "mem_bytes", mem_avg) || !encode_kv_ulonglong(buf, "mem_bytes_max", window.mem_max))) {
+  if (have_mem && (!encode_kv_u64(buf, "mem_bytes", mem_avg) || !encode_kv_u64(buf, "mem_bytes_max", window.mem_max))) {
     return false;
   }
   if (have_gpu && (!encode_kv_double(buf, "gpu_util_percent", gpu_util_avg) ||
                    !encode_kv_double(buf, "gpu_util_percent_max", window.gpu_util_max) ||
-                   !encode_kv_ulonglong(buf, "gpu_mem_bytes", gpu_mem_avg) ||
-                   !encode_kv_ulonglong(buf, "gpu_mem_bytes_max", window.gpu_mem_max))) {
+                   !encode_kv_u64(buf, "gpu_mem_bytes", gpu_mem_avg) ||
+                   !encode_kv_u64(buf, "gpu_mem_bytes_max", window.gpu_mem_max))) {
     return false;
   }
 
-  swm_write_exact(&std::cout, buf.x.buff, static_cast<size_t>(buf.x.index));
+  const size_t buf_bytes = static_cast<size_t>(buf.x.index);
+  swm_write_exact(&std::cout, buf.x.buff, buf_bytes);
   std::cout << std::flush;
   return true;
 }
