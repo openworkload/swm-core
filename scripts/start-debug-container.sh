@@ -32,7 +32,6 @@ set -x
 
 HOSTNAME=skyport
 IMAGE_NAME=swm-build:29.1
-DOCKER_SOCKET=/var/run/docker.sock
 # Host rootless Podman API (job runtime). Prefer existing user session socket.
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 PODMAN_SOCK="${SWM_CONTAINER_PODMAN_SOCK:-${XDG_RUNTIME_DIR}/podman/podman.sock}"
@@ -59,29 +58,28 @@ else
     echo "WARN: host Podman socket not found at ${PODMAN_SOCK}; local container jobs will fail until it is available" >&2
 fi
 
-if docker network inspect "${NETWORK}" >/dev/null 2>&1; then
-    echo "Docker network '${NETWORK}' already exists"
+if podman network inspect "${NETWORK}" >/dev/null 2>&1; then
+    echo "Podman network '${NETWORK}' already exists"
 else
-    docker network create "${NETWORK}" >/dev/null
-    echo "Created docker network '${NETWORK}'"
+    podman network create "${NETWORK}" >/dev/null
+    echo "Created podman network '${NETWORK}'"
 fi
 
-RUNNING=$(docker inspect -f '{{.State.Running}}' ${CONTAINER_NAME})
+RUNNING=$(podman inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null)
 if [ "$?" = "1" ]; then
-    docker run\
+    podman run\
         -v ${HOME}:${HOME}\
         -v /etc/passwd:/etc/passwd\
         -v /etc/shadow:/etc/shadow\
         -v /etc/group:/etc/group\
         -v /opt:/opt\
-        -v ${DOCKER_SOCKET}:${DOCKER_SOCKET}\
         "${PODMAN_MOUNT_ARGS[@]}"\
         -v ${X11_SOCKET}:${X11_SOCKET}\
         -e DISPLAY=${DISPLAY}\
         "${PODMAN_ENV_ARGS[@]}"\
+        --userns=keep-id\
         --name ${CONTAINER_NAME}\
         --hostname $HOSTNAME\
-        --domainname $DOMAIN\
         --network-alias $HOSTNAME.$DOMAIN\
         --add-host=host:host-gateway\
         --workdir ${PWD}\
@@ -92,13 +90,15 @@ if [ "$?" = "1" ]; then
         -p $USER_API_PORT:$USER_API_PORT\
         -p $JUPUTER_HUB_PORT:$JUPUTER_HUB_PORT\
         -p $JUPUTER_HUB_API_PORT:$JUPUTER_HUB_API_PORT\
+        --user ${USER}\
         ${IMAGE_NAME}\
-        runuser -u ${USER} /bin/bash
+        /bin/bash
 else
     if [ ${RUNNING} = "false" ]; then
-        docker start ${CONTAINER_NAME}
+        podman start ${CONTAINER_NAME}
     fi
-    docker exec -ti ${CONTAINER_NAME} runuser -u ${USER} /bin/bash
+    # --userns=keep-id: process already maps to host UID; do not use runuser.
+    podman exec -ti --user ${USER} ${CONTAINER_NAME} /bin/bash
 fi
 
 exit 0

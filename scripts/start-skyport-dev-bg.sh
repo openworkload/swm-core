@@ -41,7 +41,6 @@ GATE_DIR="${ROOT_DIR}/../swm-cloud-gate"
 
 HOSTNAME=skyport
 IMAGE_NAME=swm-build:29.1
-DOCKER_SOCKET=/var/run/docker.sock
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 PODMAN_SOCK="${SWM_CONTAINER_PODMAN_SOCK:-${XDG_RUNTIME_DIR}/podman/podman.sock}"
 X11_SOCKET=/tmp/.X11-unix
@@ -71,15 +70,16 @@ else
 fi
 
 in_container() {
-    docker exec "${CONTAINER_NAME}" runuser -u "${HOST_USER}" -- bash -lc "$*"
+    # --userns=keep-id: do not use runuser (only root may); run as host user.
+    podman exec --user "${HOST_USER}" "${CONTAINER_NAME}" bash -lc "$*"
 }
 
 ensure_network() {
-    if docker network inspect "${NETWORK}" >/dev/null 2>&1; then
-        echo "Docker network '${NETWORK}' already exists"
+    if podman network inspect "${NETWORK}" >/dev/null 2>&1; then
+        echo "Podman network '${NETWORK}' already exists"
     else
-        docker network create "${NETWORK}" >/dev/null
-        echo "Created docker network '${NETWORK}'"
+        podman network create "${NETWORK}" >/dev/null
+        echo "Created podman network '${NETWORK}'"
     fi
 }
 
@@ -87,23 +87,22 @@ ensure_container() {
     # Same image/mounts/ports as scripts/start-debug-container.sh (`make cr`),
     # but keep the container detached instead of attaching an interactive shell.
     local running
-    if ! running=$(docker inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null); then
+    if ! running=$(podman inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null); then
         echo "Creating ${CONTAINER_NAME} (detached; same setup as make cr)..."
-        docker run \
+        podman run \
             -d \
             -v "${HOME}:${HOME}" \
             -v /etc/passwd:/etc/passwd \
             -v /etc/shadow:/etc/shadow \
             -v /etc/group:/etc/group \
             -v /opt:/opt \
-            -v "${DOCKER_SOCKET}:${DOCKER_SOCKET}" \
             "${PODMAN_MOUNT_ARGS[@]}" \
             -v "${X11_SOCKET}:${X11_SOCKET}" \
             -e "DISPLAY=${DISPLAY:-}" \
             "${PODMAN_ENV_ARGS[@]}" \
+            --userns=keep-id \
             --name "${CONTAINER_NAME}" \
             --hostname "${HOSTNAME}" \
-            --domainname "${DOMAIN}" \
             --network-alias "${HOSTNAME}.${DOMAIN}" \
             --add-host=host:host-gateway \
             --workdir "${ROOT_DIR}" \
@@ -112,11 +111,12 @@ ensure_container() {
             -p "${USER_API_PORT}:${USER_API_PORT}" \
             -p "${JUPUTER_HUB_PORT}:${JUPUTER_HUB_PORT}" \
             -p "${JUPUTER_HUB_API_PORT}:${JUPUTER_HUB_API_PORT}" \
+            --user "${HOST_USER}" \
             "${IMAGE_NAME}" \
             sleep infinity
     elif [ "${running}" = "false" ]; then
         echo "Starting ${CONTAINER_NAME}..."
-        docker start "${CONTAINER_NAME}" >/dev/null
+        podman start "${CONTAINER_NAME}" >/dev/null
     else
         echo "${CONTAINER_NAME} is already running"
     fi
@@ -272,7 +272,7 @@ start_gate() {
     fi
     echo "Starting swm-cloud-gate in background..."
     # Detached exec so the gate keeps running after this script exits.
-    docker exec -d "${CONTAINER_NAME}" runuser -u "${HOST_USER}" -- bash -lc "
+    podman exec -d --user "${HOST_USER}" "${CONTAINER_NAME}" bash -lc "
         cd '${GATE_DIR}'
         export SWM_GATE_CONFIG='${SWM_CLOUD_GATE_CONFIG}'
         exec bash run.sh >> '${GATE_LOG}' 2>&1

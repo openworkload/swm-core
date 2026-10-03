@@ -29,9 +29,9 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-DOCKER=docker
+PODMAN=podman
 IMAGE_NAME=swm-build:29.1
 
-${DOCKER} build -t ${IMAGE_NAME} -f ./priv/container/debug/Dockerfile .
+${PODMAN} build -t ${IMAGE_NAME} -f ./priv/container/debug/Dockerfile .
 echo "------------------------------------"
-${DOCKER} images ${IMAGE_NAME}
+${PODMAN} images ${IMAGE_NAME}

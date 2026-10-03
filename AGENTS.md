@@ -35,17 +35,17 @@ act --job common_tests
 To get Erlang environment for the project use `make cr` command to spawn an interactive session in the container, then inside the shell `cd` to this repository if needed.
 
 - Image: `swm-build:29.1` (see `priv/container/debug/Dockerfile` and `scripts/build-debug-container.sh`).
-- Container name: **`skyport-dev`**.
+- Container name: **`skyport-dev`** (Podman).
 - `make cr` runs `scripts/start-debug-container.sh`: attaches with  
-  `docker exec -ti skyport-dev runuser -u <host-user> /bin/bash`  
-  (same `$HOME` mount as on the host, workdir is usually the directory from which the container was first created).
+  `podman exec -ti --user <host-user> skyport-dev /bin/bash`  
+  (same `$HOME` mount as on the host, workdir is usually the directory from which the container was first created). Containers use `--userns=keep-id` (no `runuser`).
 
 ### Agents: never compile as root
 
-Plain `docker exec skyport-dev ...` runs as **root**. Always match `make cr` / `scripts/run-in-dev-container.sh` and run as the host user so build artifacts stay owned by that user:
+Always match `make cr` / `scripts/run-in-dev-container.sh` and run as the host user so build artifacts stay owned by that user:
 
 ```bash
-docker exec skyport-dev runuser -u "$USER" -- bash -lc '
+podman exec --user "$USER" skyport-dev bash -lc '
   source /usr/erlang/activate
   export REBAR_CACHE_DIR="${HOME}/.cache/rebar3"
   mkdir -p "${REBAR_CACHE_DIR}"
@@ -53,7 +53,7 @@ docker exec skyport-dev runuser -u "$USER" -- bash -lc '
 '
 ```
 
-Use the host `$USER` (or the uid that owns the workspace). Do not use `docker exec` without `runuser` for `make compile`, `./rebar3`, `make gen`, `make format`, or `make porter`.
+Use the host `$USER` (or the uid that owns the workspace). Do not use bare `podman exec` without `--user` for `make compile`, `./rebar3`, `make gen`, `make format`, or `make porter`.
 
 ## Erlang + C++ conventions for agents
 

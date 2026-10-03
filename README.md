@@ -58,7 +58,7 @@ See [openworkload.org](https://openworkload.org) for details.
 
 ### Pull skyport container
 ```bash
-docker pull openworkload/skyport:latest
+podman pull openworkload/skyport:latest
 ```
 
 ### Start skyport container (as a regular user)
@@ -71,7 +71,7 @@ This command starts Sky Port container with swm-core and cloud gate processes in
 
 If the spool is created and the container is stopped then the user needs to ensure that Azure cloud provider is configured correctly, see [AZURE.md](https://github.com/openworkload/swm-cloud-gate/blob/master/HOWTO/AZURE.md). When the configuration is completed, then run skyport container again:
 ```bash
-docker start skyport
+podman start skyport
 ```
 This command starts swm-core and gate in background if the spool is (still) ready.
 

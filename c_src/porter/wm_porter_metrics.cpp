@@ -320,8 +320,7 @@ bool encode_kv_i64(EiBuf &buf, std::string_view key, int64_t value) {
 bool encode_kv_u64(EiBuf &buf, std::string_view key, uint64_t value) {
   // ei_x_encode_ulong takes unsigned long; ei_x_encode_ulonglong takes EI_ULONGLONG.
   // Prefer ulonglong for full uint64_t range on all LP64/LLP64 hosts.
-  return encode_atom(buf, key) &&
-         ei_x_encode_ulonglong(&buf.x, static_cast<unsigned long long>(value)) == 0;
+  return encode_atom(buf, key) && ei_x_encode_ulonglong(&buf.x, static_cast<unsigned long long>(value)) == 0;
 }
 
 bool encode_kv_double(EiBuf &buf, std::string_view key, double value) {

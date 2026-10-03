@@ -39,29 +39,43 @@ NETWORK=skyportnet
 CONTAINER_NAME=skyport
 #IMAGE_NAME=openworkload/skyport:latest
 IMAGE_NAME=skyport:latest
-DOCKER_SOCKET=/var/run/docker.sock  # for local jobs testing
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+PODMAN_SOCK="${SWM_CONTAINER_PODMAN_SOCK:-${XDG_RUNTIME_DIR}/podman/podman.sock}"
 
-RUNNING=$(docker inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null)
+PODMAN_MOUNT_ARGS=()
+PODMAN_ENV_ARGS=()
+if [ -S "${PODMAN_SOCK}" ]; then
+    PODMAN_MOUNT_ARGS=(-v "${PODMAN_SOCK}:${PODMAN_SOCK}")
+    PODMAN_ENV_ARGS=(
+        -e "SWM_CONTAINER_PODMAN_SOCK=${PODMAN_SOCK}"
+        -e "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
+    )
+    echo "Mounting host Podman socket: ${PODMAN_SOCK}"
+else
+    echo "WARN: host Podman socket not found at ${PODMAN_SOCK}; local container jobs will fail until it is available" >&2
+fi
+
+RUNNING=$(podman inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null)
 NOT_RUNNING=$?
 
-if docker network inspect "${NETWORK}" >/dev/null 2>&1; then
-    echo "Docker network '${NETWORK}' already exists"
+if podman network inspect "${NETWORK}" >/dev/null 2>&1; then
+    echo "Podman network '${NETWORK}' already exists"
 else
-    docker network create "${NETWORK}" >/dev/null
-    echo "Created docker network '${NETWORK}'"
+    podman network create "${NETWORK}" >/dev/null
+    echo "Created podman network '${NETWORK}'"
 fi
 
 mkdir -p $HOME/.swm 2>/dev/null
 
 if [ "$NOT_RUNNING" != "0" ]; then
-    docker run\
+    podman run\
         --volume $HOME/.ssh:$HOME/.ssh\
         --volume $HOME/.swm:$HOME/.swm\
         --volume $HOME/.cache/swm:/root/.cache/swm\
-        --volume ${DOCKER_SOCKET}:${DOCKER_SOCKET}\
+        "${PODMAN_MOUNT_ARGS[@]}"\
+        "${PODMAN_ENV_ARGS[@]}"\
         --name ${CONTAINER_NAME}\
         --hostname $HOSTNAME\
-        --domainname $DOMAIN\
         --network-alias $HOSTNAME.$DOMAIN\
         --add-host=host:host-gateway\
         --workdir ${PWD}\
@@ -73,7 +87,7 @@ if [ "$NOT_RUNNING" != "0" ]; then
         ${IMAGE_NAME}
 
 elif [[ ${RUNNING} = "false" ]]; then
-    docker start ${CONTAINER_NAME}
+    podman start ${CONTAINER_NAME}
 fi
 
 exit 0

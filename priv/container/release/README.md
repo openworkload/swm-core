@@ -1,7 +1,7 @@
 This directory contains files needed to prepare SWM for running on production machines
 ======================================================================================
 
-Build container image with docker
+Build container image with podman
 ---------------------------------
 
 ```console
@@ -25,7 +25,7 @@ the container while spool directory is mounted there. This script initializes sw
 SWM_SPOOL_ON_HOST=$HOME/.swm/spool
 mkdir -p ${SWM_SPOOL_ON_HOST}
 COMMAND="/opt/swm/current/scripts/setup-skyport.sh -u $(id -u) -g $(id -g) -n $(id -u -n)"
-docker run --rm -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=openworkload.org -ti swm-core:latest ${COMMAND}
+podman run --rm -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=openworkload.org -ti swm-core:latest ${COMMAND}
 ```
 
 In order to debug the setup script or swm daemon the following script will help (run on host):
@@ -41,13 +41,13 @@ Run swm daemon in container (in background)
 
 ```console
 SWM_SPOOL_ON_HOST=$HOME/.swm/spool
-docker run --init --log-driver=syslog -d -p 10001:10001 -p 8443:8443 -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=openworkload.org swm-core:latest
+podman run --init -d -p 10001:10001 -p 8443:8443 -v $SWM_SPOOL_ON_HOST:/opt/swm/spool -v $HOME/.swm:/root/.swm --name=swm-core --hostname=$(hostname) --domainname=openworkload.org swm-core:latest
 ```
 
 After that the container can be controlled with:
 ```console
-docker stop swm-core
-docker start swm-core
+podman stop swm-core
+podman start swm-core
 ```
 
 Usefule links

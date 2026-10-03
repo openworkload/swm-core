@@ -41,7 +41,7 @@ fi
 
 echo "Build container image: version=${SWM_VERSION}, dockerfile=${DOCKERFILE}"
 
-DOCKER=docker
+PODMAN=podman
 IMAGE_NAME=skyport
 TAG=latest
 
@@ -53,13 +53,13 @@ GATE_PACKAGE_PATH_NEW=_build/packages/$GATE_PACKAGE_NAME
 echo "Copy $GATE_PACKAGE_PATH_OLD to $GATE_PACKAGE_PATH_NEW"
 cp -f $GATE_PACKAGE_PATH_OLD $GATE_PACKAGE_PATH_NEW
 
-${DOCKER} build --tag ${IMAGE_NAME}:${SWM_VERSION} \
+${PODMAN} build --tag ${IMAGE_NAME}:${SWM_VERSION} \
                 --build-arg SWM_VERSION=${SWM_VERSION} \
                 --build-arg SWM_GATE_PACKAGE=$GATE_PACKAGE_PATH_NEW \
                 --build-arg CACHEBUST=$(date +%s) \
                 --file ${DOCKERFILE} .
-${DOCKER} tag ${IMAGE_NAME}:${SWM_VERSION} ${IMAGE_NAME}:${TAG}
+${PODMAN} tag ${IMAGE_NAME}:${SWM_VERSION} ${IMAGE_NAME}:${TAG}
 
 echo "------------------------------------"
-echo "Sky Port image in docker:"
-${DOCKER} images ${IMAGE_NAME}
+echo "Sky Port image in podman:"
+${PODMAN} images ${IMAGE_NAME}
