@@ -3,8 +3,9 @@
 Sky Port can sample per-job resource usage while a job runs. Porter collects
 local samples inside the job container, **aggregates them for a report window**
 (default 2 minutes), then sends one summary to SWM. SWM forwards summaries up
-the hierarchy to Sky Port. **Persistence is not implemented yet** -- at Sky Port
-the reports are logged only.
+the hierarchy to Sky Port. At Sky Port the latest values are exported as
+**Prometheus gauges** on a cleartext scrape endpoint. Time series are stored by
+Prometheus (no separate metrics database in SWM).
 
 See also `HOWTO/JOBS.md` for job scripts and `#SWM` directives, and
 `HOWTO/CONTAINERS.md` for the Podman runtime.
@@ -42,6 +43,7 @@ Reported fields (when present): `cpu_percent` / `cpu_percent_max`,
 |---------|-------|---------|---------|
 | `job_metrics_interval` | `priv/base.config` / globals | `15000` | Local sample period (ms); `0` disables |
 | `job_metrics_report_interval` | `priv/base.config` / globals | `120000` | Aggregation / report period to SWM (ms); `0` disables |
+| `job_metrics_port` | `priv/base.config` / globals | `9568` | Cleartext Prometheus scrape port (`/metrics`); `0` disables |
 
 Porter also receives (injected into the job env at RUN time):
 
@@ -59,14 +61,33 @@ Porter (sample + 2min aggregate on compute node)
   -> wm_proc (main script) or wm_pmix (rank)
   -> (non-main rank) main job node wm_pmix -> wm_compute
   -> parent SWM (repeat until root)
-  -> Sky Port wm_accounting:log_job_metrics/3  (log only)
+  -> Sky Port wm_accounting:log_job_metrics/3
+  -> wm_job_metrics gauges + GET :9568/metrics
+  -> Prometheus scrape (podman compose)
 ```
 
-On Sky Port (`wm_core:get_parent()` is `not_found`), metrics are not stored;
-they appear in the SWM log as `Job metrics job=... samples=... cpu_percent=...`.
+## Prometheus export
 
-## Log line fields
+On Sky Port, each metrics report updates gauges (labels `job_id`, `node`):
 
-Typical INFO fields: `job`, `node`, `ts` (unix ms), `samples`, `window_ms`,
-`cpu_percent`, `cpu_percent_max`, `mem_bytes`, `mem_bytes_max`, and when GPU
-sampling is enabled and NVML is available: `gpu_util_percent`, `gpu_mem_bytes`.
+- `swm_job_cpu_percent` / `swm_job_cpu_percent_max`
+- `swm_job_mem_bytes` / `swm_job_mem_bytes_max`
+- `swm_job_gpu_util_percent` / `swm_job_gpu_util_percent_max`
+- `swm_job_gpu_mem_bytes` / `swm_job_gpu_mem_bytes_max`
+
+Scrape URL: `http://skyport-dev:9568/metrics` (or `http://127.0.0.1:9568/metrics`
+from the host when the debug container publishes the port).
+
+### Local Prometheus (podman compose)
+
+With `skyport-dev` running on network `skyportnet-dev` (and SWM up so
+`:9568/metrics` is listening):
+
+```bash
+make prometheus-up    # podman compose -f compose.yml up -d
+# UI / API: http://127.0.0.1:9090
+# Targets: http://127.0.0.1:9090/targets
+make prometheus-down
+```
+
+Config: `priv/container/prometheus/prometheus.yml` and root `compose.yml`.

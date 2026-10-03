@@ -53,6 +53,7 @@ JUPUTER_HUB_API_PORT=8081
 JUPUTER_HUB_PORT=8000
 USER_API_PORT=8443
 CORE_API_PORT=10001
+JOB_METRICS_PORT=9568
 
 GATE_LOG=/tmp/swm-cloud-gate-debug.log
 SWM_CLOUD_GATE_CONFIG="${HOME}/.swm/cloud-gate.yaml"
@@ -111,6 +112,7 @@ ensure_container() {
             -p "${USER_API_PORT}:${USER_API_PORT}" \
             -p "${JUPUTER_HUB_PORT}:${JUPUTER_HUB_PORT}" \
             -p "${JUPUTER_HUB_API_PORT}:${JUPUTER_HUB_API_PORT}" \
+            -p "${JOB_METRICS_PORT}:${JOB_METRICS_PORT}" \
             --user "${HOST_USER}" \
             "${IMAGE_NAME}" \
             sleep infinity

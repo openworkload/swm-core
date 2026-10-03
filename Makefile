@@ -2,6 +2,7 @@
 .PHONY: run-ghead run-chead
 .PHONY: test ftest act
 .PHONY: cb cr build-all
+.PHONY: prometheus-up prometheus-down
 .PHONY: dialyzer format format-cpp format-cpp-check static_checks
 
 COG = cog
@@ -48,6 +49,12 @@ shell-release-container:			##@CONTAINERS run shell in already running release co
 
 cr: 		##@CONTAINERS run or attach to running container
 			$(START_DEBUG_CONTAINER)
+
+prometheus-up:		##@CONTAINERS Start Prometheus (podman compose) on skyportnet-dev
+			podman compose -f compose.yml up -d
+
+prometheus-down:	##@CONTAINERS Stop Prometheus compose stack
+			podman compose -f compose.yml down
 
 build-all:		##@CONTAINERS Full build (make && format && worker) in skyport-dev as $$USER
 			scripts/run-in-dev-container.sh --stop-swm 'make && make worker'

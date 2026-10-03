@@ -49,7 +49,7 @@ node_prices(Node) ->
 update_node_prices() ->
     wm_utils:protected_call(?MODULE, update_node_prices).
 
-%% @doc Log a Porter job metrics sample at Sky Port (no persistence yet).
+%% @doc Export a Porter job metrics sample at Sky Port (Prometheus gauges).
 -spec log_job_metrics(term(), map(), term()) -> ok.
 log_job_metrics(JobId, Map, Node) when is_map(Map) ->
     gen_server:cast(?MODULE, {log_job_metrics, JobId, Map, Node});
@@ -82,6 +82,7 @@ init(Args) ->
     process_flag(trap_exit, true),
     MState = parse_args(Args, #mstate{}),
     wm_works:call_asap(?MODULE, update_node_prices),
+    ok = wm_job_metrics:setup(),
     ?LOG_INFO("Jobs accounting service has been started"),
     {ok, MState}.
 
@@ -103,6 +104,7 @@ handle_call(Msg, From, MState) ->
     {reply, {error, not_handled}, MState}.
 
 handle_cast({log_job_metrics, JobId, Map, Node}, MState) ->
+    wm_job_metrics:observe(JobId, Node, Map),
     Cpu = maps:get(cpu_percent, Map, maps:get(<<"cpu_percent">>, Map, undefined)),
     CpuMax = maps:get(cpu_percent_max, Map, maps:get(<<"cpu_percent_max">>, Map, undefined)),
     Mem = maps:get(mem_bytes, Map, maps:get(<<"mem_bytes">>, Map, undefined)),
@@ -112,9 +114,9 @@ handle_cast({log_job_metrics, JobId, Map, Node}, MState) ->
     Samples = maps:get(samples, Map, maps:get(<<"samples">>, Map, undefined)),
     WindowMs = maps:get(window_ms, Map, maps:get(<<"window_ms">>, Map, undefined)),
     Ts = maps:get(ts, Map, maps:get(<<"ts">>, Map, undefined)),
-    ?LOG_INFO("Job metrics job=~p node=~p ts=~p samples=~p window_ms=~p cpu_percent=~p "
-              "cpu_percent_max=~p mem_bytes=~p mem_bytes_max=~p gpu_util_percent=~p gpu_mem_bytes=~p",
-              [JobId, Node, Ts, Samples, WindowMs, Cpu, CpuMax, Mem, MemMax, GpuUtil, GpuMem]),
+    ?LOG_DEBUG("Job metrics job=~p node=~p ts=~p samples=~p window_ms=~p cpu_percent=~p "
+               "cpu_percent_max=~p mem_bytes=~p mem_bytes_max=~p gpu_util_percent=~p gpu_mem_bytes=~p",
+               [JobId, Node, Ts, Samples, WindowMs, Cpu, CpuMax, Mem, MemMax, GpuUtil, GpuMem]),
     {noreply, MState};
 handle_cast(Msg, MState) ->
     ?LOG_INFO("Got not handled cast message ~p", [Msg]),

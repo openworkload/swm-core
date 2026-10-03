@@ -15,6 +15,7 @@
     mnesia,
     parse_trans,
     folsom,
+    prometheus,
     gun,
     cowboy,
     jwalk]},
