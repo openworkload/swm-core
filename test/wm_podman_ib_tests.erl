@@ -4,8 +4,7 @@
 
 -include("../src/lib/wm_entity.hrl").
 
--define(ENV_KEYS,
-        ["SWM_CONTAINER_CDI_PATHS", "SWM_CONTAINER_RDMA_CDI", "SWM_CONTAINER_IB_DEV_DIR", "SWM_ROOT"]).
+-define(ENV_KEYS, ["SWM_CONTAINER_CDI_PATHS", "SWM_CONTAINER_RDMA_CDI", "SWM_CONTAINER_IB_DEV_DIR", "SWM_ROOT"]).
 
 clear_env() ->
     lists:foreach(fun(K) -> os:unsetenv(K) end, ?ENV_KEYS),

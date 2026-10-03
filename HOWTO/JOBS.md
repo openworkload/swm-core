@@ -7,6 +7,9 @@ and exports `SWM_*` environment variables. From that script you can start
 **tasks** with `swm-task` when the workload needs one or more processes across
 the allocated nodes (for example MPI).
 
+Job resource metrics (CPU / memory / optional GPU) are described in
+`HOWTO/ACCOUNTING.md`.
+
 ## Available Directives
 
 ### Resource Requirements

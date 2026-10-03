@@ -7,6 +7,7 @@
 -export([job_cost/1, node_prices/1]).
 -export([update_node_prices/0]).
 -export([norming/1, node_weight/3]).
+-export([log_job_metrics/3]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
@@ -47,6 +48,13 @@ node_prices(Node) ->
 -spec update_node_prices() -> ok.
 update_node_prices() ->
     wm_utils:protected_call(?MODULE, update_node_prices).
+
+%% @doc Log a Porter job metrics sample at Sky Port (no persistence yet).
+-spec log_job_metrics(term(), map(), term()) -> ok.
+log_job_metrics(JobId, Map, Node) when is_map(Map) ->
+    gen_server:cast(?MODULE, {log_job_metrics, JobId, Map, Node});
+log_job_metrics(_, _, _) ->
+    ok.
 
 %% ============================================================================
 %% Server callbacks
@@ -94,6 +102,16 @@ handle_call(Msg, From, MState) ->
     ?LOG_INFO("Got not handled call message ~p from ~p", [Msg, From]),
     {reply, {error, not_handled}, MState}.
 
+handle_cast({log_job_metrics, JobId, Map, Node}, MState) ->
+    Cpu = maps:get(cpu_percent, Map, maps:get(<<"cpu_percent">>, Map, undefined)),
+    Mem = maps:get(mem_bytes, Map, maps:get(<<"mem_bytes">>, Map, undefined)),
+    GpuUtil = maps:get(gpu_util_percent, Map, maps:get(<<"gpu_util_percent">>, Map, undefined)),
+    GpuMem = maps:get(gpu_mem_bytes, Map, maps:get(<<"gpu_mem_bytes">>, Map, undefined)),
+    Ts = maps:get(ts, Map, maps:get(<<"ts">>, Map, undefined)),
+    ?LOG_INFO("Job metrics job=~p node=~p ts=~p cpu_percent=~p mem_bytes=~p gpu_util_percent=~p "
+              "gpu_mem_bytes=~p",
+              [JobId, Node, Ts, Cpu, Mem, GpuUtil, GpuMem]),
+    {noreply, MState};
 handle_cast(Msg, MState) ->
     ?LOG_INFO("Got not handled cast message ~p", [Msg]),
     {noreply, MState}.

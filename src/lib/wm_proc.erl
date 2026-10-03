@@ -90,6 +90,9 @@ running(cast, {sent, JobId}, #mstate{} = MState) ->
     {next_state, running, MState};
 running(cast, {{process, Process}, _JobId}, #mstate{} = MState) ->
     do_check(Process, MState);
+running(cast, {{porter_metrics, Map}, JobId}, #mstate{} = MState) when is_map(Map) ->
+    gen_server:cast(wm_compute, {job_metrics, JobId, Map, node()}),
+    {next_state, running, MState};
 running(info, Msg, MState) ->
     handle_info(Msg, ?FUNCTION_NAME, MState);
 running(cast, Msg, MState) ->

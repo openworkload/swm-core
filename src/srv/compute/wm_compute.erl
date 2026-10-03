@@ -87,6 +87,8 @@ handle_cast({pmix_start_rank, JobId, TaskId, Rank, Cmd, PmixEnv}, MState) ->
     wm_pmix:ensure_started(),
     gen_server:cast(wm_pmix, {start_rank_local, JobId, TaskId, Rank, Cmd, PmixEnv}),
     {noreply, MState};
+handle_cast({job_metrics, JobId, Map, Node}, MState) ->
+    {noreply, handle_event(job_metrics, {JobId, Map, Node}, MState)};
 handle_cast({event, EventType, EventData}, MState) ->
     {noreply, handle_event(EventType, EventData, MState)}.
 
@@ -166,6 +168,18 @@ handle_event(proc_started, {JobID, Node}, MState) ->
     update_job(JobID, start_time, wm_utils:now_iso8601(without_ms)),
     update_job(JobID, state_details, "Started"),
     event_to_parent({event, proc_started, {JobID, Node}}),
+    MState;
+handle_event(job_metrics, {JobID, Map0, Node}, MState) when is_map(Map0) ->
+    Map = Map0#{job_id => ensure_binary(JobID), node => ensure_binary(Node)},
+    case wm_core:get_parent() of
+        not_found ->
+            wm_accounting:log_job_metrics(JobID, Map, Node);
+        Parent ->
+            event_to_parent({event, job_metrics, {JobID, Map, Node}}, Parent)
+    end,
+    MState;
+handle_event(job_metrics, Data, MState) ->
+    ?LOG_DEBUG("Ignoring malformed job_metrics: ~p", [Data]),
     MState.
 
 -spec handle_timetable([#timetable{}], #mstate{}) -> #mstate{}.
@@ -298,5 +312,23 @@ update_job(JobID, Attr, NewValue) ->
 
 -spec event_to_parent(term()) -> ok.
 event_to_parent(Event) ->
-    Parent = wm_core:get_parent(),
+    case wm_core:get_parent() of
+        not_found ->
+            ok;
+        Parent ->
+            event_to_parent(Event, Parent)
+    end.
+
+-spec event_to_parent(term(), term()) -> ok.
+event_to_parent(Event, Parent) ->
     wm_api:cast_self(Event, [Parent]).
+
+-spec ensure_binary(term()) -> binary().
+ensure_binary(X) when is_binary(X) ->
+    X;
+ensure_binary(X) when is_list(X) ->
+    list_to_binary(X);
+ensure_binary(X) when is_atom(X) ->
+    atom_to_binary(X, utf8);
+ensure_binary(X) ->
+    list_to_binary(io_lib:format("~p", [X])).

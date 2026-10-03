@@ -145,6 +145,13 @@ handle_cast({_, {stream, 1}, Data, _, ContID}, #mstate{} = MState) ->
                     send_event_to_owner({process, Term}, ContID, MState);
                 porter_req ->
                     handle_porter_req_term(Term, ContID, MState);
+                porter_metrics ->
+                    case Term of
+                        {porter_metrics, Map} when is_map(Map) ->
+                            send_event_to_owner({porter_metrics, Map}, ContID, MState);
+                        _ ->
+                            ?LOG_DEBUG("Bad porter_metrics from ~p: ~p", [ContID, Term])
+                    end;
                 _ ->
                     ?LOG_DEBUG("Unhandled tuple from stdout: ~p", [Term])
             end

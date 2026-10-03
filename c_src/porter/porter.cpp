@@ -4,6 +4,7 @@
 #include "wm_job.h"
 #include "wm_porter_ctrl.h"
 #include "wm_porter_data.h"
+#include "wm_porter_metrics.h"
 #include "wm_process.h"
 
 #include <ei.h>
@@ -454,6 +455,13 @@ int main(int argc, char *const argv[]) {
   } else { /* This is the parent */
     swm_logi("Parent process started, job process PID=%d", child_pid);
 
+    const PorterMetricsConfig metrics_cfg = porter_metrics_config_from_job(info.job);
+    PorterMetricsState metrics_state;
+    if (metrics_cfg.interval_ms > 0) {
+      swm_logi("Job metrics interval=%lld ms gpu=%d", static_cast<long long>(metrics_cfg.interval_ms),
+               metrics_cfg.collect_gpu ? 1 : 0);
+    }
+
     // Non-blocking stdin for control replies from SWM.
     {
       int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
@@ -669,6 +677,10 @@ int main(int argc, char *const argv[]) {
         proc.set_state(SWM_JOB_STATE_RUNNING);
         if (send_process_info(proc)) {
           swm_loge("Child process info not sent");
+          return EXIT_FAILURE;
+        }
+        if (!porter_metrics_maybe_send(info.job, metrics_cfg, &metrics_state, porter_metrics_now_ms())) {
+          swm_loge("Job metrics not sent");
           return EXIT_FAILURE;
         }
         // Short sleep so control I/O stays responsive

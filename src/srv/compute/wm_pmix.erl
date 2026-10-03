@@ -189,6 +189,13 @@ handle_cast({sent, JobId}, MState) ->
     {noreply, MState};
 handle_cast({{process, Process}, JobId}, MState) ->
     {noreply, on_rank_process(JobId, Process, MState)};
+handle_cast({{porter_metrics, Map}, JobId}, MState) when is_map(Map) ->
+    deliver_job_metrics(JobId, Map, MState),
+    {noreply, MState};
+handle_cast({job_metrics, JobId, Map, Node}, MState) ->
+    %% Forwarded from a helper node to the job main (same pattern as rank_done).
+    gen_server:cast(wm_compute, {job_metrics, JobId, Map, Node}),
+    {noreply, MState};
 handle_cast(Msg, MState) ->
     ?LOG_DEBUG("wm_pmix unhandled cast: ~p", [Msg]),
     {noreply, MState}.
@@ -911,6 +918,17 @@ shell_quote(S) ->
     ++ lists:flatten(
            string:replace(S, "'", "'\"'\"'", all))
     ++ "'".
+
+-spec deliver_job_metrics(string(), map(), #mstate{}) -> ok.
+deliver_job_metrics(JobId, Map, #mstate{fence_leader = FenceLeader}) ->
+    case maps:get(JobId, FenceLeader, undefined) of
+        undefined ->
+            gen_server:cast(wm_compute, {job_metrics, JobId, Map, node()});
+        ReplyTo ->
+            ?LOG_DEBUG("Forward job_metrics for ~p to main ~p", [JobId, ReplyTo]),
+            wm_api:cast_self({job_metrics, JobId, Map, node()}, [ReplyTo])
+    end,
+    ok.
 
 -spec on_rank_process(string(), #process{}, #mstate{}) -> #mstate{}.
 on_rank_process(JobId, Process, #mstate{cont_tasks = CT} = MState) ->
