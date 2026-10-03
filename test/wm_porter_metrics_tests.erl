@@ -28,11 +28,14 @@ metrics_env_default_no_gpu() ->
     Env = wm_porter_protocol:metrics_env(fake_job(0)),
     ?assertEqual("0", proplists:get_value("SWM_METRICS_GPU", Env)),
     Interval = proplists:get_value("SWM_METRICS_INTERVAL_MS", Env),
-    ?assert(is_list(Interval) andalso list_to_integer(Interval) >= 0).
+    Report = proplists:get_value("SWM_METRICS_REPORT_MS", Env),
+    ?assert(is_list(Interval) andalso list_to_integer(Interval) >= 0),
+    ?assert(is_list(Report) andalso list_to_integer(Report) >= 0).
 
 metrics_env_with_gpus() ->
     Env = wm_porter_protocol:metrics_env(fake_job(2)),
-    ?assertEqual("1", proplists:get_value("SWM_METRICS_GPU", Env)).
+    ?assertEqual("1", proplists:get_value("SWM_METRICS_GPU", Env)),
+    ?assertEqual("120000", proplists:get_value("SWM_METRICS_REPORT_MS", Env)).
 
 log_job_metrics_api() ->
     %% Cast-only API; must not crash when accounting is not started.

@@ -457,8 +457,10 @@ int main(int argc, char *const argv[]) {
 
     const PorterMetricsConfig metrics_cfg = porter_metrics_config_from_job(info.job);
     PorterMetricsState metrics_state;
-    if (metrics_cfg.interval_ms > 0) {
-      swm_logi("Job metrics interval=%lld ms gpu=%d", static_cast<long long>(metrics_cfg.interval_ms),
+    if (metrics_cfg.sample_interval_ms > 0 && metrics_cfg.report_interval_ms > 0) {
+      swm_logi("Job metrics sample=%lld ms report=%lld ms gpu=%d",
+               static_cast<long long>(metrics_cfg.sample_interval_ms),
+               static_cast<long long>(metrics_cfg.report_interval_ms),
                metrics_cfg.collect_gpu ? 1 : 0);
     }
 
@@ -704,6 +706,9 @@ int main(int argc, char *const argv[]) {
         if (send_process_info(proc)) {
           swm_loge("The final job process info has not been sent");
           return EXIT_FAILURE;
+        }
+        if (!porter_metrics_flush(info.job, metrics_cfg, &metrics_state, porter_metrics_now_ms())) {
+          swm_loge("Final job metrics flush failed");
         }
         if (WIFEXITED(status)) {
           if (exitcode == 0) {

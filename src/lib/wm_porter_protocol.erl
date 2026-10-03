@@ -47,17 +47,18 @@ enrich_job_for_porter(Job) ->
             wm_entity:set({env, Env0 ++ Extra}, Job1)
     end.
 
-%% @doc Interval and GPU flag for Porter sampling (see HOWTO/ACCOUNTING.md).
+%% @doc Sample/report intervals and GPU flag for Porter (see HOWTO/ACCOUNTING.md).
 -spec metrics_env(#job{}) -> [{string(), string()}].
 metrics_env(Job) ->
-    Interval = integer_to_list(wm_conf:g(job_metrics_interval, {15000, integer})),
+    Sample = integer_to_list(wm_conf:g(job_metrics_interval, {15000, integer})),
+    Report = integer_to_list(wm_conf:g(job_metrics_report_interval, {120000, integer})),
     Gpu = case job_requests_gpus(Job) of
               true ->
                   "1";
               false ->
                   "0"
           end,
-    [{"SWM_METRICS_INTERVAL_MS", Interval}, {"SWM_METRICS_GPU", Gpu}].
+    [{"SWM_METRICS_INTERVAL_MS", Sample}, {"SWM_METRICS_REPORT_MS", Report}, {"SWM_METRICS_GPU", Gpu}].
 
 -spec job_requests_gpus(#job{}) -> boolean().
 job_requests_gpus(Job) ->

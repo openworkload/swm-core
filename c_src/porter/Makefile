@@ -9,7 +9,8 @@ CFLAGS=-I${_KERL_ACTIVE_DIR}/usr/include\
        -Wno-deprecated-declarations
 LDFLAGS=-L${_KERL_ACTIVE_DIR}/usr/lib
 LIBS=-lei\
-     -lpthread
+     -lpthread\
+     -ldl
 
 SRCS=$(shell echo *.cpp)
 SRCS_LIB=$(shell echo $(SWM_C_LIB)/*.cpp)
