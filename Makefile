@@ -1,6 +1,6 @@
 .PHONY: all gen porter task pmix mpi-example compile release
 .PHONY: run-ghead run-chead
-.PHONY: test ftest
+.PHONY: test ftest act
 .PHONY: cb cr build-all
 .PHONY: dialyzer format format-cpp format-cpp-check static_checks
 
@@ -110,6 +110,9 @@ test_ct:		##@TESTS Run common erlang tests
 
 test_podman_smoke:	##@TESTS Rootless Podman + crun libpod smoke (no Erlang)
 			./scripts/ci-podman-smoke.sh
+
+act:		##@TESTS Run all GitHub Actions CI jobs locally via act
+			act --concurrent-jobs 1
 
 ftest:		##@TESTS Run functional tests
 			scripts/swm.env
