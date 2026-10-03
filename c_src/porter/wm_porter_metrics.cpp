@@ -6,47 +6,88 @@
 #include <ei.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <array>
+#include <charconv>
 #include <chrono>
 #include <cmath>
-#include <cstdlib>
+#include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 
 namespace swm {
 namespace {
 
-// Minimal NVML types/decls so we do not require CUDA headers at build time.
+namespace fs = std::filesystem;
+
+// Minimal NVML types so we do not require CUDA headers at build time.
 using nvmlReturn_t = int;
 using nvmlDevice_t = void *;
 constexpr nvmlReturn_t NVML_SUCCESS = 0;
 
-struct nvmlUtilization_t {
-  unsigned int gpu;
-  unsigned int memory;
+struct NvmlUtilization {
+  unsigned int gpu = 0;
+  unsigned int memory = 0;
 };
 
-struct nvmlMemory_t {
-  unsigned long long total;
-  unsigned long long free;
-  unsigned long long used;
+struct NvmlMemory {
+  unsigned long long total = 0;
+  unsigned long long free = 0;
+  unsigned long long used = 0;
 };
 
-using nvmlInit_fn = nvmlReturn_t (*)();
-using nvmlShutdown_fn = nvmlReturn_t (*)();
-using nvmlDeviceGetCount_fn = nvmlReturn_t (*)(unsigned int *);
-using nvmlDeviceGetHandleByIndex_fn = nvmlReturn_t (*)(unsigned int, nvmlDevice_t *);
-using nvmlDeviceGetUtilizationRates_fn = nvmlReturn_t (*)(nvmlDevice_t, nvmlUtilization_t *);
-using nvmlDeviceGetMemoryInfo_fn = nvmlReturn_t (*)(nvmlDevice_t, nvmlMemory_t *);
+using NvmlInitFn = nvmlReturn_t (*)();
+using NvmlShutdownFn = nvmlReturn_t (*)();
+using NvmlDeviceGetCountFn = nvmlReturn_t (*)(unsigned int *);
+using NvmlDeviceGetHandleByIndexFn = nvmlReturn_t (*)(unsigned int, nvmlDevice_t *);
+using NvmlDeviceGetUtilizationRatesFn = nvmlReturn_t (*)(nvmlDevice_t, NvmlUtilization *);
+using NvmlDeviceGetMemoryInfoFn = nvmlReturn_t (*)(nvmlDevice_t, NvmlMemory *);
+
+struct DlHandle {
+  void *p = nullptr;
+
+  DlHandle() = default;
+  explicit DlHandle(void *handle) : p(handle) {}
+  ~DlHandle() {
+    if (p != nullptr) {
+      dlclose(p);
+    }
+  }
+  DlHandle(const DlHandle &) = delete;
+  DlHandle &operator=(const DlHandle &) = delete;
+  DlHandle(DlHandle &&other) noexcept : p(std::exchange(other.p, nullptr)) {}
+  DlHandle &operator=(DlHandle &&other) noexcept {
+    if (this != &other) {
+      if (p != nullptr) {
+        dlclose(p);
+      }
+      p = std::exchange(other.p, nullptr);
+    }
+    return *this;
+  }
+
+  [[nodiscard]] explicit operator bool() const { return p != nullptr; }
+};
+
+template <typename Fn>
+Fn load_sym(void *handle, std::string_view name) {
+  return reinterpret_cast<Fn>(dlsym(handle, std::string(name).c_str()));
+}
 
 struct NvmlLib {
-  void *handle = nullptr;
-  nvmlInit_fn init = nullptr;
-  nvmlShutdown_fn shutdown = nullptr;
-  nvmlDeviceGetCount_fn device_get_count = nullptr;
-  nvmlDeviceGetHandleByIndex_fn device_get_handle = nullptr;
-  nvmlDeviceGetUtilizationRates_fn device_get_util = nullptr;
-  nvmlDeviceGetMemoryInfo_fn device_get_memory = nullptr;
+  DlHandle handle;
+  NvmlInitFn init = nullptr;
+  NvmlShutdownFn shutdown = nullptr;
+  NvmlDeviceGetCountFn device_get_count = nullptr;
+  NvmlDeviceGetHandleByIndexFn device_get_handle = nullptr;
+  NvmlDeviceGetUtilizationRatesFn device_get_util = nullptr;
+  NvmlDeviceGetMemoryInfoFn device_get_memory = nullptr;
   bool init_ok = false;
   bool load_attempted = false;
 };
@@ -56,89 +97,117 @@ NvmlLib &nvml_lib() {
   return lib;
 }
 
-std::string env_value(const SwmJob &job, const char *key) {
-  for (const auto &kv : job.get_env()) {
-    if (kv.first == key) {
-      return kv.second;
+struct EiBuf {
+  ei_x_buff x {};
+  bool ok = false;
+
+  EiBuf() { ok = (ei_x_new(&x) == 0); }
+  ~EiBuf() {
+    if (ok) {
+      ei_x_free(&x);
     }
   }
-  return "";
+  EiBuf(const EiBuf &) = delete;
+  EiBuf &operator=(const EiBuf &) = delete;
+
+  [[nodiscard]] explicit operator bool() const { return ok; }
+};
+
+[[nodiscard]] std::optional<std::string_view> env_value(const SwmJob &job, std::string_view key) {
+  for (const auto &kv : job.get_env()) {
+    if (kv.first == key) {
+      return std::string_view(kv.second);
+    }
+  }
+  return std::nullopt;
 }
 
-bool file_readable(const std::string &path) {
-  return access(path.c_str(), R_OK) == 0;
+[[nodiscard]] std::optional<int64_t> parse_i64(std::string_view s) {
+  if (s.empty()) {
+    return std::nullopt;
+  }
+  int64_t value = 0;
+  const auto *first = s.data();
+  const auto *last = s.data() + s.size();
+  const auto [ptr, ec] = std::from_chars(first, last, value);
+  if (ec != std::errc {} || ptr != last) {
+    return std::nullopt;
+  }
+  return value;
 }
 
-bool is_cgroup_v2() {
+[[nodiscard]] bool file_readable(std::string_view path) {
+  std::error_code ec;
+  return fs::exists(std::string(path), ec) && !ec;
+}
+
+[[nodiscard]] bool is_cgroup_v2() {
   return file_readable("/sys/fs/cgroup/cgroup.controllers");
 }
 
-std::string read_self_cgroup_v2_path() {
+[[nodiscard]] std::string read_self_cgroup_v2_path() {
   std::ifstream in("/proc/self/cgroup");
   if (!in) {
-    return "";
+    return {};
   }
   std::string line;
   while (std::getline(in, line)) {
-    if (line.rfind("0::", 0) == 0) {
-      std::string rel = line.substr(3);
-      if (rel.empty()) {
-        rel = "/";
-      }
-      if (rel.front() != '/') {
-        rel.insert(rel.begin(), '/');
-      }
-      return "/sys/fs/cgroup" + rel;
+    constexpr std::string_view kPrefix = "0::";
+    if (std::string_view(line).substr(0, kPrefix.size()) != kPrefix) {
+      continue;
     }
+    std::string rel = line.substr(kPrefix.size());
+    if (rel.empty()) {
+      rel = "/";
+    }
+    if (rel.front() != '/') {
+      rel.insert(rel.begin(), '/');
+    }
+    return std::string("/sys/fs/cgroup") + rel;
   }
-  return "";
+  return {};
 }
 
-bool read_usage_usec(const std::string &cgroup_path, uint64_t *out) {
-  std::ifstream in(cgroup_path + "/cpu.stat");
+[[nodiscard]] std::optional<uint64_t> read_usage_usec(std::string_view cgroup_path) {
+  std::ifstream in(std::string(cgroup_path) + "/cpu.stat");
   if (!in) {
-    return false;
+    return std::nullopt;
   }
   std::string key;
   uint64_t val = 0;
   while (in >> key >> val) {
     if (key == "usage_usec") {
-      *out = val;
-      return true;
+      return val;
     }
   }
-  return false;
+  return std::nullopt;
 }
 
-bool read_memory_current(const std::string &cgroup_path, uint64_t *out) {
-  std::ifstream in(cgroup_path + "/memory.current");
+[[nodiscard]] std::optional<uint64_t> read_memory_current(std::string_view cgroup_path) {
+  std::ifstream in(std::string(cgroup_path) + "/memory.current");
   if (!in) {
-    return false;
+    return std::nullopt;
   }
   uint64_t val = 0;
   in >> val;
   if (!in) {
-    return false;
+    return std::nullopt;
   }
-  *out = val;
-  return true;
+  return val;
 }
 
-unsigned ncpus() {
-  long n = sysconf(_SC_NPROCESSORS_ONLN);
-  if (n < 1) {
-    return 1;
-  }
-  return static_cast<unsigned>(n);
+[[nodiscard]] unsigned ncpus() {
+  const long n = sysconf(_SC_NPROCESSORS_ONLN);
+  return n < 1 ? 1u : static_cast<unsigned>(n);
 }
 
-std::string hostname_str() {
-  char buf[256];
-  if (gethostname(buf, sizeof(buf)) != 0) {
+[[nodiscard]] std::string hostname_str() {
+  std::array<char, 256> buf {};
+  if (gethostname(buf.data(), buf.size()) != 0) {
     return "unknown";
   }
-  buf[sizeof(buf) - 1] = '\0';
-  return std::string(buf);
+  buf.back() = '\0';
+  return std::string(buf.data());
 }
 
 bool load_nvml() {
@@ -148,49 +217,45 @@ bool load_nvml() {
   }
   lib.load_attempted = true;
 
-  const char *candidates[] = {"libnvidia-ml.so.1", "libnvidia-ml.so", nullptr};
-  for (int i = 0; candidates[i] != nullptr; ++i) {
-    lib.handle = dlopen(candidates[i], RTLD_LAZY | RTLD_LOCAL);
-    if (lib.handle != nullptr) {
+  constexpr std::array<std::string_view, 2> kCandidates = {"libnvidia-ml.so.1", "libnvidia-ml.so"};
+  for (const auto name : kCandidates) {
+    lib.handle = DlHandle(dlopen(std::string(name).c_str(), RTLD_LAZY | RTLD_LOCAL));
+    if (lib.handle) {
       break;
     }
   }
-  if (lib.handle == nullptr) {
+  if (!lib.handle) {
     swm_logd("NVML not available: %s", dlerror());
     return false;
   }
 
-  lib.init = reinterpret_cast<nvmlInit_fn>(dlsym(lib.handle, "nvmlInit_v2"));
+  void *const h = lib.handle.p;
+  lib.init = load_sym<NvmlInitFn>(h, "nvmlInit_v2");
   if (lib.init == nullptr) {
-    lib.init = reinterpret_cast<nvmlInit_fn>(dlsym(lib.handle, "nvmlInit"));
+    lib.init = load_sym<NvmlInitFn>(h, "nvmlInit");
   }
-  lib.shutdown = reinterpret_cast<nvmlShutdown_fn>(dlsym(lib.handle, "nvmlShutdown"));
-  lib.device_get_count = reinterpret_cast<nvmlDeviceGetCount_fn>(dlsym(lib.handle, "nvmlDeviceGetCount_v2"));
+  lib.shutdown = load_sym<NvmlShutdownFn>(h, "nvmlShutdown");
+  lib.device_get_count = load_sym<NvmlDeviceGetCountFn>(h, "nvmlDeviceGetCount_v2");
   if (lib.device_get_count == nullptr) {
-    lib.device_get_count = reinterpret_cast<nvmlDeviceGetCount_fn>(dlsym(lib.handle, "nvmlDeviceGetCount"));
+    lib.device_get_count = load_sym<NvmlDeviceGetCountFn>(h, "nvmlDeviceGetCount");
   }
-  lib.device_get_handle =
-      reinterpret_cast<nvmlDeviceGetHandleByIndex_fn>(dlsym(lib.handle, "nvmlDeviceGetHandleByIndex_v2"));
+  lib.device_get_handle = load_sym<NvmlDeviceGetHandleByIndexFn>(h, "nvmlDeviceGetHandleByIndex_v2");
   if (lib.device_get_handle == nullptr) {
-    lib.device_get_handle =
-        reinterpret_cast<nvmlDeviceGetHandleByIndex_fn>(dlsym(lib.handle, "nvmlDeviceGetHandleByIndex"));
+    lib.device_get_handle = load_sym<NvmlDeviceGetHandleByIndexFn>(h, "nvmlDeviceGetHandleByIndex");
   }
-  lib.device_get_util =
-      reinterpret_cast<nvmlDeviceGetUtilizationRates_fn>(dlsym(lib.handle, "nvmlDeviceGetUtilizationRates"));
-  lib.device_get_memory = reinterpret_cast<nvmlDeviceGetMemoryInfo_fn>(dlsym(lib.handle, "nvmlDeviceGetMemoryInfo"));
+  lib.device_get_util = load_sym<NvmlDeviceGetUtilizationRatesFn>(h, "nvmlDeviceGetUtilizationRates");
+  lib.device_get_memory = load_sym<NvmlDeviceGetMemoryInfoFn>(h, "nvmlDeviceGetMemoryInfo");
 
   if (lib.init == nullptr || lib.device_get_count == nullptr || lib.device_get_handle == nullptr ||
       lib.device_get_util == nullptr || lib.device_get_memory == nullptr) {
     swm_logi("NVML symbols incomplete; GPU metrics disabled");
-    dlclose(lib.handle);
-    lib.handle = nullptr;
+    lib.handle = DlHandle {};
     return false;
   }
 
   if (lib.init() != NVML_SUCCESS) {
     swm_logi("nvmlInit failed; GPU metrics disabled");
-    dlclose(lib.handle);
-    lib.handle = nullptr;
+    lib.handle = DlHandle {};
     return false;
   }
   lib.init_ok = true;
@@ -198,14 +263,19 @@ bool load_nvml() {
   return true;
 }
 
-bool query_gpu_nvml(double *util_percent, uint64_t *mem_bytes) {
+struct GpuSample {
+  double util_percent = 0.0;
+  uint64_t mem_bytes = 0;
+};
+
+[[nodiscard]] std::optional<GpuSample> query_gpu_nvml() {
   if (!load_nvml()) {
-    return false;
+    return std::nullopt;
   }
   NvmlLib &lib = nvml_lib();
   unsigned int count = 0;
   if (lib.device_get_count(&count) != NVML_SUCCESS || count == 0) {
-    return false;
+    return std::nullopt;
   }
 
   double util_sum = 0.0;
@@ -216,12 +286,9 @@ bool query_gpu_nvml(double *util_percent, uint64_t *mem_bytes) {
     if (lib.device_get_handle(i, &dev) != NVML_SUCCESS) {
       continue;
     }
-    nvmlUtilization_t util {};
-    nvmlMemory_t mem {};
-    if (lib.device_get_util(dev, &util) != NVML_SUCCESS) {
-      continue;
-    }
-    if (lib.device_get_memory(dev, &mem) != NVML_SUCCESS) {
+    NvmlUtilization util {};
+    NvmlMemory mem {};
+    if (lib.device_get_util(dev, &util) != NVML_SUCCESS || lib.device_get_memory(dev, &mem) != NVML_SUCCESS) {
       continue;
     }
     util_sum += static_cast<double>(util.gpu);
@@ -229,255 +296,246 @@ bool query_gpu_nvml(double *util_percent, uint64_t *mem_bytes) {
     ++ok;
   }
   if (ok == 0) {
+    return std::nullopt;
+  }
+  return GpuSample {util_sum / static_cast<double>(ok), mem_sum};
+}
+
+bool encode_atom(EiBuf &buf, std::string_view atom) {
+  return ei_x_encode_atom(&buf.x, std::string(atom).c_str()) == 0;
+}
+
+bool encode_binary(EiBuf &buf, std::string_view s) {
+  return ei_x_encode_binary(&buf.x, s.data(), static_cast<int>(s.size())) == 0;
+}
+
+bool encode_kv_binary(EiBuf &buf, std::string_view key, std::string_view value) {
+  return encode_atom(buf, key) && encode_binary(buf, value);
+}
+
+bool encode_kv_longlong(EiBuf &buf, std::string_view key, long long value) {
+  return encode_atom(buf, key) && ei_x_encode_longlong(&buf.x, value) == 0;
+}
+
+bool encode_kv_ulong(EiBuf &buf, std::string_view key, unsigned long value) {
+  return encode_atom(buf, key) && ei_x_encode_ulong(&buf.x, value) == 0;
+}
+
+bool encode_kv_ulonglong(EiBuf &buf, std::string_view key, unsigned long long value) {
+  return encode_atom(buf, key) && ei_x_encode_ulonglong(&buf.x, value) == 0;
+}
+
+bool encode_kv_double(EiBuf &buf, std::string_view key, double value) {
+  return encode_atom(buf, key) && ei_x_encode_double(&buf.x, value) == 0;
+}
+
+bool send_aggregated_metrics(std::string_view job_id,
+                             std::string_view node,
+                             int64_t ts_ms,
+                             const PorterMetricsWindow &window) {
+  if (window.empty()) {
+    return true;
+  }
+
+  const bool have_cpu = window.cpu_samples > 0;
+  const bool have_mem = window.mem_samples > 0;
+  const bool have_gpu = window.gpu_samples > 0;
+  const double cpu_avg = have_cpu ? window.cpu_sum / static_cast<double>(window.cpu_samples) : 0.0;
+  const uint64_t mem_avg =
+      have_mem ? static_cast<uint64_t>(std::llround(window.mem_sum / static_cast<double>(window.mem_samples))) : 0;
+  const double gpu_util_avg = have_gpu ? window.gpu_util_sum / static_cast<double>(window.gpu_samples) : 0.0;
+  const uint64_t gpu_mem_avg =
+      have_gpu ? static_cast<uint64_t>(std::llround(window.gpu_mem_sum / static_cast<double>(window.gpu_samples))) : 0;
+  const int64_t window_ms = std::max<int64_t>(0, ts_ms - window.start_ms);
+
+  EiBuf buf;
+  if (!buf || ei_x_encode_version(&buf.x) != 0 || ei_x_encode_tuple_header(&buf.x, 2) != 0 ||
+      !encode_atom(buf, "porter_metrics")) {
     return false;
   }
-  *util_percent = util_sum / static_cast<double>(ok);
-  *mem_bytes = mem_sum;
-  return true;
-}
 
-void reset_window(PorterMetricsState *state, int64_t now_ms) {
-  state->window_start_ms = now_ms;
-  state->samples = 0;
-  state->cpu_samples = 0;
-  state->mem_samples = 0;
-  state->gpu_samples = 0;
-  state->cpu_sum = 0.0;
-  state->cpu_max = 0.0;
-  state->mem_sum = 0.0;
-  state->mem_max = 0;
-  state->gpu_util_sum = 0.0;
-  state->gpu_util_max = 0.0;
-  state->gpu_mem_sum = 0.0;
-  state->gpu_mem_max = 0;
-}
-
-void accumulate_sample(PorterMetricsState *state,
-                       bool have_cpu,
-                       double cpu_percent,
-                       bool have_mem,
-                       uint64_t mem_bytes,
-                       bool have_gpu,
-                       double gpu_util,
-                       uint64_t gpu_mem) {
-  if (!have_cpu && !have_mem && !have_gpu) {
-    return;
-  }
-  ++state->samples;
-  if (have_cpu) {
-    state->cpu_sum += cpu_percent;
-    if (state->cpu_samples == 0 || cpu_percent > state->cpu_max) {
-      state->cpu_max = cpu_percent;
-    }
-    ++state->cpu_samples;
-  }
-  if (have_mem) {
-    state->mem_sum += static_cast<double>(mem_bytes);
-    if (mem_bytes > state->mem_max) {
-      state->mem_max = mem_bytes;
-    }
-    ++state->mem_samples;
-  }
-  if (have_gpu) {
-    state->gpu_util_sum += gpu_util;
-    if (state->gpu_samples == 0 || gpu_util > state->gpu_util_max) {
-      state->gpu_util_max = gpu_util;
-    }
-    state->gpu_mem_sum += static_cast<double>(gpu_mem);
-    if (gpu_mem > state->gpu_mem_max) {
-      state->gpu_mem_max = gpu_mem;
-    }
-    ++state->gpu_samples;
-  }
-}
-
-int encode_binary_string(ei_x_buff *x, const std::string &s) {
-  return ei_x_encode_binary(x, s.data(), static_cast<int>(s.size()));
-}
-
-int send_aggregated_metrics(const std::string &job_id,
-                            const std::string &node,
-                            int64_t ts_ms,
-                            const PorterMetricsState &state) {
-  if (state.samples == 0) {
-    return 0;
-  }
-
-  const bool have_cpu = state.cpu_samples > 0;
-  const bool have_mem = state.mem_samples > 0;
-  const bool have_gpu = state.gpu_samples > 0;
-  const double cpu_avg = have_cpu ? state.cpu_sum / static_cast<double>(state.cpu_samples) : 0.0;
-  const uint64_t mem_avg =
-      have_mem ? static_cast<uint64_t>(std::llround(state.mem_sum / static_cast<double>(state.mem_samples))) : 0;
-  const double gpu_util_avg = have_gpu ? state.gpu_util_sum / static_cast<double>(state.gpu_samples) : 0.0;
-  const uint64_t gpu_mem_avg =
-      have_gpu ? static_cast<uint64_t>(std::llround(state.gpu_mem_sum / static_cast<double>(state.gpu_samples))) : 0;
-  const int64_t window_ms = ts_ms - state.window_start_ms;
-
-  ei_x_buff x;
-  if (ei_x_new(&x) || ei_x_encode_version(&x) || ei_x_encode_tuple_header(&x, 2) ||
-      ei_x_encode_atom(&x, "porter_metrics")) {
-    ei_x_free(&x);
-    return -1;
-  }
-
-  // Base: job_id, node, ts, samples, window_ms
   size_t arity = 5;
   if (have_cpu) {
-    arity += 2;  // avg + max
+    arity += 2;
   }
   if (have_mem) {
     arity += 2;
   }
   if (have_gpu) {
-    arity += 4;  // util avg/max, mem avg/max
+    arity += 4;
+  }
+  if (ei_x_encode_map_header(&buf.x, arity) != 0) {
+    return false;
   }
 
-  if (ei_x_encode_map_header(&x, arity)) {
-    ei_x_free(&x);
-    return -1;
+  if (!encode_kv_binary(buf, "job_id", job_id) || !encode_kv_binary(buf, "node", node) ||
+      !encode_kv_longlong(buf, "ts", ts_ms) || !encode_kv_ulong(buf, "samples", window.samples) ||
+      !encode_kv_longlong(buf, "window_ms", window_ms)) {
+    return false;
   }
-  if (ei_x_encode_atom(&x, "job_id") || encode_binary_string(&x, job_id) || ei_x_encode_atom(&x, "node") ||
-      encode_binary_string(&x, node) || ei_x_encode_atom(&x, "ts") || ei_x_encode_longlong(&x, ts_ms) ||
-      ei_x_encode_atom(&x, "samples") || ei_x_encode_ulong(&x, state.samples) || ei_x_encode_atom(&x, "window_ms") ||
-      ei_x_encode_longlong(&x, window_ms > 0 ? window_ms : 0)) {
-    ei_x_free(&x);
-    return -1;
+  if (have_cpu &&
+      (!encode_kv_double(buf, "cpu_percent", cpu_avg) || !encode_kv_double(buf, "cpu_percent_max", window.cpu_max))) {
+    return false;
   }
-  if (have_cpu) {
-    if (ei_x_encode_atom(&x, "cpu_percent") || ei_x_encode_double(&x, cpu_avg) ||
-        ei_x_encode_atom(&x, "cpu_percent_max") || ei_x_encode_double(&x, state.cpu_max)) {
-      ei_x_free(&x);
-      return -1;
-    }
+  if (have_mem &&
+      (!encode_kv_ulonglong(buf, "mem_bytes", mem_avg) || !encode_kv_ulonglong(buf, "mem_bytes_max", window.mem_max))) {
+    return false;
   }
-  if (have_mem) {
-    if (ei_x_encode_atom(&x, "mem_bytes") || ei_x_encode_ulonglong(&x, mem_avg) ||
-        ei_x_encode_atom(&x, "mem_bytes_max") || ei_x_encode_ulonglong(&x, state.mem_max)) {
-      ei_x_free(&x);
-      return -1;
-    }
-  }
-  if (have_gpu) {
-    if (ei_x_encode_atom(&x, "gpu_util_percent") || ei_x_encode_double(&x, gpu_util_avg) ||
-        ei_x_encode_atom(&x, "gpu_util_percent_max") || ei_x_encode_double(&x, state.gpu_util_max) ||
-        ei_x_encode_atom(&x, "gpu_mem_bytes") || ei_x_encode_ulonglong(&x, gpu_mem_avg) ||
-        ei_x_encode_atom(&x, "gpu_mem_bytes_max") || ei_x_encode_ulonglong(&x, state.gpu_mem_max)) {
-      ei_x_free(&x);
-      return -1;
-    }
+  if (have_gpu && (!encode_kv_double(buf, "gpu_util_percent", gpu_util_avg) ||
+                   !encode_kv_double(buf, "gpu_util_percent_max", window.gpu_util_max) ||
+                   !encode_kv_ulonglong(buf, "gpu_mem_bytes", gpu_mem_avg) ||
+                   !encode_kv_ulonglong(buf, "gpu_mem_bytes_max", window.gpu_mem_max))) {
+    return false;
   }
 
-  const uint64_t buf_bytes = static_cast<uint64_t>(x.index);
-  swm_write_exact(&std::cout, x.buff, buf_bytes);
-  ei_x_free(&x);
-  fflush(stdout);
-  return 0;
+  swm_write_exact(&std::cout, buf.x.buff, static_cast<size_t>(buf.x.index));
+  std::cout << std::flush;
+  return true;
 }
 
-bool take_sample(const PorterMetricsConfig &cfg,
-                 PorterMetricsState *state,
-                 int64_t now_ms,
-                 bool *have_cpu,
-                 double *cpu_percent,
-                 bool *have_mem,
-                 uint64_t *mem_bytes,
-                 bool *have_gpu,
-                 double *gpu_util,
-                 uint64_t *gpu_mem) {
-  *have_cpu = false;
-  *have_mem = false;
-  *have_gpu = false;
-  *cpu_percent = 0.0;
-  *mem_bytes = 0;
-  *gpu_util = 0.0;
-  *gpu_mem = 0;
-
-  if (!state->cgroup_checked) {
-    state->cgroup_checked = true;
-    state->cgroup_v2_ok = is_cgroup_v2();
-    if (state->cgroup_v2_ok) {
-      state->cgroup_path = read_self_cgroup_v2_path();
-      if (state->cgroup_path.empty()) {
-        state->cgroup_path = "/sys/fs/cgroup";
-      }
-    } else if (!state->warned_no_v2) {
-      state->warned_no_v2 = true;
-      swm_logi("cgroup v2 not available; skipping CPU/memory job metrics");
-    }
+void ensure_cgroup(PorterMetricsState &state) {
+  if (state.cgroup_checked) {
+    return;
   }
+  state.cgroup_checked = true;
+  state.cgroup_v2_ok = is_cgroup_v2();
+  if (state.cgroup_v2_ok) {
+    state.cgroup_path = read_self_cgroup_v2_path();
+    if (state.cgroup_path.empty()) {
+      state.cgroup_path = "/sys/fs/cgroup";
+    }
+  } else if (!state.warned_no_v2) {
+    state.warned_no_v2 = true;
+    swm_logi("cgroup v2 not available; skipping CPU/memory job metrics");
+  }
+}
 
-  if (state->cgroup_v2_ok && !state->cgroup_path.empty()) {
-    uint64_t usage_usec = 0;
-    if (read_usage_usec(state->cgroup_path, &usage_usec)) {
-      if (state->have_cpu_baseline && state->last_sample_ms > 0) {
-        const int64_t dt_ms = now_ms - state->last_sample_ms;
-        if (dt_ms > 0 && usage_usec >= state->last_usage_usec) {
+[[nodiscard]] PorterMetricsSample take_sample(const PorterMetricsConfig &cfg,
+                                              PorterMetricsState &state,
+                                              int64_t now_ms) {
+  PorterMetricsSample sample;
+  ensure_cgroup(state);
+
+  if (state.cgroup_v2_ok && !state.cgroup_path.empty()) {
+    if (const auto usage_usec = read_usage_usec(state.cgroup_path)) {
+      if (state.have_cpu_baseline && state.last_sample_ms > 0) {
+        const int64_t dt_ms = now_ms - state.last_sample_ms;
+        if (dt_ms > 0 && *usage_usec >= state.last_usage_usec) {
           const double dt_usec = static_cast<double>(dt_ms) * 1000.0;
-          const double delta = static_cast<double>(usage_usec - state->last_usage_usec);
-          *cpu_percent = 100.0 * delta / (dt_usec * static_cast<double>(ncpus()));
-          if (*cpu_percent < 0.0) {
-            *cpu_percent = 0.0;
+          const double delta = static_cast<double>(*usage_usec - state.last_usage_usec);
+          double cpu = 100.0 * delta / (dt_usec * static_cast<double>(ncpus()));
+          if (cpu < 0.0) {
+            cpu = 0.0;
           }
-          *have_cpu = true;
+          sample.cpu_percent = cpu;
         }
       }
-      state->last_usage_usec = usage_usec;
-      state->have_cpu_baseline = true;
+      state.last_usage_usec = *usage_usec;
+      state.have_cpu_baseline = true;
     } else {
-      swm_logd("Could not read %s/cpu.stat", state->cgroup_path.c_str());
+      swm_logd("Could not read %s/cpu.stat", state.cgroup_path.c_str());
     }
 
-    if (read_memory_current(state->cgroup_path, mem_bytes)) {
-      *have_mem = true;
+    if (const auto mem = read_memory_current(state.cgroup_path)) {
+      sample.mem_bytes = *mem;
     } else {
-      swm_logd("Could not read %s/memory.current", state->cgroup_path.c_str());
+      swm_logd("Could not read %s/memory.current", state.cgroup_path.c_str());
     }
   }
 
   if (cfg.collect_gpu) {
-    *have_gpu = query_gpu_nvml(gpu_util, gpu_mem);
+    if (const auto gpu = query_gpu_nvml()) {
+      sample.gpu_util_percent = gpu->util_percent;
+      sample.gpu_mem_bytes = gpu->mem_bytes;
+    }
   }
 
-  state->last_sample_ms = now_ms;
-  return *have_cpu || *have_mem || *have_gpu;
+  state.last_sample_ms = now_ms;
+  return sample;
 }
 
-bool flush_window(const SwmJob &job, PorterMetricsState *state, int64_t now_ms) {
-  if (state->samples == 0) {
-    reset_window(state, now_ms);
+bool flush_window(const SwmJob &job, PorterMetricsState &state, int64_t now_ms) {
+  if (state.window.empty()) {
+    state.window.reset(now_ms);
     return true;
   }
-  if (send_aggregated_metrics(job.get_id(), hostname_str(), now_ms, *state)) {
+  if (!send_aggregated_metrics(job.get_id(), hostname_str(), now_ms, state.window)) {
     swm_loge("Failed to send aggregated porter_metrics");
     return false;
   }
   swm_logd("Sent aggregated porter_metrics job=%s samples=%u window_ms=%lld",
            job.get_id().c_str(),
-           state->samples,
-           static_cast<long long>(now_ms - state->window_start_ms));
-  reset_window(state, now_ms);
+           state.window.samples,
+           static_cast<long long>(now_ms - state.window.start_ms));
+  state.window.reset(now_ms);
   return true;
 }
 
 }  // namespace
 
+void PorterMetricsWindow::reset(int64_t now_ms) {
+  *this = PorterMetricsWindow {};
+  start_ms = now_ms;
+}
+
+void PorterMetricsWindow::add(const PorterMetricsSample &sample) {
+  if (!sample.any()) {
+    return;
+  }
+  ++samples;
+  if (sample.cpu_percent) {
+    cpu_sum += *sample.cpu_percent;
+    if (cpu_samples == 0 || *sample.cpu_percent > cpu_max) {
+      cpu_max = *sample.cpu_percent;
+    }
+    ++cpu_samples;
+  }
+  if (sample.mem_bytes) {
+    mem_sum += static_cast<double>(*sample.mem_bytes);
+    if (*sample.mem_bytes > mem_max) {
+      mem_max = *sample.mem_bytes;
+    }
+    ++mem_samples;
+  }
+  if (sample.gpu_util_percent || sample.gpu_mem_bytes) {
+    if (sample.gpu_util_percent) {
+      gpu_util_sum += *sample.gpu_util_percent;
+      if (gpu_samples == 0 || *sample.gpu_util_percent > gpu_util_max) {
+        gpu_util_max = *sample.gpu_util_percent;
+      }
+    }
+    if (sample.gpu_mem_bytes) {
+      gpu_mem_sum += static_cast<double>(*sample.gpu_mem_bytes);
+      if (*sample.gpu_mem_bytes > gpu_mem_max) {
+        gpu_mem_max = *sample.gpu_mem_bytes;
+      }
+    }
+    ++gpu_samples;
+  }
+}
+
+bool PorterMetricsWindow::ready(int64_t now_ms, int64_t report_interval_ms) const {
+  return report_interval_ms > 0 && start_ms > 0 && (now_ms - start_ms) >= report_interval_ms;
+}
+
 PorterMetricsConfig porter_metrics_config_from_job(const SwmJob &job) {
   PorterMetricsConfig cfg;
-  const std::string sample_s = env_value(job, "SWM_METRICS_INTERVAL_MS");
-  if (!sample_s.empty()) {
-    cfg.sample_interval_ms = std::strtoll(sample_s.c_str(), nullptr, 10);
+  if (const auto sample = env_value(job, "SWM_METRICS_INTERVAL_MS")) {
+    if (const auto v = parse_i64(*sample)) {
+      cfg.sample_interval_ms = *v;
+    }
   }
-  const std::string report_s = env_value(job, "SWM_METRICS_REPORT_MS");
-  if (!report_s.empty()) {
-    cfg.report_interval_ms = std::strtoll(report_s.c_str(), nullptr, 10);
+  if (const auto report = env_value(job, "SWM_METRICS_REPORT_MS")) {
+    if (const auto v = parse_i64(*report)) {
+      cfg.report_interval_ms = *v;
+    }
   }
   if (cfg.report_interval_ms > 0 && cfg.sample_interval_ms > cfg.report_interval_ms) {
-    // At least one sample per report window.
     cfg.sample_interval_ms = cfg.report_interval_ms;
   }
-  const std::string gpu_s = env_value(job, "SWM_METRICS_GPU");
-  cfg.collect_gpu = (gpu_s == "1" || gpu_s == "true" || gpu_s == "yes");
+  if (const auto gpu = env_value(job, "SWM_METRICS_GPU")) {
+    cfg.collect_gpu = (*gpu == "1" || *gpu == "true" || *gpu == "yes");
+  }
   return cfg;
 }
 
@@ -488,29 +546,20 @@ int64_t porter_metrics_now_ms() {
 
 bool porter_metrics_maybe_send(const SwmJob &job,
                                const PorterMetricsConfig &cfg,
-                               PorterMetricsState *state,
+                               PorterMetricsState &state,
                                int64_t now_ms) {
-  if (cfg.sample_interval_ms <= 0 || cfg.report_interval_ms <= 0 || state == nullptr) {
+  if (cfg.sample_interval_ms <= 0 || cfg.report_interval_ms <= 0) {
     return true;
   }
-  if (state->last_sample_ms != 0 && (now_ms - state->last_sample_ms) < cfg.sample_interval_ms) {
+  if (state.last_sample_ms != 0 && (now_ms - state.last_sample_ms) < cfg.sample_interval_ms) {
     return true;
   }
-  if (state->window_start_ms == 0) {
-    reset_window(state, now_ms);
+  if (state.window.start_ms == 0) {
+    state.window.reset(now_ms);
   }
 
-  bool have_cpu = false;
-  bool have_mem = false;
-  bool have_gpu = false;
-  double cpu_percent = 0.0;
-  uint64_t mem_bytes = 0;
-  double gpu_util = 0.0;
-  uint64_t gpu_mem = 0;
-  take_sample(cfg, state, now_ms, &have_cpu, &cpu_percent, &have_mem, &mem_bytes, &have_gpu, &gpu_util, &gpu_mem);
-  accumulate_sample(state, have_cpu, cpu_percent, have_mem, mem_bytes, have_gpu, gpu_util, gpu_mem);
-
-  if ((now_ms - state->window_start_ms) >= cfg.report_interval_ms) {
+  state.window.add(take_sample(cfg, state, now_ms));
+  if (state.window.ready(now_ms, cfg.report_interval_ms)) {
     return flush_window(job, state, now_ms);
   }
   return true;
@@ -518,9 +567,9 @@ bool porter_metrics_maybe_send(const SwmJob &job,
 
 bool porter_metrics_flush(const SwmJob &job,
                           const PorterMetricsConfig &cfg,
-                          PorterMetricsState *state,
+                          PorterMetricsState &state,
                           int64_t now_ms) {
-  if (cfg.sample_interval_ms <= 0 || cfg.report_interval_ms <= 0 || state == nullptr) {
+  if (cfg.sample_interval_ms <= 0 || cfg.report_interval_ms <= 0) {
     return true;
   }
   return flush_window(job, state, now_ms);

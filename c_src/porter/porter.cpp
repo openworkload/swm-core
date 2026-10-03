@@ -681,7 +681,7 @@ int main(int argc, char *const argv[]) {
           swm_loge("Child process info not sent");
           return EXIT_FAILURE;
         }
-        if (!porter_metrics_maybe_send(info.job, metrics_cfg, &metrics_state, porter_metrics_now_ms())) {
+        if (!porter_metrics_maybe_send(info.job, metrics_cfg, metrics_state, porter_metrics_now_ms())) {
           swm_loge("Job metrics not sent");
           return EXIT_FAILURE;
         }
@@ -707,7 +707,7 @@ int main(int argc, char *const argv[]) {
           swm_loge("The final job process info has not been sent");
           return EXIT_FAILURE;
         }
-        if (!porter_metrics_flush(info.job, metrics_cfg, &metrics_state, porter_metrics_now_ms())) {
+        if (!porter_metrics_flush(info.job, metrics_cfg, metrics_state, porter_metrics_now_ms())) {
           swm_loge("Final job metrics flush failed");
         }
         if (WIFEXITED(status)) {
