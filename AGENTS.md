@@ -45,6 +45,9 @@ To get Erlang environment for the project use `make cr` command to spawn an inte
 - `make cr` runs `scripts/start-debug-container.sh`: attaches with  
   `podman exec -ti --user <host-user> skyport-dev /bin/bash`  
   (same `$HOME` mount as on the host, workdir is usually the directory from which the container was first created). Containers use `--userns=keep-id` (no `runuser`).
+- Passwordless `sudo` is set up on `make cr` (interactive shell only). Host
+  `/etc/shadow` is **not** bind-mounted (unreadable under keep-id and breaks sudo).
+  If an older container still mounts it, recreate: `podman rm -f skyport-dev && make cr`.
 
 ### Agents: never compile as root
 

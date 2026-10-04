@@ -1,6 +1,7 @@
 -module(wm_job_metrics_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+
 -include("../src/lib/wm_entity.hrl").
 
 %% ./rebar3 eunit --module=wm_job_metrics_tests
@@ -99,17 +100,14 @@ query_job_stats_builds_map() ->
                    Val = list_to_binary(io_lib:format("~p", [N])),
                    Body =
                        iolist_to_binary([<<"{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[",
-                                          "{\"metric\":{},\"value\":[1,\"">>,
-                                          Val,
-                                          <<"\"]}]}}">>]),
+                                           "{\"metric\":{},\"value\":[1,\"">>,
+                                         Val,
+                                         <<"\"]}]}}">>]),
                    {ok, Body}
                 end),
     meck:expect(gun, close, fun(_) -> ok end),
-    Job =
-        wm_entity:set([{id, ?JOB_ID},
-                       {start_time, "2026-01-01T00:00:00"},
-                       {end_time, "2026-01-01T00:10:00"}],
-                      wm_entity:new(job)),
+    Job = wm_entity:set([{id, ?JOB_ID}, {start_time, "2026-01-01T00:00:00"}, {end_time, "2026-01-01T00:10:00"}],
+                        wm_entity:new(job)),
     {ok, Stats} = wm_job_metrics:query_job_stats(Job),
     ?assertEqual(list_to_binary(?JOB_ID), maps:get(<<"job_id">>, Stats)),
     ?assertEqual(#{<<"avg">> => 10.0, <<"max">> => 20.0}, maps:get(<<"cpu_percent">>, Stats)),

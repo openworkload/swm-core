@@ -73,6 +73,10 @@ make build-debug-container
 make cr
 ```
 
+Inside `skyport-dev` after `make cr`, the host user has passwordless `sudo`
+(no host `/etc/shadow` mount). If an older container still mounts host shadow
+and `sudo` fails, recreate it: `podman rm -f skyport-dev && make cr`.
+
 2. Ensure `/opt/swm` exists and is owned by your user. The debug container
    mounts the host `/opt` directory, and `scripts/swm.env` requires
    `/opt/swm` to exist before any swm command runs. All following commands

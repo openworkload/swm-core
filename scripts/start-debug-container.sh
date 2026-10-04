@@ -68,10 +68,13 @@ fi
 
 RUNNING=$(podman inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null)
 if [ "$?" = "1" ]; then
+    # Do not mount host /etc/shadow: under --userns=keep-id it is unreadable
+    # (nobody:nogroup) and breaks sudo account validation. Detached + sleep
+    # infinity so we can set up passwordless sudo before attaching a shell.
     podman run\
+        -d\
         -v ${HOME}:${HOME}\
         -v /etc/passwd:/etc/passwd\
-        -v /etc/shadow:/etc/shadow\
         -v /etc/group:/etc/group\
         -v /opt:/opt\
         "${PODMAN_MOUNT_ARGS[@]}"\
@@ -84,8 +87,6 @@ if [ "$?" = "1" ]; then
         --network-alias $HOSTNAME.$DOMAIN\
         --add-host=host:host-gateway\
         --workdir ${PWD}\
-        --tty\
-        --interactive\
         --network $NETWORK\
         -p $CORE_API_PORT:$CORE_API_PORT\
         -p $USER_API_PORT:$USER_API_PORT\
@@ -94,13 +95,36 @@ if [ "$?" = "1" ]; then
         -p $JOB_METRICS_PORT:$JOB_METRICS_PORT\
         --user ${USER}\
         ${IMAGE_NAME}\
-        /bin/bash
-else
-    if [ ${RUNNING} = "false" ]; then
-        podman start ${CONTAINER_NAME}
-    fi
-    # --userns=keep-id: process already maps to host UID; do not use runuser.
-    podman exec -ti --user ${USER} ${CONTAINER_NAME} /bin/bash
+        sleep infinity
+elif [ "${RUNNING}" = "false" ]; then
+    podman start ${CONTAINER_NAME}
 fi
+
+# Passwordless sudo for interactive debug sessions.
+# Host /etc/shadow must not be bind-mounted (unreadable under keep-id).
+podman exec --user root "${CONTAINER_NAME}" bash -lc "
+set -euo pipefail
+HOST_USER='${USER}'
+if ! head -1 /etc/shadow >/dev/null 2>&1; then
+    echo 'ERROR: /etc/shadow is not readable inside the container.' >&2
+    echo 'Host /etc/shadow must not be bind-mounted when using --userns=keep-id.' >&2
+    echo \"Recreate ${CONTAINER_NAME} (podman rm -f ${CONTAINER_NAME} && make cr).\" >&2
+    exit 1
+fi
+if [[ ! -f /etc/sudoers.d/nopasswd ]]; then
+    echo 'ALL ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/nopasswd
+    chmod 0440 /etc/sudoers.d/nopasswd
+fi
+days=\$((\$(date +%s) / 86400))
+if ! grep -q \"^\${HOST_USER}:\" /etc/shadow; then
+    echo \"\${HOST_USER}:*:\${days}:0:99999:7:::\" >> /etc/shadow
+else
+    sed -i -E \"s/^\${HOST_USER}:!+/\${HOST_USER}:*/\" /etc/shadow
+fi
+"
+podman exec --user "${USER}" "${CONTAINER_NAME}" sudo -n true
+
+# --userns=keep-id: process already maps to host UID; do not use runuser.
+podman exec -ti --user ${USER} ${CONTAINER_NAME} /bin/bash
 
 exit 0

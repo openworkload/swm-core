@@ -139,11 +139,11 @@ ensure_container() {
     local running
     if ! running=$(podman inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null); then
         echo "Creating ${CONTAINER_NAME} (detached; same setup as make cr)..."
+        # Do not mount host /etc/shadow (breaks sudo under --userns=keep-id).
         podman run \
             -d \
             -v "${HOME}:${HOME}" \
             -v /etc/passwd:/etc/passwd \
-            -v /etc/shadow:/etc/shadow \
             -v /etc/group:/etc/group \
             -v /opt:/opt \
             "${PODMAN_MOUNT_ARGS[@]}" \
