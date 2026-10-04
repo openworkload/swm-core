@@ -522,7 +522,7 @@ components:
           description: Image comment
 
     MetricAvgMax:
-      title: Metric avg/max
+      title: MetricAvgMax
       description: Aggregated average and maximum for one metric over the job lifetime
       type: object
       properties:
