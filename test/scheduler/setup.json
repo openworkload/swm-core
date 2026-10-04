@@ -4,19 +4,19 @@
       "id": "1",
       "cluster_id": 1,
       "state": "Q",
-      "request": {
-          "resource": {"name": "node", "count": 1}
-      }
+      "request": [
+        {"name": "node", "count": 1}
+      ]
     },
     {
       "id": "2",
       "cluster_id": 1,
       "state": "Q",
       "duration": 120,
-      "request": {
-          "resource": {"name": "node", "count": 2},
-          "resource": {"name": "mem", "count": 8000000000}
-      }
+      "request": [
+        {"name": "node", "count": 2},
+        {"name": "mem", "count": 8000000000}
+      ]
     }
   ],
 
@@ -50,79 +50,79 @@
       "state_power": "up",
       "state_alloc": "udle",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 32},
-          "resource": {"name": "mem", "count": 64000000000}
-      }
+      "resources": [
+        {"name": "cpu", "count": 32},
+        {"name": "mem", "count": 64000000000}
+      ]
     },
     {
       "id": 2,
       "state_power": "up",
       "state_alloc": "idle",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 32},
-          "resource": {"name": "mem", "count": 512000000000}
-      }
+      "resources": [
+        {"name": "cpu", "count": 32},
+        {"name": "mem", "count": 512000000000}
+      ]
     },
     {
       "id": 3,
       "state_power": "up",
       "state_alloc": "idle",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 0},
-          "resource": {"name": "mem", "count": 512000000000}
-      }
+      "resources": [
+        {"name": "cpu", "count": 0},
+        {"name": "mem", "count": 512000000000}
+      ]
     },
     {
       "id": 4,
       "state_power": "up",
       "state_alloc": "idle",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 64},
-          "resource": {"name": "mem", "count": 0}
-      }
+      "resources": [
+        {"name": "cpu", "count": 64},
+        {"name": "mem", "count": 0}
+      ]
     },
     {
       "id": 5,
       "state_power": "up",
       "state_alloc": "idle",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 1}
-      }
+      "resources": [
+        {"name": "cpu", "count": 1}
+      ]
     },
     {
       "id": 6,
       "state_power": "up",
       "state_alloc": "busy",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 128},
-          "resource": {"name": "mem", "count": 512000000000}
-      }
+      "resources": [
+        {"name": "cpu", "count": 128},
+        {"name": "mem", "count": 512000000000}
+      ]
     },
     {
       "id": 7,
       "state_power": "down",
       "state_alloc": "offline",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 128},
-          "resource": {"name": "mem", "count": 512000000000}
-      }
+      "resources": [
+        {"name": "cpu", "count": 128},
+        {"name": "mem", "count": 512000000000}
+      ]
     },
     {
       "id": 8,
       "state_power": "down",
       "state_alloc": "idle",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 128},
-          "resource": {"name": "mem", "count": 512000000000}
-      }
+      "resources": [
+        {"name": "cpu", "count": 128},
+        {"name": "mem", "count": 512000000000}
+      ]
     },
 
     {
@@ -130,20 +130,20 @@
       "state_power": "up",
       "state_alloc": "idle",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 128},
-          "resource": {"name": "mem", "count": 512000000000}
-      }
+      "resources": [
+        {"name": "cpu", "count": 128},
+        {"name": "mem", "count": 512000000000}
+      ]
     },
     {
       "id": 12,
       "state_power": "up",
       "state_alloc": "idle",
       "parent": "phead1",
-      "resources": {
-          "resource": {"name": "cpu", "count": 128},
-          "resource": {"name": "mem", "count": 512000000000}
-      }
+      "resources": [
+        {"name": "cpu", "count": 128},
+        {"name": "mem", "count": 512000000000}
+      ]
     }
   ],
 
