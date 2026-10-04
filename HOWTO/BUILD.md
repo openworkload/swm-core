@@ -1,16 +1,18 @@
+# Build a development environment
 
-Steps to deploy a development environment from scratch
-======================================================
+This document shows how to build Sky Port from source.
 
-Dependencies:
-------------
+## Dependencies
 
-1. Erlang/OTP 29 (installed in the dev container automatically)
-2. cog (https://pypi.python.org/pypi/cogapp) (installed in the dev container automatically)
-3. swm-sched (should be cloned to swm parent directory)
+You need these tools:
 
-Dependencies installation example (for Ubuntu):
-----------------------------------------------
+1. Erlang/OTP 29 (the development container installs this for you)
+2. cog ([cogapp](https://pypi.python.org/pypi/cogapp)) (the development container installs this for you)
+3. swm-sched (clone this repository into the parent directory of swm-core)
+
+## Install dependencies on Ubuntu
+
+Use these commands if you do not use the development container:
 
 ```console
 $ pip install cogapp
@@ -24,8 +26,9 @@ $ kerl install 29_1_SSL /usr/erlang
 $ . /usr/erlang/activate
 ```
 
-How to build in container:
--------------------------
+## Build in a container
+
+Do these steps:
 
 ```console
 $ make cb  # build a new container with erlang and other packages installed
@@ -37,8 +40,9 @@ $ make
 $ exit
 ```
 
-How to build Sky Port core daemon:
----------------------------------
+## Build the Sky Port core daemon
+
+Do these steps:
 
 ```console
 $ git clone <repo>
@@ -46,16 +50,18 @@ $ cd swm
 $ make
 ```
 
-How to build a release package:
-------------------------------
+## Build a release package
+
+Do these steps:
 
 ```console
 $ make
 $ make release
 ```
 
-How to create only a worker archive using already created dev setup:
--------------------------------------------------------------------
+## Create a worker archive
+
+Use this command when the development setup already exists:
 
 ```console
 $ make worker

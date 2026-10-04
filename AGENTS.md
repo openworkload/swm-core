@@ -78,6 +78,14 @@ Use the host `$USER` (or the uid that owns the workspace). Do not use bare `podm
 - **C++**: match style and patterns in `c_src/lib/` and `c_src/porter/`; build through **`make porter`** or the subdirectory Makefiles rather than inventing new build systems.
 - **Scope**: change only what the task requires; do not refactor unrelated Erlang or C++ without a clear need.
 
+## Documentation
+
+When you add or update documentation (`README.md`, `HOWTO/`, and similar user-facing
+Markdown), apply **ASD-STE100** (Simplified Technical English) policies when
+possible: short sentences, active voice, imperative steps, one idea per sentence,
+and consistent terminology. Keep technical names (commands, paths, APIs) unchanged.
+Prefer ASCII `--` over Unicode em-dash in docs as well as in source.
+
 ## Release note
 
 `make release` / relx may expect sibling artifacts (e.g. `../swm-sched` binaries per `rebar.config`). If release or CT prep fails on missing paths, check CI and local sibling repos.

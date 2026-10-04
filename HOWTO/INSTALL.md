@@ -1,87 +1,86 @@
-Installation
-============
+# Installation
 
-Job containers (recommended: rootless Podman + crun)
-----------------------------------------------------
+This document shows how to install Sky Port for jobs, production, and development.
 
-Supported job execution uses **rootless Podman** with **crun** via the native
-libpod API (unix socket). See HOWTO/CONTAINERS.md for architecture, versions,
-GPU (NVIDIA CDI), and migration notes (ticket #7).
+## Job containers (recommended: rootless Podman + crun)
 
-On each compute node:
+Sky Port runs jobs with **rootless Podman** and **crun**. It uses the native
+libpod API on a Unix socket. See [CONTAINERS.md](CONTAINERS.md) for
+architecture, versions, GPU (NVIDIA CDI), and migration notes (ticket #7).
 
-1. Install Podman and crun; ensure cgroup v2 and subuid/subgid for the swm user.
-2. Pin the OCI runtime:
+On each compute node, do these steps:
+
+1. Install Podman and crun. Make sure cgroup v2 is enabled. Make sure the swm
+   user has subuid and subgid entries.
+2. Set the OCI runtime to crun:
    ```bash
    mkdir -p ~/.config/containers
    printf '[engine]\nruntime = "crun"\n' >> ~/.config/containers/containers.conf
    ```
-3. Enable the API socket:
+3. Start the API socket:
    ```bash
    systemctl --user enable --now podman.socket
    # typical path: $XDG_RUNTIME_DIR/podman/podman.sock
    ```
-4. Configure Sky Port globals (defaults are already `container` in `base.config`):
+4. Set Sky Port globals (defaults in `base.config` already use `container`):
    - `execution_method` = `container`
-   - optional: `SWM_CONTAINER_PODMAN_SOCK` if the socket path is non-default
+   - optional: `SWM_CONTAINER_PODMAN_SOCK` if the socket path is not the default
 
-Verify the stack (no Sky Port required):
+Check the stack without Sky Port:
 
 ```bash
 ./scripts/ci-podman-smoke.sh
 ```
 
-Control plane vs jobs
----------------------
+## Control plane and jobs
 
-Docker is still used to deploy the Sky Port control plane (e.g. `skyport-dev`
-via `make cr`). Job execution uses rootless Podman on the compute host, not
-Docker Engine.
+Docker (or Podman) deploys the Sky Port control plane (for example `skyport-dev`
+via `make cr`). Job execution uses rootless Podman on the compute host. Job
+execution does not use Docker Engine.
 
 `make cr` / `scripts/start-debug-container.sh` mount the host Podman socket
 (`$XDG_RUNTIME_DIR/podman/podman.sock`) into `skyport-dev` and set
-`SWM_CONTAINER_PODMAN_SOCK`. Enable the socket on the host first:
+`SWM_CONTAINER_PODMAN_SOCK`. Start the socket on the host first:
 
 ```bash
 systemctl --user enable --now podman.socket
 ```
 
-In-container Podman packages remain experiments only; jobs talk to the host API.
+Podman packages inside the container are experiments only. Jobs use the host API.
 
+## Install Sky Port in a production environment
 
-Install Sky Port in production environment
--------------------------------------------
-
-1 Unpack a content of swm archive into /opt/ directory:
+1. Unpack the swm archive into `/opt/`:
 ```bash
 $ mkdir /opt/swm
 $ cp swm-$SWM_VERSION.tar.gz /opt/swm/
 $ tar -xvzf /opt/swm/swm-$SWM_VERSION.tar.gz -C /opt/swm
 ```
-2. Run setup procedure:
-```bash   
+
+2. Run the setup procedure:
+```bash
 $ /opt/swm/$SWM_VERSION/scripts/setup-swm-core.py -v $SWM_VERSION -p /opt/swm -s /opt/swm/spool -c  /opt/swm/$SWM_VERSION/priv/setup/setup.config -d grid
 ```
 
-Install Sky Port in development environment
---------------------------------------------
+## Install Sky Port in a development environment
 
-1. Build the development container image (once) and start a shell in it:
+1. Build the development container image (one time). Then start a shell in it:
 
 ```bash
 make build-debug-container
 make cr
 ```
 
-Inside `skyport-dev` after `make cr`, the host user has passwordless `sudo`
-(no host `/etc/shadow` mount). Dev uses pod `skyport-dev-pod` with containers
-`skyport-dev` (core) and `skyport-dev-gate` (gate under supervisord). Legacy
-non-pod containers are migrated automatically on the next `make cr`.
+After `make cr`, the host user has passwordless `sudo` inside `skyport-dev`
+(the container does not mount host `/etc/shadow`). Development uses pod
+`skyport-dev-pod` with containers `skyport-dev` (core) and `skyport-dev-gate`
+(gate under supervisord). The next `make cr` removes legacy non-pod containers
+automatically.
 
-2. Ensure `/opt/swm` exists and is owned by your user. The debug container
-   mounts the host `/opt` directory, and `scripts/swm.env` requires
-   `/opt/swm` to exist before any swm command runs. All following commands
-   are executed by the regular user who owns the sources.
+2. Make sure `/opt/swm` exists and that your user owns it. The debug container
+   mounts the host `/opt` directory. `scripts/swm.env` requires `/opt/swm`
+   before any swm command runs. Run all later commands as the user who owns
+   the sources.
 
 ```bash
 sudo mkdir -p /opt/swm
@@ -97,27 +96,27 @@ make compile porter
 make release
 ```
 
-`make release` is required before the first bootstrap (step 4) so
-`scripts/setup-skyport-dev.sh` can create the worker distribution archive.
+`make release` is required before the first bootstrap (step 4). The setup
+script `scripts/setup-skyport-dev.sh` needs the worker distribution archive.
 
-4. Bootstrap spool, certificates, and base configuration (first time only):
+4. Create spool, certificates, and base configuration (first time only):
 
 ```bash
 ./scripts/setup-skyport-dev.sh
 ```
 
 This creates `/opt/swm/spool` with node certificates, Mnesia data, and
-imported base config. Re-run it only when you need to reset the dev
+imported base config. Run it again only when you must reset the development
 environment.
 
-5. Run swm-core:
+5. Start swm-core:
 
 ```bash
 make run-skyport                  # foreground
 # or: scripts/run-in-shell.sh -x -b   # background
 ```
 
-6. Verify the API is up:
+6. Check that the API is up:
 
 ```bash
 scripts/swm-ping localhost 10001  # expect: Pong: idle

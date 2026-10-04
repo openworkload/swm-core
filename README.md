@@ -54,6 +54,20 @@ Sky Port consists of 3 main components:
 See [openworkload.org](https://openworkload.org) for details.
 
 
+## Documentation
+
+How-to guides in this repository:
+
+| Guide | Description |
+|-------|-------------|
+| [HOWTO/INSTALL.md](HOWTO/INSTALL.md) | Install Sky Port for production and development |
+| [HOWTO/BUILD.md](HOWTO/BUILD.md) | Build Sky Port from source |
+| [HOWTO/JOBS.md](HOWTO/JOBS.md) | Write job scripts and `#SWM` directives |
+| [HOWTO/CONTAINERS.md](HOWTO/CONTAINERS.md) | Run jobs in rootless Podman containers |
+| [HOWTO/ACCOUNTING.md](HOWTO/ACCOUNTING.md) | Job resource metrics and Prometheus export |
+| [HOWTO/CHECKPOINTS.md](HOWTO/CHECKPOINTS.md) | Checkpoint and restart MPI jobs with DMTCP/MANA |
+
+
 ## How to run
 
 ### Pull skyport container
@@ -81,12 +95,14 @@ podman pod start skyport-pod
 ```
 This starts swm-core and gate in background if the spool is (still) ready.
 
-If you prefer to build Sky Port container image from scratch, then [this instructions can be used](HOWTO/BUILD.md).
+If you prefer to build the Sky Port container image from scratch, see
+[HOWTO/BUILD.md](HOWTO/BUILD.md).
 
 ### Run from sources (development)
 
 For day-to-day development, use the debug container and run swm-core from the
-repository checkout. See [HOWTO/INSTALL.md](HOWTO/INSTALL.md) for details.
+repository checkout. See [HOWTO/INSTALL.md](HOWTO/INSTALL.md) for the full
+procedure.
 
 1. Build the development container image (once) and start a shell in it:
 

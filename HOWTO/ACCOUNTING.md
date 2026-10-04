@@ -1,37 +1,37 @@
 # Job accounting and metrics
 
 Sky Port can sample per-job resource usage while a job runs. Porter collects
-local samples inside the job container, **aggregates them for a report window**
-(default 2 minutes), then sends one summary to SWM. SWM forwards summaries up
-the hierarchy to Sky Port. At Sky Port the latest values are exported as
-**Prometheus gauges** on a cleartext scrape endpoint. Time series are stored by
-Prometheus (no separate metrics database in SWM).
+local samples inside the job container. Porter then **aggregates them for a
+report window** (default 2 minutes) and sends one summary to SWM. SWM
+forwards summaries up the hierarchy to Sky Port. At Sky Port the latest values
+are exported as **Prometheus gauges** on a cleartext scrape endpoint. Prometheus
+stores the time series. SWM does not keep a separate metrics database.
 
-See also `HOWTO/JOBS.md` for job scripts and `#SWM` directives, and
-`HOWTO/CONTAINERS.md` for the Podman runtime.
+See also [JOBS.md](JOBS.md) for job scripts and `#SWM` directives, and
+[CONTAINERS.md](CONTAINERS.md) for the Podman runtime.
 
 ## What is sampled
 
 | Metric | Source | When |
 |--------|--------|------|
-| CPU percent | cgroup v2 `cpu.stat` (`usage_usec`) | Always (if cgroup v2 available) |
-| Memory bytes | cgroup v2 `memory.current` | Always (if cgroup v2 available) |
+| CPU percent | cgroup v2 `cpu.stat` (`usage_usec`) | Always (if cgroup v2 is available) |
+| Memory bytes | cgroup v2 `memory.current` | Always (if cgroup v2 is available) |
 | GPU util / memory | **NVML** (`libnvidia-ml`, dlopen) | Only if the job requests GPUs (`#SWM gpus` > 0) |
 
 CPU and memory use **cgroup v2 only**. There is no cgroup v1 and no `/proc`
 fallback. If cgroup v2 is missing, those fields are skipped (Porter logs once).
 
-GPU metrics use NVML in-process (not `nvidia-smi`). If NVML is unavailable in
+GPU metrics use NVML in-process (not `nvidia-smi`). If NVML is not available in
 the container, GPU fields are omitted.
 
-Samples are **job-scoped** (the container cgroup), not whole-node totals.
+Samples are **job-scoped** (the container cgroup). They are not whole-node totals.
 
 ## Aggregation
 
-Porter samples locally every `job_metrics_interval` (default 15s), accumulates
-avg/max over `job_metrics_report_interval` (default **120000 ms / 2 minutes**),
-then emits one `{porter_metrics, Map}` to SWM. A partial window is flushed when
-the job process exits.
+Porter samples locally every `job_metrics_interval` (default 15s). Porter
+accumulates avg/max over `job_metrics_report_interval` (default **120000 ms /
+2 minutes**). Then Porter emits one `{porter_metrics, Map}` to SWM. A partial
+window is flushed when the job process exits.
 
 Reported fields (when present): `cpu_percent` / `cpu_percent_max`,
 `mem_bytes` / `mem_bytes_max`, `gpu_util_percent` / `gpu_util_percent_max`,
@@ -46,7 +46,7 @@ Reported fields (when present): `cpu_percent` / `cpu_percent_max`,
 | `job_metrics_port` | `priv/base.config` / globals | `9568` | Cleartext Prometheus scrape port (`/metrics`); `0` disables |
 | `prometheus_url` | `priv/base.config` / globals | `http://127.0.0.1:9090` | Prometheus HTTP API base URL for REST job metrics queries |
 
-Porter also receives (injected into the job env at RUN time):
+Porter also receives these values (injected into the job env at RUN time):
 
 | Env | Meaning |
 |-----|---------|
@@ -82,8 +82,8 @@ from the host when the debug container publishes the port).
 ### Local Prometheus (in `skyport-dev-pod`)
 
 Prometheus runs as container `swm-prometheus` inside the same Podman pod as
-`skyport-dev` / `skyport-dev-gate` (shared network namespace). `make cr` ensures
-it; or:
+`skyport-dev` / `skyport-dev-gate` (shared network namespace). `make cr` starts
+it. Or use:
 
 ```bash
 make prometheus-up    # ensure/start swm-prometheus in skyport-dev-pod
@@ -108,8 +108,8 @@ Sky Port looks up the job, then runs PromQL instant queries against
 - `avg(avg_over_time(swm_job_*{job_id="..."}[<range>]))`
 - `max(max_over_time(swm_job_*_max{job_id="..."}[<range>]))`
 
-`<range>` is derived from the job `start_time` / `end_time` (or `duration`),
-with a 60s pad; if times are unknown the default is `7d`.
+`<range>` comes from the job `start_time` / `end_time` (or `duration`), with a
+60s pad. If times are unknown, the default is `7d`.
 
 Example response:
 
@@ -123,5 +123,5 @@ Example response:
 }
 ```
 
-Unknown job → HTTP 404. Missing Prometheus series (or Prometheus unreachable)
+Unknown job → HTTP 404. Missing Prometheus series (or Prometheus not reachable)
 → JSON `null` for those fields, still HTTP 200.
