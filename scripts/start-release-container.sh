@@ -75,8 +75,9 @@ if [ "$NOT_RUNNING" != "0" ]; then
         "${PODMAN_MOUNT_ARGS[@]}"\
         "${PODMAN_ENV_ARGS[@]}"\
         --name ${CONTAINER_NAME}\
-        --hostname $HOSTNAME\
-        --network-alias $HOSTNAME.$DOMAIN\
+        --hostname ${HOSTNAME}.${DOMAIN}\
+        --network-alias ${HOSTNAME}\
+        --network-alias ${HOSTNAME}.${DOMAIN}\
         --add-host=host:host-gateway\
         --workdir ${PWD}\
         --tty\

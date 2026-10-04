@@ -1,4 +1,4 @@
-#/bin/bash
+#!/usr/bin/env bash
 #
 # SPDX-FileCopyrightText: © 2021 Taras Shapovalov
 # SPDX-License-Identifier: BSD-3-Clause
@@ -29,9 +29,41 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-PODMAN=podman
-IMAGE_NAME=swm-build:29.1
+set -euo pipefail
 
-${PODMAN} build -t ${IMAGE_NAME} -f ./priv/container/debug/Dockerfile .
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+ROOT_DIR=$(cd "${SCRIPT_DIR}/.." && pwd)
+cd "${ROOT_DIR}"
+
+PODMAN="${PODMAN:-podman}"
+IMAGE_NAME="${SWM_DEBUG_IMAGE:-swm-build:29.1}"
+DOCKERFILE="${ROOT_DIR}/priv/container/debug/Dockerfile"
+
+if [[ ! -f "${DOCKERFILE}" ]]; then
+    echo "ERROR: Dockerfile not found: ${DOCKERFILE}" >&2
+    exit 1
+fi
+
+echo "Building debug image ${IMAGE_NAME} from ${DOCKERFILE}"
+"${PODMAN}" build \
+    --tag "${IMAGE_NAME}" \
+    --file "${DOCKERFILE}" \
+    "${ROOT_DIR}"
+
+# Short-name resolution may prefer docker.io/library/<name>; pin that too so
+# scripts using IMAGE_NAME=swm-build:29.1 pick up the image just built.
+case "${IMAGE_NAME}" in
+    */*) ;;
+    *)
+        "${PODMAN}" tag "${IMAGE_NAME}" "docker.io/library/${IMAGE_NAME}"
+        ;;
+esac
+
+if ! "${PODMAN}" image exists "${IMAGE_NAME}"; then
+    echo "ERROR: build finished but image ${IMAGE_NAME} is missing" >&2
+    exit 1
+fi
+
 echo "------------------------------------"
-${PODMAN} images ${IMAGE_NAME}
+echo "Debug image in podman:"
+"${PODMAN}" images "${IMAGE_NAME}"

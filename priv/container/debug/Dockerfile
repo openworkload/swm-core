@@ -103,13 +103,9 @@ RUN apt-get install strace -y
 RUN apt-get install libpmix-dev libpmix-bin -y
 RUN apt-get install libpmix2t64 -y || apt-get install libpmix2 -y
 
-# For documentation build
-RUN apt-get install texlive-full -y
-RUN apt-get install libxml2-utils -y
-
-# For building Erlang/OTP with wxWidgets
-RUN apt-get install libwxgtk3.0-gtk3-dev -y
-RUN apt-get install libwxgtk-webview3.0-gtk3-dev -y
+# For building Erlang/OTP with wxWidgets (Ubuntu 24.04 ships wx 3.2)
+RUN apt-get install libwxgtk3.2-dev -y
+RUN apt-get install libwxgtk-webview3.2-dev -y
 RUN apt-get install libgl1-mesa-dev -y
 RUN apt-get install libglu1-mesa-dev -y
 RUN apt-get install libpng16* -y

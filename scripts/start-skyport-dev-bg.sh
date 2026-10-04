@@ -90,6 +90,7 @@ ensure_container() {
     local running
     if ! running=$(podman inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null); then
         echo "Creating ${CONTAINER_NAME} (detached; same setup as make cr)..."
+        echo "First create with --userns=keep-id may take several minutes (ID-mapped image layers)."
         # Do not mount host /etc/shadow (breaks sudo under --userns=keep-id).
         podman run \
             -d \
@@ -103,7 +104,8 @@ ensure_container() {
             "${PODMAN_ENV_ARGS[@]}" \
             --userns=keep-id \
             --name "${CONTAINER_NAME}" \
-            --hostname "${HOSTNAME}" \
+            --hostname "${HOSTNAME}.${DOMAIN}" \
+            --network-alias "${HOSTNAME}" \
             --network-alias "${HOSTNAME}.${DOMAIN}" \
             --add-host=host:host-gateway \
             --workdir "${ROOT_DIR}" \

@@ -66,11 +66,19 @@ else
     echo "Created podman network '${NETWORK}'"
 fi
 
-RUNNING=$(podman inspect -f '{{.State.Running}}' ${CONTAINER_NAME} 2>/dev/null)
-if [ "$?" = "1" ]; then
+# podman inspect returns 125 (not 1) when the name is missing; use exists.
+if ! podman container exists "${CONTAINER_NAME}"; then
     # Do not mount host /etc/shadow: under --userns=keep-id it is unreadable
     # (nobody:nogroup) and breaks sudo account validation. Detached + sleep
     # infinity so we can set up passwordless sudo before attaching a shell.
+    if ! podman image exists "${IMAGE_NAME}"; then
+        echo "ERROR: image ${IMAGE_NAME} not found. Build it with: make build-debug-container" >&2
+        exit 1
+    fi
+    # First create with --userns=keep-id makes an ID-mapped copy of image
+    # layers (~minutes for the multi-GB debug image). Do not interrupt it or
+    # Podman leaves incomplete layers that slow/break later commands.
+    echo "Creating ${CONTAINER_NAME} from ${IMAGE_NAME} (first start may take several minutes)..."
     podman run\
         -d\
         -v ${HOME}:${HOME}\
@@ -83,8 +91,9 @@ if [ "$?" = "1" ]; then
         "${PODMAN_ENV_ARGS[@]}"\
         --userns=keep-id\
         --name ${CONTAINER_NAME}\
-        --hostname $HOSTNAME\
-        --network-alias $HOSTNAME.$DOMAIN\
+        --hostname ${HOSTNAME}.${DOMAIN}\
+        --network-alias ${HOSTNAME}\
+        --network-alias ${HOSTNAME}.${DOMAIN}\
         --add-host=host:host-gateway\
         --workdir ${PWD}\
         --network $NETWORK\
@@ -96,7 +105,7 @@ if [ "$?" = "1" ]; then
         --user ${USER}\
         ${IMAGE_NAME}\
         sleep infinity
-elif [ "${RUNNING}" = "false" ]; then
+elif [ "$(podman inspect -f '{{.State.Running}}' "${CONTAINER_NAME}")" = "false" ]; then
     podman start ${CONTAINER_NAME}
 fi
 
@@ -125,6 +134,4 @@ fi
 podman exec --user "${USER}" "${CONTAINER_NAME}" sudo -n true
 
 # --userns=keep-id: process already maps to host UID; do not use runuser.
-podman exec -ti --user ${USER} ${CONTAINER_NAME} /bin/bash
-
-exit 0
+exec podman exec -ti --user ${USER} ${CONTAINER_NAME} /bin/bash

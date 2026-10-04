@@ -48,6 +48,8 @@ To get Erlang environment for the project use `make cr` command to spawn an inte
 - Passwordless `sudo` is set up on `make cr` (interactive shell only). Host
   `/etc/shadow` is **not** bind-mounted (unreadable under keep-id and breaks sudo).
   If an older container still mounts it, recreate: `podman rm -f skyport-dev && make cr`.
+- First `podman run --userns=keep-id` of the multi-GB `swm-build` image can take
+  several minutes (ID-mapped layer copy). Do not interrupt it.
 
 ### Agents: never compile as root
 
