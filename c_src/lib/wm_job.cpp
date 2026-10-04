@@ -234,36 +234,64 @@ SwmJob::SwmJob(const char *buf, int &index) {
     return;
   }
 
+  if (ei_buffer_to_str(buf, index, this->checkpoint)) {
+    std::cerr << "Could not init job::checkpoint at pos 31: ";
+    ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
+    return;
+  }
+
+  if (ei_buffer_to_str(buf, index, this->checkpoint_dir)) {
+    std::cerr << "Could not init job::checkpoint_dir at pos 32: ";
+    ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
+    return;
+  }
+
+  if (ei_buffer_to_uint64_t(buf, index, this->checkpoint_interval)) {
+    std::cerr << "Could not init job::checkpoint_interval at pos 33: ";
+    ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
+    return;
+  }
+
+  if (ei_buffer_to_str(buf, index, this->last_checkpoint_time)) {
+    std::cerr << "Could not init job::last_checkpoint_time at pos 34: ";
+    ei_print_term(stderr, buf, &index);
+    std::cerr << std::endl;
+    return;
+  }
+
   if (ei_buffer_to_uint64_t(buf, index, this->exitcode)) {
-    std::cerr << "Could not init job::exitcode at pos 31: ";
+    std::cerr << "Could not init job::exitcode at pos 35: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->signal)) {
-    std::cerr << "Could not init job::signal at pos 32: ";
+    std::cerr << "Could not init job::signal at pos 36: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->priority)) {
-    std::cerr << "Could not init job::priority at pos 33: ";
+    std::cerr << "Could not init job::priority at pos 37: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_str(buf, index, this->comment)) {
-    std::cerr << "Could not init job::comment at pos 34: ";
+    std::cerr << "Could not init job::comment at pos 38: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
   }
 
   if (ei_buffer_to_uint64_t(buf, index, this->revision)) {
-    std::cerr << "Could not init job::revision at pos 35: ";
+    std::cerr << "Could not init job::revision at pos 39: ";
     ei_print_term(stderr, buf, &index);
     std::cerr << std::endl;
     return;
@@ -384,6 +412,22 @@ void SwmJob::set_relocatable(const std::string &new_val) {
 
 void SwmJob::set_keep_resources(const std::string &new_val) {
   keep_resources = new_val;
+}
+
+void SwmJob::set_checkpoint(const std::string &new_val) {
+  checkpoint = new_val;
+}
+
+void SwmJob::set_checkpoint_dir(const std::string &new_val) {
+  checkpoint_dir = new_val;
+}
+
+void SwmJob::set_checkpoint_interval(const uint64_t &new_val) {
+  checkpoint_interval = new_val;
+}
+
+void SwmJob::set_last_checkpoint_time(const std::string &new_val) {
+  last_checkpoint_time = new_val;
 }
 
 void SwmJob::set_exitcode(const uint64_t &new_val) {
@@ -520,6 +564,22 @@ std::string SwmJob::get_relocatable() const {
 
 std::string SwmJob::get_keep_resources() const {
   return keep_resources;
+}
+
+std::string SwmJob::get_checkpoint() const {
+  return checkpoint;
+}
+
+std::string SwmJob::get_checkpoint_dir() const {
+  return checkpoint_dir;
+}
+
+uint64_t SwmJob::get_checkpoint_interval() const {
+  return checkpoint_interval;
+}
+
+std::string SwmJob::get_last_checkpoint_time() const {
+  return last_checkpoint_time;
 }
 
 uint64_t SwmJob::get_exitcode() const {
@@ -694,6 +754,10 @@ void SwmJob::print(const std::string &prefix, const char separator) const {
   std::cerr << prefix << container << separator;
   std::cerr << prefix << relocatable << separator;
   std::cerr << prefix << keep_resources << separator;
+  std::cerr << prefix << checkpoint << separator;
+  std::cerr << prefix << checkpoint_dir << separator;
+  std::cerr << prefix << checkpoint_interval << separator;
+  std::cerr << prefix << last_checkpoint_time << separator;
   std::cerr << prefix << exitcode << separator;
   std::cerr << prefix << signal << separator;
   std::cerr << prefix << priority << separator;

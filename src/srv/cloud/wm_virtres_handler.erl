@@ -271,7 +271,8 @@ spawn_partition(Job, Remote) ->
           job_id => JobId,
           ports => Ports,
           user_name => wm_entity:get(name, User),
-          node_count => wm_utils:get_requested_nodes_number(Job)},
+          node_count => wm_utils:get_requested_nodes_number(Job),
+          install_checkpoint_tools => wm_checkpoint:enabled(Job)},
     wm_gate:create_partition(self(), Remote, Options).
 
 -spec ensure_entities_created(job_id(), #partition{}, #node{}) -> {atom(), string()}.

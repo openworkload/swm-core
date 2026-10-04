@@ -23,6 +23,21 @@ parse_keep_resources_directive_test() ->
     Job3 = wm_jobscript:parse("#!/bin/bash\necho hello"),
     ?assertEqual(false, wm_entity:get(keep_resources, Job3)).
 
+-spec parse_checkpoint_directives_test() -> ok.
+parse_checkpoint_directives_test() ->
+    Job1 =
+        wm_jobscript:parse("#!/bin/bash\n#SWM checkpoint dmtcp\n"
+                           "#SWM checkpoint-dir /mnt/blob/ckpt\n"
+                           "#SWM checkpoint-interval 300\necho hello"),
+    ?assertEqual("dmtcp", wm_entity:get(checkpoint, Job1)),
+    ?assertEqual("/mnt/blob/ckpt", wm_entity:get(checkpoint_dir, Job1)),
+    ?assertEqual(300, wm_entity:get(checkpoint_interval, Job1)),
+    Job2 = wm_jobscript:parse("#!/bin/bash\n#SWM checkpoint mana\necho hello"),
+    ?assertEqual("dmtcp", wm_entity:get(checkpoint, Job2)),
+    Job3 = wm_jobscript:parse("#!/bin/bash\necho hello"),
+    ?assertEqual("", wm_entity:get(checkpoint, Job3)),
+    ?assertEqual("disabled", wm_checkpoint:display_last(Job3)).
+
 -spec parse_single_node_default_test() -> ok.
 parse_single_node_default_test() ->
     JobScript = "#!/bin/bash\necho hello",

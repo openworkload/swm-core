@@ -342,7 +342,9 @@ cancel_jobs([JobId | T], Results) ->
     Result =
         case wm_conf:select(job, {id, JobId}) of
             {ok, Job} ->
-                UpdatedJob = wm_entity:set({state, ?JOB_STATE_CANCELED}, Job),
+                %% Final DMTCP/MANA checkpoint before teardown (no-op if disabled).
+                JobCkpt = wm_checkpoint:checkpoint_before_cancel(Job),
+                UpdatedJob = wm_entity:set({state, ?JOB_STATE_CANCELED}, JobCkpt),
                 1 = wm_conf:update([UpdatedJob]),
                 Process = wm_entity:set([{state, ?JOB_STATE_CANCELED}], wm_entity:new(process)),
                 EndTime = wm_utils:now_iso8601(without_ms),

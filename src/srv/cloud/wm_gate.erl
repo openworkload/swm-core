@@ -291,6 +291,13 @@ do_partition_create(Remote, Options, #mstate{spool = Spool, pem_data = PemData})
             Body = get_auth_body(PemData),
             %% Gate expects total VM count (>= 1); it adds compute VMs for count > 1.
             NodeCount = maps:get(node_count, Options, 1),
+            InstallCkpt =
+                case maps:get(install_checkpoint_tools, Options, false) of
+                    true ->
+                        <<"true">>;
+                    _ ->
+                        <<"false">>
+                end,
             ExtraHeaders =
                 [{<<"osversion">>, list_to_binary(maps:get(image_name, Options, ""))},
                  {<<"containerimage">>, list_to_binary(maps:get(container_image, Options))},
@@ -301,7 +308,8 @@ do_partition_create(Remote, Options, #mstate{spool = Spool, pem_data = PemData})
                  {<<"partname">>, list_to_binary(maps:get(part_name, Options, ""))},
                  {<<"runtime">>, list_to_binary(get_runtime_parameters_string(Remote))},
                  {<<"location">>, list_to_binary(wm_entity:get(location, Remote))},
-                 {<<"ports">>, list_to_binary(maps:get(ports, Options, ""))}],
+                 {<<"ports">>, list_to_binary(maps:get(ports, Options, ""))},
+                 {<<"installcheckpointtools">>, InstallCkpt}],
             Headers = generate_headers(ExtraHeaders),
             ?LOG_DEBUG("Partition creation POST HTTP headers: ~p", [Headers]),
             StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers, Body),

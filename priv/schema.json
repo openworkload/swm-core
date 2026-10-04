@@ -521,6 +521,22 @@
       "default": "false",
       "type": "atom()"
     },
+    "checkpoint": {
+      "default": "",
+      "type": "string()"
+    },
+    "checkpoint_dir": {
+      "default": "",
+      "type": "string()"
+    },
+    "checkpoint_interval": {
+      "default": 0,
+      "type": "pos_integer()"
+    },
+    "last_checkpoint_time": {
+      "default": "",
+      "type": "string()"
+    },
     "exitcode": {
       "default": 0,
       "type": "pos_integer()"

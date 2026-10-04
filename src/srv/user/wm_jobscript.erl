@@ -125,6 +125,34 @@ parse_line(Ws, Job) when hd(Ws) == "relocatable" ->
     wm_entity:set({relocatable, true}, Job);
 parse_line(Ws, Job) when hd(Ws) == "keep-resources"; hd(Ws) == "--keep-resources" ->
     wm_entity:set({keep_resources, true}, Job);
+parse_line(Ws, Job) when hd(Ws) == "checkpoint", length(Ws) > 1 ->
+    Engine =
+        string:lowercase(
+            lists:flatten(tl(Ws))),
+    case Engine of
+        "dmtcp" ->
+            wm_entity:set({checkpoint, "dmtcp"}, Job);
+        "mana" ->
+            %% MANA is the DMTCP MPI plugin; normalize to dmtcp.
+            wm_entity:set({checkpoint, "dmtcp"}, Job);
+        _ ->
+            ?LOG_WARN("Unsupported checkpoint engine ~p (use dmtcp)", [Engine]),
+            Job
+    end;
+parse_line(Ws, Job) when hd(Ws) == "checkpoint-dir", length(Ws) > 1 ->
+    wm_entity:set({checkpoint_dir, lists:flatten(tl(Ws))}, Job);
+parse_line(Ws, Job) when hd(Ws) == "checkpoint-interval", length(Ws) > 1 ->
+    try list_to_integer(lists:flatten(tl(Ws))) of
+        Sec when Sec >= 0 ->
+            wm_entity:set({checkpoint_interval, Sec}, Job);
+        _ ->
+            ?LOG_WARN("Invalid checkpoint-interval: ~p", [tl(Ws)]),
+            Job
+    catch
+        error:badarg ->
+            ?LOG_WARN("Invalid checkpoint-interval: ~p", [tl(Ws)]),
+            Job
+    end;
 parse_line(Ws, Job) when hd(Ws) == "input-files" ->
     Old = wm_entity:get(input_files, Job),
     Expanded = [expand_user_path(F) || F <- tl(Ws)],

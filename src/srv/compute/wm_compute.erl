@@ -77,6 +77,15 @@ init(Args) ->
     wm_event:subscribe(proc_started, node(), ?MODULE),
     {ok, MState}.
 
+handle_call({checkpoint_now, JobId}, _From, MState) ->
+    Reply =
+        case wm_conf:select(job, {id, JobId}) of
+            {ok, Job} ->
+                wm_checkpoint:run_local_checkpoint(Job);
+            _ ->
+                {error, not_found}
+        end,
+    {reply, Reply, MState};
 handle_call(_Msg, _From, MState) ->
     {reply, {error, not_handled}, MState}.
 

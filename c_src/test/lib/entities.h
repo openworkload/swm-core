@@ -206,7 +206,7 @@ TEST(Process, construct) {
 }
 
 TEST(Job, construct) {
-  static const int entity_tuple_arity = 35;
+  static const int entity_tuple_arity = 39;
 
   ei_x_buff x;
   EXPECT_EQ(ei_x_new(&x), 0);
@@ -321,11 +321,15 @@ TEST(Job, construct) {
   EXPECT_EQ(ei_x_encode_empty_list(&x), 0);
   EXPECT_EQ(ei_x_encode_empty_list(&x), 0);  // resources
   EXPECT_EQ(ei_x_encode_string(&x, "container-id-28"), 0);
-  EXPECT_EQ(ei_x_encode_atom(&x, "true"), 0);   // relocatable
-  EXPECT_EQ(ei_x_encode_atom(&x, "false"), 0);  // keep_resources
-  EXPECT_EQ(ei_x_encode_ulong(&x, 1), 0);       // exit code
-  EXPECT_EQ(ei_x_encode_ulong(&x, 15), 0);      // signal
-  EXPECT_EQ(ei_x_encode_ulong(&x, 1500), 0);    // priority
+  EXPECT_EQ(ei_x_encode_atom(&x, "true"), 0);              // relocatable
+  EXPECT_EQ(ei_x_encode_atom(&x, "false"), 0);             // keep_resources
+  EXPECT_EQ(ei_x_encode_string(&x, "dmtcp"), 0);           // checkpoint
+  EXPECT_EQ(ei_x_encode_string(&x, "/mnt/blob/ckpt"), 0);  // checkpoint_dir
+  EXPECT_EQ(ei_x_encode_ulong(&x, 300), 0);                // checkpoint_interval
+  EXPECT_EQ(ei_x_encode_string(&x, ""), 0);                // last_checkpoint_time
+  EXPECT_EQ(ei_x_encode_ulong(&x, 1), 0);                  // exit code
+  EXPECT_EQ(ei_x_encode_ulong(&x, 15), 0);                 // signal
+  EXPECT_EQ(ei_x_encode_ulong(&x, 1500), 0);               // priority
   EXPECT_EQ(ei_x_encode_string(&x, "comment"), 0);
   EXPECT_EQ(ei_x_encode_ulong(&x, 0), 0);  // revision
 
@@ -384,6 +388,10 @@ TEST(Job, construct) {
   EXPECT_EQ(entity.get_container(), "container-id-28");
   EXPECT_EQ(entity.get_relocatable(), "true");
   EXPECT_EQ(entity.get_keep_resources(), "false");
+  EXPECT_EQ(entity.get_checkpoint(), "dmtcp");
+  EXPECT_EQ(entity.get_checkpoint_dir(), "/mnt/blob/ckpt");
+  EXPECT_EQ(entity.get_checkpoint_interval(), 300ul);
+  EXPECT_EQ(entity.get_last_checkpoint_time(), "");
   EXPECT_EQ(entity.get_exitcode(), 1ul);
   EXPECT_EQ(entity.get_signal(), 15ul);
   EXPECT_EQ(entity.get_priority(), 1500ul);

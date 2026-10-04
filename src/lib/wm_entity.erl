@@ -467,6 +467,14 @@ get_type(job, Attr) when is_atom(Attr) ->
             atom;
         keep_resources ->
             atom;
+        checkpoint ->
+            string;
+        checkpoint_dir ->
+            string;
+        checkpoint_interval ->
+            integer;
+        last_checkpoint_time ->
+            string;
         exitcode ->
             integer;
         signal ->

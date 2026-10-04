@@ -250,6 +250,7 @@ void set_env(passwd *pw, const SwmJob &job, const std::string &ctrl_path) {
   setenv("SWM_JOB_PORTS", ports.c_str(), 1);
   setenv("SWM_RELOCATABLE", job.get_relocatable() == "true" ? "YES" : "NO", 1);
   setenv("SWM_KEEP_RESOURCES", job.get_keep_resources() == "true" ? "YES" : "NO", 1);
+  // SWM_CKPT* come from job.env (wm_checkpoint:env/1 via enrich_job_for_porter).
   if (!ctrl_path.empty()) {
     setenv("SWM_PORTER_CTRL", ctrl_path.c_str(), 1);
   }

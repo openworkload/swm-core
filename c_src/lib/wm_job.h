@@ -53,6 +53,10 @@ class SwmJob : SwmEntity {
   void set_container(const std::string &);
   void set_relocatable(const std::string &);
   void set_keep_resources(const std::string &);
+  void set_checkpoint(const std::string &);
+  void set_checkpoint_dir(const std::string &);
+  void set_checkpoint_interval(const uint64_t &);
+  void set_last_checkpoint_time(const std::string &);
   void set_exitcode(const uint64_t &);
   void set_signal(const uint64_t &);
   void set_priority(const uint64_t &);
@@ -88,6 +92,10 @@ class SwmJob : SwmEntity {
   std::string get_container() const;
   std::string get_relocatable() const;
   std::string get_keep_resources() const;
+  std::string get_checkpoint() const;
+  std::string get_checkpoint_dir() const;
+  uint64_t get_checkpoint_interval() const;
+  std::string get_last_checkpoint_time() const;
   uint64_t get_exitcode() const;
   uint64_t get_signal() const;
   uint64_t get_priority() const;
@@ -124,6 +132,10 @@ class SwmJob : SwmEntity {
   std::string container;
   std::string relocatable;
   std::string keep_resources;
+  std::string checkpoint;
+  std::string checkpoint_dir;
+  uint64_t checkpoint_interval;
+  std::string last_checkpoint_time;
   uint64_t exitcode;
   uint64_t signal;
   uint64_t priority;

@@ -258,7 +258,12 @@ job_to_json(Job, FullJson, IncludeScript) ->
           resources =>
               wm_user_json:get_resources_json(
                   wm_entity:get(resources, Job)),
-          comment => list_to_binary(wm_entity:get(comment, Job))},
+          comment => list_to_binary(wm_entity:get(comment, Job)),
+          checkpoint => list_to_binary(wm_entity:get(checkpoint, Job)),
+          checkpoint_dir => list_to_binary(wm_entity:get(checkpoint_dir, Job)),
+          checkpoint_interval => wm_entity:get(checkpoint_interval, Job),
+          last_checkpoint_time => list_to_binary(wm_entity:get(last_checkpoint_time, Job)),
+          checkpoint_display => list_to_binary(wm_checkpoint:display_last(Job))},
     JobMap =
         case IncludeScript of
             true ->

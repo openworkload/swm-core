@@ -38,8 +38,9 @@ enrich_job_for_porter(Job) ->
     AccountName = account_id_to_name(wm_entity:get(account_id, Job)),
     PmixEnv = collect_pmix_env(Job),
     MetricsEnv = metrics_env(Job),
+    CkptEnv = wm_checkpoint:env(Job),
     Job1 = wm_entity:set([{nodes, NodeNames}, {account_id, AccountName}], Job),
-    case MetricsEnv ++ PmixEnv of
+    case MetricsEnv ++ PmixEnv ++ CkptEnv of
         [] ->
             Job1;
         Extra ->

@@ -8,7 +8,8 @@ and exports `SWM_*` environment variables. From that script you can start
 the allocated nodes (for example MPI).
 
 Job resource metrics (CPU / memory / optional GPU) are described in
-`HOWTO/ACCOUNTING.md`.
+`HOWTO/ACCOUNTING.md`. Optional DMTCP/MANA checkpointing is described in
+`HOWTO/CHECKPOINTS.md`.
 
 ## Available Directives
 
@@ -150,6 +151,14 @@ Keep remote cloud resources after the job finishes or is canceled (do not destro
 #SWM --keep-resources
 ```
 
+#### checkpoint / checkpoint-dir / checkpoint-interval
+Enable cancel-only DMTCP/MANA checkpointing. See `HOWTO/CHECKPOINTS.md`.
+```bash
+#SWM checkpoint dmtcp
+#SWM checkpoint-dir /mnt/blob/ckpt
+#SWM checkpoint-interval 300
+```
+
 ## Environment Variables
 
 Porter exports the following variables into the job script process. Values come from the job record (and related config) at start time.
@@ -167,6 +176,9 @@ Porter exports the following variables into the job script process. Values come 
 | `SWM_JOB_PORTS` | Ports to forward from the remote side (`#SWM ports`), as requested |
 | `SWM_RELOCATABLE` | `YES` or `NO` — whether the job is relocatable (`#SWM relocatable`) |
 | `SWM_KEEP_RESOURCES` | `YES` or `NO` — whether cloud resources are kept after finish/cancel (`#SWM keep-resources`) |
+| `SWM_CKPT` | Checkpoint engine (`dmtcp`) when `#SWM checkpoint` is set; empty when disabled |
+| `SWM_CKPT_DIR` | Checkpoint image directory (`#SWM checkpoint-dir`) |
+| `SWM_CKPT_INTERVAL` | Periodic checkpoint interval seconds (`#SWM checkpoint-interval`; `0` = cancel-only) |
 
 Empty lists/strings are exported as an empty value. User-defined pairs from the job `env` field are also applied; the `SWM_*` variables above always take precedence.
 
@@ -213,8 +225,9 @@ Examples with the defaults (`stdout.log` / `stderr.log`) and three nodes (`N` = 
 When the job finishes on cloud resources, SWM downloads the base logs and all present `*-taskN.log` files back to Skyport (into the job spool workdir). The HTTP APIs `/user/job/{id}/stdout` and `/user/job/{id}/stderr` return the job-script file plus each task file, separated by a line and labeled `Task N stdout:` / `Task N stderr:`.
 
 See also `priv/examples/jobscripts/multiple-tasks-azure.sh` (plain `swm-task`),
-`priv/examples/jobscripts/mpi-azure.sh` (`swm-task --pmix`), and
-`priv/examples/jobscripts/nccl-azure-ib.sh` (Azure ND + NCCL over IB).
+`priv/examples/jobscripts/mpi-azure.sh` (`swm-task --pmix`),
+`priv/examples/jobscripts/mpi-checkpoint-azure.sh` / `mpi-restart-azure.sh` (DMTCP/MANA),
+and `priv/examples/jobscripts/nccl-azure-ib.sh` (Azure ND + NCCL over IB).
 
 ## Complete Multi-Node MPI Example
 
