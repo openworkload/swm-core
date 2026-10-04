@@ -246,6 +246,31 @@ paths:
         '404':
           description: Job not found
 
+  '/user/job/{jobId}/metrics':
+    get:
+      summary: Job resource metrics
+      description: >
+        Returns avg/max CPU, memory, and GPU metrics for a job, aggregated via
+        PromQL against the configured Prometheus instance. Missing series are
+        returned as JSON null.
+      parameters:
+        - name: jobId
+          in: path
+          description: ID of job which metrics to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobMetrics'
+        '404':
+          description: Job not found
+
 externalDocs:
   description: Find out more about Sky Port project
   url: 'https://openworkload.org'
@@ -495,3 +520,43 @@ components:
         comment:
           type: string
           description: Image comment
+
+    MetricAvgMax:
+      title: Metric avg/max
+      description: Aggregated average and maximum for one metric over the job lifetime
+      type: object
+      properties:
+        avg:
+          type: number
+          nullable: true
+          description: Average over the query range (null if no samples)
+        max:
+          type: number
+          nullable: true
+          description: Maximum over the query range (null if no samples)
+
+    JobMetrics:
+      title: Job metrics
+      description: >
+        Per-job resource metrics from Prometheus (Porter samples scraped from
+        Sky Port gauges). Missing series are null.
+      type: object
+      required:
+        - job_id
+        - cpu_percent
+        - mem_bytes
+        - gpu_util_percent
+        - gpu_mem_bytes
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: Job ID
+        cpu_percent:
+          $ref: '#/components/schemas/MetricAvgMax'
+        mem_bytes:
+          $ref: '#/components/schemas/MetricAvgMax'
+        gpu_util_percent:
+          $ref: '#/components/schemas/MetricAvgMax'
+        gpu_mem_bytes:
+          $ref: '#/components/schemas/MetricAvgMax'

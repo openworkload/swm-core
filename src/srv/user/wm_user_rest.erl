@@ -163,6 +163,8 @@ get_jobs_info(Req) ->
             get_job_stdout(binary_to_list(JobId));
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/stderr">>} ->
             get_job_stderr(binary_to_list(JobId));
+        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/metrics">>} ->
+            get_job_metrics(binary_to_list(JobId));
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
             get_one_job(binary_to_list(JobId));
         #{path := <<"/user/job">>} ->
@@ -202,6 +204,16 @@ get_job_stderr(JobId) ->
         {error, Error} ->
             ?LOG_ERROR("Job stderr not found for job ~p: ~p", [JobId, Error]),
             {error, ?HTTP_CODE_NOT_FOUND}
+    end.
+
+-spec get_job_metrics(job_id()) -> {binary() | string(), pos_integer()}.
+get_job_metrics(JobId) ->
+    case wm_job_metrics:query_job_stats(JobId) of
+        {ok, Stats} ->
+            {wm_json:encode(Stats), ?HTTP_CODE_OK};
+        {error, not_found} ->
+            ?LOG_ERROR("Job metrics requested for unknown job ~p", [JobId]),
+            {<<"{\"error\":\"job not found\"}">>, ?HTTP_CODE_NOT_FOUND}
     end.
 
 -spec job_to_json(#job{}, binary()) -> binary().

@@ -117,7 +117,8 @@ handle_event(http_started, _) ->
     wm_http:add_route({api, wm_user_rest}, "/user/job"),
     wm_http:add_route({api, wm_user_rest}, "/user/job/:id"),
     wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stdout"),
-    wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stderr").
+    wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stderr"),
+    wm_http:add_route({api, wm_user_rest}, "/user/job/:id/metrics").
 
 -spec handle_request(atom(), any(), #mstate{}) -> any().
 handle_request({output, OutputType}, JobId, #mstate{spool = Spool})

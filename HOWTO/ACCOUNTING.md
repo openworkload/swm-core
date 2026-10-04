@@ -44,6 +44,7 @@ Reported fields (when present): `cpu_percent` / `cpu_percent_max`,
 | `job_metrics_interval` | `priv/base.config` / globals | `15000` | Local sample period (ms); `0` disables |
 | `job_metrics_report_interval` | `priv/base.config` / globals | `120000` | Aggregation / report period to SWM (ms); `0` disables |
 | `job_metrics_port` | `priv/base.config` / globals | `9568` | Cleartext Prometheus scrape port (`/metrics`); `0` disables |
+| `prometheus_url` | `priv/base.config` / globals | `http://prometheus:9090` | Prometheus HTTP API base URL for REST job metrics queries |
 
 Porter also receives (injected into the job env at RUN time):
 
@@ -91,3 +92,35 @@ make prometheus-down
 ```
 
 Config: `priv/container/prometheus/prometheus.yml` and root `compose.yml`.
+
+## REST API: job metrics
+
+Authenticated clients (mTLS on `:8443`) can fetch avg/max metrics for a job:
+
+```
+GET /user/job/<job-id>/metrics
+```
+
+Sky Port looks up the job, then runs PromQL instant queries against
+`prometheus_url` (default `http://prometheus:9090` on `skyportnet-dev`):
+
+- `avg(avg_over_time(swm_job_*{job_id="..."}[<range>]))`
+- `max(max_over_time(swm_job_*_max{job_id="..."}[<range>]))`
+
+`<range>` is derived from the job `start_time` / `end_time` (or `duration`),
+with a 60s pad; if times are unknown the default is `7d`.
+
+Example response:
+
+```json
+{
+  "job_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "cpu_percent": {"avg": 12.3, "max": 88.0},
+  "mem_bytes": {"avg": 1.2e9, "max": 2.0e9},
+  "gpu_util_percent": {"avg": null, "max": null},
+  "gpu_mem_bytes": {"avg": null, "max": null}
+}
+```
+
+Unknown job → HTTP 404. Missing Prometheus series (or Prometheus unreachable)
+→ JSON `null` for those fields, still HTTP 200.
