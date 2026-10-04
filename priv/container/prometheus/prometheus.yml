@@ -1,4 +1,5 @@
-# Prometheus scrape config for Sky Port control plane (podman compose).
+# Prometheus scrape config for Sky Port control plane.
+# When running inside skyport-dev-pod, SWM metrics are on the shared netns.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -8,7 +9,6 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-          - skyport-dev:9568
-          - skyport:9568
+          - 127.0.0.1:9568
         labels:
           component: skyport

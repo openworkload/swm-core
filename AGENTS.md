@@ -41,13 +41,17 @@ make act ARGS='--job common_tests'
 To get Erlang environment for the project use `make cr` command to spawn an interactive session in the container, then inside the shell `cd` to this repository if needed.
 
 - Image: `swm-build:29.1` (see `priv/container/debug/Containerfile` and `scripts/build-debug-container.sh`).
-- Container name: **`skyport-dev`** (Podman).
-- `make cr` runs `scripts/start-debug-container.sh`: attaches with  
+- Podman **pod** **`skyport-dev-pod`** with containers:
+  - **`skyport-dev`** -- build/shell + swm-core
+  - **`skyport-dev-gate`** -- cloud gate under supervisord
+  - **`swm-prometheus`** -- Prometheus (scrapes `127.0.0.1:9568`, UI on host `:9090`)
+  (pod and container names must differ; Podman rejects shared names.)
+- `make cr` runs `scripts/start-debug-container.sh`: ensures the pod, then attaches with  
   `podman exec -ti --user <host-user> skyport-dev /bin/bash`  
-  (same `$HOME` mount as on the host, workdir is usually the directory from which the container was first created). Containers use `--userns=keep-id` (no `runuser`).
-- Passwordless `sudo` is set up on `make cr` (interactive shell only). Host
+  (same `$HOME` mount as on the host). Containers use `--userns=keep-id` (no `runuser`).
+- Passwordless `sudo` is set up on `make cr` (core container). Host
   `/etc/shadow` is **not** bind-mounted (unreadable under keep-id and breaks sudo).
-  If an older container still mounts it, recreate: `podman rm -f skyport-dev && make cr`.
+  Legacy non-pod containers are removed automatically on the next `make cr`.
 - First `podman run --userns=keep-id` of the multi-GB `swm-build` image can take
   several minutes (ID-mapped layer copy). Do not interrupt it.
 

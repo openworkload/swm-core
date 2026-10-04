@@ -3,40 +3,18 @@
 # SPDX-FileCopyrightText: © 2021 Taras Shapovalov
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# * Redistributions of source code must retain the above copyright notice, this
-# list of conditions and the following disclaimer.
-#
-# * Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# * Neither the name of the copyright holder nor the names of its
-# contributors may be used to endorse or promote products derived from
-# this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Ensure the skyport-dev container (same as `make cr`) is running, then start
-# (or restart) swm-core and swm-cloud-gate inside it in the background. The
-# script exits after launch; services keep running in the container.
+# Ensure the skyport-dev pod is running, prepare the gate venv in the gate
+# container, then start (or restart) swm-core in the core container.
+# Cloud gate is managed by supervisord in skyport-dev-gate.
 #
 
 set -euo pipefail
 
 ME=$(readlink -f "$0")
 ROOT_DIR=$(dirname "$(dirname "$ME")")
+# shellcheck source=scripts/swm-pod-common.sh
+source "${ROOT_DIR}/scripts/swm-pod-common.sh"
+
 GATE_DIR="${ROOT_DIR}/../swm-cloud-gate"
 
 HOSTNAME=skyport
@@ -44,7 +22,9 @@ IMAGE_NAME=swm-build:29.1
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 PODMAN_SOCK="${SWM_CONTAINER_PODMAN_SOCK:-${XDG_RUNTIME_DIR}/podman/podman.sock}"
 X11_SOCKET=/tmp/.X11-unix
-CONTAINER_NAME=skyport-dev
+POD_NAME=skyport-dev-pod
+CORE_NAME=skyport-dev
+GATE_NAME=skyport-dev-gate
 NETWORK=skyportnet-dev
 DOMAIN=openworkload.org
 HOST_USER=${USER:-$(id -un)}
@@ -54,6 +34,7 @@ JUPUTER_HUB_PORT=8000
 USER_API_PORT=8443
 CORE_API_PORT=10001
 JOB_METRICS_PORT=9568
+GATE_API_PORT=8444
 
 GATE_LOG=/tmp/swm-cloud-gate-debug.log
 SWM_CLOUD_GATE_CONFIG="${HOME}/.swm/cloud-gate.yaml"
@@ -70,77 +51,29 @@ else
     echo "WARN: host Podman socket not found at ${PODMAN_SOCK}; local container jobs will fail until it is available" >&2
 fi
 
-in_container() {
-    # --userns=keep-id: do not use runuser (only root may); run as host user.
-    podman exec --user "${HOST_USER}" "${CONTAINER_NAME}" bash -lc "$*"
+in_core() {
+    podman exec --user "${HOST_USER}" "${CORE_NAME}" bash -lc "$*"
 }
 
-ensure_network() {
-    if podman network inspect "${NETWORK}" >/dev/null 2>&1; then
-        echo "Podman network '${NETWORK}' already exists"
-    else
-        podman network create "${NETWORK}" >/dev/null
-        echo "Created podman network '${NETWORK}'"
-    fi
-}
-
-ensure_container() {
-    # Same image/mounts/ports as scripts/start-debug-container.sh (`make cr`),
-    # but keep the container detached instead of attaching an interactive shell.
-    local running
-    if ! running=$(podman inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null); then
-        echo "Creating ${CONTAINER_NAME} (detached; same setup as make cr)..."
-        echo "First create with --userns=keep-id may take several minutes (ID-mapped image layers)."
-        # Do not mount host /etc/shadow (breaks sudo under --userns=keep-id).
-        podman run \
-            -d \
-            -v "${HOME}:${HOME}" \
-            -v /etc/passwd:/etc/passwd \
-            -v /etc/group:/etc/group \
-            -v /opt:/opt \
-            "${PODMAN_MOUNT_ARGS[@]}" \
-            -v "${X11_SOCKET}:${X11_SOCKET}" \
-            -e "DISPLAY=${DISPLAY:-}" \
-            "${PODMAN_ENV_ARGS[@]}" \
-            --userns=keep-id \
-            --name "${CONTAINER_NAME}" \
-            --hostname "${HOSTNAME}.${DOMAIN}" \
-            --network-alias "${HOSTNAME}" \
-            --network-alias "${HOSTNAME}.${DOMAIN}" \
-            --add-host=host:host-gateway \
-            --workdir "${ROOT_DIR}" \
-            --network "${NETWORK}" \
-            -p "${CORE_API_PORT}:${CORE_API_PORT}" \
-            -p "${USER_API_PORT}:${USER_API_PORT}" \
-            -p "${JUPUTER_HUB_PORT}:${JUPUTER_HUB_PORT}" \
-            -p "${JUPUTER_HUB_API_PORT}:${JUPUTER_HUB_API_PORT}" \
-            -p "${JOB_METRICS_PORT}:${JOB_METRICS_PORT}" \
-            --user "${HOST_USER}" \
-            "${IMAGE_NAME}" \
-            sleep infinity
-    elif [ "${running}" = "false" ]; then
-        echo "Starting ${CONTAINER_NAME}..."
-        podman start "${CONTAINER_NAME}" >/dev/null
-    else
-        echo "${CONTAINER_NAME} is already running"
-    fi
+in_gate() {
+    podman exec --user "${HOST_USER}" "${GATE_NAME}" bash -lc "$*"
 }
 
 swm_running() {
-    # Ignore zombie beam.smp leftovers (ppid 1 / state Z); only live SWM counts.
-    in_container 'ps -C beam.smp -o pid=,stat= 2>/dev/null | awk '\''$2 !~ /^Z/ {found=1} END {exit !found}'\'''
+    in_core 'ps -C beam.smp -o pid=,stat= 2>/dev/null | awk '\''$2 !~ /^Z/ {found=1} END {exit !found}'\'''
 }
 
 gate_running() {
-    in_container 'ss -lntp 2>/dev/null | grep -q ":8444 "'
+    # Shared netns with the pod -- check from either container.
+    in_core 'ss -lntp 2>/dev/null | grep -q ":8444 "'
 }
 
 stop_swm() {
     if ! swm_running; then
         return 0
     fi
-    echo "Stopping swm-core in ${CONTAINER_NAME}..."
-    in_container "
+    echo "Stopping swm-core in ${CORE_NAME}..."
+    in_core "
         set -e
         source /usr/erlang/activate
         cd '${ROOT_DIR}'
@@ -155,7 +88,7 @@ stop_swm() {
         sleep 1
     done
     echo "WARN: swm-core still running after stop; killing live beam.smp" >&2
-    in_container '
+    in_core '
         ps -C beam.smp -o pid=,stat= 2>/dev/null | awk '\''$2 !~ /^Z/ {print $1}'\'' | while read -r pid; do
             kill "$pid" 2>/dev/null || true
         done
@@ -163,42 +96,12 @@ stop_swm() {
     sleep 1
 }
 
-stop_gate() {
-    if ! gate_running; then
-        return 0
-    fi
-    echo "Stopping swm-cloud-gate in ${CONTAINER_NAME}..."
-    in_container "
-        # Kill by port listener only -- avoid pkill -f run.py (matches this shell).
-        if ss -lntp 2>/dev/null | grep -q ':8444 '; then
-            pids=\$(ss -lntp 2>/dev/null | awk '/:8444 / {
-              while (match(\$0, /pid=[0-9]+/)) {
-                print substr(\$0, RSTART+4, RLENGTH-4)
-                \$0 = substr(\$0, RSTART+RLENGTH)
-              }
-            }' | sort -u)
-            for pid in \$pids; do
-              kill \"\$pid\" 2>/dev/null || true
-            done
-        fi
-    "
-    local i
-    for i in $(seq 1 15); do
-        if ! gate_running; then
-            echo "swm-cloud-gate stopped"
-            return 0
-        fi
-        sleep 1
-    done
-    echo "WARN: swm-cloud-gate still listening on :8444 after stop" >&2
-}
-
 start_swm() {
     if swm_running; then
         stop_swm
     fi
     echo "Starting swm-core in background..."
-    in_container "
+    in_core "
         set -e
         source /usr/erlang/activate
         cd '${ROOT_DIR}'
@@ -207,7 +110,7 @@ start_swm() {
     "
     local i
     for i in $(seq 1 30); do
-        if in_container "
+        if in_core "
             source /usr/erlang/activate
             cd '${ROOT_DIR}'
             scripts/run-in-shell.sh -x -p >/dev/null 2>&1
@@ -222,10 +125,9 @@ start_swm() {
 }
 
 gate_python() {
-    # Prefer Python 3.12 (matches swm-cloud-gate requires-python and the debug image).
-    if in_container 'command -v python3.12 >/dev/null 2>&1'; then
+    if in_gate 'command -v python3.12 >/dev/null 2>&1'; then
         echo python3.12
-    elif in_container 'command -v python3 >/dev/null 2>&1'; then
+    elif in_gate 'command -v python3 >/dev/null 2>&1'; then
         echo python3
     else
         return 1
@@ -233,9 +135,7 @@ gate_python() {
 }
 
 gate_venv_ok() {
-    # Venv must use an interpreter that exists *inside* the container (HOME is shared
-    # with the host, so a host-built .venv pointing at /usr/bin/python3.12 breaks here).
-    in_container "
+    in_gate "
         cd '${GATE_DIR}' || exit 1
         test -x .venv/bin/python || exit 1
         .venv/bin/python -c 'import uvicorn' >/dev/null 2>&1
@@ -245,11 +145,11 @@ gate_venv_ok() {
 prepare_gate_venv() {
     local py
     py=$(gate_python) || {
-        echo "ERROR: no python3 in ${CONTAINER_NAME}" >&2
+        echo "ERROR: no python3 in ${GATE_NAME}" >&2
         return 1
     }
-    echo "Preparing swm-cloud-gate .venv inside ${CONTAINER_NAME} (PYTHON=${py})..."
-    in_container "
+    echo "Preparing swm-cloud-gate .venv inside ${GATE_NAME} (PYTHON=${py})..."
+    in_gate "
         set -e
         cd '${GATE_DIR}'
         rm -rf .venv
@@ -266,45 +166,43 @@ check_gate_venv() {
     if gate_venv_ok; then
         return 0
     fi
-    echo "WARN: ${GATE_DIR}/.venv missing or not usable inside ${CONTAINER_NAME} (often a host-built venv)." >&2
+    echo "WARN: ${GATE_DIR}/.venv missing or not usable inside ${GATE_NAME} (often a host-built venv)." >&2
     prepare_gate_venv
 }
 
-start_gate() {
-    if gate_running; then
-        stop_gate
-    fi
-    echo "Starting swm-cloud-gate in background..."
-    # Detached exec so the gate keeps running after this script exits.
-    podman exec -d --user "${HOST_USER}" "${CONTAINER_NAME}" bash -lc "
-        cd '${GATE_DIR}'
-        export SWM_GATE_CONFIG='${SWM_CLOUD_GATE_CONFIG}'
-        exec bash run.sh >> '${GATE_LOG}' 2>&1
-    "
+wait_for_gate() {
     local i
-    for i in $(seq 1 30); do
+    echo "Waiting for cloud gate on :8444 (supervisord in ${GATE_NAME})..."
+    for i in $(seq 1 60); do
         if gate_running; then
-            echo "swm-cloud-gate is up on :8444 (log: ${GATE_LOG} inside container)"
+            echo "swm-cloud-gate is up on :8444 (log: ${GATE_LOG} in ${GATE_NAME})"
             return 0
         fi
         sleep 1
     done
-    echo "ERROR: gate did not start listening on :8444; see ${GATE_LOG} in the container" >&2
+    echo "ERROR: gate did not start listening on :8444; check ${GATE_NAME} logs" >&2
+    echo "  podman logs ${GATE_NAME}" >&2
+    echo "  (gate waits for ${SWM_CLOUD_GATE_CONFIG} before starting supervisord)" >&2
     return 1
 }
 
 main() {
     cd "${ROOT_DIR}"
-    ensure_network
-    ensure_container
+    swm_pod_ensure_dev_stack || exit 1
     check_gate_venv
+    # Restart gate container so supervisord picks up a freshly prepared venv.
+    if podman inspect -f '{{.State.Running}}' "${GATE_NAME}" 2>/dev/null | grep -q true; then
+        echo "Restarting ${GATE_NAME} to reload gate supervisord..."
+        podman restart "${GATE_NAME}" >/dev/null
+    fi
     start_swm
-    start_gate
+    wait_for_gate
     echo
-    echo "Sky Port dev stack is running in ${CONTAINER_NAME} (services restarted if they were already up)."
-    echo "  Attach shell:  make cr"
-    echo "  swm log:       /opt/swm/spool/node@skyport.openworkload.org/log/"
-    echo "  gate logs:     ${GATE_LOG} and /tmp/swm-cloud-gate.log (in container)"
+    echo "Sky Port dev stack is running in pod ${POD_NAME}."
+    echo "  Core:   ${CORE_NAME}  (attach: make cr)"
+    echo "  Gate:   ${GATE_NAME}  (supervisord)"
+    echo "  swm log:  /opt/swm/spool/node@skyport.openworkload.org/log/"
+    echo "  gate log: ${GATE_LOG} (in ${GATE_NAME})"
 }
 
 main "$@"

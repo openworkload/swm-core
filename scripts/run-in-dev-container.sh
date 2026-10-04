@@ -3,8 +3,8 @@
 # SPDX-FileCopyrightText: © 2021 Taras Shapovalov
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# Ensure skyport-dev is running (same mounts/ports as `make cr`), then run the
-# given command inside it as the host user (never as root).
+# Ensure the skyport-dev pod is running (same as `make cr`), then run the
+# given command inside the core container as the host user (never as root).
 #
 # Usage:
 #   scripts/run-in-dev-container.sh 'make && make format'
@@ -15,22 +15,29 @@ set -euo pipefail
 
 ME=$(readlink -f "$0")
 ROOT_DIR=$(dirname "$(dirname "$ME")")
+# shellcheck source=scripts/swm-pod-common.sh
+source "${ROOT_DIR}/scripts/swm-pod-common.sh"
 
 HOSTNAME=skyport
 IMAGE_NAME=swm-build:29.1
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 PODMAN_SOCK="${SWM_CONTAINER_PODMAN_SOCK:-${XDG_RUNTIME_DIR}/podman/podman.sock}"
 X11_SOCKET=/tmp/.X11-unix
-CONTAINER_NAME=skyport-dev
+POD_NAME=skyport-dev-pod
+CORE_NAME=skyport-dev
+GATE_NAME=skyport-dev-gate
 NETWORK=skyportnet-dev
 DOMAIN=openworkload.org
 HOST_USER=${USER:-$(id -un)}
+GATE_DIR="${ROOT_DIR}/../swm-cloud-gate"
+SWM_CLOUD_GATE_CONFIG="${HOME}/.swm/cloud-gate.yaml"
 
 JUPUTER_HUB_API_PORT=8081
 JUPUTER_HUB_PORT=8000
 USER_API_PORT=8443
 CORE_API_PORT=10001
 JOB_METRICS_PORT=9568
+GATE_API_PORT=8444
 
 PODMAN_MOUNT_ARGS=()
 PODMAN_ENV_ARGS=()
@@ -52,7 +59,7 @@ while [ "$#" -gt 0 ]; do
             ;;
         -h|--help)
             echo "Usage: $0 [--stop-swm] <command>" >&2
-            echo "  --stop-swm  stop SWM (beam) in the container before running the command" >&2
+            echo "  --stop-swm  stop SWM (beam) in the core container before running the command" >&2
             echo "              (avoids sync hot-reload racing rebar3/make compile)" >&2
             exit 0
             ;;
@@ -75,13 +82,10 @@ fi
 CMD="${ARGS[*]}"
 
 in_container() {
-    # --userns=keep-id: do not use runuser (only root may); run as host user.
-    podman exec --user "${HOST_USER}" "${CONTAINER_NAME}" bash -lc "$*"
+    podman exec --user "${HOST_USER}" "${CORE_NAME}" bash -lc "$*"
 }
 
 swm_beam_alive() {
-    # True only if a non-zombie beam.smp exists (container PID 1 often leaves
-    # defunct beams after prior stops).
     in_container '
         for pid in $(pgrep -x beam.smp 2>/dev/null); do
             state=$(awk "{print \$3}" /proc/$pid/stat 2>/dev/null || true)
@@ -94,14 +98,14 @@ swm_beam_alive() {
 }
 
 stop_swm_in_container() {
-    if ! podman inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" >/dev/null 2>&1; then
+    if ! podman inspect -f '{{.State.Running}}' "${CORE_NAME}" >/dev/null 2>&1; then
         return 0
     fi
     if ! swm_beam_alive; then
-        echo "SWM is not running in ${CONTAINER_NAME} (nothing to stop)"
+        echo "SWM is not running in ${CORE_NAME} (nothing to stop)"
         return 0
     fi
-    echo "Stopping SWM in ${CONTAINER_NAME} before build (prevents sync vs compile races)..."
+    echo "Stopping SWM in ${CORE_NAME} before build (prevents sync vs compile races)..."
     in_container "
         set +e
         source /usr/erlang/activate
@@ -127,66 +131,16 @@ stop_swm_in_container() {
     echo "SWM stopped (forced)"
 }
 
-ensure_network() {
-    if podman network inspect "${NETWORK}" >/dev/null 2>&1; then
-        return 0
-    fi
-    podman network create "${NETWORK}" >/dev/null
-    echo "Created podman network '${NETWORK}'"
-}
-
-ensure_container() {
-    local running
-    if ! running=$(podman inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null); then
-        echo "Creating ${CONTAINER_NAME} (detached; same setup as make cr)..."
-        echo "First create with --userns=keep-id may take several minutes (ID-mapped image layers)."
-        # Do not mount host /etc/shadow (breaks sudo under --userns=keep-id).
-        podman run \
-            -d \
-            -v "${HOME}:${HOME}" \
-            -v /etc/passwd:/etc/passwd \
-            -v /etc/group:/etc/group \
-            -v /opt:/opt \
-            "${PODMAN_MOUNT_ARGS[@]}" \
-            -v "${X11_SOCKET}:${X11_SOCKET}" \
-            -e "DISPLAY=${DISPLAY:-}" \
-            "${PODMAN_ENV_ARGS[@]}" \
-            --userns=keep-id \
-            --name "${CONTAINER_NAME}" \
-            --hostname "${HOSTNAME}.${DOMAIN}" \
-            --network-alias "${HOSTNAME}" \
-            --network-alias "${HOSTNAME}.${DOMAIN}" \
-            --add-host=host:host-gateway \
-            --workdir "${ROOT_DIR}" \
-            --network "${NETWORK}" \
-            -p "${CORE_API_PORT}:${CORE_API_PORT}" \
-            -p "${USER_API_PORT}:${USER_API_PORT}" \
-            -p "${JUPUTER_HUB_PORT}:${JUPUTER_HUB_PORT}" \
-            -p "${JUPUTER_HUB_API_PORT}:${JUPUTER_HUB_API_PORT}" \
-            -p "${JOB_METRICS_PORT}:${JOB_METRICS_PORT}" \
-            --user "${HOST_USER}" \
-            "${IMAGE_NAME}" \
-            sleep infinity
-    elif [ "${running}" = "false" ]; then
-        echo "Starting ${CONTAINER_NAME}..."
-        podman start "${CONTAINER_NAME}" >/dev/null
-    fi
-}
-
-ensure_network
-ensure_container
+swm_pod_ensure_dev_stack || exit 1
 
 if [ "${STOP_SWM}" -eq 1 ]; then
     stop_swm_in_container
 fi
 
-echo "Running in ${CONTAINER_NAME} as ${HOST_USER}: ${CMD}"
-exec podman exec --user "${HOST_USER}" "${CONTAINER_NAME}" bash -lc "
+echo "Running in ${CORE_NAME} (pod ${POD_NAME}) as ${HOST_USER}: ${CMD}"
+exec podman exec --user "${HOST_USER}" "${CORE_NAME}" bash -lc "
     set -e
     source /usr/erlang/activate
-    # kerl activate points REBAR_CACHE_DIR at /usr/erlang/.cache/rebar3 (not
-    # writable for a normal user). That breaks Hex/plugin fetches and can leave
-    # deps like gun half-installed ({missing_module,gun_public_suffix}).
     export REBAR_CACHE_DIR=\"\${HOME}/.cache/rebar3\"
     mkdir -p \"\${REBAR_CACHE_DIR}\"
     cd '${ROOT_DIR}'

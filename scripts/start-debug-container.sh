@@ -3,48 +3,41 @@
 # SPDX-FileCopyrightText: © 2021 Taras Shapovalov
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
+# Start (or attach to) the Sky Port development pod:
+#   pod skyport-dev-pod
+#     skyport-dev       -- interactive / build shell (sleep infinity)
+#     skyport-dev-gate  -- cloud gate under supervisord
+#     swm-prometheus    -- Prometheus (host :9090)
 #
-# * Redistributions of source code must retain the above copyright notice, this
-# list of conditions and the following disclaimer.
-#
-# * Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# * Neither the name of the copyright holder nor the names of its
-# contributors may be used to endorse or promote products derived from
-# this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set -x
 
+ME=$(readlink -f "$0")
+ROOT_DIR=$(dirname "$(dirname "$ME")")
+# shellcheck source=scripts/swm-pod-common.sh
+source "${ROOT_DIR}/scripts/swm-pod-common.sh"
+
 HOSTNAME=skyport
 IMAGE_NAME=swm-build:29.1
-# Host rootless Podman API (job runtime). Prefer existing user session socket.
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 PODMAN_SOCK="${SWM_CONTAINER_PODMAN_SOCK:-${XDG_RUNTIME_DIR}/podman/podman.sock}"
 X11_SOCKET=/tmp/.X11-unix
-CONTAINER_NAME=skyport-dev
+# Pod and container names must differ (podman rejects shared names).
+POD_NAME=skyport-dev-pod
+CORE_NAME=skyport-dev
+GATE_NAME=skyport-dev-gate
 NETWORK=skyportnet-dev
 DOMAIN=openworkload.org
+HOST_USER=${USER:-$(id -un)}
+GATE_DIR="${ROOT_DIR}/../swm-cloud-gate"
+SWM_CLOUD_GATE_CONFIG="${HOME}/.swm/cloud-gate.yaml"
 
 JUPUTER_HUB_API_PORT=8081
 JUPUTER_HUB_PORT=8000
 USER_API_PORT=8443
 CORE_API_PORT=10001
 JOB_METRICS_PORT=9568
+GATE_API_PORT=8444
 
 PODMAN_MOUNT_ARGS=()
 PODMAN_ENV_ARGS=()
@@ -59,65 +52,17 @@ else
     echo "WARN: host Podman socket not found at ${PODMAN_SOCK}; local container jobs will fail until it is available" >&2
 fi
 
-if podman network inspect "${NETWORK}" >/dev/null 2>&1; then
-    echo "Podman network '${NETWORK}' already exists"
-else
-    podman network create "${NETWORK}" >/dev/null
-    echo "Created podman network '${NETWORK}'"
-fi
+swm_pod_ensure_dev_stack || exit 1
 
-# podman inspect returns 125 (not 1) when the name is missing; use exists.
-if ! podman container exists "${CONTAINER_NAME}"; then
-    # Do not mount host /etc/shadow: under --userns=keep-id it is unreadable
-    # (nobody:nogroup) and breaks sudo account validation. Detached + sleep
-    # infinity so we can set up passwordless sudo before attaching a shell.
-    if ! podman image exists "${IMAGE_NAME}"; then
-        echo "ERROR: image ${IMAGE_NAME} not found. Build it with: make build-debug-container" >&2
-        exit 1
-    fi
-    # First create with --userns=keep-id makes an ID-mapped copy of image
-    # layers (~minutes for the multi-GB debug image). Do not interrupt it or
-    # Podman leaves incomplete layers that slow/break later commands.
-    echo "Creating ${CONTAINER_NAME} from ${IMAGE_NAME} (first start may take several minutes)..."
-    podman run\
-        -d\
-        -v ${HOME}:${HOME}\
-        -v /etc/passwd:/etc/passwd\
-        -v /etc/group:/etc/group\
-        -v /opt:/opt\
-        "${PODMAN_MOUNT_ARGS[@]}"\
-        -v ${X11_SOCKET}:${X11_SOCKET}\
-        -e DISPLAY=${DISPLAY}\
-        "${PODMAN_ENV_ARGS[@]}"\
-        --userns=keep-id\
-        --name ${CONTAINER_NAME}\
-        --hostname ${HOSTNAME}.${DOMAIN}\
-        --network-alias ${HOSTNAME}\
-        --network-alias ${HOSTNAME}.${DOMAIN}\
-        --add-host=host:host-gateway\
-        --workdir ${PWD}\
-        --network $NETWORK\
-        -p $CORE_API_PORT:$CORE_API_PORT\
-        -p $USER_API_PORT:$USER_API_PORT\
-        -p $JUPUTER_HUB_PORT:$JUPUTER_HUB_PORT\
-        -p $JUPUTER_HUB_API_PORT:$JUPUTER_HUB_API_PORT\
-        -p $JOB_METRICS_PORT:$JOB_METRICS_PORT\
-        --user ${USER}\
-        ${IMAGE_NAME}\
-        sleep infinity
-elif [ "$(podman inspect -f '{{.State.Running}}' "${CONTAINER_NAME}")" = "false" ]; then
-    podman start ${CONTAINER_NAME}
-fi
-
-# Passwordless sudo for interactive debug sessions.
-# Host /etc/shadow must not be bind-mounted (unreadable under keep-id).
-podman exec --user root "${CONTAINER_NAME}" bash -lc "
+# Passwordless sudo for interactive debug sessions (core container only).
+podman exec --user root "${CORE_NAME}" bash -lc "
 set -euo pipefail
-HOST_USER='${USER}'
+HOST_USER='${HOST_USER}'
 if ! head -1 /etc/shadow >/dev/null 2>&1; then
     echo 'ERROR: /etc/shadow is not readable inside the container.' >&2
     echo 'Host /etc/shadow must not be bind-mounted when using --userns=keep-id.' >&2
-    echo \"Recreate ${CONTAINER_NAME} (podman rm -f ${CONTAINER_NAME} && make cr).\" >&2
+    echo \"Recreate: podman rm -f ${CORE_NAME} ${GATE_NAME}; podman pod rm -f ${POD_NAME}; make cr\" >&2
+
     exit 1
 fi
 if [[ ! -f /etc/sudoers.d/nopasswd ]]; then
@@ -131,7 +76,6 @@ else
     sed -i -E \"s/^\${HOST_USER}:!+/\${HOST_USER}:*/\" /etc/shadow
 fi
 "
-podman exec --user "${USER}" "${CONTAINER_NAME}" sudo -n true
+podman exec --user "${HOST_USER}" "${CORE_NAME}" sudo -n true
 
-# --userns=keep-id: process already maps to host UID; do not use runuser.
-exec podman exec -ti --user ${USER} ${CONTAINER_NAME} /bin/bash
+exec podman exec -ti --user "${HOST_USER}" "${CORE_NAME}" /bin/bash

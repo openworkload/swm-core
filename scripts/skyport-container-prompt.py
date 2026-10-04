@@ -34,6 +34,7 @@ import argparse
 import os
 import pwd
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -108,6 +109,21 @@ def render_supervisor_gate_config(username: str) -> None:
     print(f"Supervisord configuration file rendered: {output_path}")
 
 
+def wait_for_gate_port(port: int = 8444, timeout_secs: int = 120) -> bool:
+    """Wait for cloud gate in the sibling pod container (shared network namespace)."""
+    print(f"Waiting for cloud gate on 127.0.0.1:{port} (sibling pod container)...")
+    deadline = time.time() + timeout_secs
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+                print(f"Cloud gate is listening on :{port}")
+                return True
+        except OSError:
+            time.sleep(1)
+    print(f"Timed out waiting for cloud gate on :{port}", file=sys.stderr)
+    return False
+
+
 def warm_up_cache(username: str, home: str) -> bool:
     cache_dir = "/opt/swm/spool/cache/"
     print(f"Try to warm the gate cache up: {cache_dir}")
@@ -115,11 +131,10 @@ def warm_up_cache(username: str, home: str) -> bool:
         print(f"Directory {cache_dir} is not empty (no cache update is required)")
         return True
 
-    process_supervisor = run_supervisord(username, pipe=False, gate_only=True)
-    if not process_supervisor:
-        print("Cannot start supervisor")
+    # Gate runs under supervisord in the sibling pod container (skyport-gate /
+    # skyport-dev-gate), not in this core container.
+    if not wait_for_gate_port():
         return False
-    time.sleep(5)
 
     if DEV_MODE:
         script = "../swm-cloud-gate/swmcloudgate/update-azure-caches.py"
@@ -128,11 +143,11 @@ def warm_up_cache(username: str, home: str) -> bool:
             "/usr/local/lib/python/site-packages/swmcloudgate/update-azure-caches.py"
         )
 
-    result: Dict[str, int] = {}
+    result: dict = {}
 
-    env = os.environ
+    env = os.environ.copy()
     env["SWM_CLOUD_GATE_CONFIG"] = f"{home}/.swm/cloud-gate.yaml"
-    env["SWM_SPOOL"] =  "/opt/swm/spool" if username == "root" else f"{home}/.swm/spool"
+    env["SWM_SPOOL"] = "/opt/swm/spool" if username == "root" else f"{home}/.swm/spool"
 
     def run_cache_update_scripts():
         print(f"Run gate cache update script as user {username}: {script}")
@@ -140,8 +155,10 @@ def warm_up_cache(username: str, home: str) -> bool:
             if username == "root":
                 process = subprocess.Popen(["python3", script], env=env)
             else:
-                process = subprocess.Popen(["sudo", "-u", username, "python3", script], env=env)
-            print(f"Gate cache update script process has been started")
+                process = subprocess.Popen(
+                    ["sudo", "-u", username, "python3", script], env=env
+                )
+            print("Gate cache update script process has been started")
             process.wait()
             result["exit_code"] = process.returncode
         except Exception as e:
@@ -158,7 +175,6 @@ def warm_up_cache(username: str, home: str) -> bool:
 
     script_thread.join()
 
-    process_supervisor.terminate()
     exit_code = result.get("exit_code", -1)
     print(f"\nGate cache update script exit code: {exit_code}")
     return exit_code == 0

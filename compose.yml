@@ -1,33 +1,8 @@
-# Control-plane add-ons (Prometheus). Requires an existing Podman network from
-# Phase 0 scripts (skyportnet-dev for make cr / skyport-dev).
+# Deprecated: Prometheus now runs inside the skyport-dev-pod (see
+# scripts/swm-pod-common.sh). Use:
+#   make cr              # ensures pod including swm-prometheus
+#   make prometheus-up   # start/ensure Prometheus in the pod
+#   make prometheus-down # stop Prometheus container only
 #
-# Usage:
-#   make cr                 # or otherwise start skyport-dev on skyportnet-dev
-#   make prometheus-up
-#   make prometheus-down
-
-services:
-  prometheus:
-    image: docker.io/prom/prometheus:v2.55.1
-    container_name: swm-prometheus
-    restart: unless-stopped
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=15d
-      - --web.enable-lifecycle
-    volumes:
-      - ./priv/container/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    ports:
-      - "9090:9090"
-    networks:
-      - skyportnet-dev
-
-networks:
-  skyportnet-dev:
-    external: true
-    name: skyportnet-dev
-
-volumes:
-  prometheus_data:
+# This file is kept as a pointer for older docs/scripts.
+services: {}

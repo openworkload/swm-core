@@ -9,7 +9,8 @@
 -include("../../lib/wm_log.hrl").
 
 -define(DEFAULT_METRICS_PORT, 9568).
--define(DEFAULT_PROMETHEUS_URL, "http://prometheus:9090").
+%% In skyport-dev-pod Prometheus shares the netns with SWM (localhost).
+-define(DEFAULT_PROMETHEUS_URL, "http://127.0.0.1:9090").
 -define(DEFAULT_QUERY_RANGE, "7d").
 -define(PROM_AWAIT_MS, 5000).
 -define(PROM_BODY_MS, 10000).

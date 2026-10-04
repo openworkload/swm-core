@@ -67,13 +67,19 @@ podman pull openworkload/skyport:latest
 make start-release-container
 ```
 
-This command starts Sky Port container with swm-core and cloud gate processes inside. If spool directory ($HOME/.swm/spool/) is missed or empty, then the container spawns the prompt script that asks a few questions. The script then bootstraps the spool directory with new certificates and swm-core configuration. After that the container stops. If spool already ready then the container just starts swm-core and the gate in background.
+This command starts a Podman **pod** `skyport-pod` with two containers:
+`skyport` (swm-core under supervisord) and `skyport-gate` (cloud gate under
+supervisord). If spool directory (`$HOME/.swm/spool/`) is missing or empty, the
+core container runs the prompt script that asks a few questions, bootstraps
+certificates and configuration, then stops. If spool is already ready, core
+starts swm-core and the gate container runs the gate.
 
-If the spool is created and the container is stopped then the user needs to ensure that Azure cloud provider is configured correctly, see [AZURE.md](https://github.com/openworkload/swm-cloud-gate/blob/master/HOWTO/AZURE.md). When the configuration is completed, then run skyport container again:
+If the spool is created and the core container is stopped then the user needs to ensure that Azure cloud provider is configured correctly, see [AZURE.md](https://github.com/openworkload/swm-cloud-gate/blob/master/HOWTO/AZURE.md). When the configuration is completed, then start the pod again:
 ```bash
-podman start skyport
+podman pod start skyport-pod
+# or: make start-release-container
 ```
-This command starts swm-core and gate in background if the spool is (still) ready.
+This starts swm-core and gate in background if the spool is (still) ready.
 
 If you prefer to build Sky Port container image from scratch, then [this instructions can be used](HOWTO/BUILD.md).
 

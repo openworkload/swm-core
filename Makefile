@@ -44,17 +44,17 @@ build-release-container:			##@CONTAINERS build release container image
 start-release-container:			##@CONTAINERS start release container
 			$(START_RELEASE_CONTAINER)
 
-shell-release-container:			##@CONTAINERS run shell in already running release container
+shell-release-container:			##@CONTAINERS run shell in already running release core container
 			podman exec -ti --user $$USER skyport /bin/bash
 
 cr: 		##@CONTAINERS run or attach to running container
 			$(START_DEBUG_CONTAINER)
 
-prometheus-up:		##@CONTAINERS Start Prometheus (podman compose) on skyportnet-dev
-			podman compose -f compose.yml up -d
+prometheus-up:		##@CONTAINERS Ensure Prometheus in skyport-dev-pod
+			scripts/prometheus-in-pod.sh up
 
-prometheus-down:	##@CONTAINERS Stop Prometheus compose stack
-			podman compose -f compose.yml down
+prometheus-down:	##@CONTAINERS Stop Prometheus container in skyport-dev-pod
+			scripts/prometheus-in-pod.sh down
 
 build-all:		##@CONTAINERS Full build (make && format && worker) in skyport-dev as $$USER
 			scripts/run-in-dev-container.sh --stop-swm 'make && make worker'
