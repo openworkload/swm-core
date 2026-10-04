@@ -31,7 +31,7 @@
 
 ME=$( readlink -f "$0" )
 ROOT_DIR=$( dirname "$( dirname "$ME" )" )
-DOCKERFILE=${ROOT_DIR}/priv/container/release/Dockerfile
+CONTAINERFILE=${ROOT_DIR}/priv/container/release/Containerfile
 
 SWM_VERSION=$(${ROOT_DIR}/scripts/version)
 if [ -z "$SWM_VERSION" ]; then
@@ -39,7 +39,7 @@ if [ -z "$SWM_VERSION" ]; then
     exit 1
 fi
 
-echo "Build container image: version=${SWM_VERSION}, dockerfile=${DOCKERFILE}"
+echo "Build container image: version=${SWM_VERSION}, containerfile=${CONTAINERFILE}"
 
 PODMAN=podman
 IMAGE_NAME=skyport
@@ -57,7 +57,7 @@ ${PODMAN} build --tag ${IMAGE_NAME}:${SWM_VERSION} \
                 --build-arg SWM_VERSION=${SWM_VERSION} \
                 --build-arg SWM_GATE_PACKAGE=$GATE_PACKAGE_PATH_NEW \
                 --build-arg CACHEBUST=$(date +%s) \
-                --file ${DOCKERFILE} .
+                --file ${CONTAINERFILE} .
 ${PODMAN} tag ${IMAGE_NAME}:${SWM_VERSION} ${IMAGE_NAME}:${TAG}
 
 echo "------------------------------------"

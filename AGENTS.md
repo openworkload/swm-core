@@ -40,7 +40,7 @@ make act ARGS='--job common_tests'
 
 To get Erlang environment for the project use `make cr` command to spawn an interactive session in the container, then inside the shell `cd` to this repository if needed.
 
-- Image: `swm-build:29.1` (see `priv/container/debug/Dockerfile` and `scripts/build-debug-container.sh`).
+- Image: `swm-build:29.1` (see `priv/container/debug/Containerfile` and `scripts/build-debug-container.sh`).
 - Container name: **`skyport-dev`** (Podman).
 - `make cr` runs `scripts/start-debug-container.sh`: attaches with  
   `podman exec -ti --user <host-user> skyport-dev /bin/bash`  

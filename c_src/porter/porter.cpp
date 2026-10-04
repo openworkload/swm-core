@@ -699,16 +699,18 @@ int main(int argc, char *const argv[]) {
         if (WIFSTOPPED(status)) {
           sig = WSTOPSIG(status);
         }
-        // Send final status first so a logging failure cannot leave the job stuck in R.
+        // Flush metrics before the final process status. SWM tears down the
+        // attach stream as soon as it sees Finished, which would drop a
+        // trailing porter_metrics frame.
+        if (!porter_metrics_flush(info.job, metrics_cfg, metrics_state, porter_metrics_now_ms())) {
+          swm_loge("Final job metrics flush failed");
+        }
         proc.set_state(SWM_JOB_STATE_FINISHED);
         proc.set_exitcode(exitcode);
         proc.set_signal(sig);
         if (send_process_info(proc)) {
           swm_loge("The final job process info has not been sent");
           return EXIT_FAILURE;
-        }
-        if (!porter_metrics_flush(info.job, metrics_cfg, metrics_state, porter_metrics_now_ms())) {
-          swm_loge("Final job metrics flush failed");
         }
         if (WIFEXITED(status)) {
           if (exitcode == 0) {

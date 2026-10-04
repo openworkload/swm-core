@@ -37,17 +37,17 @@ cd "${ROOT_DIR}"
 
 PODMAN="${PODMAN:-podman}"
 IMAGE_NAME="${SWM_DEBUG_IMAGE:-swm-build:29.1}"
-DOCKERFILE="${ROOT_DIR}/priv/container/debug/Dockerfile"
+CONTAINERFILE="${ROOT_DIR}/priv/container/debug/Containerfile"
 
-if [[ ! -f "${DOCKERFILE}" ]]; then
-    echo "ERROR: Dockerfile not found: ${DOCKERFILE}" >&2
+if [[ ! -f "${CONTAINERFILE}" ]]; then
+    echo "ERROR: Containerfile not found: ${CONTAINERFILE}" >&2
     exit 1
 fi
 
-echo "Building debug image ${IMAGE_NAME} from ${DOCKERFILE}"
+echo "Building debug image ${IMAGE_NAME} from ${CONTAINERFILE}"
 "${PODMAN}" build \
     --tag "${IMAGE_NAME}" \
-    --file "${DOCKERFILE}" \
+    --file "${CONTAINERFILE}" \
     "${ROOT_DIR}"
 
 # Short-name resolution may prefer docker.io/library/<name>; pin that too so
