@@ -113,7 +113,7 @@ jobs:
               SUDO=
           fi
           mkdir -p ~/.config/containers
-          # Nested-friendly defaults (act runs inside Docker); GHA bare metal still works.
+          # Nested-friendly defaults (local act under Podman/Docker); GHA bare metal still works.
           printf '%s\n' '[engine]' 'runtime = "crun"' 'cgroup_manager = "cgroupfs"' 'events_logger = "file"' \
               > ~/.config/containers/containers.conf
           printf '%s\n' '[storage]' 'driver = "vfs"' > ~/.config/containers/storage.conf

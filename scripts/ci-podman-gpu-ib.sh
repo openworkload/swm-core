@@ -36,11 +36,14 @@ command -v python3 >/dev/null || die "python3 not installed"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 mkdir -p "${XDG_RUNTIME_DIR}/podman" ~/.config/containers "${CDI_DIR}" "${FAKE_IB_DIR}"
 
-# Nested-friendly Podman (act / Docker). Disable cgroups: nested runners often
+# Nested-friendly Podman (act under Podman/Docker). Disable cgroups: nested runners often
 # lack delegated controllers (e.g. crun "pids is not available").
 NESTED=0
 CGROUP_ARGS=()
-if [[ "${PODMAN_NESTED:-}" == "1" ]] || [[ -f /.dockerenv ]] || grep -qE '/docker|/lxc' /proc/1/cgroup 2>/dev/null; then
+if [[ "${PODMAN_NESTED:-}" == "1" ]] \
+  || [[ -f /.dockerenv ]] \
+  || [[ -f /run/.containerenv ]] \
+  || grep -qE '/docker|/lxc|/libpod|/podman' /proc/1/cgroup 2>/dev/null; then
   NESTED=1
   CGROUP_ARGS=(--cgroups=disabled)
   log "nested runtime; cgroupfs + vfs + cgroups=disabled"

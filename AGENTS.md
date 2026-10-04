@@ -20,15 +20,21 @@ Prefer existing Makefile and rebar3 targets over ad hoc commands.
 
 ## Tests
 
-Local CI via [nektos/act](https://github.com/nektos/act) (installed in the debug
-container). Repo `.actrc` sets `--network bridge` so the job does not share the
-host port namespace with `skyport-dev`'s published `10001` mapping.
+Local CI via [nektos/act](https://github.com/nektos/act) against the host
+**Podman** Docker-compatible API (`make act` → `scripts/run-act.sh`). Requires
+`podman.socket` (or `podman system service`) so
+`$XDG_RUNTIME_DIR/podman/podman.sock` exists. Repo `.actrc` sets
+`--network bridge` so the job does not share the host port namespace with
+`skyport-dev`'s published `10001` mapping.
+
+* Run all CI jobs locally:
+make act
 
 * Run Erlang unit tests:
-act --job unit_tests
+make act ARGS='--job unit_tests'
 
 * Run Erlang common tests:
-act --job common_tests
+make act ARGS='--job common_tests'
 
 ## Dev container (`make cr`)
 

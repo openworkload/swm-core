@@ -45,7 +45,7 @@ start-release-container:			##@CONTAINERS start release container
 			$(START_RELEASE_CONTAINER)
 
 shell-release-container:			##@CONTAINERS run shell in already running release container
-			docker exec -ti skyport /bin/bash
+			podman exec -ti --user $$USER skyport /bin/bash
 
 cr: 		##@CONTAINERS run or attach to running container
 			$(START_DEBUG_CONTAINER)
@@ -118,8 +118,8 @@ test_ct:		##@TESTS Run common erlang tests
 test_podman_smoke:	##@TESTS Rootless Podman + crun libpod smoke (no Erlang)
 			./scripts/ci-podman-smoke.sh
 
-act:		##@TESTS Run all GitHub Actions CI jobs locally via act
-			act --concurrent-jobs 1
+act:		##@TESTS Run GitHub Actions CI locally via act+Podman (ARGS='--job unit_tests')
+			scripts/run-act.sh $(ARGS)
 
 ftest:		##@TESTS Run functional tests
 			scripts/swm.env

@@ -1,3 +1,5 @@
+# Local act uses Podman (DOCKER_HOST via scripts/run-act.sh / make act), not Docker Engine.
+#
 # act defaults to --network host, which shares the host port namespace with
 # skyport-dev's published 10001 mapping and makes Generate keys fail with
 # eaddrinuse / swm-ping "Connection error: closed". Use bridge isolation so

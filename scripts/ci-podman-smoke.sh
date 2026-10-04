@@ -32,9 +32,12 @@ log "crun=$(crun --version | head -1)"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 mkdir -p "${XDG_RUNTIME_DIR}/podman" ~/.config/containers 2>/dev/null || true
 
-# Nested Podman (Docker/act CI): cgroupfs + vfs avoids common start failures.
+# Nested Podman (act / container CI): cgroupfs + vfs avoids common start failures.
 NESTED=0
-if [[ "${PODMAN_NESTED:-}" == "1" ]] || [[ -f /.dockerenv ]] || grep -qE '/docker|/lxc' /proc/1/cgroup 2>/dev/null; then
+if [[ "${PODMAN_NESTED:-}" == "1" ]] \
+  || [[ -f /.dockerenv ]] \
+  || [[ -f /run/.containerenv ]] \
+  || grep -qE '/docker|/lxc|/libpod|/podman' /proc/1/cgroup 2>/dev/null; then
   NESTED=1
   log "nested runtime detected; using cgroupfs + vfs"
   cat > ~/.config/containers/containers.conf <<'EOF'
