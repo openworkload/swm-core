@@ -570,6 +570,11 @@ bool porter_metrics_flush(const SwmJob &job,
   if (cfg.sample_interval_ms <= 0 || cfg.report_interval_ms <= 0) {
     return true;
   }
+  // Take a final sample even if the sample interval has not elapsed yet.
+  if (state.window.start_ms == 0) {
+    state.window.reset(now_ms);
+  }
+  state.window.add(take_sample(cfg, state, now_ms));
   return flush_window(job, state, now_ms);
 }
 
