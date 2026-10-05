@@ -11,6 +11,7 @@
          compare_hashes/1, get_tables_meta/1, create_the_rest_tables/0, get_global/3, get_address/1, get_size/1]).
 -export([get_many_pred/2]).
 -export([with_transaction/1]).
+-export([migrate_schemas/0]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -251,6 +252,15 @@ get_tables_meta(Hs) ->
 -spec create_the_rest_tables() -> pos_integer().
 create_the_rest_tables() ->
     do_create_the_rest_tables().
+
+%% @doc Align existing Mnesia tables with the current record definitions.
+%% Local/non-replicable tables (e.g. job) are never upgraded via parent schema
+%% sync, so field additions like checkpoint* must be applied locally.
+-spec migrate_schemas() -> ok.
+migrate_schemas() ->
+    Tabs = [T || T <- wm_entity:get_names(all), table_exists(T)],
+    lists:foreach(fun migrate_table_schema/1, Tabs),
+    ok.
 
 -spec get_global(string(), atom(), term()) -> term().
 get_global(Name, Type, Default) ->
@@ -999,9 +1009,101 @@ do_create_the_rest_tables() ->
     lists:foreach(fun(T) -> ensure_table_exists(T, ExtraIndexes, shared) end, SharedTabs2),
     lists:foreach(fun(T) -> ensure_table_exists(T, ExtraIndexes, local) end, LocalTabs),
     lists:foreach(fun(T) -> ensure_table_exists(T, ExtraIndexes, local_bag) end, LocalBagTabs),
+    %% Existing tables are not covered by AbsentTabs; still migrate their schema.
+    migrate_schemas(),
     Num = length(AbsentTabs),
     ?LOG_DEBUG("The rest tables were created: ~p", [Num]),
     Num.
+
+-spec migrate_table_schema(atom()) -> ok | {error, term()}.
+migrate_table_schema(TabName) ->
+    NewFields = wm_entity:get_fields(TabName),
+    AttrFields =
+        try
+            mnesia:table_info(TabName, attributes)
+        catch
+            _:_ ->
+                []
+        end,
+    %% Compare field sets, not list order. Attribute list order in Mnesia can
+    %% differ from the compile-time record layout used by stored tuples.
+    SameFields = lists:sort(AttrFields) =:= lists:sort(NewFields),
+    case {SameFields, AttrFields} of
+        {true, _} ->
+            ok;
+        {false, []} ->
+            ?LOG_WARN("Skip schema migrate for ~p: no old attributes", [TabName]),
+            ok;
+        {false, _} ->
+            %% Physical tuple layout follows record definition order with the
+            %% missing fields omitted. Do not use AttrFields order for get_map
+            %% -- those names may be sorted and would corrupt keys.
+            PositionalOldFields = [F || F <- NewFields, lists:member(F, AttrFields)],
+            case length(PositionalOldFields) =:= length(AttrFields) of
+                false ->
+                    ?LOG_ERROR("Skip migrate ~p: cannot align attributes ~p with record fields ~p",
+                               [TabName, AttrFields, NewFields]),
+                    {error, {attribute_mismatch, TabName}};
+                true ->
+                    do_migrate_table_schema(TabName, PositionalOldFields, NewFields)
+            end
+    end.
+
+-spec do_migrate_table_schema(atom(), [atom()], [atom()]) -> ok | {error, term()}.
+do_migrate_table_schema(TabName, OldFields, NewFields) ->
+    ?LOG_INFO("Migrate table ~p schema fields (~p -> ~p)",
+              [TabName, length(OldFields), length(NewFields)]),
+    % #region agent log
+    file:write_file("/home/taras/projects/swm-core/.cursor/debug-566ba5.log",
+                    io_lib:format("{\"sessionId\":\"566ba5\",\"runId\":\"post-fix\",\"hypothesisId\":\"A\",\"location\":\"wm_db:do_migrate_table_schema\",\"message\":\"migrating table\",\"data\":{\"tab\":\"~s\",\"old_n\":~p,\"new_n\":~p,\"old\":~p,\"new\":~p},\"timestamp\":~p}\n",
+                                  [TabName,
+                                   length(OldFields),
+                                   length(NewFields),
+                                   OldFields,
+                                   NewFields,
+                                   erlang:system_time(millisecond)]),
+                    [append]),
+    % #endregion
+    DefaultRec = wm_entity:new(TabName),
+    Defaults = [{F, wm_entity:get(F, DefaultRec)} || F <- NewFields],
+    T =
+        fun(Old) ->
+           case tuple_size(Old) =:= length(OldFields) + 1 of
+               true ->
+                   OldMap = get_map(Old, OldFields, 2, maps:new()),
+                   merge_records(Old, DefaultRec, OldMap, NewFields, Defaults);
+               false ->
+                   ?LOG_ERROR("Skip bad ~p record size ~p (expected ~p): ~P",
+                              [TabName, tuple_size(Old), length(OldFields) + 1, Old, 8]),
+                   Old
+           end
+        end,
+    case mnesia:transform_table(TabName, T, NewFields, TabName) of
+        {atomic, ok} ->
+            ?LOG_INFO("Migrated table ~p to new schema", [TabName]),
+            % #region agent log
+            file:write_file("/home/taras/projects/swm-core/.cursor/debug-566ba5.log",
+                            io_lib:format("{\"sessionId\":\"566ba5\",\"runId\":\"post-fix\",\"hypothesisId\":\"A\",\"location\":\"wm_db:do_migrate_table_schema\",\"message\":\"migrate ok\",\"data\":{\"tab\":\"~s\"},\"timestamp\":~p}\n",
+                                          [TabName, erlang:system_time(millisecond)]),
+                            [append]),
+            % #endregion
+            ok;
+        {aborted, Reason} ->
+            ?LOG_ERROR("Failed to migrate table ~p: ~p", [TabName, Reason]),
+            % #region agent log
+            file:write_file("/home/taras/projects/swm-core/.cursor/debug-566ba5.log",
+                            io_lib:format("{\"sessionId\":\"566ba5\",\"runId\":\"post-fix\",\"hypothesisId\":\"A\",\"location\":\"wm_db:do_migrate_table_schema\",\"message\":\"migrate failed\",\"data\":{\"tab\":\"~s\",\"reason\":\"~s\"},\"timestamp\":~p}\n",
+                                          [TabName,
+                                           lists:flatten(
+                                               io_lib:format("~p", [Reason])),
+                                           erlang:system_time(millisecond)]),
+                            [append]),
+            % #endregion
+            {error, Reason};
+        Error ->
+            ?LOG_ERROR("Failed to migrate table ~p: ~p", [TabName, Error]),
+            {error, Error}
+    end.
 
 -spec do_get_one(atom(), atom(), term()) -> {ok, term()} | {error, term()}.
 do_get_one(Tab, Attr, Value) ->

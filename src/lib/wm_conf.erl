@@ -354,6 +354,9 @@ init(Args) ->
             ?LOG_DEBUG("Force-load / wait for Mnesia tables"),
             case lists:filter(fun(R) -> R =/= yes end, wm_db:force_load_tables()) of
                 [] ->
+                    %% Migrate local schemas (e.g. job checkpoint fields) that
+                    %% parent sync never upgrades because job is non-replicable.
+                    wm_db:migrate_schemas(),
                     schedule_sync_check(),
                     {ok, MState};
                 Errors ->
