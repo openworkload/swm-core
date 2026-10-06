@@ -2,9 +2,10 @@
 
 -export([get_remote/1, request_partition/2, request_partition_existence/2, is_job_partition_ready/1, update_job/3,
          update_job/2, upload_swm_worker/2, start_job_data_uploading/3, start_job_data_downloading/3,
-         delete_partition/4, spawn_partition/2, wait_for_partition_fetch/0, wait_for_wm_resources_readiness/0,
-         wait_for_wm_resources_readiness/1, wait_for_ssh_connection/1, wait_for_ssh_connection/2,
-         remove_relocation_entities/1, ensure_entities_created/3, try_upload_worker_later/0]).
+         validate_job_input_files/1, delete_partition/4, spawn_partition/2, wait_for_partition_fetch/0,
+         wait_for_wm_resources_readiness/0, wait_for_wm_resources_readiness/1, wait_for_ssh_connection/1,
+         wait_for_ssh_connection/2, remove_relocation_entities/1, ensure_entities_created/3,
+         try_upload_worker_later/0]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
@@ -157,6 +158,24 @@ start_job_data_uploading(PartMgrNodeID, JobId, SshUserDir) ->
     % TODO upload files to their own dirs, not in workdir, unless the full path is unset
     wm_file_transfer:upload(self(), ToAddr, Priority, Files, WorkDir, #{via => ssh, user_dir => SshUserDir}).
 
+%% Ensure every #SWM input-files / stdin path exists on SkyPort before upload
+%% (and before cloud resources are created when called from activate).
+-spec validate_job_input_files(job_id()) -> ok | {error, string()}.
+validate_job_input_files(JobId) ->
+    {ok, Job} = wm_conf:select(job, {id, JobId}),
+    StdInFile = wm_entity:get(job_stdin, Job),
+    InputFiles = wm_entity:get(input_files, Job),
+    Files = lists:filter(fun(X) -> X =/= [] end, [StdInFile | InputFiles]),
+    Missing = [F || F <- Files, not filelib:is_regular(F)],
+    case Missing of
+        [] ->
+            ok;
+        [First | _] ->
+            {error,
+             lists:flatten(
+                 io_lib:format("Input file not found: ~s", [First]))}
+    end.
+
 -spec start_job_data_downloading(node_id(), job_id(), string()) -> {ok, reference(), [string()]} | {error, string()}.
 start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
@@ -277,8 +296,31 @@ spawn_partition(Job, Remote) ->
 
 -spec ensure_entities_created(job_id(), #partition{}, #node{}) -> {atom(), string()}.
 ensure_entities_created(JobId, Partition, TplNode) ->
+    %% Preserve name->id across remove+recreate so remotes that already synced
+    %% the previous entities keep resolving job node IDs (PMIx spawn, etc.).
+    PreservedIds = preserve_relocation_node_ids(JobId),
     remove_relocation_entities(JobId),
-    create_relocation_entities(JobId, Partition, TplNode).
+    create_relocation_entities(JobId, Partition, TplNode, PreservedIds).
+
+%% @doc Capture existing cloud node IDs by name before they are deleted.
+-spec preserve_relocation_node_ids(job_id()) -> #{string() => node_id()}.
+preserve_relocation_node_ids(JobId) ->
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, Job} ->
+            lists:foldl(fun(Id, Acc) ->
+                           case wm_conf:select(node, {id, Id}) of
+                               {ok, Node} ->
+                                   maps:put(
+                                       wm_entity:get(name, Node), Id, Acc);
+                               _ ->
+                                   Acc
+                           end
+                        end,
+                        #{},
+                        wm_entity:get(nodes, Job));
+        _ ->
+            #{}
+    end.
 
 %% ============================================================================
 %% Implementation functions
@@ -351,8 +393,9 @@ get_default_flavor_name(Remote) ->
             end
     end.
 
--spec create_relocation_entities(job_id(), #partition{}, #node{}) -> {ok, node_id()} | {error, string()}.
-create_relocation_entities(JobId, Partition, TplNode) ->
+-spec create_relocation_entities(job_id(), #partition{}, #node{}, #{string() => node_id()}) ->
+                                    {ok, node_id()} | {error, string()}.
+create_relocation_entities(JobId, Partition, TplNode, PreservedIds) ->
     ?LOG_INFO("Create relocation entities for remote partition [job ~p]: ~10000p", [JobId, Partition]),
     Addresses = wm_entity:get(addresses, Partition),
     NodeIps = maps:get(compute_instances_ips, Addresses, []),
@@ -361,9 +404,9 @@ create_relocation_entities(JobId, Partition, TplNode) ->
     PartID = wm_entity:get(id, Partition),
     PartMgrName = wm_utils:get_partition_manager_name(JobId),
 
-    ExtraNodes = clone_extra_nodes(PartID, PartMgrName, NodeIps, JobId, TplNode),
+    ExtraNodes = clone_extra_nodes(PartID, PartMgrName, NodeIps, JobId, TplNode, PreservedIds),
     ExtraNodeIds = [wm_entity:get(id, X) || X <- ExtraNodes],
-    PartMgrNode = create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode),
+    PartMgrNode = create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode, PreservedIds),
     ok = update_division_entities(JobId, Partition, PartMgrNode, ExtraNodeIds),
     NewNodes = [PartMgrNode | ExtraNodes],
     wm_conf:update(NewNodes),
@@ -420,12 +463,14 @@ get_allocated_resources(PartID, NodeIds) ->
 get_job_pin_resource(JobId) ->
     wm_entity:set([{name, "job"}, {count, 1}, {properties, [{id, JobId}]}], wm_entity:new(resource)).
 
--spec create_partition_manager_node(partition_id(), job_id(), string(), string(), #node{}) -> #node{}.
-create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode) when TplNode =/= undefined ->
+-spec create_partition_manager_node(partition_id(), job_id(), string(), string(), #node{}, #{string() => node_id()}) ->
+                                       #node{}.
+create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode, PreservedIds)
+    when TplNode =/= undefined ->
     RemoteID = wm_entity:get(remote_id, TplNode),
     NodeName = wm_utils:get_partition_manager_name(JobId),
     ApiPort = get_cloud_node_api_port(),
-    NodeID = wm_utils:uuid(v4),
+    NodeID = maps:get(NodeName, PreservedIds, wm_utils:uuid(v4)),
     Resources = [get_job_pin_resource(JobId) | wm_entity:get(resources, TplNode)],
     wm_entity:set([{id, NodeID},
                    {name, NodeName},
@@ -441,18 +486,20 @@ create_partition_manager_node(PartID, JobId, PubPartMgrIp, PriPartMgrIp, TplNode
                    {comment, "Main cloud node for job " ++ JobId}],
                   wm_entity:new(node)).
 
--spec clone_extra_nodes(partition_id(), string(), [string()], job_id(), #node{}) -> list().
-clone_extra_nodes(_, _, [], _, _) ->
+-spec clone_extra_nodes(partition_id(), string(), [string()], job_id(), #node{}, #{string() => node_id()}) -> list().
+clone_extra_nodes(_, _, [], _, _, _) ->
     ?LOG_DEBUG("No extra nodes to clone (no IPs retrieved)"),
     [];
-clone_extra_nodes(PartID, ParentName, NodeIps, JobId, TplNode) when TplNode =/= undefined ->
+clone_extra_nodes(PartID, ParentName, NodeIps, JobId, TplNode, PreservedIds) when TplNode =/= undefined ->
     RemoteID = wm_entity:get(remote_id, TplNode),
     ApiPort = get_cloud_node_api_port(),
     Resources = [get_job_pin_resource(JobId) | wm_entity:get(resources, TplNode)],
     NewNode =
         fun({SeqNum, IP}) ->
-           wm_entity:set([{id, wm_utils:uuid(v4)},
-                          {name, wm_utils:get_cloud_node_name(JobId, SeqNum)},
+           NodeName = wm_utils:get_cloud_node_name(JobId, SeqNum),
+           NodeID = maps:get(NodeName, PreservedIds, wm_utils:uuid(v4)),
+           wm_entity:set([{id, NodeID},
+                          {name, NodeName},
                           {host, IP},
                           {api_port, ApiPort},
                           {roles, [get_role_id("compute")]},

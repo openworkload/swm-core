@@ -1051,8 +1051,7 @@ migrate_table_schema(TabName) ->
 
 -spec do_migrate_table_schema(atom(), [atom()], [atom()]) -> ok | {error, term()}.
 do_migrate_table_schema(TabName, OldFields, NewFields) ->
-    ?LOG_INFO("Migrate table ~p schema fields (~p -> ~p)",
-              [TabName, length(OldFields), length(NewFields)]),
+    ?LOG_INFO("Migrate table ~p schema fields (~p -> ~p)", [TabName, length(OldFields), length(NewFields)]),
     % #region agent log
     file:write_file("/home/taras/projects/swm-core/.cursor/debug-566ba5.log",
                     io_lib:format("{\"sessionId\":\"566ba5\",\"runId\":\"post-fix\",\"hypothesisId\":\"A\",\"location\":\"wm_db:do_migrate_table_schema\",\"message\":\"migrating table\",\"data\":{\"tab\":\"~s\",\"old_n\":~p,\"new_n\":~p,\"old\":~p,\"new\":~p},\"timestamp\":~p}\n",
@@ -1066,8 +1065,7 @@ do_migrate_table_schema(TabName, OldFields, NewFields) ->
     % #endregion
     DefaultRec = wm_entity:new(TabName),
     Defaults = [{F, wm_entity:get(F, DefaultRec)} || F <- NewFields],
-    T =
-        fun(Old) ->
+    T = fun(Old) ->
            case tuple_size(Old) =:= length(OldFields) + 1 of
                true ->
                    OldMap = get_map(Old, OldFields, 2, maps:new()),

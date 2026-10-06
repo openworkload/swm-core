@@ -85,8 +85,9 @@ echo "Using Open MPI at ${OPENMPI_PREFIX}${HPCX_ROOT:+ (HPC-X ${HPCX_ROOT})}"
 
 # Pass prefixes/libs into each rank (shell exports do not reach swm-task children).
 swm-task --pmix env \
-    "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" \
     "PATH=${PATH}" \
+    "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" \
     "OPAL_PREFIX=${OPAL_PREFIX}" \
     "OMPI_PREFIX=${OMPI_PREFIX}" \
+    "PMIX_MCA_gds=hash" \
     "${MPI_HELLO}"

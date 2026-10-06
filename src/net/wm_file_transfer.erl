@@ -461,18 +461,33 @@ handle_call({enqueue, CallbackModule, Node, Priority, Source, Destination, Opts}
     ?LOG_INFO("Requested by ~p transfer: ~p:~p of ~p", [CallbackModule, Node, Destination, Source]),
     Ref = wm_utils:uuid(v4),
     gen_server:reply(From, {ok, Ref}),
+    %% For upload, Source lives on SkyPort; for download, on the remote node.
+    %% Measuring upload size via remote SFTP yields false EPERM/ENOENT.
+    %% Local size must call wm_file_utils directly -- ?MODULE:file_size(?MODULE, ...)
+    %% would gen_server:call into this same process and deadlock.
     TotalBytes =
-        with_connection(Node,
-                        Opts,
-                        fun(DstServerRef) ->
-                           case ?MODULE:file_size(DstServerRef, Source) of
-                               {ok, Bytes} ->
-                                   Bytes;
-                               {error, File, Reason} ->
-                                   ?LOG_INFO("Can't obtain file size for ~p: ~p", [File, Reason]),
-                                   1
-                           end
-                        end),
+        case maps:get(operation, Opts) of
+            upload ->
+                case wm_file_utils:get_size(Source) of
+                    {ok, Bytes} ->
+                        Bytes;
+                    {error, File, Reason} ->
+                        ?LOG_INFO("Can't obtain local file size for ~p: ~p", [File, Reason]),
+                        1
+                end;
+            download ->
+                with_connection(Node,
+                                Opts,
+                                fun(DstServerRef) ->
+                                   case ?MODULE:file_size(DstServerRef, Source) of
+                                       {ok, Bytes} ->
+                                           Bytes;
+                                       {error, File, Reason} ->
+                                           ?LOG_INFO("Can't obtain file size for ~p: ~p", [File, Reason]),
+                                           1
+                                   end
+                                end)
+        end,
     %% Prepare function for the deferred execution and put into the priority queue
     Fun = fun() ->
              SrcServerRef = ?MODULE,

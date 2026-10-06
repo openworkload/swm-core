@@ -674,46 +674,54 @@ launch_ranks(#task{id = TaskId,
                             {MState, []},
                             NodeIds),
             Peers = lists:reverse(PeerAddrs),
-            MState2 =
-                MState1#mstate{fence_peers = maps:put(JobId, Peers, MState1#mstate.fence_peers),
-                               fence_expected = maps:put(JobId, max(1, N), MState1#mstate.fence_expected),
-                               tasks = maps:put(TaskId, Task, MState1#mstate.tasks)},
-            {MState3, _} =
-                lists:foldl(fun(NodeId, {MS, Rank}) ->
-                               PmixEnv =
-                                   case Pmix of
-                                       true ->
-                                           do_bootstrap_env(JobId, Rank, MS);
-                                       false ->
-                                           []
-                                   end,
-                               MS2 = case NodeId of
-                                         SelfId ->
-                                             do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, Job, MS);
-                                         _ ->
-                                             case wm_conf:select(node, {id, NodeId}) of
-                                                 {ok, Node} ->
-                                                     Addr = wm_conf:get_relative_address(Node, MyNode),
-                                                     ReplyTo = wm_conf:get_my_relative_address(Addr),
-                                                     wm_api:cast_self({pmix_start_rank,
-                                                                       JobId,
-                                                                       TaskId,
-                                                                       Rank,
-                                                                       Cmd,
-                                                                       PmixEnv,
-                                                                       Job,
-                                                                       ReplyTo},
-                                                                      [Addr]),
-                                                     MS;
+            case length(Peers) < N of
+                true ->
+                    ?LOG_ERROR("PMIx spawn for job ~p: resolved ~p/~p node addresses "
+                               "(missing node entities for job node IDs)",
+                               [JobId, length(Peers), N]),
+                    finish_task(TaskId, 1, "missing node entities", MState1);
+                false ->
+                    MState2 =
+                        MState1#mstate{fence_peers = maps:put(JobId, Peers, MState1#mstate.fence_peers),
+                                       fence_expected = maps:put(JobId, max(1, N), MState1#mstate.fence_expected),
+                                       tasks = maps:put(TaskId, Task, MState1#mstate.tasks)},
+                    {MState3, _} =
+                        lists:foldl(fun(NodeId, {MS, Rank}) ->
+                                       PmixEnv =
+                                           case Pmix of
+                                               true ->
+                                                   do_bootstrap_env(JobId, Rank, MS);
+                                               false ->
+                                                   []
+                                           end,
+                                       MS2 = case NodeId of
+                                                 SelfId ->
+                                                     do_start_rank_local(JobId, TaskId, Rank, Cmd, PmixEnv, Job, MS);
                                                  _ ->
-                                                     MS
-                                             end
-                                     end,
-                               {MS2, Rank + 1}
-                            end,
-                            {MState2, 0},
-                            NodeIds),
-            MState3
+                                                     case wm_conf:select(node, {id, NodeId}) of
+                                                         {ok, Node} ->
+                                                             Addr = wm_conf:get_relative_address(Node, MyNode),
+                                                             ReplyTo = wm_conf:get_my_relative_address(Addr),
+                                                             wm_api:cast_self({pmix_start_rank,
+                                                                               JobId,
+                                                                               TaskId,
+                                                                               Rank,
+                                                                               Cmd,
+                                                                               PmixEnv,
+                                                                               Job,
+                                                                               ReplyTo},
+                                                                              [Addr]),
+                                                             MS;
+                                                         _ ->
+                                                             MS
+                                                     end
+                                             end,
+                                       {MS2, Rank + 1}
+                                    end,
+                                    {MState2, 0},
+                                    NodeIds),
+                    MState3
+            end
     end.
 
 -spec do_bootstrap_env(string(), non_neg_integer(), #mstate{}) -> [{string(), string()}].

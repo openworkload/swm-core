@@ -93,6 +93,7 @@ init_test_group(Action, Config) ->
     meck:expect(wm_virtres_handler, wait_for_ssh_connection, 2, fun(_, _) -> erlang:make_ref() end),
     meck:expect(wm_virtres_handler, delete_partition, fun(_, _, _, _) -> {ok, WaitRef} end),
     meck:expect(wm_virtres_handler, start_job_data_uploading, fun(_, _, _) -> {ok, WaitRef} end),
+    meck:expect(wm_virtres_handler, validate_job_input_files, fun(_) -> ok end),
     meck:expect(wm_virtres_handler, update_job, fun(_, _, _) -> 1 end),
     meck:expect(wm_virtres_handler, update_job, fun(_, _) -> 1 end),
     meck:expect(wm_conf, select, SelectById),

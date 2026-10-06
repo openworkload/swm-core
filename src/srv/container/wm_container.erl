@@ -135,34 +135,11 @@ handle_call({communicate, Job, Owner, [attach_ws | Steps]}, _, #mstate{spool = S
 
 %% Mux stdout/stderr must be handled before step clauses: attach clients may
 %% still list return_sent/create_exec while Porter streams on the same socket.
+%% One mux chunk can hold several consecutive EI terms (e.g. porter_metrics
+%% immediately followed by the final process Finished status). Decode all of
+%% them -- binary_to_term/1 alone would drop everything after the first term.
 handle_cast({_, {stream, 1}, Data, _, ContID}, #mstate{} = MState) ->
-    try
-        Term = binary_to_term(Data),
-        ?LOG_DEBUG("STDOUT from ~p: ~w", [ContID, Term]),
-        try
-            case element(1, Term) of
-                process ->
-                    send_event_to_owner({process, Term}, ContID, MState);
-                porter_req ->
-                    handle_porter_req_term(Term, ContID, MState);
-                porter_metrics ->
-                    case Term of
-                        {porter_metrics, Map} when is_map(Map) ->
-                            send_event_to_owner({porter_metrics, Map}, ContID, MState);
-                        _ ->
-                            ?LOG_DEBUG("Bad porter_metrics from ~p: ~p", [ContID, Term])
-                    end;
-                _ ->
-                    ?LOG_DEBUG("Unhandled tuple from stdout: ~p", [Term])
-            end
-        catch
-            _:_ ->
-                ?LOG_DEBUG("Unhandled binary from stdout: ~p", [Data])
-        end
-    catch
-        E1:E2 ->
-            ?LOG_ERROR("Could not convert binary to term: ~p ~p", [E1, E2])
-    end,
+    handle_porter_stdout_chunk(Data, ContID, MState),
     {noreply, MState};
 handle_cast({porter_rep, ContID, Ref, Msg}, #mstate{containers = ContMap} = MState) ->
     case maps:get(ContID, ContMap, undefined) of
@@ -321,6 +298,53 @@ send_event_to_owner(Event, ContID, #mstate{} = MState) ->
     JobID = wm_entity:get(id, Job),
     %% Works for both gen_statem (wm_proc) and gen_server (wm_pmix).
     gen_statem:cast(Owner, {Event, JobID}).
+
+-spec handle_porter_stdout_chunk(binary(), string(), #mstate{}) -> ok.
+handle_porter_stdout_chunk(<<>>, _ContID, _MState) ->
+    ok;
+handle_porter_stdout_chunk(Data, ContID, MState) ->
+    try binary_to_term(Data, [used]) of
+        {Term, Used} when is_integer(Used), Used > 0 ->
+            handle_porter_stdout_term(Term, ContID, MState),
+            <<_:Used/binary, Rest/binary>> = Data,
+            handle_porter_stdout_chunk(Rest, ContID, MState);
+        {Term, _Used} ->
+            handle_porter_stdout_term(Term, ContID, MState)
+    catch
+        error:badarg ->
+            %% Incomplete trailing bytes in this mux chunk (rare); next chunk may continue.
+            ?LOG_DEBUG("Incomplete Porter stdout term for ~p (bytes=~p)", [ContID, byte_size(Data)]);
+        E1:E2 ->
+            ?LOG_ERROR("Could not convert binary to term: ~p ~p", [E1, E2])
+    end.
+
+-spec handle_porter_stdout_term(term(), string(), #mstate{}) -> ok.
+handle_porter_stdout_term(Term, ContID, MState) when is_tuple(Term), tuple_size(Term) >= 1 ->
+    ?LOG_DEBUG("STDOUT from ~p: ~w", [ContID, Term]),
+    try
+        case element(1, Term) of
+            process ->
+                send_event_to_owner({process, Term}, ContID, MState);
+            porter_req ->
+                handle_porter_req_term(Term, ContID, MState);
+            porter_metrics ->
+                case Term of
+                    {porter_metrics, Map} when is_map(Map) ->
+                        send_event_to_owner({porter_metrics, Map}, ContID, MState);
+                    _ ->
+                        ?LOG_DEBUG("Bad porter_metrics from ~p: ~p", [ContID, Term])
+                end;
+            _ ->
+                ?LOG_DEBUG("Unhandled tuple from stdout: ~p", [Term])
+        end
+    catch
+        _:_ ->
+            ?LOG_DEBUG("Unhandled term from stdout: ~p", [Term])
+    end,
+    ok;
+handle_porter_stdout_term(Other, ContID, _) ->
+    ?LOG_DEBUG("Unhandled non-tuple from stdout ~p: ~p", [ContID, Other]),
+    ok.
 
 -spec handle_porter_req_term(tuple(), string(), #mstate{}) -> ok.
 handle_porter_req_term({porter_req, Ref, Method, Args0}, ContID, #mstate{containers = ContMap})

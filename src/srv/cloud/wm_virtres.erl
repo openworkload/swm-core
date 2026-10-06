@@ -109,9 +109,19 @@ sleeping(cast,
             wm_virtres_handler:update_job([{state_details, "Local job, no remote partition"}], JobId, ErrMsg),
             {next_state, running, MState#mstate{upload_ref = finished}};
         false ->
-            wm_virtres_handler:update_job([{state_details, "Preparing to start"}], JobId, ErrMsg),
-            {ok, WaitRef} = wm_virtres_handler:request_partition_existence(JobId, Remote),
-            {next_state, validating, MState#mstate{wait_ref = WaitRef}}
+            case wm_virtres_handler:validate_job_input_files(JobId) of
+                ok ->
+                    wm_virtres_handler:update_job([{state_details, "Preparing to start"}], JobId, ErrMsg),
+                    {ok, WaitRef} = wm_virtres_handler:request_partition_existence(JobId, Remote),
+                    {next_state, validating, MState#mstate{wait_ref = WaitRef}};
+                {error, ErrorMsg} ->
+                    ?LOG_ERROR("Input files missing for job ~p: ~s", [JobId, ErrorMsg]),
+                    wm_virtres_handler:update_job([{state, ?JOB_STATE_ERROR},
+                                                   {state_details, ErrorMsg},
+                                                   {comment, ErrorMsg}],
+                                                  JobId),
+                    {stop, normal, MState#mstate{err_msg = ErrorMsg}}
+            end
     end;
 sleeping(info, Msg, MState) ->
     handle_info(Msg, ?FUNCTION_NAME, MState);
@@ -340,13 +350,17 @@ uploading(cast, {Ref, ok}, #mstate{upload_ref = Ref, job_id = JobId} = MState) -
     wm_scheduler:force_schedule(),
     {next_state, running, MState#mstate{upload_ref = finished}};
 uploading(cast, {Ref, {error, Node, Reason}}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
-    ?LOG_DEBUG("Uploading to ~p has failed: ~s", [Node, Reason]),
-    wm_virtres_handler:update_job([{state_details, "Data uploading failed"}], JobId),
-    handle_remote_failure(MState);
+    ?LOG_ERROR("Uploading to ~p has failed: ~s", [Node, Reason]),
+    ErrorMsg =
+        lists:flatten(
+            io_lib:format("Data uploading failed (~s): ~s", [Node, Reason])),
+    fail_job_and_destroy(JobId, ErrorMsg, MState);
 uploading(cast, {Ref, 'EXIT', Reason}, #mstate{upload_ref = Ref, job_id = JobId} = MState) ->
-    ?LOG_DEBUG("Uploading has unexpectedly exited: ~p", [Reason]),
-    wm_virtres_handler:update_job([{state_details, "Uploading has unexpectedly exited"}], JobId),
-    handle_remote_failure(MState);
+    ?LOG_ERROR("Uploading has unexpectedly exited: ~p", [Reason]),
+    ErrorMsg =
+        lists:flatten(
+            io_lib:format("Uploading has unexpectedly exited: ~p", [Reason])),
+    fail_job_and_destroy(JobId, ErrorMsg, MState);
 uploading(info, Msg, MState) ->
     handle_info(Msg, ?FUNCTION_NAME, MState);
 uploading(cast, Msg, MState) ->
@@ -376,9 +390,10 @@ downloading(cast, {Ref, {error, File, Reason}}, #mstate{download_ref = Ref, job_
     stop_port_forwarding(MState),
     finish_or_destroy_resources(JobId, MState);
 downloading(cast, {Ref, 'EXIT', Reason}, #mstate{download_ref = Ref, job_id = JobId} = MState) ->
-    ?LOG_DEBUG("Downloading has unexpectedly exited: ~p", [Reason]),
+    ?LOG_WARN("Downloading has unexpectedly exited: ~p", [Reason]),
     wm_virtres_handler:update_job([{state_details, "Data downloading has unexpectedly exited"}], JobId),
-    handle_remote_failure(MState);
+    stop_port_forwarding(MState),
+    finish_or_destroy_resources(JobId, MState);
 downloading(info, Msg, MState) ->
     handle_info(Msg, ?FUNCTION_NAME, MState);
 downloading(cast, {Ref, Status}, MState) ->
@@ -476,13 +491,26 @@ truncate_error(Str) ->
             Str
     end.
 
--spec handle_remote_failure(#mstate{}) -> {atom(), atom(), #mstate{}}.
-handle_remote_failure(#mstate{job_id = JobId, task_id = TaskId} = MState) ->
-    ?LOG_INFO("Force state ~p for job ~p [~p]", [?JOB_STATE_QUEUED, JobId, TaskId]),
-    wm_virtres_handler:update_job([{state, ?JOB_STATE_QUEUED}, {state_details, "Job failed and requeued"}], JobId),
-    wm_scheduler:force_schedule(),
-    %TODO Try to delete resource several, but limited number of times
-    {stop, normal, MState}.
+%% Upload / transfer failure: mark job Error and destroy remote resources.
+%% Do not requeue -- that would start the job without input files and would
+%% stop virtres so job_finished never triggers stdout/stderr download.
+-spec fail_job_and_destroy(job_id(), string(), #mstate{}) -> {atom(), atom(), #mstate{}}.
+fail_job_and_destroy(JobId, ErrorMsg, #mstate{task_id = TaskId} = MState) ->
+    ?LOG_ERROR("Fail job ~p after transfer error [task ~p]: ~s", [JobId, TaskId, ErrorMsg]),
+    wm_virtres_handler:update_job([{state, ?JOB_STATE_ERROR}, {state_details, ErrorMsg}, {comment, ErrorMsg}], JobId),
+    case wm_conf:select(relocation, {job_id, JobId}) of
+        {ok, Relocation} ->
+            wm_conf:delete(Relocation);
+        _ ->
+            ok
+    end,
+    gen_statem:cast(self(), start_destroying),
+    {next_state,
+     destroying,
+     MState#mstate{download_ref = finished,
+                   upload_ref = finished,
+                   wait_ref = undefined,
+                   err_msg = ErrorMsg}}.
 
 %% After download: destroy cloud partition unless the job asked to keep resources.
 -spec finish_or_destroy_resources(job_id(), #mstate{}) -> {atom(), atom(), #mstate{}} | {stop, normal, #mstate{}}.
@@ -774,11 +802,20 @@ handle_info(part_check,
             {next_state, StateName, MState#mstate{readiness_timer = Timer}};
         true ->
             ?LOG_DEBUG("All nodes are UP (job ~p) => upload data", [JobId]),
-            wm_virtres_handler:update_job([{state, ?JOB_STATE_TRANSFERRING}, {state_details, "Uploading data"}], JobId),
-            {ok, Ref} =
-                wm_virtres_handler:start_job_data_uploading(MState#mstate.part_mgr_id, JobId, get_ssh_swm_dir(Spool)),
-            ?LOG_INFO("Uploading has started [~p]", [Ref]),
-            {next_state, uploading, MState#mstate{upload_ref = Ref}}
+            case wm_virtres_handler:validate_job_input_files(JobId) of
+                ok ->
+                    wm_virtres_handler:update_job([{state, ?JOB_STATE_TRANSFERRING}, {state_details, "Uploading data"}],
+                                                  JobId),
+                    {ok, Ref} =
+                        wm_virtres_handler:start_job_data_uploading(MState#mstate.part_mgr_id,
+                                                                    JobId,
+                                                                    get_ssh_swm_dir(Spool)),
+                    ?LOG_INFO("Uploading has started [~p]", [Ref]),
+                    {next_state, uploading, MState#mstate{upload_ref = Ref}};
+                {error, ErrorMsg} ->
+                    ?LOG_ERROR("Input files missing before upload for job ~p: ~s", [JobId, ErrorMsg]),
+                    fail_job_and_destroy(JobId, ErrorMsg, MState)
+            end
     end;
 handle_info(part_fetch,
             StateName,
