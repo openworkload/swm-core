@@ -1,11 +1,12 @@
 -module(wm_tunnel_SUITE).
 
 -export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1]).
--export([one_server_two_clients/1]).
+-export([one_server_two_clients/1, password_auth_rejected/1, foreign_key_rejected/1]).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
--define(KEYS_DIR, "/opt/swm/spool/secure/host").
+-define(SPOOL, "/opt/swm/spool").
 
 %% ============================================================================
 %% Common test callbacks
@@ -21,16 +22,35 @@ all() ->
 
 -spec groups() -> list().
 groups() ->
-    [{common, [], [one_server_two_clients]}].
+    [{common, [], [one_server_two_clients, password_auth_rejected, foreign_key_rejected]}].
 
 -spec init_per_suite(list()) -> list().
 init_per_suite(Config) ->
     ResultSsh = application:start(ssh),
     ct:print("Application ssh has been started: ~p", [ResultSsh]),
+    %% Use ephemeral ports so CT does not collide with a running skyport.
+    meck:new(wm_conf, [no_link]),
+    meck:expect(wm_conf,
+                g,
+                fun(Name, {Default, Type}) ->
+                   case {Name, Type} of
+                       {ssh_daemon_listen_port, integer} ->
+                           0;
+                       {"ssh_daemon_listen_port", integer} ->
+                           0;
+                       {ssh_daemon_listen_ip, string} ->
+                           "127.0.0.1";
+                       {"ssh_daemon_listen_ip", string} ->
+                           "127.0.0.1";
+                       _ ->
+                           Default
+                   end
+                end),
     Config.
 
 -spec end_per_suite(list()) -> list().
 end_per_suite(Config) ->
+    meck:unload(wm_conf),
     ok = application:stop(ssh),
     Config.
 
@@ -40,14 +60,13 @@ end_per_suite(Config) ->
 
 -spec one_server_two_clients(list()) -> atom().
 one_server_two_clients(_Config) ->
-    Args = [{spool, "/opt/swm/spool"}],
-    CertsDir = "/opt/swm/spool/secure/host",
-
+    Args = [{spool, ?SPOOL}],
     {ok, ServerModulePid} = wm_ssh_server:start_link(Args),
     {ok, ClientModulePid} = wm_ssh_client:start_link(),
 
     {ok, RemoteHost, RemotePort} = wm_ssh_server:get_address(),
-    ok = wm_ssh_client:connect(ClientModulePid, RemoteHost, RemotePort, "swm", "swm", CertsDir),
+    ?assertEqual({127, 0, 0, 1}, RemoteHost),
+    ok = wm_ssh_client:connect(ClientModulePid, RemoteHost, RemotePort, "swm", ?SPOOL),
 
     {JobSock1, LocalHost1, JobPort1} = tunnel_local_listner(),
 
@@ -63,6 +82,47 @@ one_server_two_clients(_Config) ->
 
     gen_server:stop(ClientModulePid),
     gen_server:stop(ServerModulePid).
+
+-spec password_auth_rejected(list()) -> ok.
+password_auth_rejected(_Config) ->
+    Args = [{spool, ?SPOOL}],
+    {ok, ServerModulePid} = wm_ssh_server:start_link(Args),
+    {ok, RemoteHost, RemotePort} = wm_ssh_server:get_address(),
+    Opts =
+        [{user, "swm"},
+         {password, "swm"},
+         {auth_methods, "password"},
+         {silently_accept_hosts, true},
+         {user_interaction, false}],
+    ?assertMatch({error, _}, ssh:connect(RemoteHost, RemotePort, Opts, 5000)),
+    gen_server:stop(ServerModulePid),
+    ok.
+
+-spec foreign_key_rejected(list()) -> ok.
+foreign_key_rejected(Config) ->
+    Args = [{spool, ?SPOOL}],
+    {ok, ServerModulePid} = wm_ssh_server:start_link(Args),
+    {ok, RemoteHost, RemotePort} = wm_ssh_server:get_address(),
+    TmpDir =
+        filename:join(
+            proplists:get_value(priv_dir, Config), "bad_ssh_keys"),
+    ok =
+        filelib:ensure_dir(
+            filename:join(TmpDir, "x")),
+    KeyFile = filename:join(TmpDir, "id_ed25519"),
+    Cmd = lists:flatten(
+              io_lib:format("ssh-keygen -t ed25519 -N '' -f ~s -q", [KeyFile])),
+    "" = os:cmd(Cmd),
+    true = filelib:is_regular(KeyFile),
+    Opts =
+        [{user, "swm"},
+         {auth_methods, "publickey"},
+         {user_dir, TmpDir},
+         {silently_accept_hosts, true},
+         {user_interaction, false}],
+    ?assertMatch({error, _}, ssh:connect(RemoteHost, RemotePort, Opts, 5000)),
+    gen_server:stop(ServerModulePid),
+    ok.
 
 %% ============================================================================
 %% Helpers

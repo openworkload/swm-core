@@ -635,13 +635,25 @@ start_proxies(JobId, ForwardedPortTuples) ->
                         ForwardedPortTuples)
     end.
 
--spec try_ssh_connection(pos_integer(), pid(), job_id(), atom(), node_id(), string(), string(), string()) ->
-                            ok | not_ready.
-try_ssh_connection(ConnectToPort, SshClientPid, JobId, StateName, PartMgrNodeId, HostCertsDir, Username, Password) ->
-    ?LOG_DEBUG("SSH readiness check (job ~p, virtres state: ~p, port=~p)", [JobId, StateName, ConnectToPort]),
+-spec try_prov_ssh_connection(pos_integer(), pid(), job_id(), atom(), node_id()) -> ok | not_ready.
+try_prov_ssh_connection(ConnectToPort, SshClientPid, JobId, StateName, PartMgrNodeId) ->
+    ?LOG_DEBUG("SSH provisioning readiness check (job ~p, virtres state: ~p, port=~p)",
+               [JobId, StateName, ConnectToPort]),
     {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
     ConnectToHost = wm_entity:get(gateway, PartMgrNode),
-    case wm_ssh_client:connect(SshClientPid, ConnectToHost, ConnectToPort, Username, Password, HostCertsDir) of
+    case wm_ssh_client:connect(SshClientPid, ConnectToHost, ConnectToPort, "root", "", get_ssh_user_dir()) of
+        ok ->
+            ok;
+        {error, _} ->
+            not_ready
+    end.
+
+-spec try_swm_ssh_connection(pos_integer(), pid(), job_id(), atom(), node_id(), string()) -> ok | not_ready.
+try_swm_ssh_connection(ConnectToPort, SshClientPid, JobId, StateName, PartMgrNodeId, Spool) ->
+    ?LOG_DEBUG("SSH SWM readiness check (job ~p, virtres state: ~p, port=~p)", [JobId, StateName, ConnectToPort]),
+    {ok, PartMgrNode} = wm_conf:select(node, {id, PartMgrNodeId}),
+    ConnectToHost = wm_entity:get(gateway, PartMgrNode),
+    case wm_ssh_client:connect(SshClientPid, ConnectToHost, ConnectToPort, "swm", Spool) of
         ok ->
             ok;
         {error, _} ->
@@ -652,10 +664,6 @@ try_ssh_connection(ConnectToPort, SshClientPid, JobId, StateName, PartMgrNodeId,
 get_ssh_user_dir() ->
     HomeDir = os:getenv("HOME"),
     filename:join(HomeDir, ".ssh").
-
--spec get_ssh_swm_dir(string()) -> string().
-get_ssh_swm_dir(Spool) ->
-    filename:join([Spool, "secure/host"]).
 
 -spec handle_event(term(), term(), #mstate{}) -> {atom(), atom(), #mstate{}} | {stop, normal, #mstate{}}.
 handle_event(job_canceled, _, #mstate{job_id = JobId, task_id = TaskId} = MState) ->
@@ -679,7 +687,7 @@ handle_event(job_finished,
                      spool = Spool} =
                  MState) ->
     ?LOG_DEBUG("Job has finished => start data downloading: ~p", [JobId]),
-    case wm_virtres_handler:start_job_data_downloading(PartMgrNodeId, JobId, get_ssh_swm_dir(Spool)) of
+    case wm_virtres_handler:start_job_data_downloading(PartMgrNodeId, JobId, Spool) of
         {ok, Ref, Files} ->
             ?LOG_INFO("Downloading has been started [jobid=~p, ref=~10000p]: ~p", [JobId, Ref, Files]),
             wm_virtres_handler:update_job([{state_details, "Job finished, results downloading started"}], JobId),
@@ -730,17 +738,7 @@ handle_info(ssh_check_prov_port,
                         part_mgr_id = PartMgrNodeId}) ->
     cancel_timer_ignore_error(OldTRef),
     ConnectToPort = wm_conf:g(ssh_prov_listen_port, {?DEFAULT_SSH_PROVISION_PORT, integer}),
-    Username = "root",
-    Password = "",
-    case try_ssh_connection(ConnectToPort,
-                            SshProvClientPid,
-                            JobId,
-                            StateName,
-                            PartMgrNodeId,
-                            get_ssh_user_dir(),
-                            Username,
-                            Password)
-    of
+    case try_prov_ssh_connection(ConnectToPort, SshProvClientPid, JobId, StateName, PartMgrNodeId) of
         ok ->
             wm_ssh_client:disconnect(SshProvClientPid),  % we just ensure sshd is ready
             gen_statem:cast(self(), ssh_prov_connected),
@@ -766,17 +764,7 @@ handle_info(ssh_check_swm_port,
                         part_mgr_id = PartMgrNodeId}) ->
     cancel_timer_ignore_error(OldTRef),
     ConnectToPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
-    Username = "swm",
-    Password = "swm",
-    case try_ssh_connection(ConnectToPort,
-                            SshTunnelClientPid,
-                            JobId,
-                            StateName,
-                            PartMgrNodeId,
-                            get_ssh_swm_dir(Spool),
-                            Username,
-                            Password)
-    of
+    case try_swm_ssh_connection(ConnectToPort, SshTunnelClientPid, JobId, StateName, PartMgrNodeId, Spool) of
         ok ->
             gen_statem:cast(self(), ssh_swm_connected),
             {next_state, creating, MState};
@@ -806,10 +794,7 @@ handle_info(part_check,
                 ok ->
                     wm_virtres_handler:update_job([{state, ?JOB_STATE_TRANSFERRING}, {state_details, "Uploading data"}],
                                                   JobId),
-                    {ok, Ref} =
-                        wm_virtres_handler:start_job_data_uploading(MState#mstate.part_mgr_id,
-                                                                    JobId,
-                                                                    get_ssh_swm_dir(Spool)),
+                    {ok, Ref} = wm_virtres_handler:start_job_data_uploading(MState#mstate.part_mgr_id, JobId, Spool),
                     ?LOG_INFO("Uploading has started [~p]", [Ref]),
                     {next_state, uploading, MState#mstate{upload_ref = Ref}};
                 {error, ErrorMsg} ->

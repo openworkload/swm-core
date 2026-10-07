@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, connect/6, disconnect/1, make_tunnel/5]).
+-export([start_link/0, connect/5, connect/6, disconnect/1, make_tunnel/5]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("../lib/wm_log.hrl").
@@ -20,10 +20,18 @@
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
 
--spec connect(pid(), inet:ip_address(), inet:port_number(), string(), string(), string()) -> ok | {error, term()}.
-connect(ProcessPid, Host, Port, Username, Password, HostCertsDir) ->
+%% @doc Connect to a SWM SSH daemon with CA-backed publickey auth.
+-spec connect(pid(), inet:ip_address() | string(), inet:port_number(), string(), string()) -> ok | {error, term()}.
+connect(ProcessPid, Host, Port, Username, Spool) ->
     Timeout = wm_conf:g(conn_timeout, {?DEFAULT_SSH_CONN_TIMEOUT, integer}),
-    gen_server:call(ProcessPid, {connect, Host, Port, Username, Password, HostCertsDir}, Timeout).
+    gen_server:call(ProcessPid, {connect_pubkey, Host, Port, Username, Spool}, Timeout).
+
+%% @doc Connect with password auth (OpenSSH provisioning only).
+-spec connect(pid(), inet:ip_address() | string(), inet:port_number(), string(), string(), string()) ->
+                 ok | {error, term()}.
+connect(ProcessPid, Host, Port, Username, Password, UserDir) ->
+    Timeout = wm_conf:g(conn_timeout, {?DEFAULT_SSH_CONN_TIMEOUT, integer}),
+    gen_server:call(ProcessPid, {connect_password, Host, Port, Username, Password, UserDir}, Timeout).
 
 -spec disconnect(pid()) -> ok | {error, term()}.
 disconnect(ProcessPid) ->
@@ -61,8 +69,11 @@ init(Args) ->
     ?LOG_INFO("SSH client has been started"),
     {ok, MState}.
 
-handle_call({connect, Host, Port, Username, Password, HostCertsDir}, _From, #mstate{} = MState) ->
-    {Result, MState2} = do_connect(Host, Port, Username, Password, HostCertsDir, MState),
+handle_call({connect_pubkey, Host, Port, Username, Spool}, _From, #mstate{} = MState) ->
+    {Result, MState2} = do_connect_pubkey(Host, Port, Username, Spool, MState),
+    {reply, Result, MState2};
+handle_call({connect_password, Host, Port, Username, Password, UserDir}, _From, #mstate{} = MState) ->
+    {Result, MState2} = do_connect_password(Host, Port, Username, Password, UserDir, MState),
     {reply, Result, MState2};
 handle_call(disconnect, _From, #mstate{connection = Connection} = MState) ->
     {reply, ssh:close(Connection), MState};
@@ -95,24 +106,45 @@ parse_args([], MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
--spec do_connect(any | string() | inet:ip_address(), inet:port_number(), string(), string(), string(), #mstate{}) ->
-                    {term(), #mstate{}}.
-do_connect(any, Port, Username, Password, HostCertsDir, #mstate{} = MState) ->
-    do_connect(wm_utils:get_my_hostname(), Port, Username, Password, HostCertsDir, MState);
-do_connect(Host, Port, Username, Password, HostCertsDir, #mstate{} = MState) ->
+-spec do_connect_pubkey(any | string() | inet:ip_address(), inet:port_number(), string(), string(), #mstate{}) ->
+                           {term(), #mstate{}}.
+do_connect_pubkey(any, Port, Username, Spool, #mstate{} = MState) ->
+    do_connect_pubkey(wm_utils:get_my_hostname(), Port, Username, Spool, MState);
+do_connect_pubkey(Host, Port, Username, Spool, #mstate{} = MState) ->
+    Options = wm_ssh_key_cb:client_options(Spool, Username),
+    Timeout = wm_conf:g(conn_timeout, {?DEFAULT_SSH_CONN_TIMEOUT, integer}),
+    case ssh:connect(Host, Port, Options, Timeout) of
+        {ok, Connection} ->
+            ?LOG_DEBUG("SSH client connection to ~p:~p returned connection reference: ~p", [Host, Port, Connection]),
+            {ok, MState#mstate{connection = Connection}};
+        {error, Error} ->
+            ?LOG_DEBUG("SSH client connection to ~p:~p failed: ~p", [Host, Port, Error]),
+            {{error, Error}, MState}
+    end.
+
+-spec do_connect_password(any | string() | inet:ip_address(),
+                          inet:port_number(),
+                          string(),
+                          string(),
+                          string(),
+                          #mstate{}) ->
+                             {term(), #mstate{}}.
+do_connect_password(any, Port, Username, Password, UserDir, #mstate{} = MState) ->
+    do_connect_password(wm_utils:get_my_hostname(), Port, Username, Password, UserDir, MState);
+do_connect_password(Host, Port, Username, Password, UserDir, #mstate{} = MState) ->
     Options =
         [{silently_accept_hosts, true},
-         {user_dir, HostCertsDir},
+         {user_dir, UserDir},
          {user, Username},
          {password, Password},
          {user_interaction, false}],
     Timeout = wm_conf:g(conn_timeout, {?DEFAULT_SSH_CONN_TIMEOUT, integer}),
     case ssh:connect(Host, Port, Options, Timeout) of
         {ok, Connection} ->
-            ?LOG_DEBUG("SSH client connection to  ~p:~p returned connection reference: ~p", [Host, Port, Connection]),
+            ?LOG_DEBUG("SSH client connection to ~p:~p returned connection reference: ~p", [Host, Port, Connection]),
             {ok, MState#mstate{connection = Connection}};
         {error, Error} ->
-            ?LOG_DEBUG("SSH client connection to  ~p:~p failed: ~p", [Host, Port, Error]),
+            ?LOG_DEBUG("SSH client connection to ~p:~p failed: ~p", [Host, Port, Error]),
             {{error, Error}, MState}
     end.
 

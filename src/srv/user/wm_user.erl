@@ -126,9 +126,9 @@ handle_request({output, OutputType}, JobId, #mstate{spool = Spool})
     ?LOG_ACCESS("Job ~p has been requested: ~p", [OutputType, JobId]),
     case wm_conf:select(job, {id, JobId}) of
         {ok, Job} ->
-            FileName = wm_entity:get(OutputType, Job),
-            Dir = filename:join([Spool, ?REMOTE_USER_DIR_NAME, JobId]),
-            FullPath = filename:join(Dir, FileName),
+            FullPath = job_log_path(Job, Spool, JobId, OutputType),
+            Dir = filename:dirname(FullPath),
+            FileName = filename:basename(FullPath),
             Stream =
                 case OutputType of
                     job_stdout ->
@@ -144,8 +144,7 @@ handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
     ?LOG_ACCESS("Job ~p has been requested: ~p", [OutputType, JobId]),
     case wm_conf:select(job, {id, JobId}) of
         {ok, Job} ->
-            FileName = wm_entity:get(OutputType, Job),
-            FullPath = filename:join([Spool, ?REMOTE_USER_DIR_NAME, JobId, FileName]),
+            FullPath = job_log_path(Job, Spool, JobId, OutputType),
             wm_utils:read_file(FullPath, [binary]);
         _ ->
             {error, "job not found"}
@@ -172,8 +171,6 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
                                {script_content, JobScriptContent},
                                {user_id, wm_entity:get(id, User)},
                                {id, JobId},
-                               {job_stdout, "stdout.log"},
-                               {job_stderr, "stderr.log"},
                                {submit_time, wm_utils:now_iso8601(without_ms)},
                                {duration, 3600}],
                               Job2),
@@ -407,20 +404,21 @@ delete_job_timetable(JobId) ->
 
 %% Compose job-script stdout.log/stderr.log with per-task *-taskN.log files so
 %% clients (swm-console) can show each task stream separately.
+%% An existing empty base log (common for stderr) is success with empty body.
 -spec read_output_with_tasks(string(), string(), string(), stdout | stderr) -> {ok, binary()} | {error, term()}.
 read_output_with_tasks(Dir, FileName, FullPath, Stream) ->
-    Base =
+    {BaseExists, Base} =
         case wm_utils:read_file(FullPath, [binary]) of
             {ok, Bin} when is_binary(Bin) ->
-                Bin;
+                {true, Bin};
             {ok, List} when is_list(List) ->
-                list_to_binary(List);
+                {true, list_to_binary(List)};
             _ ->
-                <<>>
+                {false, <<>>}
         end,
     TaskParts = read_task_output_parts(Dir, FileName, Stream),
-    case {Base, TaskParts} of
-        {<<>>, []} ->
+    case {BaseExists, Base, TaskParts} of
+        {false, <<>>, []} ->
             {error, enoent};
         _ ->
             {ok, iolist_to_binary([ensure_trailing_nl(Base), TaskParts])}
@@ -490,8 +488,9 @@ ensure_trailing_nl(Bin) ->
     end.
 
 -spec set_defaults(#job{}, string()) -> #job{}.
-set_defaults(#job{workdir = [], id = JobId} = Job, Spool) ->
-    set_defaults(wm_entity:set({workdir, Spool ++ "/" ++ ?REMOTE_USER_DIR_NAME ++ "/" ++ JobId}, Job), Spool);
+set_defaults(#job{workdir = []} = Job, Spool) ->
+    WorkDir = default_workdir(Job),
+    set_defaults(wm_entity:set({workdir, WorkDir}, Job), Spool);
 set_defaults(#job{account_id = [], user_id = UserId} = Job, Spool) ->
     % If account is not specified by user during job submission then use the user's main account
     AccountId =
@@ -503,5 +502,63 @@ set_defaults(#job{account_id = [], user_id = UserId} = Job, Spool) ->
                 wm_entity:get(id, Account)
         end,
     set_defaults(wm_entity:set({account_id, AccountId}, Job), Spool);
-set_defaults(Job, _) ->
-    Job.
+set_defaults(Job, Spool) ->
+    ensure_job_log_paths(Job, Spool).
+
+%% Default workdir: job owner's $HOME (SFTP allowlist includes home).
+-spec default_workdir(#job{}) -> string().
+default_workdir(Job) ->
+    case wm_utils:get_job_user(Job) of
+        {ok, User} ->
+            Name = wm_entity:get(name, User),
+            case wm_posix_utils:get_user_home(Name) of
+                {ok, Home} ->
+                    Home;
+                {error, _} ->
+                    os:getenv("HOME", "/tmp")
+            end;
+        {error, _} ->
+            os:getenv("HOME", "/tmp")
+    end.
+
+%% Default stdout/stderr under $SWM_SPOOL/job/<JobId>/ (absolute paths).
+-spec ensure_job_log_paths(#job{}, string()) -> #job{}.
+ensure_job_log_paths(#job{id = JobId} = Job, Spool) ->
+    LogDir = job_log_dir(Spool, JobId),
+    case wm_file_utils:ensure_directory_exists(LogDir) of
+        {error, Error} ->
+            ?LOG_ERROR("Can't create job log directory ~s: ~p", [LogDir, Error]);
+        _ ->
+            ok
+    end,
+    Out = abs_log_path(LogDir, wm_entity:get(job_stdout, Job), "stdout.log"),
+    Err = abs_log_path(LogDir, wm_entity:get(job_stderr, Job), "stderr.log"),
+    wm_entity:set([{job_stdout, Out}, {job_stderr, Err}], Job).
+
+-spec abs_log_path(string(), string(), string()) -> string().
+abs_log_path(LogDir, [], DefaultName) ->
+    filename:join(LogDir, DefaultName);
+abs_log_path(LogDir, Path, _DefaultName) ->
+    case filename:pathtype(Path) of
+        absolute ->
+            Path;
+        _ ->
+            filename:join(LogDir, Path)
+    end.
+
+-spec job_log_dir(string(), job_id()) -> string().
+job_log_dir(Spool, JobId) ->
+    filename:join([string:trim(Spool, trailing, "/"), ?REMOTE_USER_DIR_NAME, JobId]).
+
+-spec job_log_path(#job{}, string(), job_id(), job_stdout | job_stderr) -> string().
+job_log_path(Job, Spool, JobId, OutputType) ->
+    Path = wm_entity:get(OutputType, Job),
+    LogDir = job_log_dir(Spool, JobId),
+    Default =
+        case OutputType of
+            job_stdout ->
+                "stdout.log";
+            job_stderr ->
+                "stderr.log"
+        end,
+    abs_log_path(LogDir, Path, Default).

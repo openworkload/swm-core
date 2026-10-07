@@ -2,6 +2,8 @@
 
 This document shows how to install Sky Port for jobs, production, and development.
 
+For certificates, mTLS, SSH/SFTP, and trust layout, see [SECURITY.md](SECURITY.md).
+
 ## Job containers (recommended: rootless Podman + crun)
 
 Sky Port runs jobs with **rootless Podman** and **crun**. It uses the native

@@ -36,7 +36,8 @@ crun, or any OCI runtime.
      extras with `SWM_CONTAINER_EXTRA_BINDS`.
 2. **Finalize** (short exec of `swm-container-finalize.sh`): make sure
    `/etc/passwd` and `/etc/group` contain the job user (Porter needs
-   `getpwnam`), fix workdir ownership, add a `swm_server_host` hosts entry.
+   `getpwnam`), fix workdir ownership, ensure the job log directory exists,
+   add a `swm_server_host` hosts entry.
 3. **Attach** and send the Erlang job+user binary to Porter on stdin.
 4. Porter starts the user script and streams process status.
 5. On finish, cancel, or error: stop and **delete** the container; free the
@@ -51,8 +52,13 @@ Default: `scripts/swm-container-finalize.sh` (override with
 `SWM_CONTAINER_FINALIZE`).
 
 The script appends passwd/group lines when they are missing, runs `chown` on
-the workdir, and updates hosts. It does not need the `adduser` package. That
-matters for minimal images such as stock `ubuntu:24.04`.
+the workdir, creates the job log directory under `$SWM_SPOOL` when given, and
+updates hosts. It does not need the `adduser` package. That matters for
+minimal images such as stock `ubuntu:24.04`.
+
+Porter opens `stdout.log` / `stderr.log` before it drops privileges so those
+files stay owned by the rootless Podman user on the host (container root maps
+to that user).
 
 ## Configuration
 

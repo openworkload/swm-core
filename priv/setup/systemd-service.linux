@@ -7,6 +7,9 @@ Requires=network.target remote-fs.target
 # Use simple+foreground. Type=forking with `daemon` hangs in "activating":
 # `swm daemon` waits forever on `erl_rpc erlang is_alive`, which fails under
 # -proto_dist inet_tls (nodetool cannot complete dist handshake).
+#
+# SSH tunnel/transfer ports do not need root. Running the whole service as a
+# non-root user is a follow-up (see HOWTO/SECURITY.md).
 Type=simple
 TimeoutStartSec=120
 TimeoutStopSec=60

@@ -225,9 +225,18 @@ def generate_service_file(opts: dict[str, str]) -> None:
     if parent_host and parent_port:
         env_lines.append(f"Environment=SWM_PARENT_HOST={parent_host}")
         env_lines.append(f"Environment=SWM_PARENT_PORT={parent_port}")
+    job_role = opts.get("JOB_NODE_ROLE")
+    if job_role:
+        # wm_ssh_server defaults listen to 0.0.0.0 when this is set (no global DB yet).
+        env_lines.append(f"Environment=SWM_JOB_NODE_ROLE={job_role}")
     mnesia_dir = opts.get("SWM_MNESIA_DIR")
     if mnesia_dir:
         env_lines.append(f"Environment=SWM_MNESIA_DIR={mnesia_dir}")
+    # Rootless Podman API for job containers (optional on worker images).
+    if job_role:
+        env_lines.append(
+            "Environment=SWM_CONTAINER_PODMAN_SOCK=/run/podman/podman.sock"
+        )
     parent_env = ("\n".join(env_lines) + "\n") if env_lines else ""
     template = template.replace("{PARENT_ENV}", parent_env)
     service_fp = os.path.join(SERVICES_DIR, PRODUCT + ".service")
@@ -359,6 +368,31 @@ def run_ctl(args: list[str], opts: dict[str, str]) -> None:
     run(ctl, args, envs)
 
 
+def job_node_base_config(opts: dict[str, str]) -> str:
+    """Return base.config path; for cloud job nodes, bind SSH for Sky Port tunnels."""
+    base_config = os.path.join(opts["SWM_PRIV_DIR"], "base.config")
+    role = opts.get("JOB_NODE_ROLE")
+    if role not in ("main", "compute"):
+        return base_config
+    # Sky Port reaches the job main via the public IP on 10022; loopback bind
+    # blocks that and the reverse parent tunnel (localhost:10002) never opens.
+    patched = os.path.join(opts.get("SWM_SPOOL", "/tmp"), "base.config.job-node")
+    with open(base_config, "r", encoding="utf-8") as src:
+        text = src.read()
+    text = text.replace(
+        '{value,"127.0.0.1"},{comment,"SSH daemon bind address',
+        '{value,"0.0.0.0"},{comment,"SSH daemon bind address',
+        1,
+    )
+    with open(patched, "w", encoding="utf-8") as dst:
+        dst.write(text)
+    LOG.info(
+        "Job %s node: ssh_daemon_listen_ip=0.0.0.0 (Sky Port tunnel / file transfer)",
+        role,
+    )
+    return patched
+
+
 def load_db_configs(opts: dict[str, str]) -> None:
     if opts["DIVISION"] not in ["grid", "cluster"]:
         LOG.info(f'Skip loading db configs (division: {opts["DIVISION"]})')
@@ -366,7 +400,7 @@ def load_db_configs(opts: dict[str, str]) -> None:
 
     schema = os.path.join(opts["SWM_PRIV_DIR"], "schema.json")
     run_ctl(["global", "update", "schema", schema], opts)
-    base_config = os.path.join(opts["SWM_PRIV_DIR"], "base.config")
+    base_config = job_node_base_config(opts)
     run_ctl(["global", "import", base_config], opts)
     if "EXTRA_CONFIG" in opts:
         run_ctl(["global", "import", opts["EXTRA_CONFIG"]], opts)

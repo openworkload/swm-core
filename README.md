@@ -62,6 +62,7 @@ How-to guides in this repository:
 |-------|-------------|
 | [HOWTO/INSTALL.md](HOWTO/INSTALL.md) | Install Sky Port for production and development |
 | [HOWTO/BUILD.md](HOWTO/BUILD.md) | Build Sky Port from source |
+| [HOWTO/SECURITY.md](HOWTO/SECURITY.md) | CA, mTLS, SSH/SFTP, and cluster trust layout |
 | [HOWTO/JOBS.md](HOWTO/JOBS.md) | Write job scripts and `#SWM` directives |
 | [HOWTO/CONTAINERS.md](HOWTO/CONTAINERS.md) | Run jobs in rootless Podman containers |
 | [HOWTO/ACCOUNTING.md](HOWTO/ACCOUNTING.md) | Job resource metrics and Prometheus export |

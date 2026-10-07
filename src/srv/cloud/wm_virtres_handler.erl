@@ -156,7 +156,7 @@ start_job_data_uploading(PartMgrNodeID, JobId, SshUserDir) ->
     {ok, MyNode} = wm_self:get_node(),
     {ToAddr, _} = wm_conf:get_relative_address(ToNode, MyNode),
     % TODO upload files to their own dirs, not in workdir, unless the full path is unset
-    wm_file_transfer:upload(self(), ToAddr, Priority, Files, WorkDir, #{via => ssh, user_dir => SshUserDir}).
+    wm_file_transfer:upload(self(), ToAddr, Priority, Files, WorkDir, transfer_opts(Job, SshUserDir)).
 
 %% Ensure every #SWM input-files / stdin path exists on SkyPort before upload
 %% (and before cloud resources are created when called from activate).
@@ -181,47 +181,71 @@ start_job_data_downloading(PartMgrNodeID, JobId, SshUserDir) ->
     {ok, Job} = wm_conf:select(job, {id, JobId}),
     Priority = wm_entity:get(priority, Job),
     WorkDir = wm_entity:get(workdir, Job),
-    OutputFiles = [WorkDir ++ "/" ++ Filename || Filename <- wm_entity:get(output_files, Job)],
-    StdErrFile = wm_entity:get(job_stderr, Job),
-    StdOutFile = wm_entity:get(job_stdout, Job),
-    StdErrPath = filename:join([WorkDir, StdErrFile]),
-    StdOutPath = filename:join([WorkDir, StdOutFile]),
-    %% Per-task Porter logs (stdout-taskN.log / stderr-taskN.log) live next to
-    %% the job-script stdout/stderr; download them too when present.
-    TaskLogPaths = task_log_paths(WorkDir, StdOutFile, StdErrFile, length(wm_entity:get(nodes, Job))),
-    Files = lists:filter(fun(X) -> X =/= [] end, [StdErrPath, StdOutPath | OutputFiles ++ TaskLogPaths]),
+    OutputFiles = [filename:join(WorkDir, Filename) || Filename <- wm_entity:get(output_files, Job)],
+    StdOutPath = resolve_job_log_path(Job, job_stdout),
+    StdErrPath = resolve_job_log_path(Job, job_stderr),
+    LogDir = filename:dirname(StdOutPath),
+    %% Per-task Porter logs live next to the job-script stdout/stderr.
+    TaskLogPaths = task_log_paths(LogDir, StdOutPath, StdErrPath, length(wm_entity:get(nodes, Job))),
+    LogFiles = lists:filter(fun(X) -> X =/= [] end, [StdErrPath, StdOutPath | TaskLogPaths]),
     case wm_conf:select(node, {id, PartMgrNodeID}) of
         {ok, FromNode} ->
             {ok, MyNode} = wm_self:get_node(),
             {FromAddr, _} = wm_conf:get_relative_address(FromNode, MyNode),
-            {ok, Ref} =
-                wm_file_transfer:download(self(),
-                                          FromAddr,
-                                          Priority,
-                                          Files,
-                                          WorkDir,
-                                          #{via => ssh, user_dir => SshUserDir}),
-            {ok, Ref, Files};
+            Opts = transfer_opts(Job, SshUserDir),
+            %% Logs -> $SWM_SPOOL/job/<id>/; optional output-files -> workdir.
+            {ok, RefLogs} = wm_file_transfer:download(self(), FromAddr, Priority, LogFiles, LogDir, Opts),
+            case OutputFiles of
+                [] ->
+                    {ok, RefLogs, LogFiles};
+                _ ->
+                    {ok, RefOut} = wm_file_transfer:download(self(), FromAddr, Priority, OutputFiles, WorkDir, Opts),
+                    {ok, RefOut, LogFiles ++ OutputFiles}
+            end;
         {error, Error} ->
             {error, Error}
     end.
 
+-spec resolve_job_log_path(#job{}, job_stdout | job_stderr) -> string().
+resolve_job_log_path(Job, Field) ->
+    Path = wm_entity:get(Field, Job),
+    case filename:pathtype(Path) of
+        absolute ->
+            Path;
+        _ ->
+            filename:join(
+                wm_entity:get(workdir, Job), Path)
+    end.
+
+-spec transfer_opts(#job{}, string()) -> #{atom() => term()}.
+transfer_opts(Job, SshUserDir) ->
+    Username =
+        case wm_utils:get_job_user(Job) of
+            {ok, User} ->
+                wm_entity:get(name, User);
+            {error, _} ->
+                wm_posix_utils:get_current_user()
+        end,
+    #{via => ssh,
+      spool => SshUserDir,
+      username => Username}.
+
 %% Porter renames "stdout.log" -> "stdout-task<N>.log" when SWM_PMIX_RANK is set.
 -spec task_log_paths(string(), string(), string(), non_neg_integer()) -> [string()].
-task_log_paths(_WorkDir, _StdOut, _StdErr, NodeCount) when NodeCount < 1 ->
+task_log_paths(_LogDir, _StdOut, _StdErr, NodeCount) when NodeCount < 1 ->
     [];
-task_log_paths(WorkDir, StdOutFile, StdErrFile, NodeCount) ->
+task_log_paths(LogDir, StdOutFile, StdErrFile, NodeCount) ->
     lists:foldl(fun(R, Acc) ->
-                   Acc ++ [maybe_task_log_path(WorkDir, StdOutFile, R), maybe_task_log_path(WorkDir, StdErrFile, R)]
+                   Acc ++ [maybe_task_log_path(LogDir, StdOutFile, R), maybe_task_log_path(LogDir, StdErrFile, R)]
                 end,
                 [],
                 lists:seq(0, NodeCount - 1)).
 
 -spec maybe_task_log_path(string(), string(), non_neg_integer()) -> string().
-maybe_task_log_path(_WorkDir, [], _TaskNum) ->
+maybe_task_log_path(_LogDir, [], _TaskNum) ->
     [];
-maybe_task_log_path(WorkDir, BaseName, TaskNum) ->
-    filename:join(WorkDir, task_log_name(BaseName, TaskNum)).
+maybe_task_log_path(LogDir, BasePath, TaskNum) ->
+    filename:join(LogDir, task_log_name(filename:basename(BasePath), TaskNum)).
 
 -spec task_log_name(string(), non_neg_integer()) -> string().
 task_log_name(BaseName, TaskNum) ->

@@ -51,24 +51,16 @@ get_address() ->
 init(Args) ->
     MState = parse_args(Args, #mstate{}),
     Spool = MState#mstate.spool,
-    HostCertsDir = filename:join([Spool, "secure/host"]),
-    SystemDir = HostCertsDir,
-    UserDir = HostCertsDir,
     ListenPort = wm_conf:g(ssh_daemon_listen_port, {?DEFAULT_SSH_DAEMON_PORT, integer}),
-    case spawn_ssh_daemon(any,  % TODO: don't listen to all interfaces
-                          ListenPort,
-                          [{tcpip_tunnel_out, true},
-                           {system_dir, SystemDir},
-                           {user_dir, UserDir},
-                           {user_passwords, [{"swm", "swm"}]},
-                           {failfun, fun failfun/2}])
-    of
-        {Pid, ListenIP, ListenPort} ->
-            ?LOG_INFO("SSH tunnel server has been started"),
+    ListenIP = resolve_listen_ip(),
+    Options = [{tcpip_tunnel_out, true}, {failfun, fun failfun/2} | wm_ssh_key_cb:daemon_options(Spool)],
+    case spawn_ssh_daemon(ListenIP, ListenPort, Options) of
+        {Pid, BoundIP, BoundPort} ->
+            ?LOG_INFO("SSH tunnel server has been started on ~p:~p", [BoundIP, BoundPort]),
             {ok,
              MState#mstate{daemon_pid = Pid,
-                           listen_ip = ListenIP,
-                           listen_port = ListenPort}};
+                           listen_ip = BoundIP,
+                           listen_port = BoundPort}};
         {error, Error} ->
             ?LOG_INFO("SSH tunnel server can't be started: ~p", [Error]),
             {stop, Error}
@@ -89,7 +81,8 @@ handle_cast(_, #mstate{} = MState) ->
 handle_info(_Info, MState) ->
     {noreply, MState}.
 
-terminate(Reason, _) ->
+terminate(Reason, #mstate{daemon_pid = Pid}) ->
+    stop_ssh_daemon(Pid),
     wm_utils:terminate_msg(?MODULE, Reason).
 
 code_change(_OldVsn, MState, _Extra) ->
@@ -107,10 +100,51 @@ parse_args([{spool, Spool} | T], #mstate{} = MState) ->
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
+-spec resolve_listen_ip() -> inet:ip_address() | loopback | any.
+resolve_listen_ip() ->
+    case wm_conf:g(ssh_daemon_listen_ip, {default_ssh_listen_ip(), string}) of
+        "loopback" ->
+            loopback;
+        "localhost" ->
+            loopback;
+        "127.0.0.1" ->
+            {127, 0, 0, 1};
+        "::1" ->
+            {0, 0, 0, 0, 0, 0, 0, 1};
+        "any" ->
+            any;
+        "0.0.0.0" ->
+            any;
+        IP when is_list(IP) ->
+            case inet:parse_address(IP) of
+                {ok, Addr} ->
+                    Addr;
+                {error, _} ->
+                    ?LOG_ERROR("Invalid ssh_daemon_listen_ip ~p; using 127.0.0.1", [IP]),
+                    {127, 0, 0, 1}
+            end;
+        Other ->
+            ?LOG_ERROR("Invalid ssh_daemon_listen_ip ~p; using 127.0.0.1", [Other]),
+            {127, 0, 0, 1}
+    end.
+
+%% Cloud job nodes often have no local global table yet (parent tunnel not up).
+%% SWM_JOB_NODE_ROLE=main|compute => listen on all interfaces for Sky Port SSH.
+-spec default_ssh_listen_ip() -> string().
+default_ssh_listen_ip() ->
+    case os:getenv("SWM_JOB_NODE_ROLE") of
+        false ->
+            "127.0.0.1";
+        "" ->
+            "127.0.0.1";
+        _ ->
+            "0.0.0.0"
+    end.
+
 -spec spawn_ssh_daemon(string() | inet:ip_address() | loopback | any, integer(), list()) ->
-                          {pid(), inet:port_number(), inet:ip_address()} | {error, term()}.
+                          {pid(), inet:ip_address(), inet:port_number()} | {error, term()}.
 spawn_ssh_daemon(Host, Port, Options) ->
-    ?LOG_INFO("~p:~p run ssh:daemon(~p, ~p, ~10000p)", [?MODULE, ?LINE, Host, Port, Options]),
+    ?LOG_INFO("Starting SSH tunnel daemon on ~p:~p (publickey, shell/exec disabled)", [Host, Port]),
     case ssh:daemon(Host, Port, Options) of
         {ok, Pid} ->
             R = ssh:daemon_info(Pid),
@@ -122,6 +156,22 @@ spawn_ssh_daemon(Host, Port, Options) ->
         Error ->
             ?LOG_ERROR("ssh:daemon error ~p", [Error]),
             {error, Error}
+    end.
+
+-spec stop_ssh_daemon(pid() | undefined) -> ok.
+stop_ssh_daemon(undefined) ->
+    ok;
+stop_ssh_daemon(Pid) when is_pid(Pid) ->
+    case is_process_alive(Pid) of
+        false ->
+            ok;
+        true ->
+            case ssh:stop_daemon(Pid) of
+                ok ->
+                    ok;
+                {error, _} ->
+                    ok
+            end
     end.
 
 failfun(_User, {authmethod, none}) ->

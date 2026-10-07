@@ -116,8 +116,9 @@ Set the standard input file.
 
 #### stdout
 
-Set where to write standard output of the **job script** (default `stdout.log`
-in the job workdir).
+Set where to write standard output of the **job script**. The default is
+`$SWM_SPOOL/job/<job-id>/stdout.log`. Relative paths are resolved under that
+job log directory.
 
 ```bash
 #SWM stdout <file_path>
@@ -128,8 +129,9 @@ Task processes from `swm-task` do **not** write to this file. See
 
 #### stderr
 
-Set where to write standard error of the **job script** (default `stderr.log`
-in the job workdir).
+Set where to write standard error of the **job script**. The default is
+`$SWM_SPOOL/job/<job-id>/stderr.log`. Relative paths are resolved under that
+job log directory.
 
 ```bash
 #SWM stderr <file_path>
@@ -140,7 +142,9 @@ The same separation applies to task processes. See
 
 #### workdir
 
-Set the working directory for the job.
+Set the working directory for the job. The default is the job owner's `$HOME`.
+The path must stay under the owner's home directory so SFTP upload and download
+can reach it.
 
 ```bash
 #SWM workdir <directory_path>
@@ -263,25 +267,24 @@ Flow (with or without `--pmix`):
 
 ### Task stdout and stderr
 
-The job script and `swm-task` child processes use **separate** log files in the
-job workdir. This avoids concurrent NFS appends to one shared `stdout.log` /
-`stderr.log`.
+The job script and `swm-task` child processes use **separate** log files under
+`$SWM_SPOOL/job/<job-id>/`. This avoids concurrent NFS appends to one shared
+`stdout.log` / `stderr.log`, and keeps logs out of the job workdir (`$HOME`).
 
 | Writer | Stdout file | Stderr file |
 |--------|-------------|-------------|
-| Job script (main Porter) | `#SWM stdout` path, default `stdout.log` | `#SWM stderr` path, default `stderr.log` |
+| Job script (main Porter) | `#SWM stdout` path, default `.../stdout.log` | `#SWM stderr` path, default `.../stderr.log` |
 | Each `swm-task` process (task / rank `N`) | `stdout-taskN.log` (or `<basename>-taskN.<ext>` if `#SWM stdout` is set) | `stderr-taskN.log` (same naming rule for `#SWM stderr`) |
 
-Examples with the defaults (`stdout.log` / `stderr.log`) and three nodes
-(`N` = 0, 1, 2):
+Examples with the defaults and three nodes (`N` = 0, 1, 2):
 
 - `stdout.log`, `stderr.log` -- job script only
 - `stdout-task0.log` .. `stdout-task2.log` -- one per task
 - `stderr-task0.log` .. `stderr-task2.log` -- one per task
 
 When the job finishes on cloud resources, SWM downloads the base logs and all
-present `*-taskN.log` files back to Skyport (into the job spool workdir). The
-HTTP APIs `/user/job/{id}/stdout` and `/user/job/{id}/stderr` return the
+present `*-taskN.log` files back to Skyport (into `$SWM_SPOOL/job/<job-id>/`).
+The HTTP APIs `/user/job/{id}/stdout` and `/user/job/{id}/stderr` return the
 job-script file plus each task file. Files are separated by a line and labeled
 `Task N stdout:` / `Task N stderr:`.
 

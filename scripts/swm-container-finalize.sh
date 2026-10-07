@@ -11,7 +11,7 @@
 #   - Leave /etc/passwd + /etc/group entries Porter can resolve via getpwnam(3)
 #
 # Usage:
-#   swm-container-finalize.sh <USER_NAME> <UID> <GID> <HOST_IP> <WORK_DIR>
+#   swm-container-finalize.sh <USER_NAME> <UID> <GID> <HOST_IP> <WORK_DIR> [LOG_DIR]
 
 set -eu
 
@@ -20,8 +20,8 @@ PROGRAM_NAME=$0
 
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
-if [ "$#" -ne 5 ]; then
-    MSG="Usage: ${PROGRAM_NAME} <USER_NAME> <UID> <GID> <HOST_IP> <WORK_DIR>"
+if [ "$#" -lt 5 ] || [ "$#" -gt 6 ]; then
+    MSG="Usage: ${PROGRAM_NAME} <USER_NAME> <UID> <GID> <HOST_IP> <WORK_DIR> [LOG_DIR]"
     echo "$MSG"
     echo "$MSG" >> "$LOG"
     exit 3
@@ -32,6 +32,7 @@ USER_UID=$2
 USER_GID=$3
 HOST_IP=$4
 WORK_DIR=$5
+LOG_DIR=${6:-}
 
 {
     echo
@@ -72,16 +73,29 @@ if ! grep -q "swm_server_host" /etc/hosts 2>/dev/null; then
     echo "Added hosts entry ${HOST_IP} swm_server_host" >> "$LOG"
 fi
 
+# Create dirs as container root (rootless: host Podman user). Do not chown to
+# USER_UID -- under rootless that maps to a subordinate host UID (e.g. 100999)
+# and can take over $HOME.
 if [ ! -d "${WORK_DIR}" ]; then
     mkdir -p "${WORK_DIR}"
     echo "Created workdir ${WORK_DIR}" >> "$LOG"
 fi
-chown "${USER_UID}:${USER_GID}" "${WORK_DIR}"
-echo "chown ${USER_UID}:${USER_GID} ${WORK_DIR}" >> "$LOG"
+ls -ld "${WORK_DIR}" >> "$LOG" || true
+
+if [ -n "${LOG_DIR}" ]; then
+    if [ ! -d "${LOG_DIR}" ]; then
+        mkdir -p "${LOG_DIR}"
+        echo "Created logdir ${LOG_DIR}" >> "$LOG"
+    fi
+    ls -ld "${LOG_DIR}" >> "$LOG" || true
+fi
 
 # Quick verification for callers (also printed on exec attach stream).
 getent passwd "${USER_NAME}" || getent passwd "${USER_UID}"
 ls -ld "${WORK_DIR}"
+if [ -n "${LOG_DIR}" ]; then
+    ls -ld "${LOG_DIR}"
+fi
 
 {
     ts

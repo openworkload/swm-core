@@ -170,12 +170,30 @@ execute(#mstate{job_id = JobId}) ->
     end.
 
 -spec ensure_workdir_exists(#job{}) -> ok | error.
-ensure_workdir_exists(#job{workdir = Dir}) ->
+ensure_workdir_exists(#job{workdir = Dir} = Job) ->
     ?LOG_DEBUG("Ensure job working directory exists: " ++ Dir),
     case wm_file_utils:ensure_directory_exists(Dir) of
         {error, Error} ->
             ?LOG_ERROR("Can't create job working directory " ++ Dir ++ ":  " ++ Error),
             error;
+        _ ->
+            ensure_log_dir_exists(Job)
+    end.
+
+-spec ensure_log_dir_exists(#job{}) -> ok | error.
+ensure_log_dir_exists(Job) ->
+    Out = wm_entity:get(job_stdout, Job),
+    case filename:pathtype(Out) of
+        absolute ->
+            LogDir = filename:dirname(Out),
+            ?LOG_DEBUG("Ensure job log directory exists: " ++ LogDir),
+            case wm_file_utils:ensure_directory_exists(LogDir) of
+                {error, Error} ->
+                    ?LOG_ERROR("Can't create job log directory " ++ LogDir ++ ":  " ++ Error),
+                    error;
+                _ ->
+                    ok
+            end;
         _ ->
             ok
     end.

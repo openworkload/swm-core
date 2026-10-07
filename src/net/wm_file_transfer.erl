@@ -25,7 +25,9 @@
 
 -record(mstate,
         {via = erl :: erl | ssh,
+         spool = "" :: string(),
          ssh_daemon_pid = undefined :: pid(),
+         ssh_listen_port = undefined :: inet:port_number() | undefined,
          priority_queue = new() :: {pos_integer(), [term()]},
          children = #{} :: #{},
          rev_children = #{} :: #{},
@@ -54,9 +56,22 @@ upload_file_sftp_sync(RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDi
                     {upload_file_sftp, RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir},
                     UploadTimeout).
 
--spec get_port() -> integer.
+-spec get_port() -> integer().
 get_port() ->
-    wm_conf:g(data_transfer_ssh_port, {?DEFAULT_DATA_TRANSFER_PORT, integer}).
+    case whereis(?MODULE) of
+        undefined ->
+            wm_conf:g(data_transfer_ssh_port, {?DEFAULT_DATA_TRANSFER_PORT, integer});
+        _Pid ->
+            try gen_server:call(?MODULE, get_listen_port) of
+                Port when is_integer(Port), Port > 0 ->
+                    Port;
+                _ ->
+                    wm_conf:g(data_transfer_ssh_port, {?DEFAULT_DATA_TRANSFER_PORT, integer})
+            catch
+                _:_ ->
+                    wm_conf:g(data_transfer_ssh_port, {?DEFAULT_DATA_TRANSFER_PORT, integer})
+            end
+    end.
 
 -spec start_link([term()]) -> {ok, pid()} | ignore | {error, term()}.
 start_link(Args) ->
@@ -117,12 +132,19 @@ get_transfer_status(Ref) ->
 %% TODO: Fix spec
 -spec create_symlink(pid() | atom() | {atom(), node()}, file:filename(), file:filename()) ->
                         ok | {error, {file:filename(), file:filename()}, nonempty_string()}.
-create_symlink(_ServerRef = {ConnectionRef, Pid}, Src, Dst) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    case ssh_sftp:make_symlink(Pid, Src, Dst) of
-        ok ->
-            ok;
-        {error, Reason} ->
-            {error, {Src, Dst}, wm_posix_utils:errno(Reason)}
+create_symlink(_ServerRef = {ConnectionRef, Pid, Spool}, Src, Dst) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    case {sftp_jail_path(Src, Spool), sftp_jail_path(Dst, Spool)} of
+        {{ok, JailSrc}, {ok, JailDst}} ->
+            case ssh_sftp:make_symlink(Pid, JailSrc, JailDst) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    {error, {Src, Dst}, wm_posix_utils:errno(Reason)}
+            end;
+        {{error, _, Reason}, _} ->
+            {error, {Src, Dst}, Reason};
+        {_, {error, _, Reason}} ->
+            {error, {Src, Dst}, Reason}
     end;
 create_symlink(ServerRef, Src, Dst) ->
     case wm_utils:protected_call(ServerRef, {create_symlink, Src, Dst}) of
@@ -136,12 +158,17 @@ create_symlink(ServerRef, Src, Dst) ->
 
 -spec open_file(pid() | atom() | {atom(), node()}, file:filename()) ->
                    {ok, file:io_device()} | {error, file:filename(), nonempty_string()}.
-open_file(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    case ssh_sftp:open(Pid, File, [read, write, binary]) of
-        {ok, Fd} ->
-            {ok, Fd};
-        {error, Reason} ->
-            {error, File, wm_posix_utils:errno(Reason)}
+open_file(_ServerRef = {ConnectionRef, Pid, Spool}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    case sftp_jail_path(File, Spool) of
+        {ok, JailPath} ->
+            case ssh_sftp:open(Pid, JailPath, [read, write, binary]) of
+                {ok, Fd} ->
+                    {ok, Fd};
+                {error, Reason} ->
+                    {error, File, wm_posix_utils:errno(Reason)}
+            end;
+        Error ->
+            Error
     end;
 open_file(ServerRef, File) ->
     ?LOG_DEBUG("Open local file: ~p", [File]),
@@ -156,7 +183,7 @@ open_file(ServerRef, File) ->
     end.
 
 -spec close_file(pid() | atom() | {atom(), node()}, file:io_device()) -> ok.
-close_file(_ServerRef = {ConnectionRef, Pid}, Fd) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+close_file(_ServerRef = {ConnectionRef, Pid, _Spool}, Fd) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
     _ = ssh_sftp:close(Pid, Fd),
     ok;
 close_file(ServerRef, Fd) ->
@@ -165,12 +192,17 @@ close_file(ServerRef, Fd) ->
 
 -spec delete_file(pid() | atom() | {atom(), node()}, file:filename()) ->
                      ok | {error, file:filename(), nonempty_string()}.
-delete_file(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    case ssh_sftp:delete(Pid, File) of
-        ok ->
-            ok;
-        {error, Reason} ->
-            {error, File, wm_posix_utils:errno(Reason)}
+delete_file(_ServerRef = {ConnectionRef, Pid, Spool}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    case sftp_jail_path(File, Spool) of
+        {ok, JailPath} ->
+            case ssh_sftp:delete(Pid, JailPath) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    {error, File, wm_posix_utils:errno(Reason)}
+            end;
+        Error ->
+            Error
     end;
 delete_file(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {delete_file, File}) of
@@ -184,14 +216,19 @@ delete_file(ServerRef, File) ->
 
 -spec create_directory(pid() | atom() | {atom(), node()}, file:filename()) ->
                           ok | exist | {error, file:filename(), nonempty_string()}.
-create_directory(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    case ssh_sftp:make_dir(Pid, File) of
-        ok ->
-            ok;
-        {error, file_already_exists} ->
-            exist;
-        {error, Reason} ->
-            {error, File, wm_posix_utils:errno(Reason)}
+create_directory(_ServerRef = {ConnectionRef, Pid, Spool}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    case sftp_jail_path(File, Spool) of
+        {ok, JailPath} ->
+            case ssh_sftp:make_dir(Pid, JailPath) of
+                ok ->
+                    ok;
+                {error, file_already_exists} ->
+                    exist;
+                {error, Reason} ->
+                    {error, File, wm_posix_utils:errno(Reason)}
+            end;
+        Error ->
+            Error
     end;
 create_directory(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {create_directory, File}) of
@@ -207,12 +244,17 @@ create_directory(ServerRef, File) ->
 
 -spec list_directory(pid() | atom() | {atom(), node()}, file:filename()) ->
                         {ok, [file:filename()]} | {error, file:filename(), nonempty_string()}.
-list_directory(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    case ssh_sftp:list_dir(Pid, File) of
-        {ok, Xs} ->
-            {ok, Xs};
-        {error, Reason} ->
-            {error, File, wm_posix_utils:errno(Reason)}
+list_directory(_ServerRef = {ConnectionRef, Pid, Spool}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    case sftp_jail_path(File, Spool) of
+        {ok, JailPath} ->
+            case ssh_sftp:list_dir(Pid, JailPath) of
+                {ok, Xs} ->
+                    {ok, Xs};
+                {error, Reason} ->
+                    {error, File, wm_posix_utils:errno(Reason)}
+            end;
+        Error ->
+            Error
     end;
 list_directory(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {list_directory, File}) of
@@ -226,13 +268,18 @@ list_directory(ServerRef, File) ->
 
 -spec delete_directory(pid() | atom() | {atom(), node()}, file:filename()) ->
                           ok | {error, file:filename(), nonempty_string()}.
-delete_directory(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    case wm_ssh_sftp_ext:command(ConnectionRef, {delete_directory, File}) of
-        ok ->
-            ok;
-        {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
-            {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, _PosixReason} = Error ->
+delete_directory(_ServerRef = {ConnectionRef, Pid, Spool}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    case sftp_jail_path(File, Spool) of
+        {ok, JailPath} ->
+            case wm_ssh_sftp_ext:command(ConnectionRef, {delete_directory, JailPath}) of
+                ok ->
+                    ok;
+                {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
+                    {error, File, wm_posix_utils:errno(Reason)};
+                {error, File, _PosixReason} = Error ->
+                    Error
+            end;
+        Error ->
             Error
     end;
 delete_directory(ServerRef, File) ->
@@ -248,15 +295,20 @@ delete_directory(ServerRef, File) ->
 %% TODO: Due bug in erlang ssh_sftp we have to preventively cast gid/uid into integer
 -spec get_file_info(pid() | atom() | {atom(), node()}, file:filename()) ->
                        {ok, #file_info{}} | {error, file:filename(), nonempty_string()}.
-get_file_info(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    case ssh_sftp:read_file_info(Pid, File) of
-        {ok, Info} ->
-            {ok,
-             %TODO https://github.com/erlang/otp/issues/7897
-             Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid),
-                            uid = wm_utils:to_integer(Info#file_info.uid)}};
-        {error, Reason} ->
-            {error, File, wm_posix_utils:errno(Reason)}
+get_file_info(_ServerRef = {ConnectionRef, Pid, Spool}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    case sftp_jail_path(File, Spool) of
+        {ok, JailPath} ->
+            case ssh_sftp:read_file_info(Pid, JailPath) of
+                {ok, Info} ->
+                    {ok,
+                     %TODO https://github.com/erlang/otp/issues/7897
+                     Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid),
+                                    uid = wm_utils:to_integer(Info#file_info.uid)}};
+                {error, Reason} ->
+                    {error, File, wm_posix_utils:errno(Reason)}
+            end;
+        Error ->
+            Error
     end;
 get_file_info(ServerRef, File) ->
     case wm_utils:protected_call(ServerRef, {get_file_info, File}) of
@@ -273,17 +325,23 @@ get_file_info(ServerRef, File) ->
 
 -spec set_file_info(pid() | atom() | {atom(), node()}, file:filename(), #file_info{}) ->
                        ok | {error, file:filename(), nonempty_string()}.
-set_file_info(_ServerRef = {ConnectionRef, Pid}, File, Info) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    %TODO https://github.com/erlang/otp/issues/7897
-    Info2 =
-        Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid), uid = wm_utils:to_integer(Info#file_info.uid)},
-    case ssh_sftp:write_file_info(Pid, File, Info2) of
-        ok ->
-            ok;
-        {error, failure} ->
-            ok; %TODO https://github.com/erlang/otp/issues/7895
-        {error, Reason} ->
-            {error, File, wm_posix_utils:errno(Reason)}
+set_file_info(_ServerRef = {ConnectionRef, Pid, Spool}, File, Info) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    case sftp_jail_path(File, Spool) of
+        {ok, JailPath} ->
+            %TODO https://github.com/erlang/otp/issues/7897
+            Info2 =
+                Info#file_info{gid = wm_utils:to_integer(Info#file_info.gid),
+                               uid = wm_utils:to_integer(Info#file_info.uid)},
+            case ssh_sftp:write_file_info(Pid, JailPath, Info2) of
+                ok ->
+                    ok;
+                {error, failure} ->
+                    ok; %TODO https://github.com/erlang/otp/issues/7895
+                {error, Reason} ->
+                    {error, File, wm_posix_utils:errno(Reason)}
+            end;
+        Error ->
+            Error
     end;
 set_file_info(ServerRef, File, Info) ->
     case wm_utils:protected_call(ServerRef, {set_file_info, File, Info}) of
@@ -301,17 +359,22 @@ set_file_info(ServerRef, File, Info) ->
 
 -spec file_size(pid() | atom() | {atom(), node()}, file:filename() | file:io_device()) ->
                    {ok, binary()} | {error, file:filename(), nonempty_string()}.
-file_size(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+file_size(_ServerRef = {ConnectionRef, Pid, Spool}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
     ?LOG_INFO("Get remote file size by path: ~p", [File]),
-    case wm_ssh_sftp_ext:command(ConnectionRef, {file_size, File}) of
-        {ok, Bytes} ->
-            {ok, Bytes};
-        {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
-            {error, File, wm_posix_utils:errno(Reason)};
-        {error, Code, _Msg} = Error when is_integer(Code) ->
-            %% TODO: investigate why file size can produce {error, 47, "Operation not permitted (POSIX.1-2001)."}
-            Error;
-        {error, _File, _PosixReason} = Error ->
+    case sftp_jail_path(File, Spool) of
+        {ok, JailPath} ->
+            case wm_ssh_sftp_ext:command(ConnectionRef, {file_size, JailPath}) of
+                {ok, Bytes} ->
+                    {ok, Bytes};
+                {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
+                    {error, File, wm_posix_utils:errno(Reason)};
+                {error, Code, _Msg} = Error when is_integer(Code) ->
+                    %% TODO: investigate why file size can produce {error, 47, "Operation not permitted (POSIX.1-2001)."}
+                    Error;
+                {error, _File, _PosixReason} = Error ->
+                    Error
+            end;
+        Error ->
             Error
     end;
 file_size(ServerRef, File) ->
@@ -326,13 +389,18 @@ file_size(ServerRef, File) ->
 
 -spec md5sum(pid() | atom() | {atom(), node()}, file:filename() | file:io_device()) ->
                 {ok, binary()} | {error, file:filename(), nonempty_string()}.
-md5sum(_ServerRef = {ConnectionRef, Pid}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
-    case wm_ssh_sftp_ext:command(ConnectionRef, {md5sum, File}) of
-        {ok, Hash} ->
-            {ok, Hash};
-        {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
-            {error, File, wm_posix_utils:errno(Reason)};
-        {error, File, _PosixReason} = Error ->
+md5sum(_ServerRef = {ConnectionRef, Pid, Spool}, File) when is_pid(ConnectionRef) andalso is_pid(Pid) ->
+    case sftp_jail_path(File, Spool) of
+        {ok, JailPath} ->
+            case wm_ssh_sftp_ext:command(ConnectionRef, {md5sum, JailPath}) of
+                {ok, Hash} ->
+                    {ok, Hash};
+                {error, Reason} -> %% ssh_connection subsystem error -> {error, Reason}
+                    {error, File, wm_posix_utils:errno(Reason)};
+                {error, File, _PosixReason} = Error ->
+                    Error
+            end;
+        Error ->
             Error
     end;
 md5sum(ServerRef, File) ->
@@ -383,20 +451,32 @@ md5sum(ServerRef, File) ->
 -spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     process_flag(trap_exit, true),
-    MState = parse_args(Args, #mstate{}),
+    MState0 = parse_args(Args, #mstate{}),
+    Spool =
+        case MState0#mstate.spool of
+            "" ->
+                wm_utils:get_env("SWM_SPOOL");
+            S ->
+                S
+        end,
+    MState = MState0#mstate{spool = normalize_spool(Spool)},
     case MState#mstate.simulation of
         true ->
             {ok, MState, hibernate}; %% not used on simulation nodes
         false ->
-            case ssh_daemon() of
-                {ok, Pid} ->
-                    {ok, MState#mstate{ssh_daemon_pid = Pid}};
+            case ssh_daemon(MState#mstate.spool) of
+                {ok, Pid, ListenPort} ->
+                    {ok, MState#mstate{ssh_daemon_pid = Pid, ssh_listen_port = ListenPort}};
                 {error, Reason} ->
-                    ?LOG_ERROR("Cannot start file-transfer SSH daemon on port ~p: ~p", [?MODULE:get_port(), Reason]),
+                    ?LOG_ERROR("Cannot start file-transfer SSH daemon: ~p", [Reason]),
                     {stop, Reason}
             end
     end.
 
+handle_call(get_listen_port, _From, #mstate{ssh_listen_port = Port} = MState) when is_integer(Port) ->
+    {reply, Port, MState};
+handle_call(get_listen_port, _From, MState) ->
+    {reply, wm_conf:g(data_transfer_ssh_port, {?DEFAULT_DATA_TRANSFER_PORT, integer}), MState};
 handle_call({upload_file_sftp, RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir}, _, MState) ->
     Result = do_upload_file_sftp(RemoteHost, Port, LocalFilePath, RemoteFilePath, SshUserDir),
     {reply, Result, MState};
@@ -705,37 +785,115 @@ parse_args([], MState) ->
     MState;
 parse_args([{simulation, true} | T], MState) ->
     parse_args(T, MState#mstate{simulation = true});
+parse_args([{spool, Spool} | T], MState) ->
+    parse_args(T, MState#mstate{spool = normalize_spool(Spool)});
 parse_args([{_, _} | T], MState) ->
     parse_args(T, MState).
 
-%% TODO: Fix options
-%% After work is done, use spool from start_link arg for system_dir
--spec ssh_daemon() -> {ok, pid()} | {error, term()}.
-ssh_daemon() ->
-    ssh_daemon(?SSH_DAEMON_RETRIES).
+-spec ssh_daemon(string()) -> {ok, pid(), inet:port_number()} | {error, term()}.
+ssh_daemon(Spool) ->
+    ssh_daemon(Spool, ?SSH_DAEMON_RETRIES).
 
--spec ssh_daemon(non_neg_integer()) -> {ok, pid()} | {error, term()}.
-ssh_daemon(RetriesLeft) ->
+-spec ssh_daemon(string(), non_neg_integer()) -> {ok, pid(), inet:port_number()} | {error, term()}.
+ssh_daemon(Spool, RetriesLeft) ->
     % TODO: use ssh daemon started by wm_ssh_server
-    Port = ?MODULE:get_port(),
-    case ssh:daemon(Port,
-                    [{id_string, "SWM/" ++ wm_utils:get_env("SWM_VERSION")},
-                     {system_dir, filename:join([wm_utils:get_env("SWM_SPOOL"), "secure/host"])},
-                     {subsystems, [wm_ssh_sftp_ext:subsystem_spec(), ssh_sftpd:subsystem_spec([{cwd, _CWD = "/"}])]},
-                     {preferred_algorithms, ssh:default_algorithms()},
-                     {user_passwords, [{"swm", "swm"}]}])  %TODO: consider a real password here
-    of
+    Port = wm_conf:g(data_transfer_ssh_port, {?DEFAULT_DATA_TRANSFER_PORT, integer}),
+    ListenIP = resolve_listen_ip(),
+    Options =
+        [{id_string, "SWM/" ++ wm_utils:get_env("SWM_VERSION")},
+         {subsystems, [wm_ssh_sftp_ext:subsystem_spec(Spool), wm_ssh_sftpd:subsystem_spec(Spool)]},
+         {preferred_algorithms, ssh:default_algorithms()}
+         | wm_ssh_key_cb:daemon_options(Spool)],
+    case ssh:daemon(ListenIP, Port, Options) of
         {ok, Pid} ->
-            ?LOG_DEBUG("File-transfer SSH daemon started on port ~p (pid=~p)", [Port, Pid]),
-            {ok, Pid};
+            BoundPort =
+                case ssh:daemon_info(Pid) of
+                    {ok, Info} ->
+                        proplists:get_value(port, Info, Port);
+                    _ ->
+                        Port
+                end,
+            ?LOG_DEBUG("File-transfer SSH daemon started on ~p:~p (pid=~p, home+spool/job allowlist)",
+                       [ListenIP, BoundPort, Pid]),
+            {ok, Pid, BoundPort};
         {error, eaddrinuse} when RetriesLeft > 1 ->
             ?LOG_WARN("File-transfer SSH port ~p still in use; retrying (~p left)", [Port, RetriesLeft - 1]),
             timer:sleep(?SSH_DAEMON_RETRY_MS),
-            ssh_daemon(RetriesLeft - 1);
+            ssh_daemon(Spool, RetriesLeft - 1);
         {error, Reason} = Error ->
-            ?LOG_ERROR("ssh:daemon(~p) failed: ~p", [Port, Reason]),
+            _ = Reason,
+            ?LOG_ERROR("ssh:daemon(~p, ~p) failed: ~p", [ListenIP, Port, Reason]),
             Error
     end.
+
+-spec resolve_listen_ip() -> inet:ip_address() | loopback | any.
+resolve_listen_ip() ->
+    case wm_conf:g(ssh_daemon_listen_ip, {default_ssh_listen_ip(), string}) of
+        "loopback" ->
+            loopback;
+        "localhost" ->
+            loopback;
+        "127.0.0.1" ->
+            {127, 0, 0, 1};
+        "::1" ->
+            {0, 0, 0, 0, 0, 0, 0, 1};
+        "any" ->
+            any;
+        "0.0.0.0" ->
+            any;
+        IP when is_list(IP) ->
+            case inet:parse_address(IP) of
+                {ok, Addr} ->
+                    Addr;
+                {error, _} ->
+                    ?LOG_ERROR("Invalid ssh_daemon_listen_ip ~p; using 127.0.0.1", [IP]),
+                    {127, 0, 0, 1}
+            end;
+        Other ->
+            _ = Other,
+            ?LOG_ERROR("Invalid ssh_daemon_listen_ip ~p; using 127.0.0.1", [Other]),
+            {127, 0, 0, 1}
+    end.
+
+%% Cloud job nodes often have no local global table yet (parent tunnel not up).
+%% SWM_JOB_NODE_ROLE=main|compute => listen on all interfaces for Sky Port SSH.
+-spec default_ssh_listen_ip() -> string().
+default_ssh_listen_ip() ->
+    case os:getenv("SWM_JOB_NODE_ROLE") of
+        false ->
+            "127.0.0.1";
+        "" ->
+            "127.0.0.1";
+        _ ->
+            "0.0.0.0"
+    end.
+
+-spec normalize_spool(string()) -> string().
+normalize_spool(Spool) when is_list(Spool) ->
+    string:trim(Spool, trailing, "/");
+normalize_spool(_) ->
+    "".
+
+%% Server SFTP has no chroot; paths must be absolute and under an allowlisted root.
+-spec sftp_jail_path(file:filename(), string() | [string()]) ->
+                        {ok, file:filename()} | {error, file:filename(), nonempty_string()}.
+sftp_jail_path(Path, Roots) when is_list(Roots), Roots =/= [], is_list(hd(Roots)) ->
+    PathAbs = filename:absname(Path),
+    case lists:any(fun(Root) -> is_within_root(normalize_spool(Root), PathAbs) end, Roots) of
+        true ->
+            {ok, PathAbs};
+        false ->
+            {error, Path, "path outside SFTP root"}
+    end;
+sftp_jail_path(Path, JailRoot) when is_list(JailRoot) ->
+    sftp_jail_path(Path, [JailRoot]).
+
+-spec is_within_root(string(), string()) -> boolean().
+is_within_root("", _) ->
+    false;
+is_within_root(Root, File) ->
+    lists:prefix(
+        filename:split(Root), filename:split(File)).
 
 -spec stop_ssh_daemon(pid() | undefined) -> ok.
 stop_ssh_daemon(undefined) ->
@@ -751,6 +909,7 @@ stop_ssh_daemon(Pid) when is_pid(Pid) ->
                 ok ->
                     ok;
                 {error, Reason} ->
+                    _ = Reason,
                     ?LOG_WARN("Could not stop file-transfer SSH daemon ~p: ~p", [Pid, Reason]),
                     ok
             end
@@ -1132,11 +1291,11 @@ copy_file(SrcServerRef, DstServerRef, SrcFd, DstFd, Size, Opts) ->
             case maps:get(operation, Opts) of
                 upload ->
                     %% Copy from local node to remote
-                    {_ConnectionRef, Pid} = DstServerRef,
+                    {_ConnectionRef, Pid, _Spool} = DstServerRef,
                     upload_file(Pid, SrcFd, DstFd, Size, Opts);
                 download ->
                     %% Copy from remote node to local
-                    {_ConnectionRef, Pid} = SrcServerRef,
+                    {_ConnectionRef, Pid, _Spool} = SrcServerRef,
                     download_file(Pid, SrcFd, DstFd, Size, Opts)
             end;
         erl ->
@@ -1266,30 +1425,55 @@ with_connection(Node, Opts, Fun) ->
     DefaultTransport = list_to_atom(wm_conf:g(data_transfer_default_via, {"erl", string})),
     case maps:get(via, Opts, DefaultTransport) of
         ssh ->
-            Username = maps:get(username, Opts, "swm"),
-            Password = maps:get(password, Opts, "swm"),
-            UserDir = maps:get(user_dir, Opts, "/tmp"),
-            Port = maps:get(port, Opts, get_port()),
-            with_ssh_connection(Port, Node, Username, Password, UserDir, Fun);
+            Username = maps:get(username, Opts, wm_posix_utils:get_current_user()),
+            Spool = normalize_spool(maps:get(spool, Opts, maps:get(user_dir, Opts, wm_utils:get_env("SWM_SPOOL")))),
+            %% Legacy callers passed secure/host as user_dir; use parent spool.
+            Spool2 =
+                case filename:basename(Spool) of
+                    "host" ->
+                        filename:dirname(
+                            filename:dirname(Spool));
+                    _ ->
+                        Spool
+                end,
+            case resolve_sftp_roots(Username, Spool2, Opts) of
+                {ok, Roots} ->
+                    Port = maps:get(port, Opts, get_port()),
+                    with_ssh_connection(Port, Node, Username, Spool2, Roots, Fun);
+                {error, Reason} ->
+                    {error, Node, io_lib:format("Cannot resolve SFTP allowlist for user ~p: ~p", [Username, Reason])}
+            end;
         erl ->
             NodeName = wm_utils:node_to_fullname(Node),
             preserve_connectivity_state(NodeName, Fun)
     end.
 
--spec with_ssh_connection(pos_integer(), string(), string(), string(), string(), fun((...) -> term())) ->
+-spec resolve_sftp_roots(string(), string(), #{}) -> {ok, [string()]} | {error, term()}.
+resolve_sftp_roots(Username, Spool, Opts) ->
+    Home =
+        case maps:get(jail_root, Opts, undefined) of
+            Root when is_list(Root), Root =/= "" ->
+                {ok, normalize_spool(Root)};
+            _ ->
+                wm_posix_utils:get_user_home(Username)
+        end,
+    case Home of
+        {ok, HomeDir} ->
+            JobRoot = filename:join([Spool, ?REMOTE_USER_DIR_NAME]),
+            {ok, [HomeDir, JobRoot]};
+        Error ->
+            Error
+    end.
+
+-spec with_ssh_connection(pos_integer(), string(), string(), string(), [string()], fun((...) -> term())) ->
                              {error, any(), nonempty_string()} | term().
-with_ssh_connection(Port, Node, Username, Password, UserDir, Fun) ->
-    Opts =
-        [{user, Username},
-         {password, Password},
-         {user_dir, UserDir},
-         {silently_accept_hosts, true},
-         {preferred_algorithms, ssh:default_algorithms()}],
-    case ssh:connect(Node, Port, Opts, _Timeout = 5000) of
+with_ssh_connection(Port, Node, Username, Spool, Roots, Fun) ->
+    ConnectOpts = [{preferred_algorithms, ssh:default_algorithms()} | wm_ssh_key_cb:client_options(Spool, Username)],
+    case ssh:connect(Node, Port, ConnectOpts, _Timeout = 5000) of
         {ok, ConnectionRef} ->
             case ssh_sftp:start_channel(ConnectionRef) of
                 {ok, Pid} ->
-                    Result = Fun(_ServerRef = {ConnectionRef, Pid}),
+                    Result = Fun(_ServerRef = {ConnectionRef, Pid, Roots}),
                     ok = ssh_sftp:stop_channel(Pid),
                     ok = ssh:close(ConnectionRef),
                     Result;

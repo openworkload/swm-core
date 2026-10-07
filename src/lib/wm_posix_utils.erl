@@ -1,6 +1,6 @@
 -module(wm_posix_utils).
 
--export([get_system_uid_gid/1, get_current_user/0, errno/1]).
+-export([get_system_uid_gid/1, get_current_user/0, get_user_home/1, errno/1]).
 
 -define(ERRNO,
         #{eacces => "Permission denied (POSIX.1-2001).",
@@ -86,6 +86,21 @@ get_system_uid_gid(Username) when is_list(Username) ->
 get_current_user() ->
     Username = os:cmd("id -n -u"),
     string:strip(Username, right, $\n).
+
+%% @doc Resolve the home directory for an OS user (getent/passwd).
+-spec get_user_home(string()) -> {ok, string()} | {error, term()}.
+get_user_home(Username) when is_list(Username), Username =/= "" ->
+    Line =
+        string:trim(
+            os:cmd("getent passwd " ++ Username ++ " 2>/dev/null")),
+    case string:split(Line, ":", all) of
+        [_, _, _, _, _, Home | _] when Home =/= "" ->
+            {ok, string:trim(Home, trailing, "/")};
+        _ ->
+            {error, {no_home, Username}}
+    end;
+get_user_home(_) ->
+    {error, bad_username}.
 
 %% @doc Convert posix error atom to human readable statement
 -spec errno(atom()) -> string().

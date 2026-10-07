@@ -656,8 +656,37 @@ get_finalize_cmd(#job{workdir = WorkDir} = Job) ->
                     {error, not_found} ->
                         {"1000", "1000"}
                 end,
-            Command = FinScript ++ " " ++ Username ++ " " ++ UID ++ " " ++ GID ++ " " ++ HostIP ++ " " ++ WorkDir,
+            LogDir = job_log_dir(Job),
+            Command =
+                FinScript
+                ++ " "
+                ++ Username
+                ++ " "
+                ++ UID
+                ++ " "
+                ++ GID
+                ++ " "
+                ++ HostIP
+                ++ " "
+                ++ WorkDir
+                ++ case LogDir of
+                       [] ->
+                           "";
+                       _ ->
+                           " " ++ LogDir
+                   end,
             [<<"/bin/sh">>, <<"-c">>, list_to_binary(Command)]
+    end.
+
+%% Parent directory of absolute job_stdout (defaults under $SWM_SPOOL/job/<id>).
+-spec job_log_dir(#job{}) -> string().
+job_log_dir(Job) ->
+    Out = wm_entity:get(job_stdout, Job),
+    case filename:pathtype(Out) of
+        absolute ->
+            filename:dirname(Out);
+        _ ->
+            []
     end.
 
 get_gpus([]) ->

@@ -176,17 +176,17 @@ get_jobs_info(Req) ->
             {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
     end.
 
--spec get_one_job(job_id()) -> {[string()], pos_integer()}.
+-spec get_one_job(job_id()) -> {[string()] | binary(), pos_integer()}.
 get_one_job(JobId) ->
     case gen_server:call(wm_user, {show, [JobId]}) of
         [Job] ->
             {job_to_json(Job, <<>>, true), ?HTTP_CODE_OK};
         _ ->
             ?LOG_ERROR("Job not found by ID=~p", [JobId]),
-            {error, ?HTTP_CODE_NOT_FOUND}
+            {<<"{\"error\":\"job not found\"}">>, ?HTTP_CODE_NOT_FOUND}
     end.
 
--spec get_job_stdout(job_id()) -> {[string()], pos_integer()}.
+-spec get_job_stdout(job_id()) -> {iodata(), pos_integer()}.
 get_job_stdout(JobId) ->
     case gen_server:call(wm_user, {stdout, JobId}) of
         {ok, Data} ->
@@ -196,14 +196,14 @@ get_job_stdout(JobId) ->
             {io_lib:format("Error: stdout for job ~s is not found", [JobId]), ?HTTP_CODE_NOT_FOUND}
     end.
 
--spec get_job_stderr(job_id()) -> {[string()], pos_integer()}.
+-spec get_job_stderr(job_id()) -> {iodata(), pos_integer()}.
 get_job_stderr(JobId) ->
     case gen_server:call(wm_user, {stderr, JobId}) of
         {ok, Data} ->
             {Data, ?HTTP_CODE_OK};
         {error, Error} ->
             ?LOG_ERROR("Job stderr not found for job ~p: ~p", [JobId, Error]),
-            {error, ?HTTP_CODE_NOT_FOUND}
+            {io_lib:format("Error: stderr for job ~s is not found", [JobId]), ?HTTP_CODE_NOT_FOUND}
     end.
 
 -spec get_job_metrics(job_id()) -> {binary() | string(), pos_integer()}.

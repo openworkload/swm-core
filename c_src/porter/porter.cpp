@@ -69,74 +69,68 @@ void set_workdir(passwd *pw, SwmJob &job) {
   }
 }
 
-void switch_stdout(const std::string &path) {
-  // Append so concurrent rank Porters on a shared NFS workdir keep all output.
-  FILE *outfile = fopen(path.c_str(), "a");
-  if (!outfile) {
-    swm_loge("Can't open %s", path.c_str());
-    perror("Stdout file opening error");
-    exit(EXIT_FILE_ERROR);
+// Open job log for append; return FD (caller dup2s later). -1 if path empty.
+int open_job_log_fd(std::string path, const std::string &id, const char *which) {
+  if (path.empty()) {
+    return -1;
   }
-  if (dup2(fileno(outfile), STDOUT_FILENO) < 0) {
-    swm_loge("Can't duplicate out file descriptor for %s: %s", path.c_str(), std::strerror(errno));
-    perror("Stderr file opening error");
-    exit(EXIT_SYSTEM_ERROR);
+  static const std::string token = "%j";
+  const size_t pos = path.find(token);
+  if (pos != std::string::npos) {
+    path.replace(pos, token.size(), id);
   }
-  fclose(outfile);
-}
-
-void switch_stderr(const std::string &path) {
-  FILE *errfile = fopen(path.c_str(), "a");
-  if (!errfile) {
-    swm_loge("Can't open %s", path.c_str());
-    exit(EXIT_FILE_ERROR);
-  }
-  if (dup2(fileno(errfile), STDERR_FILENO) < 0) {
-    swm_loge("Can't duplicate err file descriptor for %s: %s", path.c_str(), std::strerror(errno));
-    exit(EXIT_SYSTEM_ERROR);
-  }
-  fclose(errfile);
-}
-
-void set_io(const SwmJob &job) {
-  swm_logd("Set IO");
-  auto out_path = job.get_job_stdout();
-  static std::string token = "%j";
-  const auto id = job.get_id();
-  const size_t len = std::string("%j").size();
-  // Job script keeps stdout.log / stderr.log. Rank/task processes (SWM_PMIX_RANK
-  // set) write separate files next to them: stdout-task<N>.log, stderr-task<N>.log
-  // so concurrent NFS writers do not share one append stream.
+  // Rank/task processes (SWM_PMIX_RANK set) write separate files next to the
+  // job script logs: stdout-task<N>.log, stderr-task<N>.log.
   const char *task_num = std::getenv("SWM_PMIX_RANK");
-  auto task_log_name = [task_num](std::string base) {
-    if (!task_num || task_num[0] == '\0') {
-      return base;
-    }
-    const auto dot = base.rfind('.');
+  if (task_num && task_num[0] != '\0') {
+    const auto dot = path.rfind('.');
     if (dot == std::string::npos) {
-      return base + "-task" + task_num;
+      path += std::string("-task") + task_num;
+    } else {
+      path = path.substr(0, dot) + "-task" + task_num + path.substr(dot);
     }
-    return base.substr(0, dot) + "-task" + task_num + base.substr(dot);
-  };
-  if (out_path.size()) {
-    const size_t pos = out_path.find(token);
-    if (pos != std::string::npos) {
-      out_path.replace(pos, len, id);
-    }
-    out_path = task_log_name(std::move(out_path));
-    swm_logi("Job stdout: %s", out_path.c_str());
-    switch_stdout(out_path);
   }
+  swm_logi("Job %s: %s", which, path.c_str());
+  // Append so concurrent rank Porters on a shared NFS workdir keep all output.
+  const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+  if (fd < 0) {
+    swm_loge("Can't open %s", path.c_str());
+    perror(which);
+    exit(EXIT_FILE_ERROR);
+  }
+  return fd;
+}
 
-  auto err_path = job.get_job_stderr();
-  if (err_path.size()) {
-    const size_t pos = err_path.find(token);
-    if (pos != std::string::npos) {
-      err_path.replace(pos, len, id);
+struct JobLogFds {
+  int out_fd = -1;
+  int err_fd = -1;
+};
+
+// Open logs while still container-root (rootless: host Podman user). Must run
+// before setuid -- the job user cannot create files in root-owned spool dirs.
+JobLogFds open_job_logs(const SwmJob &job) {
+  swm_logd("Open job logs");
+  const auto id = job.get_id();
+  JobLogFds fds;
+  fds.out_fd = open_job_log_fd(job.get_job_stdout(), id, "stdout");
+  fds.err_fd = open_job_log_fd(job.get_job_stderr(), id, "stderr");
+  return fds;
+}
+
+void install_job_logs(const JobLogFds &fds) {
+  if (fds.out_fd >= 0) {
+    if (dup2(fds.out_fd, STDOUT_FILENO) < 0) {
+      swm_loge("Can't duplicate stdout fd: %s", std::strerror(errno));
+      exit(EXIT_SYSTEM_ERROR);
     }
-    err_path = task_log_name(std::move(err_path));
-    swm_logi("Job stderr: %s", err_path.c_str());
-    switch_stderr(err_path);
+    close(fds.out_fd);
+  }
+  if (fds.err_fd >= 0) {
+    if (dup2(fds.err_fd, STDERR_FILENO) < 0) {
+      swm_loge("Can't duplicate stderr fd: %s", std::strerror(errno));
+      exit(EXIT_SYSTEM_ERROR);
+    }
+    close(fds.err_fd);
   }
 }
 
@@ -377,13 +371,62 @@ std::string save_script(const SwmJob &job, const uid_t uid, const gid_t gid, con
   return path;
 }
 
-void set_job_dir_ownership(const SwmJob &job, const uid_t uid, const gid_t gid) {
-  const auto workdir = job.get_workdir();
-  if (chown(workdir.c_str(), uid, gid) == -1) {
-    const std::string msg = "Could not chown directory " + workdir;
+void ensure_owned_dir(const std::string &dir, const uid_t uid, const gid_t gid) {
+  if (dir.empty() || dir == "/") {
+    return;
+  }
+  if (mkdir(dir.c_str(), 0755) != 0 && errno != EEXIST) {
+    const std::string msg = "Could not mkdir " + dir;
     std::perror(msg.c_str());
     exit(EXIT_FAILURE);
   }
+  // Same rootless rule as ensure_log_file: skip root->other chown.
+  if (geteuid() != 0 || uid == 0) {
+    if (chown(dir.c_str(), uid, gid) == -1) {
+      const std::string msg = "Could not chown directory " + dir;
+      std::perror(msg.c_str());
+      exit(EXIT_FAILURE);
+    }
+  }
+}
+
+// Create stdout/stderr parent dir and files (under $SWM_SPOOL/job/<id>/).
+// Prefer creating them before setuid (see main). Do not chown to the job UID
+// when running as container root under rootless Podman without keep-id: that
+// maps to a subordinate host UID (e.g. 100999) and breaks host-side access.
+void ensure_log_file(const std::string &path, const uid_t uid, const gid_t gid) {
+  if (path.empty()) {
+    return;
+  }
+  const auto slash = path.find_last_of('/');
+  if (slash != std::string::npos && slash > 0) {
+    ensure_owned_dir(path.substr(0, slash), uid, gid);
+  }
+  const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+  if (fd < 0) {
+    const std::string msg = "Could not create log file " + path;
+    std::perror(msg.c_str());
+    exit(EXIT_FILE_ERROR);
+  }
+  close(fd);
+  // Chown only when we already run as the job user (keep-id) or when root is
+  // dropping to the same euid (no-op). Skip root->other chown in rootless.
+  if (geteuid() != 0 || uid == 0) {
+    if (chown(path.c_str(), uid, gid) == -1) {
+      const std::string msg = "Could not chown log file " + path;
+      std::perror(msg.c_str());
+      exit(EXIT_FAILURE);
+    }
+  }
+}
+
+void set_job_dir_ownership(const SwmJob &job, const uid_t uid, const gid_t gid) {
+  const auto workdir = job.get_workdir();
+  if (!workdir.empty()) {
+    ensure_owned_dir(workdir, uid, gid);
+  }
+  ensure_log_file(job.get_job_stdout(), uid, gid);
+  ensure_log_file(job.get_job_stderr(), uid, gid);
 }
 
 int main(int argc, char *const argv[]) {
@@ -442,11 +485,11 @@ int main(int argc, char *const argv[]) {
     swm_logi("Temporary execution path: \"%s\"", path.c_str());
 
     set_job_dir_ownership(info.job, pw->pw_uid, pw->pw_gid);
-    set_uid_gid(pw->pw_uid, pw->pw_gid);
+    const JobLogFds log_fds = open_job_logs(info.job);
     set_env(pw, info.job, ctrl_path);
     set_workdir(pw, info.job);
-
-    set_io(info.job);  // do not use logger after this point
+    set_uid_gid(pw->pw_uid, pw->pw_gid);
+    install_job_logs(log_fds);  // do not use logger after this point
 
     extern char **environ;
     char *const argv[] = {
