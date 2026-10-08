@@ -71,6 +71,7 @@ export SWM_VERSION_DIR=/opt/swm/current
 export SWM_SPOOL=/home/$username/.swm/spool
 export SWM_API_PORT=10001
 
+export SWM_COOKIE_OPTIONAL=1
 source ${SWM_VERSION_DIR}/scripts/swm.env
 cd $SWM_VERSION_DIR
 

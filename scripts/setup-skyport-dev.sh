@@ -35,7 +35,8 @@ CONFIG_BASE=${ROOT_DIR}/priv/setup/setup.config
 
 mkdir -p /opt/swm/spool
 
-## Export variables
+## Export variables (cookie is created when the daemon starts)
+export SWM_COOKIE_OPTIONAL=1
 source ${ROOT_DIR}/scripts/swm.env
 export SWM_ROOT=$(pwd)
 export SWM_VERSION_DIR=${SWM_ROOT}

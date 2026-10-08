@@ -30,7 +30,6 @@
 #
 # NOTE: When we run this script, then there is no generated sys.config, but only a template of it.
 # Thus the service stoppage (in case it was started before) ends with the error "Invalid node name".
-# Also the stoppage will fail because old and new cookies may differ.
 
 import argparse
 import datetime
@@ -251,10 +250,12 @@ def env(opts: dict[str, str]) -> None:
     ]
     LOG.info("Run '%s'" % " ".join(command))
 
-    envs = os.environ
+    envs = os.environ.copy()
     for key, val in opts.items():
         if isinstance(val, str) and key.startswith("SWM"):
             envs[key] = val
+    # setup only needs paths / ports from swm.env; cookie is per daemon start
+    envs["SWM_COOKIE_OPTIONAL"] = "1"
 
     process = Popen(command, stdout=PIPE, env=envs)
     for line in process.stdout:
@@ -282,9 +283,17 @@ def spawn_vnode(opts: dict[str, str]) -> Popen:
         script = os.path.join(SWM_VERSION_DIR, "scripts", "run-in-shell.sh")
         LOG.info(f"Testing mode vnode: {script}")
     else:
-        args = ["foreground"]
-        script = os.path.join(SWM_VERSION_DIR, "bin", PRODUCT)
-        LOG.info(f"Daemon mode vnode: {script}")
+        swm_env = os.path.join(SWM_VERSION_DIR, "scripts", "swm.env")
+        product_bin = os.path.join(SWM_VERSION_DIR, "bin", PRODUCT)
+        # Match systemd: regenerate local cookie, then foreground via release script.
+        script = "bash"
+        args = [
+            "-c",
+            "export SWM_REGENERATE_COOKIE=1; source '{env}' && exec '{bin}' foreground".format(
+                env=swm_env, bin=product_bin
+            ),
+        ]
+        LOG.info(f"Daemon mode vnode: {product_bin}")
         opts["SWM_LOG_DIR"] = os.path.join(
             opts["SWM_SPOOL"], opts["SWM_SNAME"] + "@" + opts["SWM_HOST"], "log"
         )
@@ -295,12 +304,12 @@ def spawn_vnode(opts: dict[str, str]) -> Popen:
             )
 
     os.environ["SWM_MODE"] = "MAINT"
-    env = os.environ
+    env = os.environ.copy()
     for key, val in opts.items():
         if isinstance(val, str):
             env[key] = val
     for key, val in env.items():
-        if key.startswith("SWM"):
+        if key.startswith("SWM") and key != "SWM_COOKIE":
             LOG.info("export %s=%s" % (key, val))
 
     process = run_in_background(script, args, env)

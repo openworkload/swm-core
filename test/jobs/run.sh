@@ -33,6 +33,7 @@ echo
 # Set environment for user commands:
 export SWM_SNAME=chead1
 export SWM_API_PORT=10011
+export SWM_COOKIE_OPTIONAL=1
 source ${SWM_ROOT}/current/scripts/swm.env
 
 SUBMIT_COMMAND="${SWM_JOB} submit $TEST_JOB"

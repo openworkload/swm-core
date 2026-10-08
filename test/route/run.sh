@@ -30,6 +30,7 @@ EXPECTED_ROUTE[12]="'phead1@$HOSTNAME'"
 # Set environment for user commands:
 export SWM_SNAME=chead1
 export SWM_API_PORT=10011
+export SWM_COOKIE_OPTIONAL=1
 source ${SWM_ROOT}/current/scripts/swm.env
 
 OUTPUT=$($SWM_CTL grid route node401 node101)

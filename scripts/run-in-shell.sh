@@ -75,7 +75,7 @@ case $i in
     echo "  -c|--cluster                run (or connect to) cluster SWM instance"
     echo "  -b|--background             run SWM instance in background mode"
     echo "  -s|--stop                   stop SWM instance"
-    echo "  -p|--ping                   ping SWM instance"
+    echo "  -p|--ping                   ping SWM instance (API / swm-ping)"
     exit 0
     ;;
     *)
@@ -86,6 +86,19 @@ done
 
 ME=$( readlink -f "$0" )
 ROOT_DIR=$( dirname "$( dirname "$ME" )" )
+
+## Cookie policy (see HOWTO/SECURITY.md):
+## - Daemon start: write a fresh random local cookie.
+## - remsh tools (etop/observer): load the cookie the daemon wrote.
+## - stop: prefer rpc with cookie; if missing, SIGTERM local beam (upgrade path).
+## - API ping: no cookie required.
+if [ "${PING}" = true ] || [ "${STOP}" = true ]; then
+  export SWM_COOKIE_OPTIONAL=1
+elif [ "${ETOP}" = true ] || [ "${OBSERVER}" = true ]; then
+  :
+else
+  export SWM_REGENERATE_COOKIE=1
+fi
 
 ## Export variables
 source ${ROOT_DIR}/scripts/swm.env
@@ -115,17 +128,62 @@ export SWM_FINALIZE_IN_CONTAINER="${SWM_FINALIZE_IN_CONTAINER:-$SWM_CONTAINER_FI
 export SWM_PORTER_IN_CONTAINER=${ROOT_DIR}/c_src/porter/swm-porter
 export SWM_WORKER_LOCAL_PATH="${ROOT_DIR}/_build/packages/swm-worker.tar.gz"
 
-## VM args for short-lived remsh-style invocations (etop/observer/stop/ping).
-## They set their own -name/-sname on the command line, so any -name/-sname/
-## -args_file in vm.args is filtered out to avoid duplicate-flag conflicts.
-VM_ARGS=$(grep -v -E '^#|^-name|^-sname|^-args_file' "${SWM_VM_ARGS}" | xargs | sed -e 's/ / /g')
-
 HOSTNAME=$(hostname -f)
 if [[ $HOSTNAME == *.* ]]; then
   ERL_NAME_ARG=-name
 else
   ERL_NAME_ARG=-sname
 fi
+
+## VM args for short-lived remsh-style invocations (etop/observer/stop).
+## They set their own -name/-sname on the command line, so any -name/-sname/
+## -args_file in vm.args is filtered out to avoid duplicate-flag conflicts.
+remsh_vm_args() {
+  if [ -n "${SWM_COOKIE:-}" ] && [ -f "${SWM_VM_ARGS:-}" ]; then
+    grep -v -E '^#|^-name|^-sname|^-args_file' "${SWM_VM_ARGS}" | xargs | sed -e 's/ / /g'
+  fi
+}
+
+## Stop local SWM beams when dist rpc is unavailable (no cookie / wrong cookie).
+stop_swm_beams() {
+  local pid state cmdline killed=0
+  for pid in $(pgrep -x beam.smp 2>/dev/null || true); do
+    state=$(awk '{print $3}' "/proc/${pid}/stat" 2>/dev/null || true)
+    if [ -z "${state}" ] || [ "${state}" = "Z" ]; then
+      continue
+    fi
+    cmdline=$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)
+    if echo "${cmdline}" | grep -Eq -- "(-sname|-name)[[:space:]]+${SWM_SNAME}(@|[[:space:]])|[[:space:]]${SWM_SNAME}[[:space:]]|/swm([[:space:]]|$)|bin/swm"; then
+      echo "Stopping beam.smp pid=${pid} (${SWM_SNAME})"
+      kill "${pid}" 2>/dev/null || true
+      killed=1
+    fi
+  done
+  if [ "${killed}" -eq 0 ]; then
+    ## Broad fallback for older cmdline shapes / release scripts
+    for pid in $(pgrep -x beam.smp 2>/dev/null || true); do
+      state=$(awk '{print $3}' "/proc/${pid}/stat" 2>/dev/null || true)
+      if [ -n "${state}" ] && [ "${state}" != "Z" ]; then
+        echo "Stopping beam.smp pid=${pid} (fallback)"
+        kill "${pid}" 2>/dev/null || true
+        killed=1
+      fi
+    done
+  fi
+  ## Brief wait, then SIGKILL leftovers
+  local i
+  for i in 1 2 3 4 5; do
+    pgrep -x beam.smp >/dev/null 2>&1 || return 0
+    sleep 1
+  done
+  for pid in $(pgrep -x beam.smp 2>/dev/null || true); do
+    state=$(awk '{print $3}' "/proc/${pid}/stat" 2>/dev/null || true)
+    if [ -n "${state}" ] && [ "${state}" != "Z" ]; then
+      echo "Force-killing beam.smp pid=${pid}"
+      kill -9 "${pid}" 2>/dev/null || true
+    fi
+  done
+}
 
 ## Log destination for the detached daemon (BACKGROUND mode). The Erlang
 ## logger handler in sys.config writes to ${SWM_LOG_DIR}/erlang.log only
@@ -134,28 +192,27 @@ fi
 SWM_BG_LOG="${SWM_LOG_DIR}/run-in-shell.log"
 
 if [ $ETOP ]; then
+  VM_ARGS=$(remsh_vm_args)
   erl $ERL_NAME_ARG etop-`date +%s` ${VM_ARGS} -boot start_clean -remsh \'${SWM_SNAME}@$HOSTNAME\' \
     -s etop -output text -tracing off -sort msg_q -interval 1 -lines $( expr `tput lines` - 11 )
 elif [ $OBSERVER ]; then
+  VM_ARGS=$(remsh_vm_args)
   erl $ERL_NAME_ARG observer-`date +%s` ${VM_ARGS} -boot start_clean -remsh \'${SWM_SNAME}@$HOSTNAME\' \
     -s observer
 elif [ $STOP ]; then
-  echo erl $ERL_NAME_ARG stop-`date +%s` ${VM_ARGS} -boot start_clean -noinput -noshell \
-      -eval "io:format(\"~p~n\", [rpc:call('${SWM_SNAME}@$HOSTNAME', init, stop, [], 10000)]), halt(0)"
-  erl $ERL_NAME_ARG stop-`date +%s` ${VM_ARGS} -boot start_clean -noinput -noshell \
-      -eval "io:format(\"~p~n\", [rpc:call('${SWM_SNAME}@$HOSTNAME', init, stop, [], 10000)]), halt(0)"
+  if [ -n "${SWM_COOKIE:-}" ]; then
+    VM_ARGS=$(remsh_vm_args)
+    if [ -n "${VM_ARGS}" ]; then
+      erl $ERL_NAME_ARG stop-`date +%s` ${VM_ARGS} -boot start_clean -noinput -noshell \
+          -eval "io:format(\"~p~n\", [rpc:call('${SWM_SNAME}@$HOSTNAME', init, stop, [], 10000)]), halt(0)" \
+        || true
+    fi
+  else
+    echo "No local Erlang cookie at ${SWM_COOKIE_FILE:-$SWM_SPOOL/secure/cookie}; stopping via signal"
+  fi
+  stop_swm_beams
 elif [ $PING ]; then
-  # TODO: get rid of the erlang distribution requirement
-  erl $ERL_NAME_ARG ping-`date +%s` ${VM_ARGS} -boot start_clean -noinput -noshell \
-      -eval "case {net_kernel:hidden_connect_node('${SWM_SNAME}@$HOSTNAME'), net_adm:ping('${SWM_SNAME}@$HOSTNAME')} of
-               {true, pong} ->
-                 timer:sleep(9000), %FIXME swm services are not always ready when pinged with net_adm:ping (use wm_pinger instead)
-                 io:format(\"pong\n\", []),
-                 halt(0);
-               {_, pang} ->
-                 io:format(\"Node ~p not responding to pings.\n\", ['${SWM_SNAME}@$HOSTNAME']),
-                 halt(1)
-             end"
+  exec "${ROOT_DIR}/scripts/swm-ping" "${SWM_API_HOST}" "${SWM_API_PORT}"
 elif [ $BACKGROUND ]; then
   mkdir -p "$(dirname "${SWM_BG_LOG}")"
   : > "${SWM_BG_LOG}"
@@ -172,4 +229,3 @@ else
   erl $ERL_NAME_ARG $SWM_SNAME -pa ${ROOT_DIR}/_build/default/lib/*/ebin -config ${SWM_SYS_CONFIG} -args_file ${SWM_VM_ARGS} -boot start_clean \
     -s swm -s sync
 fi
-

@@ -221,9 +221,9 @@ sign_req(RootDir, OpenSSLCmd, CADir, Ext, ReqFile, CertFile) ->
     cmd(Cmd, Env).
 
 %% OTP 29+ (RFC 9525): end-entity certs must carry a Subject Alternative Name
-%% extension. Erlang distribution verifies against atom_to_list(Node), e.g.
-%% "node@skyport.openworkload.org". Pass SAN via -extfile so existing CA configs
-%% (without copy_extensions) still emit a proper extension.
+%% extension. API/dist TLS hostname checks use DNS SANs such as the FQDN and
+%% "sname@fqdn". Pass SAN via -extfile so existing CA configs (without
+%% copy_extensions) still emit a proper extension.
 -spec sign_req(string(), string(), string(), string(), string(), string(), [string()]) -> ok.
 sign_req(RootDir, OpenSSLCmd, CADir, Ext, ReqFile, CertFile, DnsNames) ->
     CACnfFile = filename:join([CADir, "ca.cnf"]),

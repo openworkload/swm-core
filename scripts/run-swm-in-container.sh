@@ -38,5 +38,6 @@ if [ -z "$(ls -A "$SPOOL")" ]; then
     exit 1
 fi
 
+export SWM_REGENERATE_COOKIE=1
 source /opt/swm/current/scripts/swm.env
 /opt/swm/current/bin/swm foreground

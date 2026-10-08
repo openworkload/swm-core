@@ -122,10 +122,21 @@ stop_swm_in_container() {
         sleep 1
     done
     echo "WARN: SWM still running after graceful stop; killing beam.smp" >&2
-    in_container 'pkill -x beam.smp || true'
+    in_container '
+        for pid in $(pgrep -x beam.smp 2>/dev/null || true); do
+            kill -TERM "$pid" 2>/dev/null || true
+        done
+        sleep 1
+        for pid in $(pgrep -x beam.smp 2>/dev/null || true); do
+            state=$(awk "{print \$3}" /proc/$pid/stat 2>/dev/null || true)
+            if [ -n "$state" ] && [ "$state" != "Z" ]; then
+                kill -KILL "$pid" 2>/dev/null || true
+            fi
+        done
+    '
     sleep 1
     if swm_beam_alive; then
-        echo "WARN: live beam.smp still present after pkill" >&2
+        echo "WARN: live beam.smp still present after kill" >&2
         return 1
     fi
     echo "SWM stopped (forced)"

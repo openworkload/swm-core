@@ -37,6 +37,7 @@ get_parent() ->
     wm_utils:protected_call(?MODULE, get_parent, none).
 
 %% @doc Start peer node on the same host (new parent)
+%% TODO: spawn peer parent without Erlang distribution (not implemented).
 -spec start_peer(atom(), list(), list()) -> {ok, term()} | {error, term()}.
 start_peer(ShortName, PeerArgs, AppArgs) ->
     do_start_peer(ShortName, PeerArgs, AppArgs).
@@ -388,89 +389,17 @@ add_parent(ParentShortName, #mstate{} = MState) when is_list(ParentShortName) ->
             MState
     end.
 
+%% TODO: implement peer parent spawn without Erlang distribution.
 do_start_peer(ShortName, PeerArgs, AppArgs) ->
-    Host = wm_utils:get_my_fqdn(),
-    ?LOG_DEBUG("Starting new node ~s@~s: erl~s", [ShortName, Host, PeerArgs]),
-    case peer:start(Host, ShortName, PeerArgs, self(), "erl") of
-        {ok, Node} ->
-            wm_event:announce(started_peer, Node),
-            Pid = spawn(Node, wm_root_sup, start_peer, [AppArgs]),
-            ?LOG_DEBUG("Peer node ~p has been spawned (supervisor: ~p)", [Node, Pid]),
-            {ok, Node};
-        {error, Reason} ->
-            error_logger:error_msg(Reason),
-            {error, Reason}
-    end.
+    ?LOG_ERROR("Peer parent spawn is not implemented (requested ~p)", [ShortName]),
+    _ = {PeerArgs, AppArgs},
+    {error, not_implemented}.
 
 start_parent(MState) ->
-    ?LOG_DEBUG("Lets start a new parent"),
-    ParentStr = wm_parent:get_current(MState#mstate.pstack),
-    ParentParts = string:tokens(ParentStr, "@"),
-    OldParentName = hd(ParentParts),
-    Suffix = "new1", %FIXME Imcrement index each time when new parent is started
-    NewParentName = OldParentName ++ Suffix,
-    {ok, MyNode} = wm_self:get_node(),
-    MyPort = wm_entity:get(api_port, MyNode),
-    Port = do_allocate_port(),
-    add_parent_to_db(OldParentName, NewParentName, Port),
-    AppArgs =
-        [{spool, MState#mstate.spool},
-         {boot_type, clean},
-         {printer, file},
-         {parent_port, MyPort},
-         {root, MState#mstate.root},
-         {api_port, Port},
-         {sname, NewParentName}],
-    PeerArgs = get_parent_peer_args(),
-    FullName = lists:flatten(NewParentName ++ "@" ++ tl(ParentParts)),
-    ?LOG_INFO("Start new parent: ~p", [NewParentName]),
-    ?LOG_DEBUG("New parent app args: ~p", [AppArgs]),
-    ?LOG_DEBUG("New parent node args: ~p", [PeerArgs]),
-    case do_start_peer(NewParentName, PeerArgs, AppArgs) of
-        {ok, _} ->
-            wm_event:announce(new_parent, {FullName, Port}),
-            wm_event:announce_neighbours(new_parent, {FullName, Port});
-        {error, Reason} ->
-            ?LOG_ERROR("Cannot start ~p:~p ~p", [FullName, Port, Reason]),
-            wm_state:enter(maint)
-    end,
+    %% TODO: start a replacement parent BEAM without Erlang distribution.
+    ?LOG_ERROR("Cannot start peer parent: distribution-based spawn was removed"),
+    wm_state:enter(maint),
     MState.
-
-add_parent_to_db(OldParentName, NewParentName, Port) ->
-    {ok, Node1} = wm_conf:select_node(OldParentName),
-    NewID = rand:uniform(1000) + 100, %FIXME we should assign some unique ID (how to get unique one?)
-    Node2 = wm_entity:set({id, NewID}, Node1),
-    Node3 = wm_entity:set({name, NewParentName}, Node2),
-    Node4 = wm_entity:set({api_port, Port}, Node3),
-    Node5 = wm_entity:set({revision, 0}, Node4),
-    Node6 = wm_entity:set({host, wm_self:get_host()}, Node5),
-    case wm_conf:select_node(NewParentName) of
-        {ok, ExistingNode} ->
-            wm_conf:delete(ExistingNode);
-        _ ->
-            ok
-    end,
-    wm_conf:update(Node6),
-    add_parent_to_subdiv(Node6).
-
-add_parent_to_subdiv(Node) ->
-    FullName = wm_utils:node_to_fullname(Node),
-    {ok, SelfNode} = wm_self:get_node(),
-    SubDiv1 = wm_topology:get_direct_subdiv(SelfNode),
-    SubDiv2 = wm_entity:set({manager, FullName}, SubDiv1),
-    wm_conf:update(SubDiv2).
-
-get_parent_peer_args() ->
-    AppConf = wm_utils:get_env("SWM_SYS_CONFIG"),
-    Config = "'" ++ AppConf ++ "'",
-    Boot = " -boot start_sasl -config " ++ Config,
-    Hidden = " -hidden",
-    Pa = " -pa " ++ wm_utils:get_module_dir(wm_root_sup),
-    E = " -env DISPLAY " ++ wm_self:get_host() ++ ":0 ",
-    RSH = " -rsh ssh",
-    Cookie = " -setcookie " ++ atom_to_list(erlang:get_cookie()),
-    Extra = " -eval 'application:ensure_all_started(folsom)'",
-    Boot ++ Hidden ++ Pa ++ E ++ RSH ++ Cookie ++ Extra.
 
 do_allocate_port() ->
     NextAfterEnd = wm_conf:g(floating_port_end, {?FLOATING_PORT_END, integer}) + 1,

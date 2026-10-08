@@ -36,6 +36,7 @@ mkdir -p ${SWM_ROOT}/spool
 
 ME=$( readlink -f "$0" )
 ROOT_DIR=$( dirname "$( dirname "$ME" )" )
+export SWM_COOKIE_OPTIONAL=1
 source ${ROOT_DIR}/scripts/swm.env
 
 tar zfx _build/default/rel/swm/swm-${SWM_VERSION}.tar.gz -C $SWM_ROOT
@@ -57,7 +58,7 @@ function wait_swm() {
   EXIT_CODE=1
   while [ $attempt -lt 10 ]; do
     echo "Ping attempt $attempt"
-    ${SWM_ROOT}/${SWM_VERSION}/bin/swm ping
+    ${SWM_ROOT}/${SWM_VERSION}/scripts/swm-ping localhost ${SWM_API_PORT}
     if [ "$?" -eq "0" ]; then
       EXIT_CODE=0
       break
@@ -76,6 +77,16 @@ function swm_command() {
   export SWM_SNAME=$2
   export COMMAND=$3
   echo
+  case "${COMMAND}" in
+    start|restart|foreground|console)
+      export SWM_REGENERATE_COOKIE=1
+      unset SWM_COOKIE_OPTIONAL
+      ;;
+    *)
+      export SWM_COOKIE_OPTIONAL=1
+      unset SWM_REGENERATE_COOKIE
+      ;;
+  esac
   source ${ROOT_DIR}/scripts/swm.env
   echo "Do $COMMAND $SWM_SNAME ..."
   ${SWM_ROOT}/${SWM_VERSION}/bin/swm $COMMAND

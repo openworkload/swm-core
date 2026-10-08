@@ -1,5 +1,7 @@
 [
     {kernel, [
+        %% Erlang distribution is for local remsh only; bind to loopback.
+        {inet_dist_use_interface, {127,0,0,1}},
         {inet_dist_listen_min, 50000},
         {inet_dist_listen_max, 50256},
         {inet_default_connect_options, [

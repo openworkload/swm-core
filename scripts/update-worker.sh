@@ -62,6 +62,7 @@ if [ "$dev_opt" ]; then
     version=$(scripts/version)
     echo "Version from version script: $version"
 else
+    export SWM_COOKIE_OPTIONAL=1
     source $scripts_dir/swm.env
     version=$SWM_VERSION
     echo "Version from swm.env: $version"

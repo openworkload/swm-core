@@ -24,8 +24,7 @@
 -include_lib("kernel/include/file.hrl").
 
 -record(mstate,
-        {via = erl :: erl | ssh,
-         spool = "" :: string(),
+        {spool = "" :: string(),
          ssh_daemon_pid = undefined :: pid(),
          ssh_listen_port = undefined :: inet:port_number() | undefined,
          priority_queue = new() :: {pos_integer(), [term()]},
@@ -86,17 +85,16 @@ start_link(Args) ->
 %% * "/tmp/directory"
 %% * "/tmp/regexp*.{txt,log}"
 %% * ["/tmp/file", "/tmp/directory", "/tmp/regexp*.{txt,log}"]
-%% * "/tmp/directory" — copy all files with directory itself
-%% * "/tmp/directory/" — copy all file without directory itself
+%% * "/tmp/directory" -- copy all files with directory itself
+%% * "/tmp/directory/" -- copy all file without directory itself
 %%
 %% The `Opts' can be:
-%% * #{delete => true} — delete extraneous file when copy directory
+%% * #{delete => true} -- delete extraneous file when copy directory
 %%
-%% * #{via => ssh} — copy files through SSH SFTP
-%% * #{via => erl} — copy files through Erlang distribution
+%% * #{via => ssh} -- copy files through SSH SFTP (only supported transport)
 %%
-%% * #{operation => upload}   — copy files from local node to remote
-%% * #{operation => download} — copy files from remote node to local
+%% * #{operation => upload}   -- copy files from local node to remote
+%% * #{operation => download} -- copy files from remote node to local
 %%
 %% @end
 -spec copy(atom(), string(), pos_integer(), file:filename() | [file:filename()], file:filename(), #{}) -> {ok, list()}.
@@ -1285,21 +1283,15 @@ process_directory(SrcServerRef, DstServerRef, File, Destination, Info, Opts) ->
                 #{}) ->
                    ok | {error, term()}.
 copy_file(SrcServerRef, DstServerRef, SrcFd, DstFd, Size, Opts) ->
-    DefaultTransport = list_to_atom(wm_conf:g(data_transfer_default_via, {"erl", string})),
-    case maps:get(via, Opts, DefaultTransport) of
-        ssh ->
-            case maps:get(operation, Opts) of
-                upload ->
-                    %% Copy from local node to remote
-                    {_ConnectionRef, Pid, _Spool} = DstServerRef,
-                    upload_file(Pid, SrcFd, DstFd, Size, Opts);
-                download ->
-                    %% Copy from remote node to local
-                    {_ConnectionRef, Pid, _Spool} = SrcServerRef,
-                    download_file(Pid, SrcFd, DstFd, Size, Opts)
-            end;
-        erl ->
-            copy_file(SrcFd, DstFd, Opts)
+    case maps:get(operation, Opts) of
+        upload ->
+            %% Copy from local node to remote
+            {_ConnectionRef, Pid, _Spool} = DstServerRef,
+            upload_file(Pid, SrcFd, DstFd, Size, Opts);
+        download ->
+            %% Copy from remote node to local
+            {_ConnectionRef, Pid, _Spool} = SrcServerRef,
+            download_file(Pid, SrcFd, DstFd, Size, Opts)
     end.
 
 -spec upload_file(pid() | atom() | {atom(), node()},
@@ -1404,48 +1396,29 @@ receive_async_read(DstFd, Opts, Ref) ->
         {error, receive_read_timeout}
     end.
 
--spec copy_file(file:io_device(), file:io_device(), #{}) -> ok | {error, term()}.
-copy_file(SrcFd, DstFd, Opts) ->
-    case file:copy(SrcFd, DstFd, ?BUF_SIZE) of
-        {ok, 0} ->
-            ok;
-        {ok, Bytes} ->
-            ok = gen_server:cast(?MODULE, {just_transfered, maps:get(ref, Opts), Bytes}),
-            copy_file(SrcFd, DstFd, Opts);
-        Otherwise ->
-            Otherwise
-    end.
-
 %% ============================================================================
 %% Auxiliary
 %% ============================================================================
 
 -spec with_connection(string(), #{}, fun((...) -> term())) -> {error, any(), nonempty_string()} | term().
 with_connection(Node, Opts, Fun) ->
-    DefaultTransport = list_to_atom(wm_conf:g(data_transfer_default_via, {"erl", string})),
-    case maps:get(via, Opts, DefaultTransport) of
-        ssh ->
-            Username = maps:get(username, Opts, wm_posix_utils:get_current_user()),
-            Spool = normalize_spool(maps:get(spool, Opts, maps:get(user_dir, Opts, wm_utils:get_env("SWM_SPOOL")))),
-            %% Legacy callers passed secure/host as user_dir; use parent spool.
-            Spool2 =
-                case filename:basename(Spool) of
-                    "host" ->
-                        filename:dirname(
-                            filename:dirname(Spool));
-                    _ ->
-                        Spool
-                end,
-            case resolve_sftp_roots(Username, Spool2, Opts) of
-                {ok, Roots} ->
-                    Port = maps:get(port, Opts, get_port()),
-                    with_ssh_connection(Port, Node, Username, Spool2, Roots, Fun);
-                {error, Reason} ->
-                    {error, Node, io_lib:format("Cannot resolve SFTP allowlist for user ~p: ~p", [Username, Reason])}
-            end;
-        erl ->
-            NodeName = wm_utils:node_to_fullname(Node),
-            preserve_connectivity_state(NodeName, Fun)
+    Username = maps:get(username, Opts, wm_posix_utils:get_current_user()),
+    Spool = normalize_spool(maps:get(spool, Opts, maps:get(user_dir, Opts, wm_utils:get_env("SWM_SPOOL")))),
+    %% Legacy callers passed secure/host as user_dir; use parent spool.
+    Spool2 =
+        case filename:basename(Spool) of
+            "host" ->
+                filename:dirname(
+                    filename:dirname(Spool));
+            _ ->
+                Spool
+        end,
+    case resolve_sftp_roots(Username, Spool2, Opts) of
+        {ok, Roots} ->
+            Port = maps:get(port, Opts, get_port()),
+            with_ssh_connection(Port, Node, Username, Spool2, Roots, Fun);
+        {error, Reason} ->
+            {error, Node, io_lib:format("Cannot resolve SFTP allowlist for user ~p: ~p", [Username, Reason])}
     end.
 
 -spec resolve_sftp_roots(string(), string(), #{}) -> {ok, [string()]} | {error, term()}.
@@ -1483,20 +1456,6 @@ with_ssh_connection(Port, Node, Username, Spool, Roots, Fun) ->
             end;
         {error, Reason} ->
             {error, Node, io_lib:format("Connection via SSH to remote node ~p failed due ~p", [Node, Reason])}
-    end.
-
--spec preserve_connectivity_state(node(), fun((...) -> term())) -> {error, node(), nonempty_string()} | term().
-preserve_connectivity_state(Node, Fun) ->
-    IsConnected = lists:member(Node, nodes(connected)),
-    case net_kernel:connect_node(Node) of
-        true ->
-            Result = Fun(_ServerRef = {?MODULE, Node}),
-            IsConnected andalso net_kernel:disconnect(Node),
-            Result;
-        ignored ->
-            Fun(_ServerRef = {?MODULE, Node});
-        false ->
-            {error, Node, io_lib:format("Connection to remote node ~p failed", [Node])}
     end.
 
 -spec new() -> {pos_integer(), [term()]}.

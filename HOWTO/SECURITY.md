@@ -1,8 +1,8 @@
 # Security
 
 This document describes how Sky Port protects the cluster. It covers the
-certificate authority (CA), mutual TLS (mTLS), SSH and SFTP, and operator
-tasks.
+certificate authority (CA), mutual TLS (mTLS), SSH and SFTP, Erlang
+distribution (local debugging only), and operator tasks.
 
 Use one trust domain for all components: the cluster CA under `$SWM_SPOOL/secure/`.
 
@@ -25,6 +25,7 @@ Sky Port uses an X.509 hierarchy:
 | `secure/node/` | Node end-entity (`cert.pem`, `key.pem`) |
 | `secure/users/<name>/` | User end-entity certificates |
 | `secure/host/` | SSH **host** keys only (`ssh_host_*_key`). Not used for user login. |
+| `secure/cookie` | Local Erlang cookie (random per daemon start; mode 0600) |
 
 Keep the cluster CA **private** key on the control plane. Do not share.
 
@@ -50,10 +51,39 @@ These paths use the cluster CA and the node (or user) certificate:
 | API TCP | `secure/cluster/cert.pem` | `secure/node/{cert,key}.pem` |
 | REST (HTTP) | same | same |
 | Cloud gate client | same | same |
-| Erlang distribution (`inet_tls`) | `ca-chain-cert.pem` | node cert/key |
+| Erlang distribution (`inet_tls`, localhost only) | `ca-chain-cert.pem` | node cert/key |
 
 Clients present a certificate. The server verifies the peer against the cluster
 CA. User identity for REST often comes from the peer certificate subject.
+
+Cluster control plane traffic uses the API (`wm_rpc` over mTLS). It does not
+use Erlang distribution between hosts.
+
+## Erlang distribution (local debugging only)
+
+Erlang distribution is enabled only so operators can attach locally with
+`remsh`, `etop`, or `observer`, and so `run-in-shell.sh -s` can stop the node
+via `rpc:call`.
+
+Constraints:
+
+1. **Listen on localhost only.** `inet_dist_use_interface` is `{127,0,0,1}` and
+   `ERL_EPMD_ADDRESS=127.0.0.1`. Remote hosts cannot open a distribution
+   channel. SSH to the host first, then remsh.
+2. **Random cookie per daemon start.** On start, Sky Port writes
+   `$SWM_SPOOL/secure/cookie` (mode 0600) and passes it to `-setcookie`. The
+   cookie is not shared across nodes and is not packed into the worker archive.
+   Local tools load that file; they do not invent a cookie.
+3. **Dist TLS peer verify.** Server and client use `verify_peer`; the server
+   sets `fail_if_no_peer_cert`. Remsh clients must present the node certificate.
+   Node certs need a DNS SAN for `sname@fqdn` (see cert issuance).
+4. **Hostname for remsh.** With `-name node@FQDN`, the client connects to the
+   IP of `FQDN`. That name must resolve to loopback on the host (for example
+   via `/etc/hosts`), or remsh fails even from the same machine.
+
+Health checks use `scripts/swm-ping` (API / `wm_pinger`), not `net_adm:ping`.
+
+File transfer uses SFTP only. There is no Erlang-distribution file transport.
 
 ## SSH and SFTP
 
@@ -123,6 +153,14 @@ That path is separate from the SWM OTP SSH daemons.
 ss -lntp | grep -E '10022|31337'
 ```
 
+### Check local distribution bind
+
+```bash
+ss -lntp | grep -E '4369|5000[0-9]'
+```
+
+Listeners for epmd and the dist port range must show `127.0.0.1` (not `0.0.0.0`).
+
 ### Rotate certificates
 
 1. Create new certificates with the setup / `wm_cert` flow.
@@ -139,7 +177,6 @@ non-root service user when those helpers are scoped.
 
 These items are tracked in the security fix plan and may still need work:
 
-- Default Erlang cookie and distribution TLS peer checks.
 - RPC permission allowlists.
 - REST job owner checks.
 - Job submit path that reads server files.

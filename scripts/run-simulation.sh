@@ -31,7 +31,8 @@
 ME=$( readlink -f "$0" )
 ROOT_DIR=$( dirname "$( dirname "$ME" )" )
 
-## Export variables
+## Export variables (simulation starts a BEAM; fresh local cookie)
+export SWM_REGENERATE_COOKIE=1
 source ${ROOT_DIR}/scripts/swm.env
 
 
