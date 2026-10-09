@@ -157,6 +157,25 @@ erl -noshell -pa _build/default/lib/*/ebin -eval '
 
 log "Podman create with IB device + IPC_LOCK + memlock (runtime check)"
 # CDI may be incomplete on CI; validate devices/caps/ulimits Podman applies.
+# Match wm_podman: use host RLIMIT_MEMLOCK; never raise above it. Nested act/crun
+# often returns EPERM for setrlimit(RLIMIT_MEMLOCK, unlimited/-1).
+memlock_ulimit_args() {
+  local soft hard
+  soft=$(awk '/^Max locked memory/{print $4}' /proc/self/limits)
+  hard=$(awk '/^Max locked memory/{print $5}' /proc/self/limits)
+  if [[ -z "${soft}" || -z "${hard}" ]]; then
+    return
+  fi
+  if [[ "${soft}" == "unlimited" || "${hard}" == "unlimited" ]]; then
+    if [[ "${NESTED}" -eq 1 ]]; then
+      log "nested + unlimited host memlock: omit --ulimit (avoid setrlimit EPERM)"
+      return
+    fi
+    printf '%s\n' '--ulimit' 'memlock=-1:-1'
+    return
+  fi
+  printf '%s\n' '--ulimit' "memlock=${soft}:${hard}"
+}
 podman pull -q "${IMAGE}" >/dev/null
 IB_DEV="${FAKE_IB_DIR}/uverbs0"
 # Use --device when the node is a char device; otherwise bind-mount the file.
@@ -165,10 +184,11 @@ if [[ -c "${IB_DEV}" ]]; then
 else
   DEV_ARGS=(-v "${IB_DEV}:/dev/infiniband/uverbs0:ro")
 fi
+mapfile -t MEMLOCK_ARGS < <(memlock_ulimit_args)
 podman create --name "${NAME}" \
   "${CGROUP_ARGS[@]}" \
   --cap-add IPC_LOCK \
-  --ulimit memlock=-1:-1 \
+  "${MEMLOCK_ARGS[@]}" \
   "${DEV_ARGS[@]}" \
   --network host \
   "${IMAGE}" \
