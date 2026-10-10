@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # See https://github.com/jupyter/docker-stacks/blob/master/base-notebook/Dockerfile
+# Client reads the script file; the server accepts only the request body
+# (the old ?path= query parameter is rejected -- it read server-local files).
 
 JOB_SCRIPT_PATH=$(mktemp --suffix=.swm)
 cat > ${JOB_SCRIPT_PATH} <<EOF
@@ -24,12 +26,15 @@ HOST=$(hostname -s)
 
 REQUEST=POST
 HEADER="Accept: application/json"
-URL="https://${HOST}:${PORT}/user/job?path=${JOB_SCRIPT_PATH}"
+URL="https://${HOST}:${PORT}/user/job"
 
 curl --request ${REQUEST}\
      --cacert ${CA}\
      --cert ${CERT}\
      --key ${KEY}\
      --header "${HEADER}"\
+     --data-binary "@${JOB_SCRIPT_PATH}" \
      ${URL}
 echo
+
+rm -f "${JOB_SCRIPT_PATH}"

@@ -96,6 +96,12 @@ maps the cert UID to a user row, then compares that user id with `job.user_id`.
 (`/user/node`, flavor, image, remote) stay unrestricted. Submit and purge still
 resolve the username from the cert (unchanged status codes for those paths).
 
+### REST job submit body
+
+`POST /user/job` accepts the job script only in the request body (plain or
+multipart). The `path` query parameter is rejected with HTTP 400. The server
+must not read job scripts from the host filesystem on behalf of the client.
+
 ## Erlang distribution (local debugging only)
 
 Erlang distribution is enabled only so operators can attach locally with
@@ -209,17 +215,6 @@ Listeners for epmd and the dist port range must show `127.0.0.1` (not `0.0.0.0`)
 The systemd unit may still run as root because privileged helpers (for example
 container control) need access. SSH ports themselves do not need root. Plan a
 non-root service user when those helpers are scoped.
-
-## Known gaps
-
-These items are tracked in the security fix plan and may still need work:
-
-- Job submit path that reads server files.
-- Worker archive contents (cluster CA private key).
-- Gate client-certificate requirements.
-- Other connectors and frontends listed in the security plan.
-
-Update this document when those gaps close.
 
 ## Related documents
 

@@ -1,7 +1,7 @@
 %% @doc User facing service HTTP handler.
 -module(wm_user_rest).
 
--export([init/2]).
+-export([init/2, submit_script_source/1]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
@@ -15,6 +15,7 @@
 -define(JSON_ERR_UNAUTHORIZED, <<"{\"error\":\"unauthorized\"}">>).
 -define(JSON_ERR_FORBIDDEN, <<"{\"error\":\"forbidden\"}">>).
 -define(JSON_ERR_NOT_FOUND, <<"{\"error\":\"job not found\"}">>).
+-define(JSON_ERR_PATH_NOT_ALLOWED, <<"{\"error\":\"path query parameter is not allowed\"}">>).
 -define(JOB_SUBMISSION_SCRIPT_SIZE_MAX, 16000000).
 -define(JOB_SUBMISSION_SCRIPT_WAIT_TIME, 15000).
 -define(JOB_ID_SIZE, 36).
@@ -447,14 +448,18 @@ update_job(Req) ->
             {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
     end.
 
--spec submit_job(map()) -> {string(), pos_integer()} | {error, pos_integer()}.
+-spec submit_job(map()) -> {iodata() | binary() | string(), pos_integer()} | {error, pos_integer()}.
 submit_job(Req) ->
     ?LOG_ACCESS("Handle job submission HTTP request"),
     CertBin = maps:get(cert, Req, undefined),
     {Ip, _} = cowboy_req:peer(Req),
     IpStr = inet:ntoa(Ip),
-    case cowboy_req:match_qs([{path, [], undefined}], Req) of
-        #{path := undefined} ->
+    #{path := PathQs} = cowboy_req:match_qs([{path, [], undefined}], Req),
+    case submit_script_source(PathQs) of
+        {error, bad_request} ->
+            ?LOG_WARN("Rejecting job submit with path query parameter: ~p", [PathQs]),
+            {?JSON_ERR_PATH_NOT_ALLOWED, ?HTTP_CODE_BAD_REQUEST};
+        body ->
             case cowboy_req:has_body(Req) of
                 true ->
                     {ok, Data, _} =
@@ -465,10 +470,16 @@ submit_job(Req) ->
                 false ->
                     ?LOG_DEBUG("No job script passed to the job submission HTTP request"),
                     {error, ?HTTP_CODE_BAD_REQUEST}
-            end;
-        #{path := Path} ->
-            do_submit_jobscript_path(binary_to_list(Path), CertBin, IpStr)
+            end
     end.
+
+%% @doc Job script must come from the request body. The path query parameter
+%% used to read arbitrary server files and is rejected.
+-spec submit_script_source(undefined | binary()) -> body | {error, bad_request}.
+submit_script_source(undefined) ->
+    body;
+submit_script_source(_Path) ->
+    {error, bad_request}.
 
 -spec do_submit_jobscript(string(), binary(), binary(), string()) -> {string(), pos_integer()} | {error, pos_integer()}.
 do_submit_jobscript(JobScriptPath, <<"--", Boundary:32/binary, ?SUBMISSION_HEADER, Tail/bitstring>>, CertBin, IpStr) ->
@@ -496,16 +507,6 @@ do_submit_jobscript(JobScriptPath, JobScriptContent, CertBin, IpStr) ->
 -spec user_call_timeout() -> pos_integer().
 user_call_timeout() ->
     wm_conf:g(srv_local_call_timeout, {?USER_CALL_TIMEOUT, integer}).
-
--spec do_submit_jobscript_path(string(), binary(), string()) -> {string(), pos_integer()} | {error, pos_integer()}.
-do_submit_jobscript_path(Path, CertBin, IpStr) ->
-    case wm_utils:read_file(Path, [binary]) of
-        {ok, JobScriptContent} ->
-            do_submit_jobscript(filename:absname(Path), JobScriptContent, CertBin, IpStr);
-        {error, noent} ->
-            ?LOG_ERROR("No such jobscript local file: ~p", [Path]),
-            {error, ?HTTP_CODE_NOT_FOUND}
-    end.
 
 %% @doc Resolve peer cert to #user{}; used by submit/purge (name) and job access (id).
 -spec get_user_from_cert(binary() | undefined) -> {ok, #user{}} | {error, string()}.
