@@ -87,6 +87,9 @@ init_per_testcase(_, Config) ->
                 select,
                 fun (user, {name, ?USER_NAME}) ->
                         {ok, User};
+                    (user, {id, ?USER_ID}) ->
+                        %% default_workdir -> get_job_user selects by id
+                        {ok, User};
                     (account, {name, ?ACCOUNT_NAME}) ->
                         {ok, Account};
                     (Tab, Key) ->

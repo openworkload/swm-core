@@ -280,8 +280,9 @@ new_defaults(node, Defaults, Rec0) ->
         end,
     wm_entity:set({api_port, Port}, Rec1).
 
-process_create(user, Name, [ID]) ->
-    User1 = wm_entity:set([{id, ID}, {name, Name}], wm_entity:new(user)),
+process_create(user, Name, [ID | Rest]) ->
+    Acl = user_create_acl(Name, Rest),
+    User1 = wm_entity:set([{id, ID}, {name, Name}, {acl, Acl}], wm_entity:new(user)),
     User2 = new_defaults(user, maps:new(), User1),
     case wm_conf:select(account, {name, Name}) of
         {error, not_found} ->
@@ -291,7 +292,7 @@ process_create(user, Name, [ID]) ->
         _ ->
             ?LOG_DEBUG("Default account for user ~p already exists", [Name])
     end,
-    ?LOG_DEBUG("Created user ~p", [Name]),
+    ?LOG_DEBUG("Created user ~p (acl=~p)", [Name, Acl]),
     wm_conf:update([User2]),
     {string, ID};
 process_create(Tab, Name, []) ->
@@ -304,6 +305,21 @@ process_create(Tab, Name, [ID]) ->
     wm_conf:update([Rec2]),
     ?LOG_DEBUG("Created record: ~p", [Rec2]),
     {string, ID}.
+
+%% Explicit "admin" create arg, or Name matches SWM_ADMIN_USER in the daemon env.
+-spec user_create_acl(string(), [string()]) -> string().
+user_create_acl(Name, Rest) ->
+    case lists:member("admin", Rest) of
+        true ->
+            "admin";
+        false ->
+            case os:getenv("SWM_ADMIN_USER") of
+                Name ->
+                    "admin";
+                _ ->
+                    ""
+            end
+    end.
 
 process_clone(Tab, From, To, Args) ->
     ?LOG_DEBUG("Clone ~p ~p -> ~p (args=~p)", [Tab, From, To, Args]),

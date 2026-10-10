@@ -59,6 +59,27 @@ CA. User identity for REST often comes from the peer certificate subject.
 Cluster control plane traffic uses the API (`wm_rpc` over mTLS). It does not
 use Erlang distribution between hosts.
 
+### RPC authorization
+
+After mTLS, `wm_session` checks the peer certificate UID and allows only:
+
+| Peer role | How classified | Allowed RPC targets |
+|-----------|----------------|---------------------|
+| `node` | UID in the node table, or matches `$SWM_SPOOL/secure/node/cert.pem` | Mesh modules (`wm_compute`, `wm_conf`, `wm_db`, `wm_pinger`, factories, and related) |
+| `admin` | User with `acl` containing `admin`, or name equals `SWM_ADMIN_USER`, or bootstrap match under `secure/users/*/cert.pem` before the user row exists | `wm_admin` only (`swmctl`) |
+| `user` | Other user UIDs | None (use the REST `/user` API) |
+| `unknown` | No match | None |
+
+Default is deny. Unknown modules return `{error, forbidden}`.
+
+Grant RPC admin to an operator:
+
+```bash
+swmctl user <name> set acl admin
+```
+
+Setup sets `acl=admin` for `SWM_ADMIN_USER` when it creates that user.
+
 ## Erlang distribution (local debugging only)
 
 Erlang distribution is enabled only so operators can attach locally with
@@ -177,7 +198,6 @@ non-root service user when those helpers are scoped.
 
 These items are tracked in the security fix plan and may still need work:
 
-- RPC permission allowlists.
 - REST job owner checks.
 - Job submit path that reads server files.
 - Worker archive contents (cluster CA private key).

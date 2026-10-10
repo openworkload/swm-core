@@ -193,6 +193,9 @@ def write_swm_conf(opts: dict[str, str]) -> None:
     mnesia_dir = opts.get("SWM_MNESIA_DIR")
     if mnesia_dir:
         lines.append(f"SWM_MNESIA_DIR={mnesia_dir}\n")
+    admin_user = opts.get("SWM_ADMIN_USER")
+    if admin_user:
+        lines.append(f"SWM_ADMIN_USER={admin_user}\n")
     write_file("/etc/swm.conf", "".join(lines))
 
 
@@ -507,7 +510,11 @@ def add_default_users(opts: dict[str, str]) -> None:
     if opts["DIVISION"] not in ["grid", "cluster"]:
         LOG.info("User will not be added")
         return
-    run_ctl(["user", "create", opts["SWM_ADMIN_USER"], opts["SWM_ADMIN_ID"]], opts)
+    admin = opts["SWM_ADMIN_USER"]
+    # Trailing "admin" sets user.acl for RPC allowlist (daemon may lack SWM_ADMIN_USER).
+    run_ctl(["user", "create", admin, opts["SWM_ADMIN_ID"], "admin"], opts)
+    # CLI: swmctl user <name> set acl admin (idempotent upgrade path)
+    run_ctl(["user", admin, "set", "acl", "admin"], opts)
 
 
 def get_setup_options() -> None:

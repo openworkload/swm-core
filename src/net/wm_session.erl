@@ -99,8 +99,8 @@ handle_received_call({wm_api, Fun, {Mod, Msg}, Socket, ServerPid}) ->
                     end,
                 ?LOG_DEBUG("Direct call result: ~P", [Result, 5]),
                 Result;
-            Error ->
-                {error, Error}
+            {error, Reason} ->
+                {error, Reason}
         end,
     wm_tcp_server:reply(Return, Socket),
     ServerPid
@@ -122,8 +122,8 @@ handle_received_call({Module, Arg0, Args, Socket, ServerPid}) ->
                     ?LOG_DEBUG("RPC FAILED [CALL]: ~p:~p", [T, Error]),
                     wm_tcp_server:reply(ErrRet, Socket)
             end;
-        Error ->
-            wm_tcp_server:reply({error, Error}, Socket)
+        {error, Reason} ->
+            wm_tcp_server:reply({error, Reason}, Socket)
     end,
     ServerPid ! replied.
 
@@ -147,11 +147,26 @@ handle_received_cast({Module, Arg0, Args, Tag, Addr, Socket, ServerPid}) ->
                     wm_rpc:cast(Module, Arg0, NewArgs, Addr)
             end,
             wm_tcp_server:reply(ok, Socket);
-        Error ->
-            wm_tcp_server:reply({error, Error}, Socket)
+        {error, Reason} ->
+            wm_tcp_server:reply({error, Reason}, Socket)
     end.
 
-verify_rpc(_, route, {StartAddr, EndAddr, RouteID, Requestor, D, Route}, _) ->
-    {ok, {StartAddr, EndAddr, RouteID, Requestor, D, [node() | Route]}};
-verify_rpc(_, _, Msg, _) ->
-    {ok, Msg}.
+%% @doc Authorize RPC by peer cert role; nodes may rewrite route hops.
+-spec verify_rpc(atom(), atom(), term(), ssl:sslsocket()) -> {ok, term()} | {error, forbidden}.
+verify_rpc(Module, Fun, Msg, Socket) ->
+    Uid = wm_rpc_acl:peer_uid(Socket),
+    Role = wm_rpc_acl:classify_uid(Uid),
+    case wm_rpc_acl:allowed(Role, Module, Fun) of
+        false ->
+            ?LOG_WARN("RPC forbidden: uid=~p role=~p ~p:~p", [Uid, Role, Module, Fun]),
+            {error, forbidden};
+        true when Role =:= node, Fun =:= route ->
+            case Msg of
+                {StartAddr, EndAddr, RouteID, Requestor, D, Route} ->
+                    {ok, {StartAddr, EndAddr, RouteID, Requestor, D, [node() | Route]}};
+                _ ->
+                    {ok, Msg}
+            end;
+        true ->
+            {ok, Msg}
+    end.
