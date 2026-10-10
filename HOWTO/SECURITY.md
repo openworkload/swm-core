@@ -29,6 +29,25 @@ Sky Port uses an X.509 hierarchy:
 
 Keep the cluster CA **private** key on the control plane. Do not share.
 
+### Worker archive
+
+`make worker` / `setup-swm-core.py -a` builds `swm-worker.tar.gz` for job VMs.
+That archive must not contain the cluster (or grid) CA private key.
+
+| Included | Not included |
+|----------|--------------|
+| `secure/cluster/cert.pem`, `ca-chain-cert.pem` | `secure/cluster/private/`, CA ops files (`serial`, `index*`, `newcerts/`, …) |
+| `secure/node/{cert,key}.pem` | `secure/grid/` |
+| `secure/host/` SSH host keys | `secure/users/` |
+
+Packaging fails if the tarball would contain `secure/cluster/private/` or
+`secure/grid/private/`.
+
+Residual risk: job VMs still receive a copy of the Sky Port **node** key so
+mesh mTLS works. A job user who can read `/opt` can impersonate that node
+identity. Per-VM node certificates (issued on the control plane and injected
+outside the shared archive) are a follow-up hardening step.
+
 ## Certificate issuance
 
 During setup, Sky Port:

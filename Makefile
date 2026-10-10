@@ -111,6 +111,7 @@ test:		##@TESTS Run unit and common erlang tests
 
 test_unit:		##@TESTS Run unit erlang tests
 			$(REBAR) eunit skip_deps=true
+			python3 test/worker_archive_tests.py
 
 test_ct:		##@TESTS Run common erlang tests
 			$(REBAR) ct --dir test --verbose

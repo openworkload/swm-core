@@ -40,6 +40,7 @@ import pwd
 import shutil
 import socket
 import sys
+import tarfile
 import time
 import uuid
 from subprocess import PIPE, Popen
@@ -48,6 +49,12 @@ PRODUCT = "swm"
 SERVICES_DIR = "/lib/systemd/system"
 LOG_FILE = "/tmp/swm-setup.log"
 LOG = logging.getLogger("cm-scale")
+# Public trust only under secure/cluster in the worker archive (no CA private key).
+WORKER_CLUSTER_PUBLIC_FILES = ("cert.pem", "ca-chain-cert.pem")
+WORKER_ARCHIVE_DENY_SUBSTRINGS = (
+    "secure/cluster/private/",
+    "secure/grid/private/",
+)
 SWM_VERSION_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -816,6 +823,70 @@ def apply_input_from_user(opts: dict[str, str]) -> None:
     userInput("SWM_COUNTRY", "US", "country name", opts, ispath=False)
 
 
+def stage_worker_cluster_public(cluster_src: str, cluster_dst: str) -> None:
+    """Copy only public cluster CA trust files (never private/ or CA ops state)."""
+    if os.path.exists(cluster_dst):
+        shutil.rmtree(cluster_dst)
+    os.makedirs(cluster_dst, exist_ok=True)
+    copied = []
+    for name in WORKER_CLUSTER_PUBLIC_FILES:
+        src = os.path.join(cluster_src, name)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(cluster_dst, name))
+            copied.append(name)
+            LOG.info(f"Worker archive includes cluster public file: {name}")
+    cert_dst = os.path.join(cluster_dst, "cert.pem")
+    if not os.path.isfile(cert_dst):
+        LOG.error(
+            "Missing required cluster cert for worker archive: %s (from %s)",
+            cert_dst,
+            cluster_src,
+        )
+        sys.exit(1)
+    LOG.info("Worker archive cluster public files: %s", ", ".join(copied))
+
+
+def stage_worker_secure(spool_dir: str, stage_secure: str) -> None:
+    """Stage secure material for the worker archive (public CA + node + host)."""
+    cluster_src = os.path.join(spool_dir, "secure", "cluster")
+    node_src = os.path.join(spool_dir, "secure", "node")
+    host_src = os.path.join(spool_dir, "secure", "host")
+    for key_dir in (cluster_src, node_src, host_src):
+        if not os.path.isdir(key_dir):
+            LOG.error(f"No such key directory: {key_dir}")
+            sys.exit(1)
+    make_dirs(stage_secure)
+    stage_worker_cluster_public(cluster_src, os.path.join(stage_secure, "cluster"))
+    copy_and_overwrite(node_src, os.path.join(stage_secure, "node"))
+    copy_and_overwrite(host_src, os.path.join(stage_secure, "host"))
+
+
+def worker_archive_denied_members(member_names: list[str]) -> list[str]:
+    """Return archive member names that must never appear in swm-worker.tar.gz."""
+    denied: list[str] = []
+    for name in member_names:
+        normalized = name.replace("\\", "/")
+        for bad in WORKER_ARCHIVE_DENY_SUBSTRINGS:
+            if bad in normalized:
+                denied.append(name)
+                break
+    return denied
+
+
+def assert_worker_archive_safe(archive_path: str) -> None:
+    """Fail if the worker tarball contains cluster/grid CA private material."""
+    with tarfile.open(archive_path, "r:gz") as tf:
+        names = tf.getnames()
+    denied = worker_archive_denied_members(names)
+    if denied:
+        LOG.error(
+            "Worker archive contains forbidden CA private material: %s",
+            ", ".join(denied),
+        )
+        sys.exit(1)
+    LOG.info("Worker archive CA private-key check passed: %s", archive_path)
+
+
 def create_archive(opts: dict[str, str]) -> None:
     """Build swm-worker.tar.gz from a staged, pruned copy of the release.
 
@@ -825,16 +896,6 @@ def create_archive(opts: dict[str, str]) -> None:
     LOG.info("Create SkyPort worker archive")
     spool_dir = opts["SWM_SPOOL"]
     swm_version = opts["SWM_VERSION"]
-    key_dirs = [
-        os.path.join(spool_dir, "secure/cluster"),
-        os.path.join(spool_dir, "secure/node"),
-        os.path.join(spool_dir, "secure/host"),
-    ]
-
-    for key_dir in key_dirs:
-        if not os.path.isdir(key_dir):
-            LOG.error(f"No such key directory: {key_dir}")
-            sys.exit(1)
 
     if opts.get("TESTING", False):
         build_dir = os.path.join(SWM_VERSION_DIR, "_build")
@@ -856,14 +917,13 @@ def create_archive(opts: dict[str, str]) -> None:
     prune_worker_release(version_dir)
 
     secure_dir = os.path.join(tmp_dir, "spool", "secure")
-    make_dirs(secure_dir)
-    for key_dir in key_dirs:
-        copy_and_overwrite(key_dir, os.path.join(secure_dir, os.path.basename(key_dir)))
+    stage_worker_secure(spool_dir, secure_dir)
 
     archive = f"{root_dir}/{PRODUCT}-worker.tar.gz"
     # Tar relative names from the stage dir: <version>/... and spool/secure/...
     args = ["-C", tmp_dir, "-czf", archive, swm_version, "spool"]
     run("tar", args, os.environ)
+    assert_worker_archive_safe(archive)
     LOG.info(f"Final worker SWM archive: {archive}")
 
     LOG.info(f"Remove temporary directory: {tmp_dir}")

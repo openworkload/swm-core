@@ -24,6 +24,11 @@ jobs:
         name: Checkout
         uses: actions/checkout@v4
       -
+        name: Install Python
+        run: |
+          apt-get update
+          apt-get install -y python3
+      -
         name: Compile
         run: make compile
       -

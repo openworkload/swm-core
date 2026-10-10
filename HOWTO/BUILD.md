@@ -66,3 +66,6 @@ Use this command when the development setup already exists:
 ```console
 $ make worker
 ```
+
+The archive includes public cluster CA trust files and node/host material. It
+does not include the cluster CA private key (see [SECURITY.md](SECURITY.md)).
