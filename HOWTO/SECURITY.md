@@ -80,6 +80,22 @@ swmctl user <name> set acl admin
 
 Setup sets `acl=admin` for `SWM_ADMIN_USER` when it creates that user.
 
+### REST job ownership
+
+Job routes under `/user/job` require a registered peer certificate. The server
+maps the cert UID to a user row, then compares that user id with `job.user_id`.
+
+| Result | HTTP |
+|--------|------|
+| Missing or unknown cert | 401 |
+| Job exists, other owner | 403 (no job payload) |
+| Job missing | 404 |
+| Owner match | Proceed (show, stdout, stderr, metrics, cancel, requeue) |
+
+`GET /user/job` (list) returns only jobs for the caller. Catalog GETs
+(`/user/node`, flavor, image, remote) stay unrestricted. Submit and purge still
+resolve the username from the cert (unchanged status codes for those paths).
+
 ## Erlang distribution (local debugging only)
 
 Erlang distribution is enabled only so operators can attach locally with
@@ -198,7 +214,6 @@ non-root service user when those helpers are scoped.
 
 These items are tracked in the security fix plan and may still need work:
 
-- REST job owner checks.
 - Job submit path that reads server files.
 - Worker archive contents (cluster CA private key).
 - Gate client-certificate requirements.

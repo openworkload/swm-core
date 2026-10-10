@@ -57,24 +57,26 @@ init(Args) ->
     MState = parse_args(Args, #mstate{}),
     {ok, MState}.
 
-handle_call({show, JIDs}, _From, MState) ->
-    {reply, handle_request(show, JIDs, MState), MState};
-handle_call({requeue, JIDs}, _From, MState) ->
-    {reply, handle_request(requeue, JIDs, MState), MState};
-handle_call({cancel, JIDs}, _From, MState) ->
-    {reply, handle_request(cancel, JIDs, MState), MState};
+handle_call({show, JIDs, UserId}, _From, MState) ->
+    {reply, handle_request(show, {JIDs, UserId}, MState), MState};
+handle_call({requeue, JIDs, UserId}, _From, MState) ->
+    {reply, handle_request(requeue, {JIDs, UserId}, MState), MState};
+handle_call({cancel, JIDs, UserId}, _From, MState) ->
+    {reply, handle_request(cancel, {JIDs, UserId}, MState), MState};
 handle_call({purge, Username}, _From, MState) ->
     {reply, handle_request(purge, Username, MState), MState};
 handle_call({submit, JobScriptContent, Filename, Username, IpStr}, _From, MState) ->
     {reply, handle_request(submit, {JobScriptContent, Filename, Username, IpStr}, MState), MState};
 handle_call({list, TabList}, _From, MState) ->
     {reply, handle_request(list, TabList, MState), MState};
-handle_call({list, TabList, Limit}, _From, MState) ->
+handle_call({list, TabList, Limit}, _From, MState) when is_integer(Limit) ->
     {reply, handle_request(list, {TabList, Limit}, MState), MState};
-handle_call({stdout, JobId}, _From, MState) ->
-    {reply, handle_request({output, job_stdout}, JobId, MState), MState};
-handle_call({stderr, JobId}, _From, MState) ->
-    {reply, handle_request({output, job_stderr}, JobId, MState), MState};
+handle_call({list_jobs, UserId}, _From, MState) ->
+    {reply, handle_request(list_jobs, UserId, MState), MState};
+handle_call({stdout, JobId, UserId}, _From, MState) ->
+    {reply, handle_request({output, job_stdout}, {JobId, UserId}, MState), MState};
+handle_call({stderr, JobId, UserId}, _From, MState) ->
+    {reply, handle_request({output, job_stderr}, {JobId, UserId}, MState), MState};
 handle_call(Msg, From, MState) ->
     ?LOG_DEBUG("Unknown call message from ~p: ~p", [From, Msg]),
     {reply, ok, MState}.
@@ -120,11 +122,11 @@ handle_event(http_started, _) ->
     wm_http:add_route({api, wm_user_rest}, "/user/job/:id/stderr"),
     wm_http:add_route({api, wm_user_rest}, "/user/job/:id/metrics").
 
--spec handle_request(atom(), any(), #mstate{}) -> any().
-handle_request({output, OutputType}, JobId, #mstate{spool = Spool})
+-spec handle_request(atom() | {atom(), atom()}, any(), #mstate{}) -> any().
+handle_request({output, OutputType}, {JobId, UserId}, #mstate{spool = Spool})
     when OutputType =:= job_stdout; OutputType =:= job_stderr ->
-    ?LOG_ACCESS("Job ~p has been requested: ~p", [OutputType, JobId]),
-    case wm_conf:select(job, {id, JobId}) of
+    ?LOG_ACCESS("Job ~p has been requested: ~p (user=~p)", [OutputType, JobId, UserId]),
+    case assert_job_owner(JobId, UserId) of
         {ok, Job} ->
             FullPath = job_log_path(Job, Spool, JobId, OutputType),
             Dir = filename:dirname(FullPath),
@@ -137,17 +139,17 @@ handle_request({output, OutputType}, JobId, #mstate{spool = Spool})
                         stderr
                 end,
             read_output_with_tasks(Dir, FileName, FullPath, Stream);
-        _ ->
-            {error, "job not found"}
+        {error, _} = Error ->
+            Error
     end;
-handle_request({output, OutputType}, JobId, #mstate{spool = Spool}) ->
-    ?LOG_ACCESS("Job ~p has been requested: ~p", [OutputType, JobId]),
-    case wm_conf:select(job, {id, JobId}) of
+handle_request({output, OutputType}, {JobId, UserId}, #mstate{spool = Spool}) ->
+    ?LOG_ACCESS("Job ~p has been requested: ~p (user=~p)", [OutputType, JobId, UserId]),
+    case assert_job_owner(JobId, UserId) of
         {ok, Job} ->
             FullPath = job_log_path(Job, Spool, JobId, OutputType),
             wm_utils:read_file(FullPath, [binary]);
-        _ ->
-            {error, "job not found"}
+        {error, _} = Error ->
+            Error
     end;
 handle_request(submit, Args, #mstate{spool = Spool}) ->
     ?LOG_ACCESS("Job submission has been requested: ~n~p", [Args]),
@@ -180,48 +182,24 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
             wm_scheduler:force_schedule(),
             {string, JobId}
     end;
-handle_request(requeue, Args, _) ->
-    ?LOG_ACCESS("Jobs requeue has been requested: ~p", [Args]),
-    Results = requeue_jobs(Args, []),
-    RequeuedFiltered =
-        lists:filter(fun ({requeued, _}) ->
-                             true;
-                         (_) ->
-                             false
-                     end,
-                     Results),
-    RequeuedIds = lists:map(fun({_, ID}) -> ID end, RequeuedFiltered),
-    NotFoundFiltered =
-        lists:filter(fun ({not_found, _}) ->
-                             true;
-                         (_) ->
-                             false
-                     end,
-                     Results),
-    NotFoundIds = lists:map(fun({_, ID}) -> ID end, NotFoundFiltered),
-    Msg = "Requeued: " ++ lists:join(", ", RequeuedIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
-    {string, Msg};
-handle_request(cancel, Args, _) ->
-    ?LOG_ACCESS("Jobs cancellation has been requested: ~p", [Args]),
-    Results = cancel_jobs(Args, []),
-    CanceledFiltered =
-        lists:filter(fun ({canceled, _}) ->
-                             true;
-                         (_) ->
-                             false
-                     end,
-                     Results),
-    CanceledIds = lists:map(fun({_, ID}) -> ID end, CanceledFiltered),
-    NotFoundFiltered =
-        lists:filter(fun ({not_found, _}) ->
-                             true;
-                         (_) ->
-                             false
-                     end,
-                     Results),
-    NotFoundIds = lists:map(fun({_, ID}) -> ID end, NotFoundFiltered),
-    Msg = "Canceled: " ++ lists:join(", ", CanceledIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
-    {string, Msg};
+handle_request(requeue, {[JobId], UserId}, _) ->
+    ?LOG_ACCESS("Jobs requeue has been requested: ~p (user=~p)", [[JobId], UserId]),
+    case assert_job_owner(JobId, UserId) of
+        {ok, _} ->
+            Results = requeue_jobs([JobId], []),
+            format_requeue_result(Results);
+        {error, _} = Error ->
+            Error
+    end;
+handle_request(cancel, {[JobId], UserId}, _) ->
+    ?LOG_ACCESS("Jobs cancellation has been requested: ~p (user=~p)", [[JobId], UserId]),
+    case assert_job_owner(JobId, UserId) of
+        {ok, _} ->
+            Results = cancel_jobs([JobId], []),
+            format_cancel_result(Results);
+        {error, _} = Error ->
+            Error
+    end;
 handle_request(purge, Username, _) ->
     ?LOG_ACCESS("Jobs purge has been requested by user ~p", [Username]),
     case wm_conf:select(user, {name, Username}) of
@@ -274,9 +252,32 @@ handle_request(list, Args, _) ->
     ?LOG_ACCESS("List of ~p entities has been requested", [Args]),
     F = fun(X) -> wm_conf:select(X, all) end,
     lists:flatten([F(X) || X <- Args]);
-handle_request(show, Args, _) ->
-    ?LOG_ACCESS("Job show has been requested: ~p", [Args]),
-    wm_conf:select(job, Args).
+handle_request(list_jobs, UserId, _) ->
+    ?LOG_ACCESS("Job list has been requested (user=~p)", [UserId]),
+    Filter =
+        fun (#job{user_id = Uid}) when Uid =:= UserId ->
+                true;
+            (_) ->
+                false
+        end,
+    case wm_conf:select(job, Filter) of
+        {ok, List} when is_list(List) ->
+            List;
+        {error, not_found} ->
+            [];
+        Other when is_list(Other) ->
+            Other;
+        _ ->
+            []
+    end;
+handle_request(show, {[JobId], UserId}, _) ->
+    ?LOG_ACCESS("Job show has been requested: ~p (user=~p)", [[JobId], UserId]),
+    case assert_job_owner(JobId, UserId) of
+        {ok, Job} ->
+            [Job];
+        {error, _} = Error ->
+            Error
+    end.
 
 -spec ensure_request_is_full(#job{}) -> #job{}.
 ensure_request_is_full(Job) ->
@@ -315,6 +316,35 @@ add_missed_mandatory_request_resources(Resources) ->
                        wm_entity:set({count, 1}, ResCpu2)
                     end),
     Resources3.
+
+%% @doc Load job and require job.user_id =:= CallerUserId.
+-spec assert_job_owner(job_id(), user_id()) -> {ok, #job{}} | {error, not_found | forbidden}.
+assert_job_owner(JobId, UserId) ->
+    case wm_conf:select(job, {id, JobId}) of
+        {ok, Job} ->
+            case wm_entity:get(user_id, Job) of
+                UserId ->
+                    {ok, Job};
+                _ ->
+                    {error, forbidden}
+            end;
+        _ ->
+            {error, not_found}
+    end.
+
+-spec format_requeue_result([{atom(), job_id()}]) -> {string, string()}.
+format_requeue_result(Results) ->
+    RequeuedIds = [ID || {requeued, ID} <- Results],
+    NotFoundIds = [ID || {not_found, ID} <- Results],
+    Msg = "Requeued: " ++ lists:join(", ", RequeuedIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
+    {string, Msg}.
+
+-spec format_cancel_result([{atom(), job_id()}]) -> {string, string()}.
+format_cancel_result(Results) ->
+    CanceledIds = [ID || {canceled, ID} <- Results],
+    NotFoundIds = [ID || {not_found, ID} <- Results],
+    Msg = "Canceled: " ++ lists:join(", ", CanceledIds) ++ "\n" ++ "Not found: " ++ lists:join(", ", NotFoundIds),
+    {string, Msg}.
 
 -spec requeue_jobs([job_id()], [{atom(), job_id()}]) -> [{atom(), job_id()}].
 requeue_jobs([], Results) ->

@@ -8,8 +8,13 @@
 
 -define(HTTP_CODE_OK, 200).
 -define(HTTP_CODE_BAD_REQUEST, 400).
+-define(HTTP_CODE_UNAUTHORIZED, 401).
+-define(HTTP_CODE_FORBIDDEN, 403).
 -define(HTTP_CODE_NOT_FOUND, 404).
 -define(HTTP_CODE_INTERNAL_ERROR, 500).
+-define(JSON_ERR_UNAUTHORIZED, <<"{\"error\":\"unauthorized\"}">>).
+-define(JSON_ERR_FORBIDDEN, <<"{\"error\":\"forbidden\"}">>).
+-define(JSON_ERR_NOT_FOUND, <<"{\"error\":\"job not found\"}">>).
 -define(JOB_SUBMISSION_SCRIPT_SIZE_MAX, 16000000).
 -define(JOB_SUBMISSION_SCRIPT_WAIT_TIME, 15000).
 -define(JOB_ID_SIZE, 36).
@@ -155,65 +160,96 @@ get_flavors_info(Req) ->
     Ms = lists:foldl(F, [], FlavorNodes),
     {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
 
--spec get_jobs_info(map()) -> {[string()], pos_integer()}.
+-spec get_jobs_info(map()) -> {[string()] | binary() | iodata(), pos_integer()}.
 get_jobs_info(Req) ->
     ?LOG_ACCESS("Handle job info HTTP request"),
-    case Req of
-        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/stdout">>} ->
-            get_job_stdout(binary_to_list(JobId));
-        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/stderr">>} ->
-            get_job_stderr(binary_to_list(JobId));
-        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/metrics">>} ->
-            get_job_metrics(binary_to_list(JobId));
-        #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
-            get_one_job(binary_to_list(JobId));
-        #{path := <<"/user/job">>} ->
-            get_job_list();
-        #{path := Path} ->
-            Msg = io_lib:format("Can't parse the path: ~p", [binary_to_list(Path)]),
-            {Msg, ?HTTP_CODE_NOT_FOUND};
-        _ ->
-            {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
+    case require_user_id(Req) of
+        {error, Body, Code} ->
+            {Body, Code};
+        {ok, UserId} ->
+            case Req of
+                #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/stdout">>} ->
+                    get_job_stdout(binary_to_list(JobId), UserId);
+                #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/stderr">>} ->
+                    get_job_stderr(binary_to_list(JobId), UserId);
+                #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary, "/metrics">>} ->
+                    get_job_metrics(binary_to_list(JobId), UserId);
+                #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
+                    get_one_job(binary_to_list(JobId), UserId);
+                #{path := <<"/user/job">>} ->
+                    get_job_list(UserId);
+                #{path := Path} ->
+                    Msg = io_lib:format("Can't parse the path: ~p", [binary_to_list(Path)]),
+                    {Msg, ?HTTP_CODE_NOT_FOUND};
+                _ ->
+                    {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
+            end
     end.
 
--spec get_one_job(job_id()) -> {[string()] | binary(), pos_integer()}.
-get_one_job(JobId) ->
-    case gen_server:call(wm_user, {show, [JobId]}) of
+-spec get_one_job(job_id(), user_id()) -> {[string()] | binary(), pos_integer()}.
+get_one_job(JobId, UserId) ->
+    case gen_server:call(wm_user, {show, [JobId], UserId}) of
         [Job] ->
             {job_to_json(Job, <<>>, true), ?HTTP_CODE_OK};
+        {error, forbidden} ->
+            {?JSON_ERR_FORBIDDEN, ?HTTP_CODE_FORBIDDEN};
+        {error, not_found} ->
+            ?LOG_ERROR("Job not found by ID=~p", [JobId]),
+            {?JSON_ERR_NOT_FOUND, ?HTTP_CODE_NOT_FOUND};
         _ ->
             ?LOG_ERROR("Job not found by ID=~p", [JobId]),
-            {<<"{\"error\":\"job not found\"}">>, ?HTTP_CODE_NOT_FOUND}
+            {?JSON_ERR_NOT_FOUND, ?HTTP_CODE_NOT_FOUND}
     end.
 
--spec get_job_stdout(job_id()) -> {iodata(), pos_integer()}.
-get_job_stdout(JobId) ->
-    case gen_server:call(wm_user, {stdout, JobId}) of
+-spec get_job_stdout(job_id(), user_id()) -> {iodata() | binary(), pos_integer()}.
+get_job_stdout(JobId, UserId) ->
+    case gen_server:call(wm_user, {stdout, JobId, UserId}) of
         {ok, Data} ->
             {Data, ?HTTP_CODE_OK};
+        {error, forbidden} ->
+            {?JSON_ERR_FORBIDDEN, ?HTTP_CODE_FORBIDDEN};
+        {error, not_found} ->
+            ?LOG_ERROR("Job stdout not found for job ~p", [JobId]),
+            {io_lib:format("Error: stdout for job ~s is not found", [JobId]), ?HTTP_CODE_NOT_FOUND};
         _ ->
             ?LOG_ERROR("Job stdout not found for job ~p", [JobId]),
             {io_lib:format("Error: stdout for job ~s is not found", [JobId]), ?HTTP_CODE_NOT_FOUND}
     end.
 
--spec get_job_stderr(job_id()) -> {iodata(), pos_integer()}.
-get_job_stderr(JobId) ->
-    case gen_server:call(wm_user, {stderr, JobId}) of
+-spec get_job_stderr(job_id(), user_id()) -> {iodata() | binary(), pos_integer()}.
+get_job_stderr(JobId, UserId) ->
+    case gen_server:call(wm_user, {stderr, JobId, UserId}) of
         {ok, Data} ->
             {Data, ?HTTP_CODE_OK};
+        {error, forbidden} ->
+            {?JSON_ERR_FORBIDDEN, ?HTTP_CODE_FORBIDDEN};
+        {error, not_found} ->
+            ?LOG_ERROR("Job stderr not found for job ~p", [JobId]),
+            {io_lib:format("Error: stderr for job ~s is not found", [JobId]), ?HTTP_CODE_NOT_FOUND};
         {error, Error} ->
             ?LOG_ERROR("Job stderr not found for job ~p: ~p", [JobId, Error]),
             {io_lib:format("Error: stderr for job ~s is not found", [JobId]), ?HTTP_CODE_NOT_FOUND}
     end.
 
--spec get_job_metrics(job_id()) -> {binary() | string(), pos_integer()}.
-get_job_metrics(JobId) ->
-    case wm_job_metrics:query_job_stats(JobId) of
-        {ok, Stats} ->
-            {wm_json:encode(Stats), ?HTTP_CODE_OK};
+-spec get_job_metrics(job_id(), user_id()) -> {binary() | string(), pos_integer()}.
+get_job_metrics(JobId, UserId) ->
+    case gen_server:call(wm_user, {show, [JobId], UserId}) of
+        [_Job] ->
+            case wm_job_metrics:query_job_stats(JobId) of
+                {ok, Stats} ->
+                    {wm_json:encode(Stats), ?HTTP_CODE_OK};
+                {error, not_found} ->
+                    ?LOG_ERROR("Job metrics requested for unknown job ~p", [JobId]),
+                    {?JSON_ERR_NOT_FOUND, ?HTTP_CODE_NOT_FOUND}
+            end;
+        {error, forbidden} ->
+            {?JSON_ERR_FORBIDDEN, ?HTTP_CODE_FORBIDDEN};
         {error, not_found} ->
             ?LOG_ERROR("Job metrics requested for unknown job ~p", [JobId]),
-            {<<"{\"error\":\"job not found\"}">>, ?HTTP_CODE_NOT_FOUND}
+            {?JSON_ERR_NOT_FOUND, ?HTTP_CODE_NOT_FOUND};
+        _ ->
+            ?LOG_ERROR("Job metrics requested for unknown job ~p", [JobId]),
+            {?JSON_ERR_NOT_FOUND, ?HTTP_CODE_NOT_FOUND}
     end.
 
 -spec job_to_json(#job{}, binary()) -> binary().
@@ -341,21 +377,32 @@ nodes_to_ips(Nodes) ->
               end,
               Hostnames).
 
--spec get_job_list() -> {[string()], pos_integer()}.
-get_job_list() ->
-    Xs = gen_server:call(wm_user, {list, [job]}),
+-spec get_job_list(user_id()) -> {[string()], pos_integer()}.
+get_job_list(UserId) ->
+    Xs = gen_server:call(wm_user, {list_jobs, UserId}),
     Ms = lists:foldl(fun job_to_json/2, [], Xs),
     {["["] ++ string:join(Ms, ", ") ++ ["]"], ?HTTP_CODE_OK}.
 
--spec delete_job(map()) -> {string(), pos_integer()}.
+-spec delete_job(map()) -> {string() | binary(), pos_integer()}.
 delete_job(Req) ->
     ?LOG_ACCESS("Handle job deletion HTTP request with url=~p", [maps:get(path, Req, undefined)]),
     case Req of
         #{path := <<"/user/job">>} ->
             purge_jobs(Req);
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
-            {string, Msg} = gen_server:call(wm_user, {cancel, [binary_to_list(JobId)]}, user_call_timeout()),
-            {Msg, ?HTTP_CODE_OK};
+            case require_user_id(Req) of
+                {error, Body, Code} ->
+                    {Body, Code};
+                {ok, UserId} ->
+                    case gen_server:call(wm_user, {cancel, [binary_to_list(JobId)], UserId}, user_call_timeout()) of
+                        {string, Msg} ->
+                            {Msg, ?HTTP_CODE_OK};
+                        {error, forbidden} ->
+                            {?JSON_ERR_FORBIDDEN, ?HTTP_CODE_FORBIDDEN};
+                        {error, not_found} ->
+                            {?JSON_ERR_NOT_FOUND, ?HTTP_CODE_NOT_FOUND}
+                    end
+            end;
         _ ->
             {"Can't parse the request", ?HTTP_CODE_NOT_FOUND}
     end.
@@ -372,15 +419,26 @@ purge_jobs(Req) ->
             {Msg, ?HTTP_CODE_OK}
     end.
 
--spec update_job(map()) -> {string(), pos_integer()}.
+-spec update_job(map()) -> {string() | binary(), pos_integer()}.
 update_job(Req) ->
     ?LOG_ACCESS("Handle job updating HTTP request: ~p", [Req]),
     case Req of
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
             case cowboy_req:header(<<"modification">>, Req) of
                 <<"requeue">> ->
-                    {string, Msg} = gen_server:call(wm_user, {requeue, [binary_to_list(JobId)]}),
-                    {Msg, ?HTTP_CODE_OK};
+                    case require_user_id(Req) of
+                        {error, Body, Code} ->
+                            {Body, Code};
+                        {ok, UserId} ->
+                            case gen_server:call(wm_user, {requeue, [binary_to_list(JobId)], UserId}) of
+                                {string, Msg} ->
+                                    {Msg, ?HTTP_CODE_OK};
+                                {error, forbidden} ->
+                                    {?JSON_ERR_FORBIDDEN, ?HTTP_CODE_FORBIDDEN};
+                                {error, not_found} ->
+                                    {?JSON_ERR_NOT_FOUND, ?HTTP_CODE_NOT_FOUND}
+                            end
+                    end;
                 undefined ->
                     Msg = io_lib:format("Modification is not specified in the headers: ~p", [cowboy_req:headers(Req)]),
                     {Msg, ?HTTP_CODE_BAD_REQUEST}
@@ -449,17 +507,37 @@ do_submit_jobscript_path(Path, CertBin, IpStr) ->
             {error, ?HTTP_CODE_NOT_FOUND}
     end.
 
--spec get_username_from_cert(binary() | undefined) -> {ok, string()} | {error, string()}.
-get_username_from_cert(undefined) ->
+%% @doc Resolve peer cert to #user{}; used by submit/purge (name) and job access (id).
+-spec get_user_from_cert(binary() | undefined) -> {ok, #user{}} | {error, string()}.
+get_user_from_cert(undefined) ->
     {error, "Client certificate is required"};
-get_username_from_cert(CertBin) ->
+get_user_from_cert(CertBin) ->
     Cert = public_key:pkix_decode_cert(CertBin, otp),
     UserID = wm_cert:get_uid(Cert),
     case wm_conf:select(user, {id, UserID}) of
         {error, not_found} ->
             {error, io_lib:format("User with ID=~p is not registred in the workload manager", [UserID])};
         {ok, User} ->
-            {ok, wm_entity:get(name, User)}
+            {ok, User}
+    end.
+
+-spec get_username_from_cert(binary() | undefined) -> {ok, string()} | {error, string()}.
+get_username_from_cert(CertBin) ->
+    case get_user_from_cert(CertBin) of
+        {ok, User} ->
+            {ok, wm_entity:get(name, User)};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Require a registered peer-cert user; 401 when missing/unknown (job access paths).
+-spec require_user_id(map()) -> {ok, user_id()} | {error, binary(), pos_integer()}.
+require_user_id(Req) ->
+    case get_user_from_cert(maps:get(cert, Req, undefined)) of
+        {ok, User} ->
+            {ok, wm_entity:get(id, User)};
+        {error, _} ->
+            {error, ?JSON_ERR_UNAUTHORIZED, ?HTTP_CODE_UNAUTHORIZED}
     end.
 
 -spec unknown_request_reply() -> {string(), pos_integer()}.
