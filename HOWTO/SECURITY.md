@@ -69,11 +69,13 @@ These paths use the cluster CA and the node (or user) certificate:
 |------|---------|----------|
 | API TCP | `secure/cluster/cert.pem` | `secure/node/{cert,key}.pem` |
 | REST (HTTP) | same | same |
-| Cloud gate client | same | same |
+| Cloud gate (server) | `secure/cluster/cert.pem` (client trust) | Gate serves `secure/node`; **requires** a client cert (`CERT_REQUIRED`) |
+| Cloud gate client (Sky Port) | same | `secure/node/{cert,key}.pem` |
 | Erlang distribution (`inet_tls`, localhost only) | `ca-chain-cert.pem` | node cert/key |
 
 Clients present a certificate. The server verifies the peer against the cluster
-CA. User identity for REST often comes from the peer certificate subject.
+CA. User identity for REST often comes from the peer certificate subject. The
+cloud gate rejects TLS handshakes with no client certificate.
 
 Cluster control plane traffic uses the API (`wm_rpc` over mTLS). It does not
 use Erlang distribution between hosts.
@@ -193,8 +195,11 @@ The file-transfer SFTP allowlist is per connection:
 Clients cannot read or write other paths through SFTP (including
 `$SWM_SPOOL/secure/`). The custom SFTP extension applies the same limit.
 
-Job workdirs must stay under the job owner's home (default `$HOME`). Job
-`stdout*` / `stderr*` files default to `$SWM_SPOOL/job/<job-id>/`.
+Job workdirs must stay under the job owner's home (default `$HOME`). The
+server rejects workdirs with shell metacharacters, `..` segments, or paths
+outside the owner's home. Container finalize runs the finalize script with an
+argv list (no `/bin/sh -c`), so the workdir cannot inject shell commands.
+Job `stdout*` / `stderr*` files default to `$SWM_SPOOL/job/<job-id>/`.
 
 ### OpenSSH provisioning
 

@@ -6,7 +6,7 @@
 
 -export([run_steps/0, communicate_steps/1, get_unregistered_images/0, get_unregistered_image/1, ensure_create_ready/1,
          create/5, start/2, attach/3, attach_ws/3, delete/2, send/3, create_exec/2, start_exec/4, stop_client/1,
-         generate_create_json/3]).
+         generate_create_json/3, finalize_cmd_args/6, finalize_cmd_args/7]).
 
 -include("../../lib/wm_entity.hrl").
 -include("../../lib/wm_log.hrl").
@@ -657,25 +657,42 @@ get_finalize_cmd(#job{workdir = WorkDir} = Job) ->
                         {"1000", "1000"}
                 end,
             LogDir = job_log_dir(Job),
-            Command =
-                FinScript
-                ++ " "
-                ++ Username
-                ++ " "
-                ++ UID
-                ++ " "
-                ++ GID
-                ++ " "
-                ++ HostIP
-                ++ " "
-                ++ WorkDir
-                ++ case LogDir of
-                       [] ->
-                           "";
-                       _ ->
-                           " " ++ LogDir
-                   end,
-            [<<"/bin/sh">>, <<"-c">>, list_to_binary(Command)]
+            case finalize_cmd_args(FinScript, Username, UID, GID, HostIP, WorkDir, LogDir) of
+                {ok, Cmd} ->
+                    Cmd;
+                {error, Reason} ->
+                    ?LOG_ERROR("Refuse finalize Cmd for unsafe workdir ~p: ~p", [WorkDir, Reason]),
+                    [<<"/bin/sh">>, <<"-c">>, <<"echo bad-workdir; exit 1">>]
+            end
+    end.
+
+%% @doc Build finalize Podman Cmd as an argv list (no /bin/sh -c).
+-spec finalize_cmd_args(string(), string(), string(), string(), string(), string()) ->
+                           {ok, [binary()]} | {error, term()}.
+finalize_cmd_args(FinScript, Username, UID, GID, HostIP, WorkDir) ->
+    finalize_cmd_args(FinScript, Username, UID, GID, HostIP, WorkDir, []).
+
+-spec finalize_cmd_args(string(), string(), string(), string(), string(), string(), string()) ->
+                           {ok, [binary()]} | {error, term()}.
+finalize_cmd_args(FinScript, Username, UID, GID, HostIP, WorkDir, LogDir) ->
+    case wm_workdir:validate_workdir(WorkDir) of
+        {error, _} = Error ->
+            Error;
+        ok ->
+            case LogDir =:= [] orelse wm_workdir:validate_workdir(LogDir) =:= ok of
+                false ->
+                    {error, unsafe_logdir};
+                true ->
+                    Parts0 = [FinScript, Username, UID, GID, HostIP, WorkDir],
+                    Parts1 =
+                        case LogDir of
+                            [] ->
+                                Parts0;
+                            _ ->
+                                Parts0 ++ [LogDir]
+                        end,
+                    {ok, [list_to_binary(P) || P <- Parts1]}
+            end
     end.
 
 %% Parent directory of absolute job_stdout (defaults under $SWM_SPOOL/job/<id>).

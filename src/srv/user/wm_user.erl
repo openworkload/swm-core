@@ -177,10 +177,16 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
                                {duration, 3600}],
                               Job2),
             Job4 = set_defaults(Job3, Spool),
-            Job5 = ensure_request_is_full(Job4),
-            1 = wm_conf:update(Job5),
-            wm_scheduler:force_schedule(),
-            {string, JobId}
+            case assert_job_workdir(Job4, User) of
+                {error, Reason} ->
+                    ?LOG_ERROR("Job submit rejected: invalid workdir (~p)", [Reason]),
+                    {string, io_lib:format("Invalid workdir: ~p", [Reason])};
+                ok ->
+                    Job5 = ensure_request_is_full(Job4),
+                    1 = wm_conf:update(Job5),
+                    wm_scheduler:force_schedule(),
+                    {string, JobId}
+            end
     end;
 handle_request(requeue, {[JobId], UserId}, _) ->
     ?LOG_ACCESS("Jobs requeue has been requested: ~p (user=~p)", [[JobId], UserId]),
@@ -534,6 +540,19 @@ set_defaults(#job{account_id = [], user_id = UserId} = Job, Spool) ->
     set_defaults(wm_entity:set({account_id, AccountId}, Job), Spool);
 set_defaults(Job, Spool) ->
     ensure_job_log_paths(Job, Spool).
+
+%% @doc Workdir must be shell-safe and under the owner's home (SFTP allowlist).
+-spec assert_job_workdir(#job{}, #user{}) -> ok | {error, term()}.
+assert_job_workdir(Job, User) ->
+    WorkDir = wm_entity:get(workdir, Job),
+    Name = wm_entity:get(name, User),
+    case wm_posix_utils:get_user_home(Name) of
+        {ok, Home} ->
+            wm_workdir:validate_workdir_under_home(WorkDir, Home);
+        {error, _} ->
+            %% No OS home: still require a shell-safe absolute path.
+            wm_workdir:validate_workdir(WorkDir)
+    end.
 
 %% Default workdir: job owner's $HOME (SFTP allowlist includes home).
 -spec default_workdir(#job{}) -> string().

@@ -144,7 +144,9 @@ The same separation applies to task processes. See
 
 Set the working directory for the job. The default is the job owner's `$HOME`.
 The path must stay under the owner's home directory so SFTP upload and download
-can reach it.
+can reach it. The path must be absolute and use only safe characters
+(`[A-Za-z0-9._/-]`). Values with spaces, shell metacharacters, or `..` are
+rejected at parse/submit time.
 
 ```bash
 #SWM workdir <directory_path>

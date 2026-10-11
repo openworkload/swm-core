@@ -117,10 +117,16 @@ parse_line(Ws, Job) when hd(Ws) == "stdout", length(Ws) > 1 ->
 parse_line(Ws, Job) when hd(Ws) == "stderr", length(Ws) > 1 ->
     wm_entity:set({stderr, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "workdir", length(Ws) > 1 ->
-    wm_entity:set({workdir,
-                   lists:flatten(
-                       filename:absname(tl(Ws)))},
-                  Job);
+    Raw =
+        lists:flatten(
+            filename:absname(tl(Ws))),
+    case wm_workdir:validate_workdir(Raw) of
+        ok ->
+            wm_entity:set({workdir, Raw}, Job);
+        {error, Reason} ->
+            ?LOG_WARN("Reject #SWM workdir ~p: ~p", [Raw, Reason]),
+            Job
+    end;
 parse_line(Ws, Job) when hd(Ws) == "relocatable" ->
     wm_entity:set({relocatable, true}, Job);
 parse_line(Ws, Job) when hd(Ws) == "keep-resources"; hd(Ws) == "--keep-resources" ->

@@ -18,7 +18,7 @@ fi
 echo "
 #!/usr/bin/env bash
 #SWM name Test Job
-#SWM workdir /tmp
+#SWM workdir ${HOME}
 echo \$SWM_JOB_ID
 " > $TEST_JOB
 
