@@ -75,7 +75,13 @@ These paths use the cluster CA and the node (or user) certificate:
 
 Clients present a certificate. The server verifies the peer against the cluster
 CA. User identity for REST often comes from the peer certificate subject. The
-cloud gate rejects TLS handshakes with no client certificate.
+cloud gate rejects TLS handshakes with no client certificate. The gate also
+pins the client certificate fingerprint to the node cert when the peer cert is
+visible to the ASGI app.
+
+Sky Port (`wm_gate`) must **not** put the node private key in gate HTTP
+bodies. Identity to the gate is mTLS only. Azure SP certificate material stays
+on the gate (spool or `certificate_path` in `cloud-gate.yaml`).
 
 Cluster control plane traffic uses the API (`wm_rpc` over mTLS). It does not
 use Erlang distribution between hosts.

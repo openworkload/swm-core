@@ -12,7 +12,7 @@
 -include("../../lib/wm_entity.hrl").
 -include("../../../include/wm_general.hrl").
 
--record(mstate, {spool = "" :: string(), children = #{} :: #{}, pem_data = <<>> :: binary()}).
+-record(mstate, {spool = "" :: string(), children = #{} :: #{}}).
 
 -define(CONNECTION_AWAIT_TIMEOUT, timer:seconds(5)).
 -define(GATE_RESPONSE_TIMEOUT, 5 * 60 * 1000).
@@ -81,9 +81,8 @@ list_flavors(CallbackModule, Remote) ->
 -spec code_change(term(), term(), term()) -> {ok, term()}.
 init(Args) ->
     process_flag(trap_exit, true),
-    MState1 = parse_args(Args, #mstate{}),
-    MState2 = MState1#mstate{pem_data = read_pem_data(MState1#mstate.spool)},
-    {ok, MState2}.
+    MState = parse_args(Args, #mstate{}),
+    {ok, MState}.
 
 handle_call({create_partition, CallbackModule, Remote, Options}, _, MState = #mstate{}) ->
     handle_http_call(fun() -> do_partition_create(Remote, Options, MState) end,
@@ -173,9 +172,6 @@ generate_headers(ExtraHeaders) ->
     [{<<"Accept">>, <<"application/json">>}, {<<"Content-Type">>, <<"application/json">>}
      | lists:reverse(ExtraHeaders)].
 
--spec get_auth_body(binary()) -> [{binary(), binary()}].
-get_auth_body(PemData) ->
-    list_to_binary([<<"{\"pem_data\": \"">>, PemData, <<"\"}">>]).
 
 -spec open_connection(#remote{}, string()) -> {ok, pid()} | {error | term()}.
 open_connection(Remote, Spool) ->
@@ -284,11 +280,11 @@ handle_http_call(Func, Label, CallbackModule, MState = #mstate{children = Childr
     {reply, {ok, Ref}, MState#mstate{children = Children#{Pid => {CallbackModule, Ref}}}}.
 
 -spec do_partition_create(#remote{}, map(), #mstate{}) -> {ok, string(), string()} | {error, string()}.
-do_partition_create(Remote, Options, #mstate{spool = Spool, pem_data = PemData}) ->
+do_partition_create(Remote, Options, #mstate{spool = Spool}) ->
     ?LOG_DEBUG("Create partition with options: ~10000p", [Options]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
-            Body = get_auth_body(PemData),
+            Body = <<"{}">>,
             %% Gate expects total VM count (>= 1); it adds compute VMs for count > 1.
             NodeCount = maps:get(node_count, Options, 1),
             InstallCkpt =
@@ -338,10 +334,10 @@ get_runtime_parameters_string(#remote{runtime = RuntimeMap}) ->
                   RuntimeMap)).
 
 -spec do_partition_delete(#remote{}, string(), #mstate{}) -> {ok, string()} | {error, any()}.
-do_partition_delete(Remote, PartExtId, #mstate{spool = Spool, pem_data = PemData}) ->
+do_partition_delete(Remote, PartExtId, #mstate{spool = Spool}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
-            Body = get_auth_body(PemData),
+            Body = <<>>,
             Headers = generate_headers([]),
             ?LOG_DEBUG("Partition deletion HTTP headers: ~p", [Headers]),
             StreamRef =
@@ -360,10 +356,10 @@ do_partition_delete(Remote, PartExtId, #mstate{spool = Spool, pem_data = PemData
     end.
 
 -spec fetch_images(#remote{}, #mstate{}) -> {ok, [#image{}]} | {error, any()}.
-fetch_images(Remote, #mstate{spool = Spool, pem_data = PemData}) ->
+fetch_images(Remote, #mstate{spool = Spool}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
-            Body = get_auth_body(PemData),
+            Body = <<>>,
             Location = list_to_binary(wm_entity:get(location, Remote)),
             Extra = [{<<"extra">>, <<"location=", Location/binary>>}],
             Headers = generate_headers(Extra),
@@ -385,10 +381,10 @@ fetch_images(Remote, #mstate{spool = Spool, pem_data = PemData}) ->
     end.
 
 -spec fetch_image(#remote{}, string(), #mstate{}) -> {ok, [#image{}]} | {error, string()}.
-fetch_image(Remote, ImageID, #mstate{spool = Spool, pem_data = PemData}) ->
+fetch_image(Remote, ImageID, #mstate{spool = Spool}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
-            Body = get_auth_body(PemData),
+            Body = <<>>,
             Headers = generate_headers([]),
             ?LOG_DEBUG("Fetch image HTTP headers: ~p", [Headers]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("images/" ++ ImageID, Remote), Headers, Body),
@@ -406,11 +402,11 @@ fetch_image(Remote, ImageID, #mstate{spool = Spool, pem_data = PemData}) ->
     end.
 
 -spec fetch_flavors(#remote{}, #mstate{}) -> {ok, [#image{}]} | {error, string()}.
-fetch_flavors(Remote, #mstate{spool = Spool, pem_data = PemData}) ->
+fetch_flavors(Remote, #mstate{spool = Spool}) ->
     ?LOG_DEBUG("Fetch flavors from ~p", [wm_entity:get(name, Remote)]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
-            Body = get_auth_body(PemData),
+            Body = <<>>,
             Location = list_to_binary(wm_entity:get(location, Remote)),
             Extra = [{<<"extra">>, <<"location=", Location/binary>>}],
             Headers = generate_headers(Extra),
@@ -430,10 +426,10 @@ fetch_flavors(Remote, #mstate{spool = Spool, pem_data = PemData}) ->
     end.
 
 -spec fetch_partitions(#remote{}, #mstate{}) -> {ok, [#image{}]} | {error, string()}.
-fetch_partitions(Remote, #mstate{spool = Spool, pem_data = PemData}) ->
+fetch_partitions(Remote, #mstate{spool = Spool}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
-            Body = get_auth_body(PemData),
+            Body = <<>>,
             Headers = generate_headers([]),
             ?LOG_DEBUG("Fetch partitions HTTP headers: ~p", [Headers]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("partitions", Remote), Headers, Body),
@@ -451,10 +447,10 @@ fetch_partitions(Remote, #mstate{spool = Spool, pem_data = PemData}) ->
     end.
 
 -spec fetch_partition(#remote{}, string(), #mstate{}) -> {ok, [#partition{}]} | {error, string()}.
-fetch_partition(Remote, PartExtIdOrName, #mstate{spool = Spool, pem_data = PemData}) ->
+fetch_partition(Remote, PartExtIdOrName, #mstate{spool = Spool}) ->
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
-            Body = get_auth_body(PemData),
+            Body = <<>>,
             Headers = generate_headers([]),
             ?LOG_DEBUG("Fetch partition HTTP headers: ~p", [Headers]),
             StreamRef =
@@ -472,13 +468,3 @@ fetch_partition(Remote, PartExtIdOrName, #mstate{spool = Spool, pem_data = PemDa
             {error, Error}
     end.
 
--spec read_pem_data(string()) -> binary().
-read_pem_data(Spool) ->
-    {_, KeyFile, CertFile} = wm_utils:get_node_cert_paths(Spool),
-    {ok, KeyContent} = file:read_file(KeyFile),
-    {ok, CertContent} = file:read_file(CertFile),
-    CertLines = binary:split(CertContent, <<"\n">>, [global]),
-    {_, CertRest} = lists:splitwith(fun(Line) -> Line =/= <<"-----BEGIN CERTIFICATE-----">> end, CertLines),
-    {CertBody, _} = lists:splitwith(fun(Line) -> Line =/= <<"-----END CERTIFICATE-----">> end, CertRest),
-    PemData = list_to_binary([KeyContent, CertBody, <<"\n-----END CERTIFICATE-----\n">>]),
-    binary:replace(PemData, <<"\n">>, <<"\\n">>, [global]).
