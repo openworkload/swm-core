@@ -747,7 +747,16 @@ get_cert_partial_chain_fun(CaFile) ->
 
 -spec get_node_cert_paths(string()) -> {string(), string(), string()}.
 get_node_cert_paths(Spool) ->
-    DefaultCA = filename:join([Spool, "secure/cluster/cert.pem"]),
+    %% Prefer ca-chain (grid + cluster). Intermediate-only cert.pem can fail
+    %% OpenSSL peer verify (unable to get issuer certificate) on some hosts.
+    ChainCA = filename:join([Spool, "secure/cluster/ca-chain-cert.pem"]),
+    DefaultCA =
+        case filelib:is_regular(ChainCA) of
+            true ->
+                ChainCA;
+            false ->
+                filename:join([Spool, "secure/cluster/cert.pem"])
+        end,
     DefaultKey = filename:join([Spool, "secure/node/key.pem"]),
     DefaultCert = filename:join([Spool, "secure/node/cert.pem"]),
     CaFile = wm_conf:g(cluster_cert, {DefaultCA, string}),
