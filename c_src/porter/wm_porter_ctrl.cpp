@@ -1,6 +1,7 @@
 #include "wm_porter_ctrl.h"
 
 #include "wm_io.h"
+#include "wm_safe_file.h"
 
 #include <ei.h>
 #include <fcntl.h>
@@ -10,6 +11,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -19,17 +21,41 @@ namespace {
 
 constexpr size_t porter_req_tuple_size = 4;
 
-std::string make_ctrl_path() {
-  const char *job = std::getenv("SWM_JOB_ID");
-  std::string id = job && *job ? job : std::to_string(getpid());
-  return "/tmp/swm-porter-ctrl-" + id + ".sock";
+std::string make_ctrl_path(const std::string &job_id) {
+  std::string dir = job_runtime_dir(job_id);
+  if (dir.empty()) {
+    // No spool: private mkdtemp (never a fixed guessable /tmp name).
+    char tmpl[] = "/tmp/swm-porter-XXXXXX";
+    char *created = mkdtemp(tmpl);
+    if (created == nullptr) {
+      return "";
+    }
+    dir = created;
+  }
+  return dir + "/ctrl.sock";
 }
 
 }  // namespace
 
-std::string porter_ctrl_listen(int *listen_fd_out) {
+std::string porter_ctrl_listen(int *listen_fd_out, const std::string &job_id, uid_t uid, gid_t gid) {
   *listen_fd_out = -1;
-  const std::string path = make_ctrl_path();
+  const std::string path = make_ctrl_path(job_id);
+  const auto slash = path.find_last_of('/');
+  if (slash == std::string::npos || slash == 0) {
+    return "";
+  }
+  const std::string dir = path.substr(0, slash);
+  if (!ensure_private_dir(dir, uid, gid)) {
+    swm_loge("porter ctrl dir %s: %s", dir.c_str(), std::strerror(errno));
+    return "";
+  }
+  // Allow the job user to traverse the private dir when Porter is root.
+  if (geteuid() == 0 && uid != 0) {
+    if (chown(dir.c_str(), uid, gid) != 0) {
+      swm_loge("porter ctrl chown dir %s: %s", dir.c_str(), std::strerror(errno));
+      return "";
+    }
+  }
   unlink(path.c_str());
 
   int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -51,7 +77,20 @@ std::string porter_ctrl_listen(int *listen_fd_out) {
     close(fd);
     return "";
   }
-  chmod(path.c_str(), 0666);
+  if (chmod(path.c_str(), 0600) != 0) {
+    swm_loge("porter ctrl chmod %s: %s", path.c_str(), std::strerror(errno));
+    close(fd);
+    unlink(path.c_str());
+    return "";
+  }
+  if (uid != 0 || gid != 0) {
+    if (chown(path.c_str(), uid, gid) != 0) {
+      swm_loge("porter ctrl chown %s: %s", path.c_str(), std::strerror(errno));
+      close(fd);
+      unlink(path.c_str());
+      return "";
+    }
+  }
   if (listen(fd, 4) < 0) {
     swm_loge("porter ctrl listen: %s", std::strerror(errno));
     close(fd);

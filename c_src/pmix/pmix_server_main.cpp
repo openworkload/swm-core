@@ -5,6 +5,8 @@
 // Cross-node fence (Slurm-like): fence_nb emits FENCE_IN; wm_pmix allgathers
 // contributions and replies with FENCE_OUT; we then invoke the modex callback.
 
+#include "wm_safe_file.h"
+
 #include <pmix.h>
 #include <pmix_server.h>
 #include <pwd.h>
@@ -441,11 +443,43 @@ ForkEnv server_fork_env(const std::string &nspace, pmix_rank_t rank) {
 }
 
 void chmod_tree_world_rwx(const std::string &path) {
-  // Clients often run as the job user while swm-pmix is root. Shared-memory
-  // GDS (ds12/ds21) needs write on lock files; a+rX alone causes
-  // gds_ds12_lock_pthread failures and hangs MPI_Init before fence.
+  // Opt-in only (SWM_PMIX_WORLD_TMP=1). Clients often run as the job user
+  // while swm-pmix is root; shared-memory GDS (ds12/ds21) needs write on
+  // lock files. Default is private 0700 under the job spool -- do not make
+  // host /tmp world-writable.
   const std::string cmd = "chmod -R a+rwX " + path + " 2>/dev/null";
   std::system(cmd.c_str());
+}
+
+// Prefer $SWM_SPOOL/job/<id>/pmix; else env override; else private mkdtemp.
+std::string resolve_pmix_tmpdir(const std::string &job_id) {
+  if (const char *env = std::getenv("SWM_PMIX_TMPDIR")) {
+    if (env[0] != '\0') {
+      return std::string(env);
+    }
+  }
+  const std::string base = swm::job_runtime_dir(job_id);
+  if (!base.empty()) {
+    return base + "/pmix";
+  }
+  char tmpl[] = "/tmp/swm-pmix-XXXXXX";
+  char *created = mkdtemp(tmpl);
+  if (created == nullptr) {
+    return "";
+  }
+  return std::string(created);
+}
+
+bool ensure_pmix_tmpdir(const std::string &tmpdir) {
+  if (tmpdir.empty()) {
+    return false;
+  }
+  return swm::ensure_private_dir(tmpdir, geteuid(), getegid());
+}
+
+bool pmix_world_tmp_enabled() {
+  const char *v = std::getenv("SWM_PMIX_WORLD_TMP");
+  return v != nullptr && v[0] == '1' && v[1] == '\0';
 }
 
 bool parse_kv_token(const std::string &line, const std::string &key, std::string &val) {
@@ -541,9 +575,12 @@ int main(int argc, char *argv[]) {
   pmix_info_t *info = nullptr;
   size_t ninfo = 1;
   PMIX_INFO_CREATE(info, ninfo);
-  std::string tmpdir = "/tmp/swm-pmix-" + g_job_id;
-  ::mkdir(tmpdir.c_str(), 0777);
-  ::chmod(tmpdir.c_str(), 0777);
+  const std::string tmpdir = resolve_pmix_tmpdir(g_job_id);
+  if (tmpdir.empty() || !ensure_pmix_tmpdir(tmpdir)) {
+    std::cerr << "swm-pmix: cannot create private SERVER_TMPDIR\n";
+    PMIX_INFO_FREE(info, ninfo);
+    return 1;
+  }
   PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TMPDIR, tmpdir.c_str(), PMIX_STRING);
 
   pmix_status_t rc = PMIx_server_init(&module, info, ninfo);
@@ -561,7 +598,9 @@ int main(int argc, char *argv[]) {
   (void)register_clients(g_nspace, {0});
 
   const ForkEnv fork_env = server_fork_env(g_nspace, 0);
-  chmod_tree_world_rwx(tmpdir);
+  if (pmix_world_tmp_enabled()) {
+    chmod_tree_world_rwx(tmpdir);
+  }
   if (fork_env.uri.empty()) {
     std::cerr << "swm-pmix: warning: PMIX_SERVER_URI empty after setup_fork\n";
   }
@@ -658,7 +697,9 @@ int main(int argc, char *argv[]) {
       g_contrib_id.store(static_cast<int>(rank));
       (void)register_clients(g_nspace, {rank});
       const ForkEnv fe = server_fork_env(g_nspace, rank);
-      chmod_tree_world_rwx(tmpdir);
+      if (pmix_world_tmp_enabled()) {
+        chmod_tree_world_rwx(tmpdir);
+      }
       emit_line("OK SETUP_FORK rank=" + std::to_string(rank) + " uri=" + fe.uri);
       for (const auto &kv : fe.vars) {
         emit_line("ENV " + kv.first + "=" + kv.second);

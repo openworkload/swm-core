@@ -29,17 +29,22 @@ LIBS=-lpmix\
 
 SRCS=$(shell echo *.cpp)
 OBJS=$(SRCS:.cpp=.o)
+SAFE_FILE_OBJ=$(SWM_C_LIB)/wm_safe_file.o
 TARGET=swm-pmix
 # Copied into the release as lib/libpmix.so.2 (ABI matched to this build).
 BUNDLED_LIB=libpmix.so.2
 
 all: $(TARGET) $(BUNDLED_LIB)
 
+.PHONY: lib
+lib:
+	$(MAKE) -C $(SWM_C_LIB)
+
 %.o: %.cpp
 	$(CC) -fPIC -c -o $@ $< $(CFLAGS)
 
-$(TARGET): $(OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS)
+$(TARGET): lib $(OBJS) $(SAFE_FILE_OBJ)
+	$(CC) -o $@ $(OBJS) $(SAFE_FILE_OBJ) $(LDFLAGS) $(LIBS)
 
 $(BUNDLED_LIB):
 	cp -L "$(PMIX_SO_DIR)/libpmix.so.2" "$(BUNDLED_LIB)"

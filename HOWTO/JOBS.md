@@ -257,7 +257,8 @@ Call `swm-task` from the job script inside the job container:
 
 `swm-task` never talks to Podman or SWM sockets directly. Inside containers,
 only **Porter** may talk to SWM. `swm-task` uses the Unix socket path in
-`SWM_PORTER_CTRL`.
+`SWM_PORTER_CTRL` (typically `$SWM_SPOOL/job/<job-id>/ctrl.sock`, mode
+`0600`). Do not hard-code a `/tmp` socket path.
 
 Flow (with or without `--pmix`):
 

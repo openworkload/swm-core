@@ -3,6 +3,7 @@
 #include "wm_io.h"
 #include "wm_job.h"
 #include "wm_porter_ctrl.h"
+#include "wm_safe_file.h"
 #include "wm_porter_data.h"
 #include "wm_porter_metrics.h"
 #include "wm_process.h"
@@ -334,40 +335,28 @@ int send_process_info(const SwmProcess &proc) {
 }
 
 std::string save_script(const SwmJob &job, const uid_t uid, const gid_t gid, const std::string &content) {
-  // Prefer container name over pid: rank Porters can share the same host pid
-  // namespace view (e.g. both pid 2) when /tmp is bind-mounted across containers.
   const auto job_id = job.get_id();
-  std::string tag = job.get_container();
-  if (tag.empty()) {
-    tag = "pid" + std::to_string(getpid());
-  }
-  for (char &c : tag) {
-    if (c == '/' || c == ' ') {
-      c = '-';
+  std::string dir = job_runtime_dir(job_id);
+  if (dir.empty()) {
+    // No spool: private mkdtemp under /tmp (never a fixed guessable name).
+    char tmpl[] = "/tmp/swm-job-XXXXXX";
+    char *created = mkdtemp(tmpl);
+    if (created == nullptr) {
+      std::perror("mkdtemp for job script");
+      exit(EXIT_FAILURE);
+    }
+    dir = created;
+    if (chmod(dir.c_str(), 0700) != 0) {
+      std::perror("chmod job script dir");
+      exit(EXIT_FAILURE);
     }
   }
-  const std::string path = "/tmp/swm-" + job_id + "-" + tag + ".sh";
-  std::ofstream file(path, std::ofstream::out);
-  if (!file.is_open()) {
-    const auto msg = "Error creating script file: " + path;
+  const std::string path = safe_write_exclusive(dir, "job.sh", content, uid, gid, 0700);
+  if (path.empty()) {
+    const auto msg = "Error creating exclusive script file under " + dir;
     std::perror(msg.c_str());
     exit(EXIT_FAILURE);
   }
-  file << content;
-  file.close();
-
-  if (chmod(path.c_str(), S_IRWXU) != 0) {
-    const auto msg = "Could not set permissions to " + path;
-    std::perror(msg.c_str());
-    exit(EXIT_FAILURE);
-  }
-
-  if (chown(path.c_str(), uid, gid) == -1) {
-    const auto msg = "Could not set ownership to " + path;
-    std::perror(msg.c_str());
-    exit(EXIT_FAILURE);
-  }
-
   return path;
 }
 
@@ -455,7 +444,20 @@ int main(int argc, char *const argv[]) {
 
   int ctrl_listen = -1;
   setenv("SWM_JOB_ID", info.job.get_id().c_str(), 1);
-  const std::string ctrl_path = porter_ctrl_listen(&ctrl_listen);
+  uid_t ctrl_uid = 0;
+  gid_t ctrl_gid = 0;
+  {
+    const auto username = info.user.get_name();
+    for (int attempt = 0; attempt < 20; ++attempt) {
+      if (passwd *pw = getpwnam(username.c_str())) {
+        ctrl_uid = pw->pw_uid;
+        ctrl_gid = pw->pw_gid;
+        break;
+      }
+      sleep(1);
+    }
+  }
+  const std::string ctrl_path = porter_ctrl_listen(&ctrl_listen, info.job.get_id(), ctrl_uid, ctrl_gid);
 
   if ((child_pid = fork()) == -1) {
     swm_loge("Fork error!");

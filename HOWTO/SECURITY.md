@@ -1,4 +1,4 @@
-# Security
+# security
 
 This document describes how Sky Port protects the cluster. It covers the
 certificate authority (CA), mutual TLS (mTLS), SSH and SFTP, Erlang
@@ -200,6 +200,21 @@ server rejects workdirs with shell metacharacters, `..` segments, or paths
 outside the owner's home. Container finalize runs the finalize script with an
 argv list (no `/bin/sh -c`), so the workdir cannot inject shell commands.
 Job `stdout*` / `stderr*` files default to `$SWM_SPOOL/job/<job-id>/`.
+
+### Porter job script and control socket
+
+Porter writes the job script under `$SWM_SPOOL/job/<job-id>/` with
+`O_CREAT|O_EXCL|O_NOFOLLOW` (mode `0700`). If `SWM_SPOOL` is unset,
+Porter uses a private `mkdtemp` directory.
+
+The Porter control socket for `swm-task` is
+`$SWM_SPOOL/job/<job-id>/ctrl.sock` (mode `0600`, owned by the job user).
+
+### PMIx server tmpdir
+
+`swm-pmix` sets `PMIX_SERVER_TMPDIR` to `$SWM_SPOOL/job/<job-id>/pmix`
+(mode `0700`) by default. Override with `SWM_PMIX_TMPDIR` when needed.
+World-writable GDS (`chmod -R a+rwX`) is off unless you set `SWM_PMIX_WORLD_TMP=1`.
 
 ### OpenSSH provisioning
 

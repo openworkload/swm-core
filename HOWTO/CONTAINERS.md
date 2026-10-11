@@ -83,6 +83,7 @@ PRRTE). Flow:
 2. `swm-task ./app` talks to Porter via `SWM_PORTER_CTRL` (only Porter talks to SWM).
 3. `wm_pmix` creates **one Porter container per allocated node** (v1: one rank per node).
 4. With `--pmix`, `wm_pmix` also starts per-node **`swm-pmix`** and sets `PMIX_*` / `SWM_*`.
+   PMIx `SERVER_TMPDIR` defaults to `$SWM_SPOOL/job/<job-id>/pmix` (private).
 5. Cancel stops rank containers (and stops `swm-pmix` if used).
 
 See [JOBS.md](JOBS.md) (Tasks section).

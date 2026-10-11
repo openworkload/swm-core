@@ -1,12 +1,15 @@
 #pragma once
 
+#include <sys/types.h>
+
 #include <string>
 #include <vector>
 
 namespace swm {
 
-// Create AF_UNIX listen socket; returns path and listen fd, or empty path on failure.
-std::string porter_ctrl_listen(int *listen_fd_out);
+// Create AF_UNIX listen socket under the job private dir (mode 0600).
+// Returns path and listen fd, or empty path on failure.
+std::string porter_ctrl_listen(int *listen_fd_out, const std::string &job_id, uid_t uid, gid_t gid);
 
 // Accept one client (non-blocking friendly); returns client fd or -1.
 int porter_ctrl_accept(int listen_fd);
