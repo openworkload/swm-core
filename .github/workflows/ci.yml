@@ -87,6 +87,37 @@ jobs:
           export USER=test
           ./scripts/setup-skyport-dev.sh
       -
+        name: Smoke cloud gate mTLS
+        run: |
+          # Prove the mocked gate accepts Sky Port node mTLS before CT (surfaces bind/TLS/log issues).
+          apt-get update
+          apt-get install -y curl openssl
+          export SWM_GATE_DIR=$(pwd)/_build/ct-tests/swm-cloud-gate
+          cd "$SWM_GATE_DIR"
+          ./run-mocked.sh > /tmp/gate-smoke.log 2>&1 &
+          echo $! > /tmp/gate-smoke.pid
+          CODE=""
+          for i in $(seq 1 40); do
+            CODE=$(curl -sk --connect-timeout 2 --max-time 5 \
+              --cert /opt/swm/spool/secure/node/cert.pem \
+              --key /opt/swm/spool/secure/node/key.pem \
+              --cacert /opt/swm/spool/secure/cluster/ca-chain-cert.pem \
+              https://127.0.0.1:8444/openstack/images \
+              -o /tmp/gate-smoke-body.json -w "%{http_code}" || true)
+            if [ "$CODE" = "200" ]; then
+              break
+            fi
+            sleep 1
+          done
+          echo "smoke HTTP code=${CODE}"
+          echo "===== gate-smoke.log ====="
+          cat /tmp/gate-smoke.log || true
+          echo "===== body ====="
+          cat /tmp/gate-smoke-body.json || true
+          kill -2 "$(cat /tmp/gate-smoke.pid)" 2>/dev/null || true
+          wait "$(cat /tmp/gate-smoke.pid)" 2>/dev/null || true
+          test "$CODE" = "200"
+      -
         name: Run ct tests
         run: |
           export SWM_GATE_DIR=$(pwd)/_build/ct-tests/swm-cloud-gate
