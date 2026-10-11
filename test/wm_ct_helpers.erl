@@ -10,10 +10,8 @@ run_gate_system_process() ->
                             ct:print("Gate runner final output: ~p", [Output])
                          end),
     ct:print("Gate pid: ~p", [Pid]),
-    %% swm-cloud-gate/run.py binds uvicorn to socket.getfqdn(). On Ubuntu that
-    %% often resolves to 127.0.1.1 (see /etc/hosts), not 127.0.0.1. Probe the
-    %% same names clients use (inet:gethostname/0 in wm_gate_SUITE) plus the
-    %% common loopback aliases so CI and local docker both succeed.
+    %% run-mocked.sh binds SWM_GATE_HOST (default 127.0.0.1). Also probe
+    %% localhost aliases and the short hostname for older gate checkouts.
     Hosts = gate_listen_hosts(),
     case wait_gate_port(Hosts, 8444, 60) of
         ok ->
@@ -25,7 +23,7 @@ run_gate_system_process() ->
 -spec gate_listen_hosts() -> [string()].
 gate_listen_hosts() ->
     {ok, Hostname} = inet:gethostname(),
-    lists:usort([Hostname, "localhost", "127.0.0.1", "127.0.1.1"]).
+    lists:usort(["127.0.0.1", "localhost", "127.0.1.1", Hostname]).
 
 %% @doc Wait until the mocked cloud-gate accepts TCP on any of Hosts:Port.
 -spec wait_gate_port([string()], inet:port_number(), non_neg_integer()) -> ok | {error, timeout}.

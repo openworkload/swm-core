@@ -172,7 +172,6 @@ generate_headers(ExtraHeaders) ->
     [{<<"Accept">>, <<"application/json">>}, {<<"Content-Type">>, <<"application/json">>}
      | lists:reverse(ExtraHeaders)].
 
-
 -spec open_connection(#remote{}, string()) -> {ok, pid()} | {error | term()}.
 open_connection(Remote, Spool) ->
     {CaFile, KeyFile, CertFile} = wm_utils:get_node_cert_paths(Spool),
@@ -183,6 +182,8 @@ open_connection(Remote, Spool) ->
           tls_opts =>
               [{versions, ['tlsv1.3']},
                {verify, verify_peer},
+               %% Match wm_tcp_client: pin trust via CA + client cert, not DNS SAN.
+               {server_name_indication, disable},
                {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
                {cacertfile, CaFile},
                {certfile, CertFile},
@@ -467,4 +468,3 @@ fetch_partition(Remote, PartExtIdOrName, #mstate{spool = Spool}) ->
         {error, Error} ->
             {error, Error}
     end.
-

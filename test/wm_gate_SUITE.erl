@@ -98,17 +98,11 @@ end_per_testcase(_, Config) ->
 %% Helpers
 %% ============================================================================
 
-%% @doc Host for TLS to the mocked gate. Prefer FQDN so verify_peer matches
-%% the node cert SAN (inet:gethostname/0 is often the short name only).
+%% @doc Host for TLS to the mocked gate.
+%% run-mocked.sh binds 127.0.0.1 (SWM_GATE_HOST); wm_gate disables SNI checks.
 -spec gate_server_host() -> string().
 gate_server_host() ->
-    case string:trim(os:cmd("hostname -f 2>/dev/null")) of
-        "" ->
-            {ok, Short} = inet:gethostname(),
-            Short;
-        FQDN ->
-            FQDN
-    end.
+    "127.0.0.1".
 
 -spec get_remote() -> #remote{}.
 get_remote() ->
