@@ -69,7 +69,7 @@ These paths use the cluster CA and the node (or user) certificate:
 |------|---------|----------|
 | API TCP | `secure/cluster/cert.pem` | `secure/node/{cert,key}.pem` |
 | REST (HTTP) | same | same |
-| Cloud gate (server) | `secure/cluster/cert.pem` (client trust) | Gate serves `secure/node`; **requires** a client cert (`CERT_REQUIRED`) |
+| Cloud gate (server) | `secure/cluster/ca-chain-cert.pem` (preferred) or `cert.pem` | Gate serves `secure/node`; **requires** a client cert (`CERT_REQUIRED`) |
 | Cloud gate client (Sky Port) | same | `secure/node/{cert,key}.pem` |
 | Erlang distribution (`inet_tls`, localhost only) | `ca-chain-cert.pem` | node cert/key |
 

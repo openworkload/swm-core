@@ -98,13 +98,24 @@ end_per_testcase(_, Config) ->
 %% Helpers
 %% ============================================================================
 
+%% @doc Host for TLS to the mocked gate. Prefer FQDN so verify_peer matches
+%% the node cert SAN (inet:gethostname/0 is often the short name only).
+-spec gate_server_host() -> string().
+gate_server_host() ->
+    case string:trim(os:cmd("hostname -f 2>/dev/null")) of
+        "" ->
+            {ok, Short} = inet:gethostname(),
+            Short;
+        FQDN ->
+            FQDN
+    end.
+
 -spec get_remote() -> #remote{}.
 get_remote() ->
-    {ok, Hostname} = inet:gethostname(),
     wm_entity:set([{id, "0b1ee0b0-4db5-11eb-a18a-f7f7d5c0f982"},
                    {name, "local-gate-test"},
                    {kind, openstack},
-                   {server, Hostname},
+                   {server, gate_server_host()},
                    {port, 8444},
                    {account_id, "accid123"}],
                   wm_entity:new(remote)).
