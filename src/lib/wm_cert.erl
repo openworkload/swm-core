@@ -1,9 +1,13 @@
 -module(wm_cert).
 
--export([create/3, get_uid/1]).
+-export([create/3, get_uid/1, profile/1, profile_from_der/1]).
 
 -include_lib("public_key/include/public_key.hrl").
 -include_lib("public_key/include/OTP-PUB-KEY.hrl").
+
+-export_type([cert_profile/0]).
+
+-type cert_profile() :: node | user | legacy.
 
 -define(OPENSSL, "openssl").
 -define(SSH_KEYGEN, "ssh-keygen").
@@ -54,6 +58,16 @@ create(host, _, Name) ->
 get_uid(Cert) ->
     do_get_altname(Cert).
 
+%% @doc Certificate profile from extendedKeyUsage.
+%% node = clientAuth+serverAuth; user = clientAuth only; legacy = no EKU (old installs).
+-spec profile(#'OTPCertificate'{}) -> cert_profile().
+profile(#'OTPCertificate'{} = Cert) ->
+    profile_from_ekus(cert_ekus(Cert)).
+
+-spec profile_from_der(binary()) -> cert_profile().
+profile_from_der(CertDer) when is_binary(CertDer) ->
+    profile(public_key:pkix_decode_cert(CertDer, otp)).
+
 %% ============================================================================
 %% Implementation functions
 %% ============================================================================
@@ -102,7 +116,7 @@ create_node_cert(NodeID, CommonName) ->
     create_rnd(SecureDir, "node"),
     file:write_file(CnfFile, Request),
     create_req(SecureDir, openssl_cmd(), CnfFile, KeyFile, ReqFile),
-    sign_req(SecureDir, openssl_cmd(), CADir, "user_cert", ReqFile, CertFile, dns_sans(CommonName)),
+    sign_req(SecureDir, openssl_cmd(), CADir, "node_cert", ReqFile, CertFile, dns_sans(CommonName)),
     remove_rnd(SecureDir, "node").
 
 -spec create_user_cert(string(), string()) -> atom().
@@ -179,9 +193,25 @@ create_self_signed_cert(SecureDir, OpenSSLCmd, CAName, Cnf) ->
     CnfFile = filename:join([CADir, "req.cnf"]),
     KeyFile = filename:join([CADir, "private", "key.pem"]),
     CertFile = filename:join([CADir, "cert.pem"]),
-    Cmd = [OpenSSLCmd, " req -new -x509 -days 365 -config ", CnfFile, " -keyout ", KeyFile, " -out ", CertFile],
+    %% req -x509 uses -extensions / x509_extensions (not req_extensions).
+    %% OpenSSL 3 rejects roots that lack basicConstraints CA:TRUE (verify error 79).
+    FullCnf =
+        [Cnf,
+         "\n"
+         "[ca_cert]\n"
+         "basicConstraints       = critical,CA:true\n"
+         "keyUsage               = critical,keyCertSign,cRLSign\n"
+         "subjectKeyIdentifier   = hash\n"],
+    Cmd =
+        [OpenSSLCmd,
+         " req -new -x509 -days 365 -extensions ca_cert -config ",
+         CnfFile,
+         " -keyout ",
+         KeyFile,
+         " -out ",
+         CertFile],
     Env = [{"ROOTDIR", SecureDir}],
-    file:write_file(CnfFile, Cnf),
+    file:write_file(CnfFile, FullCnf),
     cmd(Cmd, Env).
 
 -spec create_ca_dir(string(), string(), list()) -> ok.
@@ -224,11 +254,12 @@ sign_req(RootDir, OpenSSLCmd, CADir, Ext, ReqFile, CertFile) ->
 %% extension. API/dist TLS hostname checks use DNS SANs such as the FQDN and
 %% "sname@fqdn". Pass SAN via -extfile so existing CA configs (without
 %% copy_extensions) still emit a proper extension.
+%% Ext is "node_cert" or "user_cert" (separate EKU profiles).
 -spec sign_req(string(), string(), string(), string(), string(), string(), [string()]) -> ok.
 sign_req(RootDir, OpenSSLCmd, CADir, Ext, ReqFile, CertFile, DnsNames) ->
     CACnfFile = filename:join([CADir, "ca.cnf"]),
     ExtFile = CertFile ++ ".ext.cnf",
-    ok = file:write_file(ExtFile, user_cert_ext_cnf(DnsNames)),
+    ok = file:write_file(ExtFile, end_entity_ext_cnf(Ext, DnsNames)),
     Cmd = [OpenSSLCmd,
            " ca -batch -utf8 -config ",
            CACnfFile,
@@ -257,12 +288,26 @@ dns_sans(CommonName) ->
     NodeName = SName ++ "@" ++ CommonName,
     lists:usort([CommonName, NodeName]).
 
--spec user_cert_ext_cnf([string()]) -> list().
-user_cert_ext_cnf(DnsNames) ->
+-spec end_entity_ext_cnf(string(), [string()]) -> list().
+end_entity_ext_cnf("node_cert", DnsNames) ->
+    San = string:join(["DNS:" ++ N || N <- DnsNames], ","),
+    %% EKU must not be marked critical: OTP public_key:pkix_path_validation/3
+    %% returns unknown_critical_extension and breaks SSH is_auth_key.
+    ["[node_cert]\n"
+     "basicConstraints       = CA:false\n"
+     "keyUsage               = critical,digitalSignature,keyEncipherment\n"
+     "extendedKeyUsage       = serverAuth,clientAuth\n"
+     "subjectKeyIdentifier   = hash\n"
+     "authorityKeyIdentifier = keyid,issuer:always\n"
+     "issuerAltName          = issuer:copy\n"
+     "subjectAltName         = ", San, "\n"];
+end_entity_ext_cnf(_Ext, DnsNames) ->
+    %% Default / user profile: clientAuth only (cannot act as TLS server / node).
     San = string:join(["DNS:" ++ N || N <- DnsNames], ","),
     ["[user_cert]\n"
      "basicConstraints       = CA:false\n"
-     "keyUsage               = nonRepudiation,digitalSignature,keyEncipherment\n"
+     "keyUsage               = critical,digitalSignature,keyEncipherment\n"
+     "extendedKeyUsage       = clientAuth\n"
      "subjectKeyIdentifier   = hash\n"
      "authorityKeyIdentifier = keyid,issuer:always\n"
      "issuerAltName          = issuer:copy\n"
@@ -438,7 +483,16 @@ ca_cnf(CA) ->
      "\n"
      "[user_cert]\n"
      "basicConstraints       = CA:false\n"
-     "keyUsage               = nonRepudiation,digitalSignature,keyEncipherment\n"
+     "keyUsage               = critical,digitalSignature,keyEncipherment\n"
+     "extendedKeyUsage       = clientAuth\n"
+     "subjectKeyIdentifier   = hash\n"
+     "authorityKeyIdentifier = keyid,issuer:always\n"
+     "issuerAltName          = issuer:copy\n"
+     "\n"
+     "[node_cert]\n"
+     "basicConstraints       = CA:false\n"
+     "keyUsage               = critical,digitalSignature,keyEncipherment\n"
+     "extendedKeyUsage       = serverAuth,clientAuth\n"
      "subjectKeyIdentifier   = hash\n"
      "authorityKeyIdentifier = keyid,issuer:always\n"
      "issuerAltName          = issuer:copy\n"
@@ -449,6 +503,41 @@ ca_cnf(CA) ->
      "subjectKeyIdentifier   = hash\n"
      "issuerAltName          = issuer:copy\n"
     ].
+
+-spec cert_ekus(#'OTPCertificate'{}) -> [tuple()].
+cert_ekus(#'OTPCertificate'{tbsCertificate = TBS}) ->
+    Exts =
+        case TBS#'OTPTBSCertificate'.extensions of
+            asn1_NOVALUE ->
+                [];
+            List when is_list(List) ->
+                List
+        end,
+    lists:flatten(
+        [case E#'Extension'.extnValue of
+             L when is_list(L) ->
+                 L;
+             _ ->
+                 []
+         end
+         || E <- Exts, E#'Extension'.extnID == ?'id-ce-extKeyUsage']).
+
+-spec profile_from_ekus([tuple()]) -> cert_profile().
+profile_from_ekus([]) ->
+    legacy;
+profile_from_ekus(Ekus) ->
+    HasClient = lists:member(?'id-kp-clientAuth', Ekus),
+    HasServer = lists:member(?'id-kp-serverAuth', Ekus),
+    case {HasClient, HasServer} of
+        {true, true} ->
+            node;
+        {true, false} ->
+            user;
+        {false, true} ->
+            node;
+        {false, false} ->
+            legacy
+    end.
 
 -spec do_get_altname(term()) -> atom() | string().
 do_get_altname(Cert) ->

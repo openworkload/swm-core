@@ -2,7 +2,9 @@
 
 %% SSH key callback: user auth from CA-issued node key under secure/node,
 %% verified against secure/cluster/cert.pem. Host keys stay in secure/host
-%% (delegated to ssh_file).
+%% (delegated to ssh_file). Client host-key checks pin against
+%% secure/host/ssh_host_*.pub (shared via worker archive) and
+%% secure/host/known_hosts (OpenSSH / provisioning TOFU).
 
 -behaviour(ssh_server_key_api).
 -behaviour(ssh_client_key_api).
@@ -10,6 +12,7 @@
 -export([host_key/2, is_auth_key/3]).
 -export([user_key/2, is_host_key/5, add_host_key/4]).
 -export([daemon_options/1, client_options/1, client_options/2]).
+-export([host_dir/1, pinned_host_key_matches/2]).
 
 -include_lib("public_key/include/public_key.hrl").
 
@@ -23,7 +26,7 @@
 
 -spec daemon_options(string()) -> [ssh:daemon_option()].
 daemon_options(Spool) ->
-    HostDir = filename:join([Spool, "secure", "host"]),
+    HostDir = host_dir(Spool),
     [{auth_methods, "publickey"},
      {shell, disabled},
      {exec, disabled},
@@ -36,11 +39,18 @@ client_options(Spool) ->
 
 -spec client_options(string(), string()) -> [ssh:client_option()].
 client_options(Spool, Username) ->
+    HostDir = host_dir(Spool),
     [{user, Username},
      {auth_methods, "publickey"},
-     {silently_accept_hosts, true},
+     %% Fail closed: only pinned secure/host keys or known_hosts entries.
+     {silently_accept_hosts, false},
      {user_interaction, false},
+     {user_dir, HostDir},
      {key_cb, {?MODULE, [{spool, normalize_spool(Spool)}]}}].
+
+-spec host_dir(string()) -> string().
+host_dir(Spool) ->
+    filename:join([normalize_spool(Spool), "secure", "host"]).
 
 %% ============================================================================
 %% ssh_server_key_api
@@ -102,18 +112,68 @@ user_key(Algorithm, ClientOptions) ->
                   inet:port_number(),
                   ssh:pubkey_alg(),
                   ssh_client_key_api:client_key_cb_options(term())) ->
-                     boolean().
-is_host_key(_Key, _Host, _Port, _Algorithm, _Options) ->
-    %% SWM internal daemons; matches prior silently_accept_hosts behaviour.
-    true.
+                     boolean() | {error, term()}.
+is_host_key(Key, Host, Port, Algorithm, Options) ->
+    case get_spool(Options) of
+        "" ->
+            false;
+        Spool ->
+            case pinned_host_key_matches(Spool, Key) of
+                true ->
+                    true;
+                false ->
+                    HostDir = host_dir(Spool),
+                    FileOpts = [{user_dir, HostDir} | Options],
+                    case ssh_file:is_host_key(Key, Host, Port, Algorithm, FileOpts) of
+                        true ->
+                            true;
+                        {error, _} = Err ->
+                            Err;
+                        false ->
+                            false
+                    end
+            end
+    end.
 
 -spec add_host_key(inet:ip_address() | inet:hostname() | [inet:ip_address() | inet:hostname()],
                    inet:port_number(),
                    public_key:public_key(),
                    ssh_client_key_api:client_key_cb_options(term())) ->
                       ok | {error, term()}.
-add_host_key(_Host, _Port, _Key, _Options) ->
-    ok.
+add_host_key(Host, Port, Key, Options) ->
+    case get_spool(Options) of
+        "" ->
+            {error, spool_not_set};
+        Spool ->
+            HostDir = host_dir(Spool),
+            ok =
+                filelib:ensure_dir(
+                    filename:join(HostDir, "known_hosts")),
+            ssh_file:add_host_key(Host, Port, Key, [{user_dir, HostDir} | Options])
+    end.
+
+%% ============================================================================
+%% Host-key pin helpers (exported for tests)
+%% ============================================================================
+
+%% @doc True when Key matches a public host key under secure/host/.
+-spec pinned_host_key_matches(string(), public_key:public_key()) -> boolean().
+pinned_host_key_matches(Spool, Key) ->
+    HostDir = host_dir(Spool),
+    case file:list_dir(HostDir) of
+        {ok, Names} ->
+            lists:any(fun(Name) ->
+                         case lists:suffix(".pub", Name) of
+                             true ->
+                                 pub_file_matches(filename:join(HostDir, Name), Key);
+                             false ->
+                                 false
+                         end
+                      end,
+                      Names);
+        _ ->
+            false
+    end.
 
 %% ============================================================================
 %% Internal
@@ -135,16 +195,21 @@ authorized_node_pubkey(Spool) ->
     {CaFile, _KeyFile, CertFile} = wm_utils:get_node_cert_paths(Spool),
     case read_pem_der(CertFile) of
         {ok, CertDer} ->
-            case read_pem_der(CaFile) of
-                {ok, CaDer} ->
-                    case public_key:pkix_path_validation(CaDer, [CertDer], []) of
-                        {ok, _} ->
-                            extract_cert_pubkey(CertDer);
-                        {error, Reason} ->
-                            {error, {ca_validation_failed, Reason}}
-                    end;
-                Error ->
-                    Error
+            case wm_cert:profile_from_der(CertDer) of
+                user ->
+                    {error, user_cert_not_allowed_for_node_ssh};
+                _Profile ->
+                    case read_pem_der(CaFile) of
+                        {ok, CaDer} ->
+                            case public_key:pkix_path_validation(CaDer, [CertDer], []) of
+                                {ok, _} ->
+                                    extract_cert_pubkey(CertDer);
+                                {error, Reason} ->
+                                    {error, {ca_validation_failed, Reason}}
+                            end;
+                        Error ->
+                            Error
+                    end
             end;
         Error ->
             Error
@@ -193,3 +258,31 @@ algorithm_matches_key(Alg, #'ECPrivateKey'{}) ->
     lists:member(Alg, ['ssh-ed25519', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521']);
 algorithm_matches_key(_, _) ->
     false.
+
+-spec pub_file_matches(string(), public_key:public_key()) -> boolean().
+pub_file_matches(Path, Key) ->
+    try
+        case file:read_file(Path) of
+            {ok, Bin} ->
+                case ssh_file:decode(Bin, openssh_key) of
+                    [{Pub, _Attrs} | _] ->
+                        public_keys_equal(Pub, Key);
+                    _ ->
+                        false
+                end;
+            _ ->
+                false
+        end
+    catch
+        _:_ ->
+            false
+    end.
+
+-spec public_keys_equal(public_key:public_key(), public_key:public_key()) -> boolean().
+public_keys_equal(A, B) ->
+    try
+        ssh_file:extract_public_key(A) =:= ssh_file:extract_public_key(B)
+    catch
+        _:_ ->
+            A =:= B
+    end.

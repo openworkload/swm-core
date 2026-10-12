@@ -58,6 +58,10 @@ During setup, Sky Port:
 4. Creates user certificates as needed.
 5. Creates SSH host keys under `secure/host/`.
 
+The grid root is self-signed with `basicConstraints CA:TRUE` and
+`keyCertSign` / `cRLSign`. OpenSSL 3 rejects chain verification when the root
+lacks those CA extensions (verify error 79).
+
 The same CA is used for every component that authenticates with certificates
 or with keys derived from those certificates.
 
@@ -173,6 +177,34 @@ Sky Port runs two OTP SSH daemons inside the BEAM process:
 - Interactive shell and remote `exec` are disabled.
 - `secure/host/` holds SSH host keys for the daemon identity. It does not hold
   user login keys.
+
+### Host key verification
+
+SWM pubkey SSH clients do **not** silently accept hosts. `wm_ssh_key_cb`
+accepts a server host key only when it matches:
+
+1. A public key under `$SWM_SPOOL/secure/host/ssh_host_*.pub` (pinned; the
+   worker archive ships the same host keys to job VMs), or
+2. An entry in `$SWM_SPOOL/secure/host/known_hosts` (OpenSSH format).
+
+Provisioning password SSH to cloud OpenSSH may still trust-on-first-use into
+the caller's `user_dir/known_hosts` (separate from the SWM pin).
+
+### Certificate profiles
+
+End-entity certificates carry distinct `extendedKeyUsage` profiles:
+
+| Profile | Path | EKU |
+|---------|------|-----|
+| `node` | `secure/node/` | `serverAuth` + `clientAuth` |
+| `user` | `secure/users/<name>/` | `clientAuth` only |
+
+EKU (Extended Key Usage) is not marked critical. OTP `public_key:pkix_path_validation/3` rejects
+unknown critical extensions, which would break SSH node-key auth.
+
+RPC classification (`wm_rpc_acl:classify_peer/1`) rejects a **user** profile
+certificate when the UID would otherwise map to the `node` role. Legacy
+certificates without EKU keep UID-based classification until re-issued.
 
 OTP SSH does not accept X.509 PEM files as native SSH user certificates. Sky
 Port maps the same CA-issued node key material into SSH public-key auth so the

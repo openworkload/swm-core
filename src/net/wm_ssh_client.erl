@@ -132,6 +132,8 @@ do_connect_pubkey(Host, Port, Username, Spool, #mstate{} = MState) ->
 do_connect_password(any, Port, Username, Password, UserDir, #mstate{} = MState) ->
     do_connect_password(wm_utils:get_my_hostname(), Port, Username, Password, UserDir, MState);
 do_connect_password(Host, Port, Username, Password, UserDir, #mstate{} = MState) ->
+    %% OpenSSH provisioning only. Persist unknown host keys into UserDir/known_hosts
+    %% (TOFU). SWM pubkey clients use wm_ssh_key_cb pins instead.
     Options =
         [{silently_accept_hosts, true},
          {user_dir, UserDir},

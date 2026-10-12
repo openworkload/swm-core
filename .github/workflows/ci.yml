@@ -88,16 +88,38 @@ jobs:
           ./scripts/setup-skyport-dev.sh
       -
         name: Smoke cloud gate mTLS
+        # POSIX sh: act runs steps with `sh -e` (no bash `source` / pipefail).
         run: |
-          # Prove the mocked gate accepts Sky Port node mTLS before CT (surfaces bind/TLS/log issues).
+          # Prove the mocked gate accepts Sky Port node mTLS before CT.
+          # Start run.py directly (not run-mocked.sh) so we never hang on wait.
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y curl openssl
-          export SWM_GATE_DIR=$(pwd)/_build/ct-tests/swm-cloud-gate
+          export SWM_GATE_DIR="$(pwd)/_build/ct-tests/swm-cloud-gate"
+          export SWM_SPOOL=/opt/swm/spool
           cd "$SWM_GATE_DIR"
-          ./run-mocked.sh > /tmp/gate-smoke.log 2>&1 &
-          echo $! > /tmp/gate-smoke.pid
+          # Prefer venv python without bash `source` (works under act's sh).
+          if [ -x .venv/bin/python ]; then
+            PY=".venv/bin/python"
+          else
+            PY=python3
+          fi
+          export SWM_TEST_CONFIG="${SWM_GATE_DIR}/test/data/responses.json"
+          export SWM_GATE_CONFIG="${SWM_GATE_DIR}/test/data/cloud-gate.yaml"
+          export SWM_GATE_HOST=127.0.0.1
+          export SWM_GATE_WORKERS=1
+          export SWM_GATE_DISABLE_PEER_CERT_PATCH=1
+          export PYTHONUNBUFFERED=1
+          "$PY" ./run.py > /tmp/gate-smoke.log 2>&1 &
+          GATE_PID=$!
           CODE=""
-          for i in $(seq 1 40); do
+          i=1
+          while [ "$i" -le 40 ]; do
+            if ! kill -0 "$GATE_PID" 2>/dev/null; then
+              echo "gate process exited early"
+              break
+            fi
             CODE=$(curl -sk --connect-timeout 2 --max-time 5 \
               --cert /opt/swm/spool/secure/node/cert.pem \
               --key /opt/swm/spool/secure/node/key.pem \
@@ -108,14 +130,22 @@ jobs:
               break
             fi
             sleep 1
+            i=$((i + 1))
           done
           echo "smoke HTTP code=${CODE}"
           echo "===== gate-smoke.log ====="
           cat /tmp/gate-smoke.log || true
           echo "===== body ====="
           cat /tmp/gate-smoke-body.json || true
-          kill -2 "$(cat /tmp/gate-smoke.pid)" 2>/dev/null || true
-          wait "$(cat /tmp/gate-smoke.pid)" 2>/dev/null || true
+          kill -TERM "$GATE_PID" 2>/dev/null || true
+          j=1
+          while [ "$j" -le 10 ]; do
+            kill -0 "$GATE_PID" 2>/dev/null || break
+            sleep 0.2
+            j=$((j + 1))
+          done
+          kill -KILL "$GATE_PID" 2>/dev/null || true
+          wait "$GATE_PID" 2>/dev/null || true
           test "$CODE" = "200"
       -
         name: Run ct tests

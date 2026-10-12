@@ -15,7 +15,12 @@ run_gate_system_process() ->
     Hosts = gate_listen_hosts(),
     case wait_gate_port(Hosts, 8444, 60) of
         ok ->
-            {ok, Pid};
+            case wait_gate_mtls("127.0.0.1", 8444, 40) of
+                ok ->
+                    {ok, Pid};
+                {error, Reason} ->
+                    ct:fail({gate_mtls_not_ready, Reason})
+            end;
         {error, timeout} ->
             ct:fail({gate_not_ready, Hosts, 8444})
     end.
@@ -48,6 +53,41 @@ try_connect_any([Host | Rest], Port) ->
             ok;
         {error, _} ->
             try_connect_any(Rest, Port)
+    end.
+
+%% @doc Wait until mTLS handshake to the gate succeeds with the node cert.
+-spec wait_gate_mtls(string(), inet:port_number(), non_neg_integer()) -> ok | {error, term()}.
+wait_gate_mtls(_Host, _Port, 0) ->
+    {error, timeout};
+wait_gate_mtls(Host, Port, TriesLeft) ->
+    case try_gate_mtls(Host, Port) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ct:print("Gate mTLS probe failed (~p tries left): ~p", [TriesLeft, Reason]),
+            timer:sleep(500),
+            wait_gate_mtls(Host, Port, TriesLeft - 1)
+    end.
+
+-spec try_gate_mtls(string(), inet:port_number()) -> ok | {error, term()}.
+try_gate_mtls(Host, Port) ->
+    Spool = os:getenv("SWM_SPOOL", "/opt/swm/spool"),
+    {CaFile, KeyFile, CertFile} = wm_utils:get_node_cert_paths(Spool),
+    application:ensure_all_started(ssl),
+    TlsOpts =
+        [{verify, verify_peer},
+         {versions, ['tlsv1.3', 'tlsv1.2']},
+         {server_name_indication, disable},
+         {partial_chain, wm_utils:get_cert_partial_chain_fun(CaFile)},
+         {cacertfile, CaFile},
+         {certfile, CertFile},
+         {keyfile, KeyFile}],
+    case ssl:connect(Host, Port, TlsOpts, 3000) of
+        {ok, Sock} ->
+            ssl:close(Sock),
+            ok;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 run_command() ->

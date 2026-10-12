@@ -3,10 +3,12 @@
 %% RPC authorization for the mTLS API port (wm_session).
 %% Default deny. Roles: node | admin | user | unknown.
 
--export([peer_uid/1, classify_uid/1, allowed/3, is_admin_acl/1, is_admin_user/1]).
+-export([peer_uid/1, peer_profile/1, classify_uid/1, classify_peer/1, role_after_profile/2, allowed/3, is_admin_acl/1,
+         is_admin_user/1]).
 
 -include("../lib/wm_entity.hrl").
 -include("../lib/wm_log.hrl").
+
 -include_lib("public_key/include/public_key.hrl").
 
 -type rpc_role() :: node | admin | user | unknown.
@@ -35,6 +37,33 @@ peer_uid(Socket) ->
         _:_ ->
             unknown
     end.
+
+%% @doc Certificate profile (node | user | legacy) from the peer certificate.
+-spec peer_profile(ssl:sslsocket()) -> wm_cert:cert_profile() | unknown.
+peer_profile(Socket) ->
+    try
+        case ssl:peercert(Socket) of
+            {ok, CertBin} ->
+                wm_cert:profile_from_der(CertBin);
+            _ ->
+                unknown
+        end
+    catch
+        _:_ ->
+            unknown
+    end.
+
+%% @doc Classify peer: UID role, then reject user-profile certs for node role.
+-spec classify_peer(ssl:sslsocket()) -> rpc_role().
+classify_peer(Socket) ->
+    role_after_profile(classify_uid(peer_uid(Socket)), peer_profile(Socket)).
+
+%% @doc User-profile certificates cannot assume the node RPC role.
+-spec role_after_profile(rpc_role(), wm_cert:cert_profile() | unknown) -> rpc_role().
+role_after_profile(node, user) ->
+    unknown;
+role_after_profile(Role, _) ->
+    Role.
 
 %% @doc Classify a cert UID: node table, user table (+ admin), or on-disk bootstrap.
 -spec classify_uid(string() | unknown) -> rpc_role().
@@ -93,10 +122,7 @@ is_admin_acl(_) ->
 %% @doc Admin if acl says so, or name matches SWM_ADMIN_USER (legacy installs).
 -spec is_admin_user(#user{}) -> boolean().
 is_admin_user(User) ->
-    is_admin_acl(
-        wm_entity:get(acl, User))
-    orelse name_is_env_admin(
-               wm_entity:get(name, User)).
+    is_admin_acl(wm_entity:get(acl, User)) orelse name_is_env_admin(wm_entity:get(name, User)).
 
 %% ============================================================================
 %% Allowlists

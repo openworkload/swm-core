@@ -180,7 +180,7 @@ open_connection(Remote, Spool) ->
           protocols => [http],
           tls_handshake_timeout => 5000,
           tls_opts =>
-              [{versions, ['tlsv1.3']},
+              [{versions, ['tlsv1.3', 'tlsv1.2']},
                {verify, verify_peer},
                %% Match wm_tcp_client: pin trust via CA + client cert, not DNS SAN.
                {server_name_indication, disable},

@@ -155,10 +155,11 @@ handle_received_cast({Module, Arg0, Args, Tag, Addr, Socket, ServerPid}) ->
 -spec verify_rpc(atom(), atom(), term(), ssl:sslsocket()) -> {ok, term()} | {error, forbidden}.
 verify_rpc(Module, Fun, Msg, Socket) ->
     Uid = wm_rpc_acl:peer_uid(Socket),
-    Role = wm_rpc_acl:classify_uid(Uid),
+    Role = wm_rpc_acl:classify_peer(Socket),
     case wm_rpc_acl:allowed(Role, Module, Fun) of
         false ->
-            ?LOG_WARN("RPC forbidden: uid=~p role=~p ~p:~p", [Uid, Role, Module, Fun]),
+            ?LOG_WARN("RPC forbidden: uid=~p role=~p profile=~p ~p:~p",
+                      [Uid, Role, wm_rpc_acl:peer_profile(Socket), Module, Fun]),
             {error, forbidden};
         true when Role =:= node, Fun =:= route ->
             case Msg of
