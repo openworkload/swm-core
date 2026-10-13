@@ -181,7 +181,13 @@ Set ports to forward from the remote node.
 
 #### submission-address
 
-Set the submission address.
+Set where Sky Port forwards job ports (TCP proxy upstream). Allowed values:
+
+- Localhost / this host's own interface addresses
+- The submit client's peer IP (default when the directive is omitted)
+- Hosts or IPs listed in parameter `submission_address_allowlist` (comma-separated)
+
+Other addresses are rejected at submit.
 
 ```bash
 #SWM submission-address <address>

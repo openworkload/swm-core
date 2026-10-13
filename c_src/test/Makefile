@@ -24,21 +24,22 @@ LDFLAGS=-lei\
 SRCS=$(shell echo *.cpp)
 OBJS=$(SRCS:.cpp=.o)
 PORTER_CTRL_OBJ=$(PORTER_DIR)/wm_porter_ctrl.o
+PORTER_PRIV_OBJ=$(PORTER_DIR)/wm_porter_priv.o
 
 all: $(TARGET)
 
-.PHONY: lib porter-ctrl
+.PHONY: lib porter-objs
 lib:
 	$(MAKE) -C $(SWM_C_LIB)
 
-porter-ctrl: lib
-	$(MAKE) -C $(PORTER_DIR) wm_porter_ctrl.o
+porter-objs: lib
+	$(MAKE) -C $(PORTER_DIR) wm_porter_ctrl.o wm_porter_priv.o
 
 %.o: %.cpp
 	$(CC) -fPIC -c -o $@ $(CFLAGS) $<
 
-$(TARGET): lib porter-ctrl $(OBJS)
-	$(CC) -o $@ $(OBJS) $(SWM_C_LIB)/*.o $(PORTER_CTRL_OBJ) $(LDFLAGS) $(CFLAGS)
+$(TARGET): lib porter-objs $(OBJS)
+	$(CC) -o $@ $(OBJS) $(SWM_C_LIB)/*.o $(PORTER_CTRL_OBJ) $(PORTER_PRIV_OBJ) $(LDFLAGS) $(CFLAGS)
 
 clean:
 	rm -f ./*.o $(TARGET)

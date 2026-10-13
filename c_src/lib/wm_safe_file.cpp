@@ -66,12 +66,8 @@ bool ensure_private_dir(const std::string &dir, uid_t uid, gid_t gid) {
   return true;
 }
 
-std::string safe_write_exclusive(const std::string &dir,
-                                 const std::string &name,
-                                 const std::string &content,
-                                 uid_t uid,
-                                 gid_t gid,
-                                 mode_t mode) {
+std::string safe_write_exclusive(
+    const std::string &dir, const std::string &name, const std::string &content, uid_t uid, gid_t gid, mode_t mode) {
   if (dir.empty() || name.empty() || name.find('/') != std::string::npos || name == "." || name == "..") {
     return "";
   }

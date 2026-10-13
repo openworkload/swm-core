@@ -5,7 +5,7 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 %% Exported for unit tests.
--export([user_on_account/2, assert_account_member/2]).
+-export([user_on_account/2, assert_account_member/2, assert_submission_address/2]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
@@ -184,19 +184,28 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
                     ?LOG_ERROR("Job submit rejected: invalid workdir (~p)", [Reason]),
                     {string, io_lib:format("Invalid workdir: ~p", [Reason])};
                 ok ->
-                    case assert_account_member(Job4, User) of
-                        {error, not_found} ->
-                            ?LOG_ERROR("Job submit rejected: unknown account (~p)", [wm_entity:get(account_id, Job4)]),
-                            {string, "Unknown account"};
-                        {error, forbidden} ->
-                            ?LOG_ERROR("Job submit rejected: not a member of account (~p)",
-                                       [wm_entity:get(account_id, Job4)]),
-                            {string, "Not a member of the requested account"};
-                        {ok, Job4b} ->
-                            Job5 = ensure_request_is_full(Job4b),
-                            1 = wm_conf:update(Job5),
-                            wm_scheduler:force_schedule(),
-                            {string, JobId}
+                    case assert_submission_address(Job4, IpStr) of
+                        {error, invalid_submission_address} ->
+                            ?LOG_ERROR("Job submit rejected: invalid submission-address (~p)",
+                                       [wm_resource_utils:get_submission_address(
+                                            wm_entity:get(request, Job4))]),
+                            {string, "Invalid submission-address"};
+                        ok ->
+                            case assert_account_member(Job4, User) of
+                                {error, not_found} ->
+                                    ?LOG_ERROR("Job submit rejected: unknown account (~p)",
+                                               [wm_entity:get(account_id, Job4)]),
+                                    {string, "Unknown account"};
+                                {error, forbidden} ->
+                                    ?LOG_ERROR("Job submit rejected: not a member of account (~p)",
+                                               [wm_entity:get(account_id, Job4)]),
+                                    {string, "Not a member of the requested account"};
+                                {ok, Job4b} ->
+                                    Job5 = ensure_request_is_full(Job4b),
+                                    1 = wm_conf:update(Job5),
+                                    wm_scheduler:force_schedule(),
+                                    {string, JobId}
+                            end
                     end
             end
     end;
@@ -602,6 +611,17 @@ find_account(AccountKey) ->
                 {error, not_found} ->
                     {error, not_found}
             end
+    end.
+
+%% @doc Require submission-address to be local, the submit peer IP, or allowlisted.
+-spec assert_submission_address(#job{}, string()) -> ok | {error, invalid_submission_address}.
+assert_submission_address(Job, PeerIpStr) ->
+    Addr = wm_resource_utils:get_submission_address(wm_entity:get(request, Job)),
+    case wm_utils:is_allowed_submission_address(Addr, PeerIpStr) of
+        true ->
+            ok;
+        false ->
+            {error, invalid_submission_address}
     end.
 
 %% @doc Workdir must be shell-safe and under the owner's home (SFTP allowlist).

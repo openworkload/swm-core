@@ -615,24 +615,32 @@ start_proxies(JobId, ForwardedPortTuples) ->
                       [JobId]),
             [];
         _ ->
-            ?LOG_INFO("Start proxing ~p ports for job ~p to job submission address: ~p",
-                      [length(ForwardedPortTuples), JobId, JobAddr]),
-            lists:foldl(fun ({"out", PortDst, PortSrc}, ProxyPids) ->
-                                case wm_tcp_proxy:start_link(PortSrc, JobAddr, PortDst) of
-                                    {ok, Pid} ->
-                                        ?LOG_DEBUG("Started proxy ~p -> ~p:~p with pid=~p",
-                                                   [PortSrc, JobAddr, PortDst, Pid]),
-                                        [Pid | ProxyPids];
-                                    {error, Reason} ->
-                                        ?LOG_ERROR("Failed to start proxy ~p -> ~p:~p: ~p",
-                                                   [PortSrc, JobAddr, PortDst, Reason]),
+            %% Peer IP is not on the job; re-check local + operator allowlist only.
+            case wm_utils:is_allowed_submission_address(JobAddr, "") of
+                false ->
+                    ?LOG_ERROR("Skip TCP proxies for job ~p: submission-address ~p is not allowed",
+                               [JobId, JobAddr]),
+                    [];
+                true ->
+                    ?LOG_INFO("Start proxing ~p ports for job ~p to job submission address: ~p",
+                              [length(ForwardedPortTuples), JobId, JobAddr]),
+                    lists:foldl(fun ({"out", PortDst, PortSrc}, ProxyPids) ->
+                                        case wm_tcp_proxy:start_link(PortSrc, JobAddr, PortDst) of
+                                            {ok, Pid} ->
+                                                ?LOG_DEBUG("Started proxy ~p -> ~p:~p with pid=~p",
+                                                           [PortSrc, JobAddr, PortDst, Pid]),
+                                                [Pid | ProxyPids];
+                                            {error, Reason} ->
+                                                ?LOG_ERROR("Failed to start proxy ~p -> ~p:~p: ~p",
+                                                           [PortSrc, JobAddr, PortDst, Reason]),
+                                                ProxyPids
+                                        end;
+                                    ({"in", _, _}, ProxyPids) ->
                                         ProxyPids
-                                end;
-                            ({"in", _, _}, ProxyPids) ->
-                                ProxyPids
-                        end,
-                        [],
-                        ForwardedPortTuples)
+                                end,
+                                [],
+                                ForwardedPortTuples)
+            end
     end.
 
 -spec try_prov_ssh_connection(pos_integer(), pid(), job_id(), atom(), node_id()) -> ok | not_ready.

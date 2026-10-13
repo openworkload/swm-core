@@ -2,7 +2,7 @@
 
 -export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
 -export([parse_local_jobscript/1, submit_local_job/1, submit_foreign_account_rejected/1,
-         submit_unknown_account_rejected/1]).
+         submit_unknown_account_rejected/1, submit_foreign_submission_address_rejected/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -44,6 +44,15 @@
         "#SWM flavor localhost\n"
         "#SWM container-image ubuntu:24.04\n"
         "echo hello\n").
+-define(FOREIGN_SUBMISSION_ADDRESS_SCRIPT,
+        "#!/bin/sh\n"
+        "#SWM name Bad Submission Address Job\n"
+        "#SWM nodes 1\n"
+        "#SWM account localhost\n"
+        "#SWM submission-address 8.8.8.8\n"
+        "#SWM flavor localhost\n"
+        "#SWM container-image ubuntu:24.04\n"
+        "echo hello\n").
 
 %% ============================================================================
 %% Common test callbacks
@@ -61,7 +70,11 @@ all() ->
 groups() ->
     [{local_submit,
       [],
-      [parse_local_jobscript, submit_local_job, submit_foreign_account_rejected, submit_unknown_account_rejected]}].
+      [parse_local_jobscript,
+       submit_local_job,
+       submit_foreign_account_rejected,
+       submit_unknown_account_rejected,
+       submit_foreign_submission_address_rejected]}].
 
 -spec init_per_suite(list()) -> list().
 init_per_suite(Config) ->
@@ -131,6 +144,19 @@ init_per_testcase(_, Config) ->
                         ct:fail({unexpected_select, Tab, Key})
                 end),
     meck:expect(wm_conf, update, fun(_) -> 1 end),
+    meck:expect(wm_conf,
+                g,
+                fun (submission_address_allowlist, {Default, string}) ->
+                        Default;
+                    (Name, Spec) ->
+                        %% Fall back for any unexpected g/2 from other code paths.
+                        try
+                            meck:passthrough([Name, Spec])
+                        catch
+                            _:_ ->
+                                element(1, Spec)
+                        end
+                end),
 
     %% Start per testcase: gen_server exits when its start_link parent dies, and
     %% init_per_suite's process does not outlive the suite setup.
@@ -258,4 +284,23 @@ submit_unknown_account_rejected(_Config) ->
     {string, Msg} =
         gen_server:call(wm_user, {submit, ?UNKNOWN_ACCOUNT_SCRIPT, "/tmp/unknown.sh", ?USER_NAME, "127.0.0.1"}),
     ?assertEqual("Unknown account", lists:flatten(Msg)),
+    ok.
+
+-spec submit_foreign_submission_address_rejected(list()) -> ok.
+submit_foreign_submission_address_rejected(_Config) ->
+    meck:expect(wm_conf,
+                update,
+                fun (#job{}) ->
+                        ct:fail(job_must_not_be_saved);
+                    (Other) ->
+                        ct:fail({unexpected_update, Other})
+                end),
+    {string, Msg} =
+        gen_server:call(wm_user,
+                        {submit,
+                         ?FOREIGN_SUBMISSION_ADDRESS_SCRIPT,
+                         "/tmp/bad-addr.sh",
+                         ?USER_NAME,
+                         "127.0.0.1"}),
+    ?assertEqual("Invalid submission-address", lists:flatten(Msg)),
     ok.

@@ -3,10 +3,11 @@
 #include "wm_io.h"
 #include "wm_job.h"
 #include "wm_porter_ctrl.h"
-#include "wm_safe_file.h"
 #include "wm_porter_data.h"
 #include "wm_porter_metrics.h"
+#include "wm_porter_priv.h"
 #include "wm_process.h"
+#include "wm_safe_file.h"
 
 #include <ei.h>
 #include <fcntl.h>
@@ -38,17 +39,14 @@
 
 using namespace swm;
 
-void set_uid_gid(const uid_t uid, const uid_t gid) {
-  int status = -1;
-  status = setregid(gid, gid);
-  if (status < 0) {
-    swm_loge("Can't set gid, status=", status);
-    exit(status);
-  }
-  status = setreuid(uid, uid);
-  if (status < 0) {
-    swm_loge("Can't set uid, status=", status);
-    exit(status);
+void set_uid_gid(const char *username, const uid_t uid, const gid_t gid) {
+  if (drop_privileges(username, uid, gid) != 0) {
+    swm_loge("Can't drop privileges for %s to %d/%d: %s",
+             username,
+             static_cast<int>(uid),
+             static_cast<int>(gid),
+             std::strerror(errno));
+    exit(EXIT_SYSTEM_ERROR);
   }
   swm_logi("Current process new UID/GID: %d/%d", getuid(), getgid());
 }
@@ -490,7 +488,7 @@ int main(int argc, char *const argv[]) {
     const JobLogFds log_fds = open_job_logs(info.job);
     set_env(pw, info.job, ctrl_path);
     set_workdir(pw, info.job);
-    set_uid_gid(pw->pw_uid, pw->pw_gid);
+    set_uid_gid(username, pw->pw_uid, pw->pw_gid);
     install_job_logs(log_fds);  // do not use logger after this point
 
     extern char **environ;

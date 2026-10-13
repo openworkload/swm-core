@@ -141,6 +141,10 @@ must not read job scripts from the host filesystem on behalf of the client.
 `#SWM account` must name an account where the submitter is in `users` or
 `admins`. Other accounts and unknown names are rejected at submit.
 
+`#SWM submission-address` may only name localhost / this host, the submit peer
+IP, or an entry in `submission_address_allowlist`. That blocks using port
+forwarding as a TCP relay to arbitrary hosts.
+
 ## Erlang distribution (local debugging only)
 
 Erlang distribution is enabled only so operators can attach locally with
@@ -252,6 +256,9 @@ Job `stdout*` / `stderr*` files default to `$SWM_SPOOL/job/<job-id>/`.
 Porter writes the job script under `$SWM_SPOOL/job/<job-id>/` with
 `O_CREAT|O_EXCL|O_NOFOLLOW` (mode `0700`). If `SWM_SPOOL` is unset,
 Porter uses a private `mkdtemp` directory.
+
+Before the job starts, Porter calls `initgroups` for the job user, then
+drops uid and gid. Jobs do not keep root's supplementary groups.
 
 The Porter control socket for `swm-task` is
 `$SWM_SPOOL/job/<job-id>/ctrl.sock` (mode `0600`, owned by the job user).

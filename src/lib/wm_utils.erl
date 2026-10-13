@@ -19,7 +19,7 @@
 -export([find_property_in_resource/3]).
 -export([get_division_manager/3]).
 -export([is_cloud_node/1]).
--export([is_local_submission_address/1]).
+-export([is_local_submission_address/1, is_allowed_submission_address/2]).
 
 -include("wm_entity.hrl").
 -include("wm_log.hrl").
@@ -860,3 +860,34 @@ is_local_submission_address(Addr) when is_list(Addr) ->
         {error, _} ->
             false
     end.
+
+%% @doc True when Addr may be used as a TCP proxy upstream for job port forwarding.
+%% Allowed: local host addresses, the submit peer IP, or entries in
+%% `submission_address_allowlist` (comma-separated; empty default). No DNS lookup.
+-spec is_allowed_submission_address(string() | not_found, string()) -> boolean().
+is_allowed_submission_address(not_found, _PeerIpStr) ->
+    false;
+is_allowed_submission_address(Addr0, PeerIpStr) when is_list(Addr0) ->
+    Addr = string:trim(Addr0),
+    case Addr of
+        "" ->
+            false;
+        _ ->
+            is_local_submission_address(Addr)
+            orelse submission_addr_equal(Addr, PeerIpStr)
+            orelse submission_addr_on_allowlist(Addr)
+    end.
+
+-spec submission_addr_equal(string(), string()) -> boolean().
+submission_addr_equal(_Addr, Peer) when Peer =:= "" orelse Peer =:= not_found ->
+    false;
+submission_addr_equal(Addr, Peer) when is_list(Peer) ->
+    string:lowercase(string:trim(Addr)) =:= string:lowercase(string:trim(Peer)).
+
+-spec submission_addr_on_allowlist(string()) -> boolean().
+submission_addr_on_allowlist(Addr) ->
+    Raw = wm_conf:g(submission_address_allowlist, {"", string}),
+    Allowed =
+        [string:lowercase(string:trim(P))
+         || P <- string:tokens(Raw, ","), string:trim(P) =/= ""],
+    lists:member(string:lowercase(Addr), Allowed).

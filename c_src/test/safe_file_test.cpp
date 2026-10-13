@@ -1,6 +1,7 @@
 #include "wm_safe_file.h"
 
 #include <fcntl.h>
+#include <gtest/gtest.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -8,8 +9,6 @@
 #include <cstdlib>
 #include <fstream>
 #include <string>
-
-#include <gtest/gtest.h>
 
 using swm::ensure_private_dir;
 using swm::job_runtime_dir;

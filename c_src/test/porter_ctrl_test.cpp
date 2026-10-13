@@ -1,12 +1,11 @@
 #include "wm_porter_ctrl.h"
 
+#include <gtest/gtest.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <cstdlib>
 #include <string>
-
-#include <gtest/gtest.h>
 
 using swm::porter_ctrl_listen;
 
