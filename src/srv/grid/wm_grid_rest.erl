@@ -14,7 +14,8 @@
 
 -spec init(term(), term()) -> {cowboy_rest, term(), #mstate{}}.
 init(Req, _Opts) ->
-    ?LOG_INFO("Load grid manager REST API handler: ~p", [Req]),
+    ?LOG_INFO("Load grid manager REST API handler: ~p ~p",
+              [cowboy_req:method(Req), maps:get(path, Req, undefined)]),
     {cowboy_rest, Req, #mstate{}}.
 
 -spec content_types_provided(term(), #mstate{}) -> {list(), term(), #mstate{}}.

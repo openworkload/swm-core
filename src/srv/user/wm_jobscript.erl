@@ -16,7 +16,7 @@ parse(JobScriptContent) when is_list(JobScriptContent) ->
     Lines = string:tokens(JobScriptContent, "\n"),
     Job1 = wm_entity:new(job),
     Job2 = do_parse(Lines, Job1),
-    ?LOG_DEBUG("Parsed job: ~p", [Job2]),
+    ?LOG_DEBUG("Parsed job id=~p lines=~p", [wm_entity:get(id, Job2), length(Lines)]),
     Job2.
 
 -spec ensure_submission_address(string(), #job{}) -> #job{}.
@@ -41,7 +41,6 @@ do_parse([Line | T], Job) ->
     Words =
         re:split(
             string:strip(Line), "\\s+", [{return, list}, {parts, 3}]),
-    ?LOG_DEBUG("Parse job script line '~s': ~1000p", [Line, Words]),
     case length(Words) > 1 of
         true ->
             case hd(Words) of
@@ -166,7 +165,14 @@ parse_line(Ws, Job) when hd(Ws) == "output-files" ->
     Old = wm_entity:get(output_files, Job),
     wm_entity:set({output_files, Old ++ tl(Ws)}, Job);
 parse_line(Ws, Job) ->
-    ?LOG_DEBUG("Unknown jobscript statement: ~p (~p)", [Ws, wm_entity:get(id, Job)]),
+    Stmt =
+        case Ws of
+            [Name | _] ->
+                Name;
+            _ ->
+                undefined
+        end,
+    ?LOG_DEBUG("Unknown jobscript statement: ~p (~p)", [Stmt, wm_entity:get(id, Job)]),
     Job.
 
 %% Expand leading ~/ to $HOME so examples can use `#SWM input-files ~/mpi_hello`.

@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, connect/5, connect/6, disconnect/1, make_tunnel/5]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3, format_status/1]).
 
 -include("../lib/wm_log.hrl").
 
@@ -64,10 +64,41 @@ make_tunnel(ProcessPid, ListenHost, ListenPort, ConnectToHost, ConnectToPort) ->
                      {stop, term(), term()}.
 -spec terminate(term(), term()) -> ok.
 -spec code_change(term(), term(), term()) -> {ok, term()}.
+-spec format_status(map()) -> map().
 init(Args) ->
     MState = parse_args(Args, #mstate{}),
     ?LOG_INFO("SSH client has been started"),
     {ok, MState}.
+
+%% Redact password from OTP crash / sys:get_status reports.
+format_status(Status) when is_map(Status) ->
+    Status1 =
+        case maps:find(message, Status) of
+            {ok, Msg} ->
+                Status#{message := redact_ssh_message(Msg)};
+            error ->
+                Status
+        end,
+    case maps:find(log, Status1) of
+        {ok, Log} when is_list(Log) ->
+            Status1#{log := [redact_ssh_log_entry(E) || E <- Log]};
+        _ ->
+            Status1
+    end;
+format_status(Status) ->
+    Status.
+
+-spec redact_ssh_message(term()) -> term().
+redact_ssh_message({connect_password, Host, Port, Username, _Password, UserDir}) ->
+    {connect_password, Host, Port, Username, "***", UserDir};
+redact_ssh_message(Other) ->
+    Other.
+
+-spec redact_ssh_log_entry(term()) -> term().
+redact_ssh_log_entry({Time, Msg}) ->
+    {Time, redact_ssh_message(Msg)};
+redact_ssh_log_entry(Other) ->
+    redact_ssh_message(Other).
 
 handle_call({connect_pubkey, Host, Port, Username, Spool}, _From, #mstate{} = MState) ->
     {Result, MState2} = do_connect_pubkey(Host, Port, Username, Spool, MState),

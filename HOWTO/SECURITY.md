@@ -145,6 +145,24 @@ must not read job scripts from the host filesystem on behalf of the client.
 IP, or an entry in `submission_address_allowlist`. That blocks using port
 forwarding as a TCP relay to arbitrary hosts.
 
+## Logging
+
+Do not write secrets or full payloads to logs:
+
+- Erlang cookie value (`SWM_COOKIE` / `$SWM_SPOOL/secure/cookie`)
+- SSH passwords or other credentials
+- Full job scripts or HTTP request/response bodies
+- Full Cowboy `Req` maps (they include the peer certificate)
+
+Prefer method, path, status, sizes, and allowlisted headers. Use
+`wm_log_safe` helpers for HTTP body and header summaries.
+
+Before you add a `?LOG_*` near credentials or HTTP:
+
+1. Check whether the message can hold a script, body, password, or cookie.
+2. Log identifiers and sizes instead of content.
+3. Keep returned error bodies for callers; change only what is logged.
+
 ## Erlang distribution (local debugging only)
 
 Erlang distribution is enabled only so operators can attach locally with
@@ -159,7 +177,8 @@ Constraints:
 2. **Random cookie per daemon start.** On start, Sky Port writes
    `$SWM_SPOOL/secure/cookie` (mode 0600) and passes it to `-setcookie`. The
    cookie is not shared across nodes and is not packed into the worker archive.
-   Local tools load that file; they do not invent a cookie.
+   Local tools load that file; they do not invent a cookie. Never log the
+   cookie value.
 3. **Dist TLS peer verify.** Server and client use `verify_peer`; the server
    sets `fail_if_no_peer_cert`. Remsh clients must present the node certificate.
    Node certs need a DNS SAN for `sname@fqdn` (see cert issuance).

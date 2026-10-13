@@ -64,7 +64,7 @@ handle_request(<<"DELETE">>, #{path := <<"/user/job", _/binary>>} = Req) ->
 handle_request(<<"PATCH">>, #{path := <<"/user/job", _/binary>>} = Req) ->
     update_job(Req);
 handle_request(Method, Req) ->
-    ?LOG_ERROR("Unknown request: ~p ~p", [Method, Req]),
+    ?LOG_ERROR("Unknown request: ~p ~p", [Method, maps:get(path, Req, undefined)]),
     unknown_request_reply().
 
 %% ============================================================================
@@ -422,7 +422,7 @@ purge_jobs(Req) ->
 
 -spec update_job(map()) -> {string() | binary(), pos_integer()}.
 update_job(Req) ->
-    ?LOG_ACCESS("Handle job updating HTTP request: ~p", [Req]),
+    ?LOG_ACCESS("Handle job updating HTTP request with url=~p", [maps:get(path, Req, undefined)]),
     case Req of
         #{path := <<"/user/job/", JobId:(?JOB_ID_SIZE)/binary>>} ->
             case cowboy_req:header(<<"modification">>, Req) of
@@ -488,7 +488,7 @@ do_submit_jobscript(JobScriptPath, <<"--", Boundary:32/binary, ?SUBMISSION_HEADE
     BoundaryStr = binary_to_list(Boundary),
     case string:rstr(TailStr, "\r\n--" ++ BoundaryStr) of
         0 ->
-            ?LOG_WARN("Wrong HTTP body format: ~p", [TailStr]),
+            ?LOG_WARN("Wrong HTTP body format: ~p", [wm_log_safe:summarize_iodata(TailStr)]),
             {error, ?HTTP_CODE_BAD_REQUEST};
         JobScriptContentEndPosition ->
             NewJobScriptContent = string:substr(TailStr, 1, JobScriptContentEndPosition - 1),

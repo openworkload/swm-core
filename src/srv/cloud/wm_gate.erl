@@ -219,30 +219,35 @@ wait_response_boby(ConnPid, StreamRef) ->
         {response, nofin, 200, Headers} ->
             case gun:await_body(ConnPid, StreamRef) of
                 {ok, Body} ->
-                    ?LOG_DEBUG("Gate response (200) body: ~10000p, headers: ~10000p", [Body, Headers]),
+                    ?LOG_DEBUG("Gate response (200) body=~p headers=~p",
+                               [wm_log_safe:summarize_iodata(Body), wm_log_safe:summarize_headers(Headers)]),
                     {ok, Body};
                 ResponseError ->
-                    ?LOG_WARN("Gate response (200) error: ~p, headers: ~p", [ResponseError, Headers]),
+                    ?LOG_WARN("Gate response (200) error: ~p, headers=~p",
+                              [ResponseError, wm_log_safe:summarize_headers(Headers)]),
                     {error, ResponseError}
             end;
         {response, nofin, 307, Headers} ->
             {ok, Body} = gun:await_body(ConnPid, StreamRef),
-            ?LOG_WARN("Gate response (307), headers: ~p, body=~p", [Headers, Body]),
+            ?LOG_WARN("Gate response (307), headers=~p body=~p",
+                      [wm_log_safe:summarize_headers(Headers), wm_log_safe:summarize_iodata(Body)]),
             {error, not_found};
         {response, nofin, 422, Headers} ->
             {ok, Body} = gun:await_body(ConnPid, StreamRef),
-            ?LOG_WARN("Gate response (422), headers: ~p, body=~p", [Headers, Body]),
+            ?LOG_WARN("Gate response (422), headers=~p body=~p",
+                      [wm_log_safe:summarize_headers(Headers), wm_log_safe:summarize_iodata(Body)]),
             {error, not_found};
         {response, nofin, 404, Headers} ->
-            ?LOG_WARN("Gate response (404), headers: ~p", [Headers]),
+            ?LOG_WARN("Gate response (404), headers=~p", [wm_log_safe:summarize_headers(Headers)]),
             {error, not_found};
         {response, nofin, 400, Headers} ->
             {ok, Body} = gun:await_body(ConnPid, StreamRef),
-            ?LOG_WARN("Gate response (400), headers: ~p, body=~p", [Headers, Body]),
+            ?LOG_WARN("Gate response (400), headers=~p body=~p",
+                      [wm_log_safe:summarize_headers(Headers), wm_log_safe:summarize_iodata(Body)]),
             {error, Body};
         {response, nofin, 500, _} ->
             {ok, Body} = gun:await_body(ConnPid, StreamRef),
-            ?LOG_WARN("Gate internal error (500): ~p", [Body]),
+            ?LOG_WARN("Gate internal error (500): ~p", [wm_log_safe:summarize_iodata(Body)]),
             {error, "Gate error"};
         {response, IsFin, Code, Headers} ->
             Body =
@@ -257,7 +262,8 @@ wait_response_boby(ConnPid, StreamRef) ->
                                 <<>>
                         end
                 end,
-            ?LOG_WARN("Unexpected gate response (~p), headers: ~p, body=~p", [Code, Headers, Body]),
+            ?LOG_WARN("Unexpected gate response (~p), headers=~p body=~p",
+                      [Code, wm_log_safe:summarize_headers(Headers), wm_log_safe:summarize_iodata(Body)]),
             {error, {http_error, Code, Body}};
         {error, Error} ->
             ?LOG_WARN("Gate response error: ~p", [Error]),
@@ -282,7 +288,7 @@ handle_http_call(Func, Label, CallbackModule, MState = #mstate{children = Childr
 
 -spec do_partition_create(#remote{}, map(), #mstate{}) -> {ok, string(), string()} | {error, string()}.
 do_partition_create(Remote, Options, #mstate{spool = Spool}) ->
-    ?LOG_DEBUG("Create partition with options: ~10000p", [Options]),
+    ?LOG_DEBUG("Create partition with options: ~p", [wm_log_safe:summarize_options(Options)]),
     case open_connection(Remote, Spool) of
         {ok, ConnPid} ->
             Body = <<"{}">>,
@@ -308,7 +314,7 @@ do_partition_create(Remote, Options, #mstate{spool = Spool}) ->
                  {<<"ports">>, list_to_binary(maps:get(ports, Options, ""))},
                  {<<"installcheckpointtools">>, InstallCkpt}],
             Headers = generate_headers(ExtraHeaders),
-            ?LOG_DEBUG("Partition creation POST HTTP headers: ~p", [Headers]),
+            ?LOG_DEBUG("Partition creation POST HTTP headers: ~p", [wm_log_safe:summarize_headers(Headers)]),
             StreamRef = gun:post(ConnPid, get_address("partitions", Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -340,7 +346,7 @@ do_partition_delete(Remote, PartExtId, #mstate{spool = Spool}) ->
         {ok, ConnPid} ->
             Body = <<>>,
             Headers = generate_headers([]),
-            ?LOG_DEBUG("Partition deletion HTTP headers: ~p", [Headers]),
+            ?LOG_DEBUG("Partition deletion HTTP headers: ~p", [wm_log_safe:summarize_headers(Headers)]),
             StreamRef =
                 gun:request(ConnPid, <<"DELETE">>, get_address("partitions/" ++ PartExtId, Remote), Headers, Body),
             Result =
@@ -364,7 +370,7 @@ fetch_images(Remote, #mstate{spool = Spool}) ->
             Location = list_to_binary(wm_entity:get(location, Remote)),
             Extra = [{<<"extra">>, <<"location=", Location/binary>>}],
             Headers = generate_headers(Extra),
-            ?LOG_DEBUG("Fetch images HTTP headers: ~p", [Headers]),
+            ?LOG_DEBUG("Fetch images HTTP headers: ~p", [wm_log_safe:summarize_headers(Headers)]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("images", Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -387,7 +393,7 @@ fetch_image(Remote, ImageID, #mstate{spool = Spool}) ->
         {ok, ConnPid} ->
             Body = <<>>,
             Headers = generate_headers([]),
-            ?LOG_DEBUG("Fetch image HTTP headers: ~p", [Headers]),
+            ?LOG_DEBUG("Fetch image HTTP headers: ~p", [wm_log_safe:summarize_headers(Headers)]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("images/" ++ ImageID, Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -411,7 +417,7 @@ fetch_flavors(Remote, #mstate{spool = Spool}) ->
             Location = list_to_binary(wm_entity:get(location, Remote)),
             Extra = [{<<"extra">>, <<"location=", Location/binary>>}],
             Headers = generate_headers(Extra),
-            ?LOG_DEBUG("Fetch flavors HTTP headers: ~p", [Headers]),
+            ?LOG_DEBUG("Fetch flavors HTTP headers: ~p", [wm_log_safe:summarize_headers(Headers)]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("flavors", Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -432,7 +438,7 @@ fetch_partitions(Remote, #mstate{spool = Spool}) ->
         {ok, ConnPid} ->
             Body = <<>>,
             Headers = generate_headers([]),
-            ?LOG_DEBUG("Fetch partitions HTTP headers: ~p", [Headers]),
+            ?LOG_DEBUG("Fetch partitions HTTP headers: ~p", [wm_log_safe:summarize_headers(Headers)]),
             StreamRef = gun:request(ConnPid, <<"GET">>, get_address("partitions", Remote), Headers, Body),
             Result =
                 case wait_response_boby(ConnPid, StreamRef) of
@@ -453,7 +459,7 @@ fetch_partition(Remote, PartExtIdOrName, #mstate{spool = Spool}) ->
         {ok, ConnPid} ->
             Body = <<>>,
             Headers = generate_headers([]),
-            ?LOG_DEBUG("Fetch partition HTTP headers: ~p", [Headers]),
+            ?LOG_DEBUG("Fetch partition HTTP headers: ~p", [wm_log_safe:summarize_headers(Headers)]),
             StreamRef =
                 gun:request(ConnPid, <<"GET">>, get_address("partitions/" ++ PartExtIdOrName, Remote), Headers, Body),
             Result =

@@ -154,8 +154,9 @@ handle_request({output, OutputType}, {JobId, UserId}, #mstate{spool = Spool}) ->
             Error
     end;
 handle_request(submit, Args, #mstate{spool = Spool}) ->
-    ?LOG_ACCESS("Job submission has been requested: ~n~p", [Args]),
     {JobScriptContent, Filename, Username, IpStr} = Args,
+    ?LOG_ACCESS("Job submission has been requested: user=~p path=~p script=~p peer=~p",
+                [Username, Filename, wm_log_safe:summarize_iodata(JobScriptContent), IpStr]),
     case wm_conf:select(user, {name, Username}) of
         {error, not_found} ->
             ?LOG_ERROR("User ~p not found, job submission failed", [Username]),

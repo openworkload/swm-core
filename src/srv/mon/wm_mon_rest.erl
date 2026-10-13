@@ -14,7 +14,8 @@
 
 -spec init(any(), any()) -> {cowboy_rest, any(), #mstate{}}.
 init(Req, _Opts) ->
-    ?LOG_INFO("Start monitoring REST API handler: ~p", [Req]),
+    ?LOG_INFO("Start monitoring REST API handler: ~p ~p",
+              [cowboy_req:method(Req), maps:get(path, Req, undefined)]),
     {cowboy_rest, Req, #mstate{}}.
 
 -spec content_types_provided(any(), #mstate{}) -> {list(), any(), #mstate{}}.
