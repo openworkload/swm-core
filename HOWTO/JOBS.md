@@ -98,7 +98,8 @@ Add a description for the job.
 
 #### account
 
-Set the account for billing.
+Set the account for billing. The submitter must be listed on that account as a
+`user` or an `admin`. Unknown account names are rejected at submit.
 
 ```bash
 #SWM account <account_name>

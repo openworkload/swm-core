@@ -4,6 +4,8 @@
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+%% Exported for unit tests.
+-export([user_on_account/2, assert_account_member/2]).
 
 -include("../../lib/wm_log.hrl").
 -include("../../lib/wm_entity.hrl").
@@ -182,10 +184,20 @@ handle_request(submit, Args, #mstate{spool = Spool}) ->
                     ?LOG_ERROR("Job submit rejected: invalid workdir (~p)", [Reason]),
                     {string, io_lib:format("Invalid workdir: ~p", [Reason])};
                 ok ->
-                    Job5 = ensure_request_is_full(Job4),
-                    1 = wm_conf:update(Job5),
-                    wm_scheduler:force_schedule(),
-                    {string, JobId}
+                    case assert_account_member(Job4, User) of
+                        {error, not_found} ->
+                            ?LOG_ERROR("Job submit rejected: unknown account (~p)", [wm_entity:get(account_id, Job4)]),
+                            {string, "Unknown account"};
+                        {error, forbidden} ->
+                            ?LOG_ERROR("Job submit rejected: not a member of account (~p)",
+                                       [wm_entity:get(account_id, Job4)]),
+                            {string, "Not a member of the requested account"};
+                        {ok, Job4b} ->
+                            Job5 = ensure_request_is_full(Job4b),
+                            1 = wm_conf:update(Job5),
+                            wm_scheduler:force_schedule(),
+                            {string, JobId}
+                    end
             end
     end;
 handle_request(requeue, {[JobId], UserId}, _) ->
@@ -528,18 +540,69 @@ set_defaults(#job{workdir = []} = Job, Spool) ->
     WorkDir = default_workdir(Job),
     set_defaults(wm_entity:set({workdir, WorkDir}, Job), Spool);
 set_defaults(#job{account_id = [], user_id = UserId} = Job, Spool) ->
-    % If account is not specified by user during job submission then use the user's main account
+    %% If account is not specified, use an account where the user is a member
+    %% (users or admins). First match wins when several accounts match.
     AccountId =
-        case wm_conf:select(account, {admins, [UserId]}) of
-            {ok, Accounts} when is_list(Accounts) ->
-                %TODO Handle case: multiple accounts are administrated by same user
+        case wm_conf:select(account,
+                            fun(A) ->
+                               lists:member(UserId, wm_entity:get(users, A))
+                               orelse lists:member(UserId, wm_entity:get(admins, A))
+                            end)
+        of
+            {ok, Accounts} when is_list(Accounts), Accounts =/= [] ->
+                %% TODO: prefer a primary account when a user belongs to several.
                 wm_entity:get(id, hd(Accounts));
             {ok, Account} ->
-                wm_entity:get(id, Account)
+                wm_entity:get(id, Account);
+            {error, not_found} ->
+                []
         end,
     set_defaults(wm_entity:set({account_id, AccountId}, Job), Spool);
 set_defaults(Job, Spool) ->
     ensure_job_log_paths(Job, Spool).
+
+%% @doc True when UserId is listed on the account as a user or admin.
+-spec user_on_account(user_id(), #account{}) -> boolean().
+user_on_account(UserId, Account) ->
+    lists:member(UserId, wm_entity:get(users, Account)) orelse lists:member(UserId, wm_entity:get(admins, Account)).
+
+%% @doc Require Job.account_id to name an account the User may charge.
+%% Returns the job with account_id normalized to the account UUID when looked up by name.
+-spec assert_account_member(#job{}, #user{}) -> {ok, #job{}} | {error, not_found | forbidden}.
+assert_account_member(Job, User) ->
+    UserId = wm_entity:get(id, User),
+    AccountKey = wm_entity:get(account_id, Job),
+    case find_account(AccountKey) of
+        {error, not_found} ->
+            {error, not_found};
+        {ok, Account} ->
+            case user_on_account(UserId, Account) of
+                true ->
+                    {ok, wm_entity:set({account_id, wm_entity:get(id, Account)}, Job)};
+                false ->
+                    {error, forbidden}
+            end
+    end.
+
+-spec find_account(account_id() | []) -> {ok, #account{}} | {error, not_found}.
+find_account([]) ->
+    {error, not_found};
+find_account(AccountKey) ->
+    case wm_conf:select(account, {id, AccountKey}) of
+        {ok, #account{} = Account} ->
+            {ok, Account};
+        {ok, [Account | _]} ->
+            {ok, Account};
+        {error, not_found} ->
+            case wm_conf:select(account, {name, AccountKey}) of
+                {ok, #account{} = Account} ->
+                    {ok, Account};
+                {ok, [Account | _]} ->
+                    {ok, Account};
+                {error, not_found} ->
+                    {error, not_found}
+            end
+    end.
 
 %% @doc Workdir must be shell-safe and under the owner's home (SFTP allowlist).
 -spec assert_job_workdir(#job{}, #user{}) -> ok | {error, term()}.

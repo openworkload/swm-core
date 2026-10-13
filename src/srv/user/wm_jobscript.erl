@@ -190,7 +190,14 @@ expand_user_path([$~]) ->
 expand_user_path(Path) ->
     filename:absname(Path).
 
+%% Resolve account name to UUID. On unknown name, return the name string so
+%% submit-time membership check can reject without charging a default account.
 -spec get_account_id(string()) -> account_id().
 get_account_id(AccountName) ->
-    {ok, Account} = wm_conf:select(account, {name, AccountName}),
-    wm_entity:get(id, Account).
+    case wm_conf:select(account, {name, AccountName}) of
+        {ok, Account} ->
+            wm_entity:get(id, Account);
+        {error, not_found} ->
+            ?LOG_WARN("Unknown #SWM account ~p", [AccountName]),
+            AccountName
+    end.

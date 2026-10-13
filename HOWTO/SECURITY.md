@@ -138,6 +138,9 @@ resolve the username from the cert (unchanged status codes for those paths).
 multipart). The `path` query parameter is rejected with HTTP 400. The server
 must not read job scripts from the host filesystem on behalf of the client.
 
+`#SWM account` must name an account where the submitter is in `users` or
+`admins`. Other accounts and unknown names are rejected at submit.
+
 ## Erlang distribution (local debugging only)
 
 Erlang distribution is enabled only so operators can attach locally with

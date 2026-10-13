@@ -1,7 +1,8 @@
 -module(wm_user_SUITE).
 
 -export([suite/0, all/0, groups/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
--export([parse_local_jobscript/1, submit_local_job/1]).
+-export([parse_local_jobscript/1, submit_local_job/1, submit_foreign_account_rejected/1,
+         submit_unknown_account_rejected/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -13,6 +14,8 @@
 -define(USER_ID, "uid-tester").
 -define(ACCOUNT_NAME, "localhost").
 -define(ACCOUNT_ID, "acc-localhost").
+-define(FOREIGN_ACCOUNT_NAME, "other-account").
+-define(FOREIGN_ACCOUNT_ID, "acc-other").
 -define(CLUSTER_ID, "cluster-local").
 -define(SPOOL, "/tmp/swm-user-ct-spool").
 %% Minimal local job script (same directives as priv/examples/jobscripts/local.sh).
@@ -22,6 +25,22 @@
         "#SWM comment Container on the SkyPort host\n"
         "#SWM nodes 1\n"
         "#SWM account localhost\n"
+        "#SWM flavor localhost\n"
+        "#SWM container-image ubuntu:24.04\n"
+        "echo hello\n").
+-define(FOREIGN_ACCOUNT_SCRIPT,
+        "#!/bin/sh\n"
+        "#SWM name Foreign Account Job\n"
+        "#SWM nodes 1\n"
+        "#SWM account other-account\n"
+        "#SWM flavor localhost\n"
+        "#SWM container-image ubuntu:24.04\n"
+        "echo hello\n").
+-define(UNKNOWN_ACCOUNT_SCRIPT,
+        "#!/bin/sh\n"
+        "#SWM name Unknown Account Job\n"
+        "#SWM nodes 1\n"
+        "#SWM account nosuch-account\n"
         "#SWM flavor localhost\n"
         "#SWM container-image ubuntu:24.04\n"
         "echo hello\n").
@@ -40,7 +59,9 @@ all() ->
 
 -spec groups() -> list().
 groups() ->
-    [{local_submit, [], [parse_local_jobscript, submit_local_job]}].
+    [{local_submit,
+      [],
+      [parse_local_jobscript, submit_local_job, submit_foreign_account_rejected, submit_unknown_account_rejected]}].
 
 -spec init_per_suite(list()) -> list().
 init_per_suite(Config) ->
@@ -82,7 +103,11 @@ end_per_suite(Config) ->
 -spec init_per_testcase(atom(), list()) -> list().
 init_per_testcase(_, Config) ->
     User = wm_entity:set([{id, ?USER_ID}, {name, ?USER_NAME}], wm_entity:new(user)),
-    Account = wm_entity:set([{id, ?ACCOUNT_ID}, {name, ?ACCOUNT_NAME}], wm_entity:new(account)),
+    %% Submitter must be on the account (admins or users) for membership checks.
+    Account = wm_entity:set([{id, ?ACCOUNT_ID}, {name, ?ACCOUNT_NAME}, {admins, [?USER_ID]}], wm_entity:new(account)),
+    Foreign =
+        wm_entity:set([{id, ?FOREIGN_ACCOUNT_ID}, {name, ?FOREIGN_ACCOUNT_NAME}, {admins, ["uid-someone-else"]}],
+                      wm_entity:new(account)),
     meck:expect(wm_conf,
                 select,
                 fun (user, {name, ?USER_NAME}) ->
@@ -92,6 +117,16 @@ init_per_testcase(_, Config) ->
                         {ok, User};
                     (account, {name, ?ACCOUNT_NAME}) ->
                         {ok, Account};
+                    (account, {id, ?ACCOUNT_ID}) ->
+                        {ok, Account};
+                    (account, {name, ?FOREIGN_ACCOUNT_NAME}) ->
+                        {ok, Foreign};
+                    (account, {id, ?FOREIGN_ACCOUNT_ID}) ->
+                        {ok, Foreign};
+                    (account, {name, "nosuch-account"}) ->
+                        {error, not_found};
+                    (account, {id, "nosuch-account"}) ->
+                        {error, not_found};
                     (Tab, Key) ->
                         ct:fail({unexpected_select, Tab, Key})
                 end),
@@ -195,4 +230,32 @@ submit_local_job(_Config) ->
     ?assertEqual({ok, "127.0.0.1"}, wm_utils:find_property_in_resource("submission-address", value, Request)),
     %% Local jobs must not request a cloud VM image (that path uses the gate).
     ?assertEqual(false, lists:keyfind("cloud-image", 2, Request)),
+    ok.
+
+-spec submit_foreign_account_rejected(list()) -> ok.
+submit_foreign_account_rejected(_Config) ->
+    meck:expect(wm_conf,
+                update,
+                fun (#job{}) ->
+                        ct:fail(job_must_not_be_saved);
+                    (Other) ->
+                        ct:fail({unexpected_update, Other})
+                end),
+    {string, Msg} =
+        gen_server:call(wm_user, {submit, ?FOREIGN_ACCOUNT_SCRIPT, "/tmp/foreign.sh", ?USER_NAME, "127.0.0.1"}),
+    ?assertEqual("Not a member of the requested account", lists:flatten(Msg)),
+    ok.
+
+-spec submit_unknown_account_rejected(list()) -> ok.
+submit_unknown_account_rejected(_Config) ->
+    meck:expect(wm_conf,
+                update,
+                fun (#job{}) ->
+                        ct:fail(job_must_not_be_saved);
+                    (Other) ->
+                        ct:fail({unexpected_update, Other})
+                end),
+    {string, Msg} =
+        gen_server:call(wm_user, {submit, ?UNKNOWN_ACCOUNT_SCRIPT, "/tmp/unknown.sh", ?USER_NAME, "127.0.0.1"}),
+    ?assertEqual("Unknown account", lists:flatten(Msg)),
     ok.
