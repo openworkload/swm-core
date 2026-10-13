@@ -303,7 +303,7 @@ send_event_to_owner(Event, ContID, #mstate{} = MState) ->
 handle_porter_stdout_chunk(<<>>, _ContID, _MState) ->
     ok;
 handle_porter_stdout_chunk(Data, ContID, MState) ->
-    try binary_to_term(Data, [used]) of
+    try wm_utils:decode_from_binary(Data, [used]) of
         {Term, Used} when is_integer(Used), Used > 0 ->
             handle_porter_stdout_term(Term, ContID, MState),
             <<_:Used/binary, Rest/binary>> = Data,
@@ -312,8 +312,10 @@ handle_porter_stdout_chunk(Data, ContID, MState) ->
             handle_porter_stdout_term(Term, ContID, MState)
     catch
         error:badarg ->
-            %% Incomplete trailing bytes in this mux chunk (rare); next chunk may continue.
-            ?LOG_DEBUG("Incomplete Porter stdout term for ~p (bytes=~p)", [ContID, byte_size(Data)]);
+            %% Incomplete trailing bytes or unsafe ETF; next chunk may continue.
+            ?LOG_DEBUG("Incomplete or unsafe Porter stdout term for ~p (bytes=~p)", [ContID, byte_size(Data)]);
+        error:{etf_too_large, Size, Max} ->
+            ?LOG_ERROR("Porter stdout ETF too large for ~p (~p > ~p)", [ContID, Size, Max]);
         E1:E2 ->
             ?LOG_ERROR("Could not convert binary to term: ~p ~p", [E1, E2])
     end.

@@ -15,7 +15,8 @@ find_wm_gate_erl() ->
     Rel = filename:join(["src", "srv", "cloud", "wm_gate.erl"]),
     Candidates =
         [filename:absname(Rel),
-         filename:absname(filename:join(["..", "..", "..", "..", Rel])),
+         filename:absname(
+             filename:join(["..", "..", "..", "..", Rel])),
          filename:join([code:lib_dir(swm), Rel])],
     case lists:search(fun filelib:is_file/1, Candidates) of
         {value, Path} ->

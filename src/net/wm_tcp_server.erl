@@ -32,7 +32,7 @@ reply(Data, Socket) ->
 recv(Socket) ->
     case ssl:recv(Socket, 0) of
         {ok, Bin} ->
-            case wm_utils:decode_from_binary(Bin) of
+            try wm_utils:decode_from_binary(Bin) of
                 {call, M, F, Args} ->
                     ?LOG_DEBUG("Received CALL-RPC ~p:~p(~P)", [M, F, Args, 5]),
                     {call, M, F, Args};
@@ -45,6 +45,13 @@ recv(Socket) ->
                 {error, Error} ->
                     ?LOG_ERROR("Socket: ~p", [Error]),
                     reply(Error, Socket)
+            catch
+                error:badarg ->
+                    ?LOG_ERROR("Rejected unsafe or invalid ETF on TCP recv"),
+                    {error, bad_etf};
+                error:{etf_too_large, Size, Max} ->
+                    ?LOG_ERROR("Rejected oversized ETF on TCP recv (~p > ~p)", [Size, Max]),
+                    {error, bad_etf}
             end;
         {error, closed} ->
             ?LOG_ERROR("Connection has been closed by client"),

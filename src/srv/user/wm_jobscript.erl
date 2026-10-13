@@ -117,9 +117,8 @@ parse_line(Ws, Job) when hd(Ws) == "stdout", length(Ws) > 1 ->
 parse_line(Ws, Job) when hd(Ws) == "stderr", length(Ws) > 1 ->
     wm_entity:set({stderr, lists:flatten(tl(Ws))}, Job);
 parse_line(Ws, Job) when hd(Ws) == "workdir", length(Ws) > 1 ->
-    Raw =
-        lists:flatten(
-            filename:absname(tl(Ws))),
+    Raw = lists:flatten(
+              filename:absname(tl(Ws))),
     case wm_workdir:validate_workdir(Raw) of
         ok ->
             wm_entity:set({workdir, Raw}, Job);

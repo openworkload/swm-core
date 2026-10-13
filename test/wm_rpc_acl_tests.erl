@@ -1,6 +1,7 @@
 -module(wm_rpc_acl_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+
 -include("../src/lib/wm_entity.hrl").
 
 %% ./rebar3 eunit --module=wm_rpc_acl_tests
@@ -49,10 +50,8 @@ is_admin_acl_test() ->
 
 -spec is_admin_user_acl_and_env_test() -> ok.
 is_admin_user_acl_and_env_test() ->
-    AdminUser =
-        wm_entity:set([{id, "id-admin"}, {name, "alice"}, {acl, "admin"}], wm_entity:new(user)),
-    NormalUser =
-        wm_entity:set([{id, "id-user"}, {name, "bob"}, {acl, ""}], wm_entity:new(user)),
+    AdminUser = wm_entity:set([{id, "id-admin"}, {name, "alice"}, {acl, "admin"}], wm_entity:new(user)),
+    NormalUser = wm_entity:set([{id, "id-user"}, {name, "bob"}, {acl, ""}], wm_entity:new(user)),
     ?assert(wm_rpc_acl:is_admin_user(AdminUser)),
     ?assertNot(wm_rpc_acl:is_admin_user(NormalUser)),
     Old = os:getenv("SWM_ADMIN_USER"),
@@ -77,24 +76,22 @@ classify_uid_with_meck_test() ->
         AdminId = "admin-uid-1",
         UserId = "user-uid-1",
         NodeRec = wm_entity:set([{id, NodeId}, {name, "n1"}], wm_entity:new(node)),
-        AdminRec =
-            wm_entity:set([{id, AdminId}, {name, "adm"}, {acl, "admin"}], wm_entity:new(user)),
-        UserRec =
-            wm_entity:set([{id, UserId}, {name, "usr"}, {acl, ""}], wm_entity:new(user)),
+        AdminRec = wm_entity:set([{id, AdminId}, {name, "adm"}, {acl, "admin"}], wm_entity:new(user)),
+        UserRec = wm_entity:set([{id, UserId}, {name, "usr"}, {acl, ""}], wm_entity:new(user)),
         meck:expect(wm_conf,
                     select,
-                    fun(node, {id, Id}) when Id =:= NodeId ->
-                           {ok, NodeRec};
-                       (node, {id, _}) ->
-                           {error, not_found};
-                       (user, {id, Id}) when Id =:= AdminId ->
-                           {ok, AdminRec};
-                       (user, {id, Id}) when Id =:= UserId ->
-                           {ok, UserRec};
-                       (user, {id, _}) ->
-                           {error, not_found};
-                       (Tab, Key) ->
-                           meck:passthrough([Tab, Key])
+                    fun (node, {id, Id}) when Id =:= NodeId ->
+                            {ok, NodeRec};
+                        (node, {id, _}) ->
+                            {error, not_found};
+                        (user, {id, Id}) when Id =:= AdminId ->
+                            {ok, AdminRec};
+                        (user, {id, Id}) when Id =:= UserId ->
+                            {ok, UserRec};
+                        (user, {id, _}) ->
+                            {error, not_found};
+                        (Tab, Key) ->
+                            meck:passthrough([Tab, Key])
                     end),
         ?assertEqual(node, wm_rpc_acl:classify_uid(NodeId)),
         ?assertEqual(admin, wm_rpc_acl:classify_uid(AdminId)),

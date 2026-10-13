@@ -9,8 +9,7 @@
 submit_script_source_rejects_path_test() ->
     ?assertEqual({error, bad_request}, wm_user_rest:submit_script_source(<<"/etc/shadow">>)),
     ?assertEqual({error, bad_request}, wm_user_rest:submit_script_source(<<"/etc/passwd">>)),
-    ?assertEqual({error, bad_request},
-                 wm_user_rest:submit_script_source(<<"/var/lib/swm/spool/secure/node/key.pem">>)),
+    ?assertEqual({error, bad_request}, wm_user_rest:submit_script_source(<<"/var/lib/swm/spool/secure/node/key.pem">>)),
     ?assertEqual({error, bad_request}, wm_user_rest:submit_script_source(<<"../../etc/shadow">>)),
     ?assertEqual({error, bad_request}, wm_user_rest:submit_script_source(<<"/tmp/foo.swm">>)),
     ?assertEqual({error, bad_request}, wm_user_rest:submit_script_source(<<"">>)),

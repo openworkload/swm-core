@@ -69,8 +69,17 @@ send(Msg, Socket) ->
 recv(Socket, Answers) ->
     case ssl:recv(Socket, 0) of
         {ok, Bin} ->
-            Answer = wm_utils:decode_from_binary(Bin),
-            recv(Socket, [Answer | Answers]);
+            try wm_utils:decode_from_binary(Bin) of
+                Answer ->
+                    recv(Socket, [Answer | Answers])
+            catch
+                error:badarg ->
+                    ?LOG_ERROR("Rejected unsafe or invalid ETF on TCP client recv"),
+                    {error, bad_etf};
+                error:{etf_too_large, Size, Max} ->
+                    ?LOG_ERROR("Rejected oversized ETF on TCP client recv (~p > ~p)", [Size, Max]),
+                    {error, bad_etf}
+            end;
         {error, closed} ->
             ?LOG_DEBUG("Connection has been closed, previous answers: ~p", [Answers]),
             Answers;

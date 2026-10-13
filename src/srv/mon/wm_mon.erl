@@ -161,23 +161,32 @@ do_export_data() ->
 
 do_import_data(metrics_transferring, Bin) when is_binary(Bin) ->
     ?LOG_DEBUG("Importing metrics from binary of size ~p", [byte_size(Bin)]),
-    All = wm_utils:decode_from_binary(Bin),
-    F1 = fun({MetricName, Rows}) ->
-            #history{tid = Tid} = folsom_metrics_history:get_value(MetricName),
-            F2 = fun({Key, Value}) ->
-                    %?LOG_DEBUG("Import metric: {~p, ~p}", [Key, Value]),
-                    case ets:lookup(Tid, Key) of
-                        [{Key, List}] ->
-                            true = ets:insert(Tid, {Key, List ++ Value});
-                        _ ->
-                            true = ets:insert(Tid, {Key, Value})
-                    end
+    try wm_utils:decode_from_binary(Bin) of
+        All ->
+            F1 = fun({MetricName, Rows}) ->
+                    #history{tid = Tid} = folsom_metrics_history:get_value(MetricName),
+                    F2 = fun({Key, Value}) ->
+                            %?LOG_DEBUG("Import metric: {~p, ~p}", [Key, Value]),
+                            case ets:lookup(Tid, Key) of
+                                [{Key, List}] ->
+                                    true = ets:insert(Tid, {Key, List ++ Value});
+                                _ ->
+                                    true = ets:insert(Tid, {Key, Value})
+                            end
+                         end,
+                    lists:map(F2, Rows)
                  end,
-            lists:map(F2, Rows)
-         end,
-    Results = lists:map(F1, All),
-    ?LOG_DEBUG("Importing results: ~p", [Results]),
-    Results.
+            Results = lists:map(F1, All),
+            ?LOG_DEBUG("Importing results: ~p", [Results]),
+            Results
+    catch
+        error:badarg ->
+            ?LOG_ERROR("Rejected unsafe or invalid metrics ETF"),
+            {error, bad_etf};
+        error:{etf_too_large, Size, Max} ->
+            ?LOG_ERROR("Rejected oversized metrics ETF (~p > ~p)", [Size, Max]),
+            {error, bad_etf}
+    end.
 
 do_get_values_in_interval(Name, BeginTime, EndTime, Limit) ->
     MS1 = ets:fun2ms(fun({T, _} = A) when T > BeginTime, T < EndTime -> A end),

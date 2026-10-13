@@ -11,6 +11,8 @@
 -include_lib("kernel/include/file.hrl").
 
 -define(SSH_EXT_SUBSYSTEM, atom_to_list(?MODULE)).
+%% SSH EXT commands are small; keep a tight ETF cap.
+-define(SSH_EXT_ETF_MAX_BYTES, 1048576).
 
 -record(mstate, {roots = [] :: [string()], cwd = "" :: string(), spool = "" :: string()}).
 
@@ -29,11 +31,13 @@ command(Pid, Command) ->
                             F = fun Receive() ->
                                         receive
                                             {ssh_cm, Pid, {data, _, _, Binary}} ->
-                                                case binary_to_term(Binary) of
-                                                    yield ->
+                                                case decode_etf(Binary) of
+                                                    {ok, yield} ->
                                                         Receive();
-                                                    Otherwise ->
-                                                        Otherwise
+                                                    {ok, Otherwise} ->
+                                                        Otherwise;
+                                                    {error, _} = Err ->
+                                                        Err
                                                 end
                                         after 45000 ->
                                             ?LOG_WARN("SSH SFTP EXT peer command '~p' execution timed-out", [Command]),
@@ -97,50 +101,61 @@ handle_msg({ssh_channel_up, ChannelId, ConnectionManager}, #mstate{spool = Spool
 %% due ssh_sftpd don't support this commands
 -spec handle_ssh_msg(ssh_connection:event(), term()) -> {ok, term()} | {stop, ssh:channel_id(), term()}.
 handle_ssh_msg({ssh_cm, ConnectionManager, {data, ChannelId, 0, Data}}, #mstate{roots = Roots, cwd = Cwd} = MState) ->
-    Result =
-        case binary_to_term(Data) of
-            {delete_directory, File} ->
-                with_jail_path(Roots, Cwd, File, fun(Abs) -> wm_file_utils:delete_directory(Abs) end);
-            {file_size, File} ->
-                with_jail_path(Roots, Cwd, File, fun(Abs) -> wm_file_utils:get_size(Abs) end);
-            {md5sum, File} ->
-                with_jail_path(Roots,
-                               Cwd,
-                               File,
-                               fun(Abs) ->
-                                  case wm_file_utils:async_md5sum(Abs) of
-                                      Pid when is_pid(Pid) ->
-                                          F = fun Receive() ->
-                                                      receive
-                                                          yield ->
-                                                              _ = ssh_connection:send(ConnectionManager,
-                                                                                      ChannelId,
-                                                                                      term_to_binary(yield)),
-                                                              Receive();
-                                                          {ok, Hash} ->
-                                                              {ok, Hash}
-                                                      after 30000 ->
-                                                          terminate_without_reply
-                                                      end
-                                              end,
-                                          F();
-                                      Otherwise ->
-                                          Otherwise
-                                  end
-                               end)
-        end,
-    case Result of
-        terminate_without_reply ->
-            ?LOG_WARN("SSH SFTP EXT async_md5sum timed out, terminate without reply to caller", []),
+    case decode_etf(Data) of
+        {error, Reason} ->
+            _ = Reason,
+            ?LOG_ERROR("SSH SFTP EXT rejected bad ETF (~p)", [Reason]),
             {stop, ChannelId, MState};
-        Result ->
-            case ssh_connection:send(ConnectionManager, ChannelId, term_to_binary(Result)) of
-                ok ->
-                    ok;
-                {error, closed} ->
-                    ?LOG_WARN("SSH SFTP EXT peer connection closed", [])
-            end,
-            {stop, ChannelId, MState}
+        {ok, Command} ->
+            Result =
+                case Command of
+                    {delete_directory, File} ->
+                        with_jail_path(Roots, Cwd, File, fun(Abs) -> wm_file_utils:delete_directory(Abs) end);
+                    {file_size, File} ->
+                        with_jail_path(Roots, Cwd, File, fun(Abs) -> wm_file_utils:get_size(Abs) end);
+                    {md5sum, File} ->
+                        with_jail_path(Roots,
+                                       Cwd,
+                                       File,
+                                       fun(Abs) ->
+                                          case wm_file_utils:async_md5sum(Abs) of
+                                              Pid when is_pid(Pid) ->
+                                                  F = fun Receive() ->
+                                                              receive
+                                                                  yield ->
+                                                                      _ = ssh_connection:send(ConnectionManager,
+                                                                                              ChannelId,
+                                                                                              term_to_binary(yield)),
+                                                                      Receive();
+                                                                  {ok, Hash} ->
+                                                                      {ok, Hash}
+                                                              after 30000 ->
+                                                                  terminate_without_reply
+                                                              end
+                                                      end,
+                                                  F();
+                                              Otherwise ->
+                                                  Otherwise
+                                          end
+                                       end);
+                    Other ->
+                        _ = Other,
+                        ?LOG_WARN("SSH SFTP EXT unknown command"),
+                        {error, bad_command}
+                end,
+            case Result of
+                terminate_without_reply ->
+                    ?LOG_WARN("SSH SFTP EXT async_md5sum timed out, terminate without reply to caller", []),
+                    {stop, ChannelId, MState};
+                Result ->
+                    case ssh_connection:send(ConnectionManager, ChannelId, term_to_binary(Result)) of
+                        ok ->
+                            ok;
+                        {error, closed} ->
+                            ?LOG_WARN("SSH SFTP EXT peer connection closed", [])
+                    end,
+                    {stop, ChannelId, MState}
+            end
     end;
 handle_ssh_msg({ssh_cm, _ConnectionManager, Msg}, MState) ->
     _ = Msg,
@@ -154,6 +169,18 @@ terminate(Reason, _) ->
 %% ============================================================================
 %% Internal
 %% ============================================================================
+
+-spec decode_etf(binary()) -> {ok, term()} | {error, bad_etf}.
+decode_etf(Binary) when is_binary(Binary) ->
+    try wm_utils:decode_from_binary(Binary, [{max_bytes, ?SSH_EXT_ETF_MAX_BYTES}]) of
+        Term ->
+            {ok, Term}
+    catch
+        error:badarg ->
+            {error, bad_etf};
+        error:{etf_too_large, _Size, _Max} ->
+            {error, bad_etf}
+    end.
 
 -spec jail_roots_from_connection(pid(), string()) -> {ok, string(), [string()]} | {error, term()}.
 jail_roots_from_connection(ConnectionManager, Spool) ->

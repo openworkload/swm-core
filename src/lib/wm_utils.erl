@@ -4,9 +4,9 @@
          uuid/1, wake_up_after/2, nodes_to_names/1, node_to_fullname/1, protected_call/2, protected_call/3,
          get_my_vnode_name/4, get_parent_from_conf/1, get_hostname/1, get_module_dir/1, ensure_loaded/1,
          unroll_symlink/1, get_my_hostname/0, get_my_fqdn/0, get_short_name/1, get_address/1, get_job_user/1,
-         is_module_loaded/1, encode_to_binary/1, decode_from_binary/1, get_calling_module_name/0, map_to_list/1,
-         terminate_msg/2, match_floats/3, read_file/2, read_stdin/0, is_manager/1, has_role/2, get_behaviour/1, cast/2,
-         await/3, await/2]).
+         is_module_loaded/1, encode_to_binary/1, decode_from_binary/1, decode_from_binary/2, get_calling_module_name/0,
+         map_to_list/1, terminate_msg/2, match_floats/3, read_file/2, read_stdin/0, is_manager/1, has_role/2,
+         get_behaviour/1, cast/2, await/3, await/2]).
 -export([do/2, itr/2]).
 -export([named_substitution/2]).
 -export([priv/0, priv/1]).
@@ -26,6 +26,8 @@
 
 -define(CALL_TIMEOUT, 10000).
 -define(IO_READ_BLOCK_SIZE, 16384).
+%% Default ETF decode cap (16 MiB). Override per call with {max_bytes, N}.
+-define(DEFAULT_ETF_MAX_BYTES, 16777216).
 
 -spec messages_in_queue(atom()) -> [term()].
 messages_in_queue(Module) ->
@@ -326,9 +328,30 @@ encode_to_binary(Term) when is_binary(Term) ->
 encode_to_binary(Term) ->
     erlang:term_to_binary(Term).
 
+%% @doc Decode ETF with [safe] and a size cap (default 16 MiB).
+%% Raises error:badarg on unsafe/invalid ETF, or error:{etf_too_large, Size, Max}.
 -spec decode_from_binary(binary()) -> term().
 decode_from_binary(Binary) when is_binary(Binary) ->
-    erlang:binary_to_term(Binary).
+    decode_from_binary(Binary, []).
+
+%% @doc Decode ETF options: `used` (return {Term, Used}), `{max_bytes, N}`.
+-spec decode_from_binary(binary(), [used | {max_bytes, pos_integer()}]) -> term() | {term(), non_neg_integer()}.
+decode_from_binary(Binary, Opts) when is_binary(Binary), is_list(Opts) ->
+    Max = proplists:get_value(max_bytes, Opts, ?DEFAULT_ETF_MAX_BYTES),
+    Size = byte_size(Binary),
+    case Size > Max of
+        true ->
+            error({etf_too_large, Size, Max});
+        false ->
+            SafeOpts =
+                case proplists:get_bool(used, Opts) of
+                    true ->
+                        [safe, used];
+                    false ->
+                        [safe]
+                end,
+            erlang:binary_to_term(Binary, SafeOpts)
+    end.
 
 -spec get_calling_module_name() -> atom().
 get_calling_module_name() ->

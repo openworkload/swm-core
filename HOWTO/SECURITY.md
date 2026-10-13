@@ -90,6 +90,11 @@ on the gate (spool or `certificate_path` in `cloud-gate.yaml`).
 Cluster control plane traffic uses the API (`wm_rpc` over mTLS). It does not
 use Erlang distribution between hosts.
 
+Peer ETF (API TCP, SSH SFTP EXT, Porter stdout, scheduler port output) is
+decoded with `binary_to_term(..., [safe])` and a size limit (default 16 MiB).
+That blocks atom-table exhaustion from crafted terms. Application validation
+of decoded terms remains required.
+
 ### RPC authorization
 
 After mTLS, `wm_session` checks the peer certificate UID and allows only:

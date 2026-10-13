@@ -343,10 +343,19 @@ handle_info({exit_status, ExitCode, _}, State, #mstate{} = MState) ->
     ?LOG_INFO("Scheduler exit status: ~p", [ExitCode]),
     {next_state, State, MState};
 handle_info({output, BinOut, From}, State, #mstate{} = MState) ->
-    Process = erlang:binary_to_term(BinOut),
-    ?LOG_DEBUG("Porter output: ~p (from ~p)", [Process, From]),
-    do_announce_completed(Process, MState),
-    {next_state, State, MState};
+    try wm_utils:decode_from_binary(BinOut) of
+        Process ->
+            ?LOG_DEBUG("Porter output: ~p (from ~p)", [Process, From]),
+            do_announce_completed(Process, MState),
+            {next_state, State, MState}
+    catch
+        error:badarg ->
+            ?LOG_ERROR("Rejected unsafe or invalid Porter ETF from ~p (size=~p)", [From, byte_size(BinOut)]),
+            {next_state, State, MState};
+        error:{etf_too_large, Size, Max} ->
+            ?LOG_ERROR("Rejected oversized Porter ETF from ~p (~p > ~p)", [From, Size, Max]),
+            {next_state, State, MState}
+    end;
 handle_info({'EXIT', Proc, normal}, State, #mstate{task_id = TaskId} = MState) ->
     ?LOG_DEBUG("Process ~p has finished normally (~p)", [Proc, TaskId]),
     {next_state, State, MState}.

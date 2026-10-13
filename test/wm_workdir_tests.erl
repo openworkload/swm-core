@@ -30,10 +30,8 @@ validate_workdir_under_home_test() ->
     ?assertEqual(ok, wm_workdir:validate_workdir_under_home("/home/u", "/home/u")),
     ?assertEqual(ok, wm_workdir:validate_workdir_under_home("/home/u/job", "/home/u")),
     ?assertEqual({error, outside_home}, wm_workdir:validate_workdir_under_home("/tmp/x", "/home/u")),
-    ?assertEqual({error, outside_home},
-                 wm_workdir:validate_workdir_under_home("/home/u2/job", "/home/u")),
-    ?assertEqual({error, unsafe_chars},
-                 wm_workdir:validate_workdir_under_home("/home/u/x;id", "/home/u")),
+    ?assertEqual({error, outside_home}, wm_workdir:validate_workdir_under_home("/home/u2/job", "/home/u")),
+    ?assertEqual({error, unsafe_chars}, wm_workdir:validate_workdir_under_home("/home/u/x;id", "/home/u")),
     ok.
 
 -spec finalize_cmd_args_is_argv_not_shell_test() -> ok.
@@ -56,12 +54,7 @@ finalize_cmd_args_is_argv_not_shell_test() ->
 -spec finalize_cmd_args_rejects_injection_workdir_test() -> ok.
 finalize_cmd_args_rejects_injection_workdir_test() ->
     ?assertEqual({error, unsafe_chars},
-                 wm_podman:finalize_cmd_args("/opt/finalize.sh",
-                                             "alice",
-                                             "1000",
-                                             "1000",
-                                             "host1",
-                                             "/tmp/x;id")),
+                 wm_podman:finalize_cmd_args("/opt/finalize.sh", "alice", "1000", "1000", "host1", "/tmp/x;id")),
     ok.
 
 -spec jobscript_rejects_unsafe_workdir_test() -> ok.

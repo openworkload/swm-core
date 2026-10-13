@@ -32,12 +32,7 @@ validate_workdir(_) ->
 -spec validate_workdir_under_home(string(), string()) ->
                                      ok |
                                      {error,
-                                      empty |
-                                      not_absolute |
-                                      parent_segment |
-                                      unsafe_chars |
-                                      outside_home |
-                                      bad_home}.
+                                      empty | not_absolute | parent_segment | unsafe_chars | outside_home | bad_home}.
 validate_workdir_under_home(WorkDir, Home) ->
     case validate_workdir(Home) of
         {error, _} ->

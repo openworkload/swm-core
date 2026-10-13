@@ -1,6 +1,7 @@
 -module(wm_user_owner_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+
 -include("../src/lib/wm_entity.hrl").
 -include("../include/wm_scheduler.hrl").
 
@@ -41,10 +42,8 @@ setup() ->
     meck:expect(wm_scheduler, force_schedule, fun() -> ok end),
 
     meck:new(wm_conf, [no_link]),
-    OwnJob =
-        wm_entity:set([{id, ?JOB_ID}, {user_id, ?OWNER_ID}, {state, ?JOB_STATE_QUEUED}], wm_entity:new(job)),
-    OtherJob =
-        wm_entity:set([{id, ?JOB_OTHER}, {user_id, ?OTHER_ID}, {state, ?JOB_STATE_QUEUED}], wm_entity:new(job)),
+    OwnJob = wm_entity:set([{id, ?JOB_ID}, {user_id, ?OWNER_ID}, {state, ?JOB_STATE_QUEUED}], wm_entity:new(job)),
+    OtherJob = wm_entity:set([{id, ?JOB_OTHER}, {user_id, ?OTHER_ID}, {state, ?JOB_STATE_QUEUED}], wm_entity:new(job)),
     meck:expect(wm_conf,
                 select,
                 fun (job, {id, ?JOB_ID}) ->
@@ -113,16 +112,19 @@ cleanup(_) ->
 
 -spec owner_matrix_test_() -> term().
 owner_matrix_test_() ->
-    {setup, fun setup/0, fun cleanup/1, fun() ->
-                                           [?_test(owner_can_show()),
-                                            ?_test(other_forbidden_show()),
-                                            ?_test(other_forbidden_stdout()),
-                                            ?_test(other_forbidden_cancel()),
-                                            ?_test(other_forbidden_requeue()),
-                                            ?_test(missing_job_not_found()),
-                                            ?_test(owner_can_cancel()),
-                                            ?_test(list_jobs_filtered())]
-                                       end}.
+    {setup,
+     fun setup/0,
+     fun cleanup/1,
+     fun() ->
+        [?_test(owner_can_show()),
+         ?_test(other_forbidden_show()),
+         ?_test(other_forbidden_stdout()),
+         ?_test(other_forbidden_cancel()),
+         ?_test(other_forbidden_requeue()),
+         ?_test(missing_job_not_found()),
+         ?_test(owner_can_cancel()),
+         ?_test(list_jobs_filtered())]
+     end}.
 
 -spec owner_can_show() -> ok.
 owner_can_show() ->

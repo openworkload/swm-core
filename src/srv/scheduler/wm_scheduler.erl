@@ -92,9 +92,18 @@ handle_info({output, <<"0">>, _}, #mstate{} = MState) ->
     {noreply, MState};
 handle_info({output, BinOut, _}, #mstate{} = MState) ->
     ?LOG_DEBUG("Received new scheduling result (size=~p)", [byte_size(BinOut)]),
-    Term = erlang:binary_to_term(BinOut),
-    MState2 = handle_new_timetable(Term, MState),
-    {noreply, MState2};
+    try wm_utils:decode_from_binary(BinOut) of
+        Term ->
+            MState2 = handle_new_timetable(Term, MState),
+            {noreply, MState2}
+    catch
+        error:badarg ->
+            ?LOG_ERROR("Rejected unsafe or invalid scheduler ETF (size=~p)", [byte_size(BinOut)]),
+            {noreply, MState};
+        error:{etf_too_large, Size, Max} ->
+            ?LOG_ERROR("Rejected oversized scheduler ETF (~p > ~p)", [Size, Max]),
+            {noreply, MState}
+    end;
 handle_info(job_start_time, #mstate{} = MState) ->
     MState2 = del_old_start_times(MState),
     case MState2#mstate.start_times of
