@@ -321,12 +321,6 @@ Listeners for epmd and the dist port range must show `127.0.0.1` (not `0.0.0.0`)
 2. Install them under `$SWM_SPOOL/secure/` with the same layout.
 3. Restart Sky Port and clients that load user certificates (for example under `~/.swm/`).
 
-### Service user
-
-The systemd unit may still run as root because privileged helpers (for example
-container control) need access. SSH ports themselves do not need root. Plan a
-non-root service user when those helpers are scoped.
-
 ## Related documents
 
 - [INSTALL.md](INSTALL.md) -- install and setup

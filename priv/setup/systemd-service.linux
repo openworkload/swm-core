@@ -10,13 +10,23 @@ Requires=network.target remote-fs.target
 # Each start regenerates a local Erlang cookie (localhost remsh only).
 # Stop with SIGTERM (KillSignal below), not `swm stop` over distribution.
 #
-# SSH tunnel/transfer ports do not need root. Running the whole service as a
-# non-root user is a follow-up (see HOWTO/SECURITY.md).
+# Runs as root so native Porter can initgroups/setuid/setgid and chown job
+# paths. OTP SSH/API ports do not need root. Hardening below limits blast
+# radius; a dedicated User= is a follow-up (see HOWTO/SECURITY.md).
 Type=simple
 TimeoutStartSec=120
 TimeoutStopSec=60
 Restart=always
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths={SWM_ROOT} {SWM_SPOOL} /home
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_KILL
 EnvironmentFile=/etc/swm.conf
 {PARENT_ENV}Environment=HOME=/root
 ExecStart=/bin/bash -c 'export SWM_REGENERATE_COOKIE=1; source {ENV} && exec {SCRIPT} foreground'

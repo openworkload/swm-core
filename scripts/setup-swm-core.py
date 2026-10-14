@@ -226,6 +226,8 @@ def generate_service_file(opts: dict[str, str]) -> None:
     LOG.info("init script path: %s" % script)
     template = template.replace("{SCRIPT}", script)
     template = template.replace("{ENV}", env)
+    template = template.replace("{SWM_ROOT}", opts.get("SWM_ROOT", "/opt/swm"))
+    template = template.replace("{SWM_SPOOL}", opts.get("SWM_SPOOL", "/opt/swm/spool"))
     # Bake parent (and local confdb for compute) into the unit so swm.env
     # defaults cannot win if /etc/swm.conf is later rewritten.
     parent_host = opts.get("SWM_PARENT_HOST")
