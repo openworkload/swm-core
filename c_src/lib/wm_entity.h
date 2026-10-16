@@ -8,6 +8,7 @@ namespace swm {
 
 class SwmEntity {
  public:
+  virtual ~SwmEntity() = default;
   virtual void print(const std::string &prefix, const char separator) const = 0;
 };
 

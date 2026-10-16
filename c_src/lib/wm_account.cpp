@@ -157,7 +157,7 @@ int swm::ei_buffer_to_account(const char *buf, int &index, std::vector<SwmAccoun
     return 0;
   }
 
-  array.reserve(list_size);
+  array.reserve(static_cast<size_t>(list_size));
   for (int i = 0; i < list_size; ++i) {
     int entry_size = 0;
     int sub_term_type = 0;
