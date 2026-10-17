@@ -55,6 +55,8 @@ fi
 swm_pod_ensure_dev_stack || exit 1
 
 # Passwordless sudo for interactive debug sessions (core container only).
+# Under --userns=keep-id, image root files can appear as the host uid without
+# setuid; sudo then refuses to run. Re-assert ownership on every make cr.
 podman exec --user root "${CORE_NAME}" bash -lc "
 set -euo pipefail
 HOST_USER='${HOST_USER}'
@@ -62,20 +64,44 @@ if ! head -1 /etc/shadow >/dev/null 2>&1; then
     echo 'ERROR: /etc/shadow is not readable inside the container.' >&2
     echo 'Host /etc/shadow must not be bind-mounted when using --userns=keep-id.' >&2
     echo \"Recreate: podman rm -f ${CORE_NAME} ${GATE_NAME}; podman pod rm -f ${POD_NAME}; make cr\" >&2
-
     exit 1
 fi
-if [[ ! -f /etc/sudoers.d/nopasswd ]]; then
-    echo 'ALL ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/nopasswd
-    chmod 0440 /etc/sudoers.d/nopasswd
+# Restore sudo binary + sudoers tree (keep-id often leaves these as uid 1000 / no setuid).
+if [[ -e /usr/bin/sudo ]]; then
+    chown root:root /usr/bin/sudo
+    chmod 4755 /usr/bin/sudo
 fi
+for f in /etc/sudo.conf /etc/sudoers; do
+    if [[ -e \$f ]]; then
+        chown root:root \"\$f\"
+    fi
+done
+if [[ -d /etc/sudoers.d ]]; then
+    chown root:root /etc/sudoers.d
+    chmod 0755 /etc/sudoers.d
+    chown -R root:root /etc/sudoers.d
+fi
+if [[ -f /etc/sudo.conf ]]; then
+    chmod 0644 /etc/sudo.conf
+fi
+if [[ -f /etc/sudoers ]]; then
+    chmod 0440 /etc/sudoers
+fi
+echo 'ALL ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/nopasswd
+chmod 0440 /etc/sudoers.d/nopasswd
+chown root:root /etc/sudoers.d/nopasswd
 days=\$((\$(date +%s) / 86400))
 if ! grep -q \"^\${HOST_USER}:\" /etc/shadow; then
     echo \"\${HOST_USER}:*:\${days}:0:99999:7:::\" >> /etc/shadow
 else
-    sed -i -E \"s/^\${HOST_USER}:!+/\${HOST_USER}:*/\" /etc/shadow
+    # Locked accounts use ! or !!; NOPASSWD still needs a non-locked shadow token.
+    sed -i -E \"s/^\${HOST_USER}:!+:/\${HOST_USER}:*:/\" /etc/shadow
 fi
 "
-podman exec --user "${HOST_USER}" "${CORE_NAME}" sudo -n true
+if ! podman exec --user "${HOST_USER}" "${CORE_NAME}" sudo -n true; then
+    echo "ERROR: passwordless sudo still fails for ${HOST_USER} in ${CORE_NAME}." >&2
+    echo "Check /usr/bin/sudo ownership (must be root with setuid) under --userns=keep-id." >&2
+    exit 1
+fi
 
 exec podman exec -ti --user "${HOST_USER}" "${CORE_NAME}" /bin/bash
