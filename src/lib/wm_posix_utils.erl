@@ -1,6 +1,6 @@
 -module(wm_posix_utils).
 
--export([get_system_uid_gid/1, get_current_user/0, get_user_home/1, errno/1]).
+-export([get_system_uid_gid/1, get_current_user/0, get_user_home/1, errno/1, validate_username/1]).
 
 -define(ERRNO,
         #{eacces => "Permission denied (POSIX.1-2001).",
@@ -62,42 +62,79 @@
               "filesystems.",
           exdev => "Improper link (POSIX.1-2001)."}).
 
-%% @doc Get system UID and GID by username
+%% Portable POSIX username: letter/underscore start; alnum, underscore, dot, hyphen.
+-define(USERNAME_RE, "^[A-Za-z_][A-Za-z0-9_.-]*$").
+
+%% @doc Reject empty names and shell metacharacters before any lookup.
+-spec validate_username(term()) -> ok | {error, bad_username}.
+validate_username(Username) when is_list(Username), Username =/= "" ->
+    case re:run(Username, ?USERNAME_RE, [{capture, none}]) of
+        match ->
+            ok;
+        nomatch ->
+            {error, bad_username}
+    end;
+validate_username(_) ->
+    {error, bad_username}.
+
+%% @doc Get system UID and GID by username (no shell).
 -spec get_system_uid_gid(list()) -> {ok, list(), list()} | {error, not_found}.
 get_system_uid_gid(Username) when is_list(Username) ->
-    Output1 = os:cmd("id -u " ++ Username),
-    case string:str(Output1, "no such user") of
-        0 ->
-            Output2 = os:cmd("id -g " ++ Username),
-            case string:str(Output2, "no such user") of
-                0 ->
-                    UID = string:strip(Output1, right, $\n),
-                    GID = string:strip(Output2, right, $\n),
-                    {ok, UID, GID};
+    case validate_username(Username) of
+        {error, bad_username} ->
+            {error, not_found};
+        ok ->
+            case run_argv("id", ["-u", Username]) of
+                {ok, UidOut, 0} ->
+                    case run_argv("id", ["-g", Username]) of
+                        {ok, GidOut, 0} ->
+                            UID = string:trim(UidOut, trailing, "\n"),
+                            GID = string:trim(GidOut, trailing, "\n"),
+                            case UID =/= "" andalso GID =/= "" of
+                                true ->
+                                    {ok, UID, GID};
+                                false ->
+                                    {error, not_found}
+                            end;
+                        _ ->
+                            {error, not_found}
+                    end;
                 _ ->
                     {error, not_found}
-            end;
-        _ ->
-            {error, not_found}
-    end.
+            end
+    end;
+get_system_uid_gid(_) ->
+    {error, not_found}.
 
-%% @doc Get current username
+%% @doc Get current username (fixed argv; no user-controlled input).
 -spec get_current_user() -> list().
 get_current_user() ->
-    Username = os:cmd("id -n -u"),
-    string:strip(Username, right, $\n).
-
-%% @doc Resolve the home directory for an OS user (getent/passwd).
--spec get_user_home(string()) -> {ok, string()} | {error, term()}.
-get_user_home(Username) when is_list(Username), Username =/= "" ->
-    Line =
-        string:trim(
-            os:cmd("getent passwd " ++ Username ++ " 2>/dev/null")),
-    case string:split(Line, ":", all) of
-        [_, _, _, _, _, Home | _] when Home =/= "" ->
-            {ok, string:trim(Home, trailing, "/")};
+    case run_argv("id", ["-n", "-u"]) of
+        {ok, Out, 0} ->
+            string:trim(Out, trailing, "\n");
         _ ->
-            {error, {no_home, Username}}
+            ""
+    end.
+
+%% @doc Resolve the home directory for an OS user (getent/passwd; no shell).
+-spec get_user_home(string()) -> {ok, string()} | {error, term()}.
+get_user_home(Username) when is_list(Username) ->
+    case validate_username(Username) of
+        {error, bad_username} = Err ->
+            Err;
+        ok ->
+            case run_argv("getent", ["passwd", Username]) of
+                {ok, Line0, 0} ->
+                    Line = string:trim(Line0),
+                    case string:split(Line, ":", all) of
+                        [_, _, _, _, _, Home | _] when Home =/= "" ->
+                            {ok, string:trim(Home, trailing, "/")};
+                        _ ->
+                            {error, {no_home, Username}}
+                    end;
+                _ ->
+                    {error, {no_home, Username}}
+            end
     end;
 get_user_home(_) ->
     {error, bad_username}.
@@ -106,3 +143,78 @@ get_user_home(_) ->
 -spec errno(atom()) -> string().
 errno(Name) ->
     maps:get(Name, ?ERRNO, io_lib:format("Unkown error (POSIX.1-2001): ~s", [Name])).
+
+%% ============================================================================
+%% Internal: argv spawn (never /bin/sh -c)
+%% ============================================================================
+
+-spec run_argv(string(), [string()]) -> {ok, string(), integer()} | {error, term()}.
+run_argv(ExeName, Args) when is_list(ExeName), is_list(Args) ->
+    case os:find_executable(ExeName) of
+        false ->
+            {error, {not_found, ExeName}};
+        Exe ->
+            try
+                Port =
+                    open_port({spawn_executable, Exe},
+                              [{args, Args},
+                               eof,
+                               exit_status,
+                               use_stdio,
+                               stderr_to_stdout]),
+                collect_port(Port, [])
+            catch
+                E:R ->
+                    {error, {E, R}}
+            end
+    end.
+
+-spec collect_port(port(), [string() | binary()]) -> {ok, string(), integer()} | {error, term()}.
+collect_port(Port, Acc) ->
+    receive
+        {Port, {data, Data}} ->
+            collect_port(Port, [Data | Acc]);
+        {Port, eof} ->
+            Out = flatten_port_data(lists:reverse(Acc)),
+            receive
+                {Port, {exit_status, Status}} ->
+                    safe_port_close(Port),
+                    {ok, Out, Status}
+            after 2000 ->
+                safe_port_close(Port),
+                {ok, Out, -1}
+            end;
+        {Port, {exit_status, Status}} ->
+            Out = flatten_port_data(lists:reverse(Acc)),
+            receive
+                {Port, eof} ->
+                    safe_port_close(Port),
+                    {ok, Out, Status}
+            after 2000 ->
+                safe_port_close(Port),
+                {ok, Out, Status}
+            end
+    after 10000 ->
+        safe_port_close(Port),
+        {error, timeout}
+    end.
+
+-spec safe_port_close(port()) -> ok.
+safe_port_close(Port) ->
+    try
+        port_close(Port),
+        ok
+    catch
+        _:_ ->
+            ok
+    end.
+
+-spec flatten_port_data([string() | binary()]) -> string().
+flatten_port_data(Chunks) ->
+    lists:flatten(
+        lists:map(fun (B) when is_binary(B) ->
+                          binary_to_list(B);
+                      (L) when is_list(L) ->
+                          L
+                  end,
+                  Chunks)).
