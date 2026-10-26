@@ -18,6 +18,8 @@ TimeoutStartSec=120
 TimeoutStopSec=60
 Restart=always
 RestartSec=5
+## Keep rendered release files and cookie material private to the daemon user.
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

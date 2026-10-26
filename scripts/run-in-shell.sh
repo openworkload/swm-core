@@ -138,10 +138,20 @@ fi
 ## VM args for short-lived remsh-style invocations (etop/observer/stop).
 ## They set their own -name/-sname on the command line, so any -name/-sname/
 ## -args_file in vm.args is filtered out to avoid duplicate-flag conflicts.
+## Cookie stays out of the daemon vm.args; remsh passes -setcookie for the
+## short-lived client only. -pa loads wm_ssl_dist for dist TLS verify_fun.
 remsh_vm_args() {
-  if [ -n "${SWM_COOKIE:-}" ] && [ -f "${SWM_VM_ARGS:-}" ]; then
-    grep -v -E '^#|^-name|^-sname|^-args_file' "${SWM_VM_ARGS}" | xargs | sed -e 's/ / /g'
+  local args pa=""
+  if [ -z "${SWM_COOKIE:-}" ] || [ ! -f "${SWM_VM_ARGS:-}" ]; then
+    return 0
   fi
+  args=$(grep -v -E '^#|^-name|^-sname|^-args_file' "${SWM_VM_ARGS}" | xargs | sed -e 's/ / /g')
+  for d in ${SWM_LIB}; do
+    if [ -d "${d}" ]; then
+      pa="${pa} -pa ${d}"
+    fi
+  done
+  echo "${args}${pa} -setcookie ${SWM_COOKIE}"
 }
 
 ## Stop local SWM beams when dist rpc is unavailable (no cookie / wrong cookie).

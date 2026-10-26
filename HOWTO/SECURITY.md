@@ -175,13 +175,17 @@ Constraints:
    `ERL_EPMD_ADDRESS=127.0.0.1`. Remote hosts cannot open a distribution
    channel. SSH to the host first, then remsh.
 2. **Random cookie per daemon start.** On start, Sky Port writes
-   `$SWM_SPOOL/secure/cookie` (mode 0600) and passes it to `-setcookie`. The
-   cookie is not shared across nodes and is not packed into the worker archive.
-   Local tools load that file; they do not invent a cookie. Never log the
-   cookie value.
-3. **Dist TLS peer verify.** Server and client use `verify_peer`; the server
-   sets `fail_if_no_peer_cert`. Remsh clients must present the node certificate.
-   Node certs need a DNS SAN for `sname@fqdn` (see cert issuance).
+   `$SWM_SPOOL/secure/cookie` (mode 0600) and installs the same value as
+   `$HOME/.erlang.cookie` (mode 0600). The cookie is not passed via
+   `-setcookie` in `vm.args` (so it is not world-readable there or in the
+   daemon argv). It is not shared across nodes and is not packed into the
+   worker archive. Local tools load the spool file; they do not invent a
+   cookie. Never log the cookie value.
+3. **Dist TLS peer verify.** Server and client use `verify_peer` with
+   `fail_if_no_peer_cert`, plus a `verify_fun` that accepts only the node
+   certificate profile (not user certs that chain to the cluster CA). Remsh
+   clients must present the node certificate. Node certs need a DNS SAN for
+   `sname@fqdn` (see cert issuance).
 4. **Hostname for remsh.** With `-name node@FQDN`, the client connects to the
    IP of `FQDN`. That name must resolve to loopback on the host (for example
    via `/etc/hosts`), or remsh fails even from the same machine.
