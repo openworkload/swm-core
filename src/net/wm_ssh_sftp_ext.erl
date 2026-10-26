@@ -216,30 +216,10 @@ with_jail_path(Roots, Cwd, File, Fun) ->
 resolve_jail_path([], _Cwd, _File) ->
     {error, permission_denied};
 resolve_jail_path(Roots, Cwd, File0) ->
-    File =
-        case File0 of
-            Bin when is_binary(Bin) ->
-                binary_to_list(Bin);
-            List when is_list(List) ->
-                List
-        end,
-    Abs = case filename:pathtype(File) of
-              absolute ->
-                  filename:absname(File);
-              _ ->
-                  filename:absname(File, Cwd)
-          end,
-    case lists:any(fun(Root) -> is_within_root(Root, Abs) end, Roots) of
-        true ->
+    case wm_path_jail:resolve(Roots, Cwd, File0) of
+        {ok, Abs} ->
             {ok, Abs};
-        false ->
-            ?LOG_WARN("SSH SFTP EXT path outside allowlist rejected: ~p", [File]),
+        {error, outside} ->
+            ?LOG_WARN("SSH SFTP EXT path outside allowlist rejected: ~p", [File0]),
             {error, permission_denied}
     end.
-
--spec is_within_root(string(), string()) -> boolean().
-is_within_root("", _) ->
-    false;
-is_within_root(Root, File) ->
-    lists:prefix(
-        filename:split(Root), filename:split(File)).

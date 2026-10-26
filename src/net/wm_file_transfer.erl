@@ -876,22 +876,14 @@ normalize_spool(_) ->
 -spec sftp_jail_path(file:filename(), string() | [string()]) ->
                         {ok, file:filename()} | {error, file:filename(), nonempty_string()}.
 sftp_jail_path(Path, Roots) when is_list(Roots), Roots =/= [], is_list(hd(Roots)) ->
-    PathAbs = filename:absname(Path),
-    case lists:any(fun(Root) -> is_within_root(normalize_spool(Root), PathAbs) end, Roots) of
-        true ->
+    case wm_path_jail:resolve([normalize_spool(R) || R <- Roots], "/", Path) of
+        {ok, PathAbs} ->
             {ok, PathAbs};
-        false ->
+        {error, outside} ->
             {error, Path, "path outside SFTP root"}
     end;
 sftp_jail_path(Path, JailRoot) when is_list(JailRoot) ->
     sftp_jail_path(Path, [JailRoot]).
-
--spec is_within_root(string(), string()) -> boolean().
-is_within_root("", _) ->
-    false;
-is_within_root(Root, File) ->
-    lists:prefix(
-        filename:split(Root), filename:split(File)).
 
 -spec stop_ssh_daemon(pid() | undefined) -> ok.
 stop_ssh_daemon(undefined) ->

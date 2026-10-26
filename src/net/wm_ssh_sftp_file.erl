@@ -105,30 +105,10 @@ with_allowed_bool(Path, State, Fun) ->
 
 -spec allow_path(file:name(), state()) -> {ok, string()} | {error, eacces}.
 allow_path(Path0, #{roots := Roots, cwd := Cwd}) ->
-    Path =
-        case Path0 of
-            Bin when is_binary(Bin) ->
-                binary_to_list(Bin);
-            List when is_list(List) ->
-                List
-        end,
-    Abs = case filename:pathtype(Path) of
-              absolute ->
-                  filename:absname(Path);
-              _ ->
-                  filename:absname(Path, Cwd)
-          end,
-    case lists:any(fun(Root) -> is_within_root(Root, Abs) end, Roots) of
-        true ->
+    case wm_path_jail:resolve(Roots, Cwd, Path0) of
+        {ok, Abs} ->
             {ok, Abs};
-        false ->
-            ?LOG_WARN("SFTP path outside allowlist rejected: ~p", [Path]),
+        {error, outside} ->
+            ?LOG_WARN("SFTP path outside allowlist rejected: ~p", [Path0]),
             {error, eacces}
     end.
-
--spec is_within_root(string(), string()) -> boolean().
-is_within_root("", _) ->
-    false;
-is_within_root(Root, File) ->
-    lists:prefix(
-        filename:split(Root), filename:split(File)).
