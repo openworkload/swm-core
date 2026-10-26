@@ -292,11 +292,12 @@ mk_opts(Cert, Key, CA) ->
      {keyfile, Key}].
 
 listen(Port, NodeCert, NodeKey, CA, MState) ->
-    Opts = mk_opts(NodeCert, NodeKey, CA),
-    ?LOG_DEBUG("TCP server options: ~1000p", [Opts]),
+    ListenIP = resolve_listen_ip(),
+    Opts = listen_ip_opts(ListenIP) ++ mk_opts(NodeCert, NodeKey, CA),
+    ?LOG_DEBUG("TCP server listen ~p options: ~1000p", [ListenIP, Opts]),
     case ssl:listen(Port, Opts) of
         {ok, ListenSocket} ->
-            {ok, accept(MState#mstate{lsocket = ListenSocket})};
+            {ok, accept(MState#mstate{ip = ListenIP, lsocket = ListenSocket})};
         {error, Reason} ->
             ?LOG_ERROR("Could not start listening port ~p: ~p", [Port, Reason]),
             {Reason, MState};
@@ -304,3 +305,40 @@ listen(Port, NodeCert, NodeKey, CA, MState) ->
             ?LOG_ERROR("Failed to start listening port ~p: ~p", [Port, Error]),
             {Error, MState}
     end.
+
+%% Default 0.0.0.0 preserves mesh/client reachability; operators can narrow via
+%% api_daemon_listen_ip (control-plane NIC or 127.0.0.1).
+-spec resolve_listen_ip() -> inet:ip_address() | any.
+resolve_listen_ip() ->
+    case wm_conf:g(api_daemon_listen_ip, {"0.0.0.0", string}) of
+        "loopback" ->
+            {127, 0, 0, 1};
+        "localhost" ->
+            {127, 0, 0, 1};
+        "127.0.0.1" ->
+            {127, 0, 0, 1};
+        "::1" ->
+            {0, 0, 0, 0, 0, 0, 0, 1};
+        "any" ->
+            any;
+        "0.0.0.0" ->
+            any;
+        IP when is_list(IP) ->
+            case inet:parse_address(IP) of
+                {ok, Addr} ->
+                    Addr;
+                {error, _} ->
+                    ?LOG_ERROR("Invalid api_daemon_listen_ip ~p; using 0.0.0.0", [IP]),
+                    any
+            end;
+        Other ->
+            _ = Other,
+            ?LOG_ERROR("Invalid api_daemon_listen_ip ~p; using 0.0.0.0", [Other]),
+            any
+    end.
+
+-spec listen_ip_opts(inet:ip_address() | any) -> [{ip, inet:ip_address() | any}].
+listen_ip_opts(any) ->
+    [];
+listen_ip_opts(Addr) ->
+    [{ip, Addr}].

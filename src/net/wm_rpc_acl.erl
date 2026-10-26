@@ -99,7 +99,13 @@ classify_uid(Uid) when is_list(Uid) ->
     end.
 
 %% @doc Whether role may invoke Module:Fun over RPC.
+%% Node role: wm_conf/wm_db are Fun-allowlisted (mesh sync/reset only);
+%% other mesh modules remain module-wide.
 -spec allowed(rpc_role(), atom(), atom()) -> boolean().
+allowed(node, wm_conf, Fun) when is_atom(Fun) ->
+    lists:member(Fun, node_conf_funs());
+allowed(node, wm_db, Fun) when is_atom(Fun) ->
+    lists:member(Fun, node_db_funs());
 allowed(node, Module, _Fun) when is_atom(Module) ->
     lists:member(Module, node_modules());
 allowed(admin, wm_admin, _Fun) ->
@@ -134,8 +140,6 @@ node_modules() ->
      wm_core,
      wm_compute,
      wm_pmix,
-     wm_conf,
-     wm_db,
      wm_data,
      wm_event,
      wm_factory,
@@ -148,6 +152,14 @@ node_modules() ->
      wm_proc,
      wm_virtres,
      wm_pinger].
+
+-spec node_conf_funs() -> [atom()].
+node_conf_funs() ->
+    [sync_schema_request, sync_schema_reply, sync_config_request, sync_config_reply, event].
+
+-spec node_db_funs() -> [atom()].
+node_db_funs() ->
+    [reset_db_request, reset_db_reply, reset_tabs_request, reset_tabs_reply].
 
 %% ============================================================================
 %% Classification helpers
