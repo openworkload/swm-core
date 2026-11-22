@@ -10,7 +10,7 @@ set -euo pipefail
 #SWM comment OpenMPI hello via swm-task --pmix (one rank per node)
 #SWM flavor Standard_D2_v4
 #SWM cloud-image ubuntu-hpc/2404
-#SWM container-image swmregistry.azurecr.io/openworkload/ubuntu:24.04
+#SWM container-image swmregistry1.azurecr.io/openworkload/ubuntu:24.04
 #SWM storage swmblobcontainer
 #SWM input-files ~/mpi_hello
 
